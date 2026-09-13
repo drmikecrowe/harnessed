@@ -1,26 +1,33 @@
 ---
 type: workflow
 title: "Capability test: the manifest oracle versus the live instance"
-description: "How `harnessed test` proves a build: expected capabilities derived from the manifest (never hardcoded), a headless --fresh launch, machine-readable introspection of the hatago servers resource and the mounted profile filesystem with an LLM prompt backstop, recipe-authored bash tests folded into the same report, teardown as part of the contract, and the one structured result that drives both the markdown table and the CI exit code."
-tags: [capability-test, oracle, headless-launch, introspection, hatago, expect, recipe-tests, teardown, secret-hygiene, exit-code]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
+description: "How `harnessed test` proves a build: expected capabilities derived from the manifest (never hardcoded), a headless --fresh launch through the container backend, machine-readable introspection of the hatago servers resource and the mounted profile filesystem with an LLM prompt backstop, recipe-authored bash tests folded into the same report, teardown as part of the contract, and the one structured result that drives both the markdown table and the CI exit code — the invocation live.yml runs against livecheck on both podman and docker."
+tags: [capability-test, oracle, headless-launch, introspection, hatago, expect, recipe-tests, teardown, secret-hygiene, exit-code, live-ci, livecheck]
 sources:
+  - id: openwiki-source-3b6f61ac560f049f559456d0
+    resource: repo://.github/workflows/live.yml
   - id: openwiki-source-362e06c30ccfdafd87339cb0
     resource: repo://ARCHITECTURE.md
   - id: openwiki-source-e4f8a034a1da91150e923fea
     resource: repo://catalog/base/harnessed-start
+  - id: openwiki-source-92fc0215b9c6f99519258ab6
+    resource: repo://catalog/recipes/rtk/recipe.yaml
+  - id: openwiki-source-157d966ab5220b58edf22d5c
+    resource: repo://catalog/recipes/rtk/tests/rtk-runs.sh
   - id: openwiki-source-abbd21b9b9170a1f6cc67ff4
     resource: repo://catalog/recipes/superpowers/recipe.yaml
   - id: openwiki-source-7aaef99ed3f0b637b5f16fae
     resource: repo://catalog/recipes/time/recipe.yaml
+  - id: openwiki-source-c3a8ff8327a2b1297fad6d08
+    resource: repo://catalog/stacks/livecheck/stack.yaml
   - id: openwiki-source-0f0f277c40d34909acb07908
     resource: repo://src/harnessed/capability.py
   - id: openwiki-source-9a53d80e292611f0100f90b1
     resource: repo://src/harnessed/capmatrix.py
   - id: openwiki-source-0852603a38d760a77db2bc8a
     resource: repo://src/harnessed/cli.py
+  - id: openwiki-source-6f84913afc580e4d73fac66a
+    resource: repo://src/harnessed/ctrquery.py
   - id: openwiki-source-eea4d18f75a13f889234865d
     resource: repo://src/harnessed/emit.py
   - id: openwiki-source-154371253083f8b9b656eefa
@@ -37,7 +44,18 @@ sources:
     resource: repo://src/harnessed/update.py
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
     resource: repo://src/harnessed/volumes.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+  - id: openwiki-source-f0a6e7dc03522b2682f88655
+    resource: repo://tests/conftest.py
+  - id: openwiki-source-1a097ab87a1c6f8bc569f549
+    resource: repo://tests/support.py
+  - id: openwiki-source-9239363e7593997702c44e1f
+    resource: repo://tests/test_capability_mcp_poll.py
+  - id: openwiki-source-475d1228ccbccb994355d6c3
+    resource: repo://tests/test_capability_tests.py
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-12T09:54:25.902Z
 ---
 
 # Capability test: the manifest oracle versus the live instance
@@ -61,7 +79,8 @@ Two properties carry the whole design:
 
 Related: [the build pipeline](/openwiki/workflows/build.md) (what produces the artifacts this test
 verifies), [container launch](/openwiki/workflows/container-run.md) (the verb the test drives
-headless).
+headless), and [runtime detection](/openwiki/architecture/runtimes.md) (which container binary the
+launch and every exec go through).
 
 ## Two entrypoints, one grammar
 
@@ -76,7 +95,8 @@ headless).
   The delegation is deliberately **unbounded**: the child bounds its own work
   (`capability.DEFAULT_TEST_TIMEOUT` per test script), and a second deadline outside it would only
   cut off a run that is legitimately still going. The wrapper forwards `--project`, `--keep` and
-  `--json`; `--no-tests` and `--harnessed-bin` are direct-CLI-only.
+  `--json`, and passes `--root` pointing at the harnessed home — which is the catalog the direct CLI
+  would resolve anyway; `--no-tests` and `--harnessed-bin` are direct-CLI-only.
 - **`harnessed-tools test <stack> <harness>`** (`cli._run_test`) — the direct entrypoint the above
   and CI call. Flags: `--root`, `--project` (scratch project path, default a temp dir),
   `--harnessed-bin` (`$HARNESSED_DIR/harnessed`, then `PATH`), `--keep`, `--no-tests`, `--json`. A
@@ -89,11 +109,64 @@ One trap worth knowing: **`--root` does not scope the probe.** It is accepted (d
 the production resolution *across the catalog roots* (user overlay first), and the launcher
 subprocess is located through `--harnessed-bin` / `$HARNESSED_DIR` / `PATH`. Passing `--root` at a
 fixture tree does not point the oracle at that tree; the oracle always reads the overlay-resolved
-catalog.
+catalog. (The wrapper passing `--root` changes nothing here — the value it passes is that same
+default.)
 
 A third consumer is mechanical: `harnessed update` prints, per affected stack, the literal line
 `harnessed build <stack> <harness> && harnessed test <stack> <harness>` — the capability test is the
 verification step of the pin-bump workflow.
+
+## The CI caller: live.yml and the livecheck stack
+
+The strongest consumer of the verb is `.github/workflows/live.yml`, the live-verification workflow.
+It is **not** on `pull_request`, deliberately: it runs `podman build`, and adding minutes to every
+PR would get the job disabled within a week — and a disabled check verifies exactly as much as a
+skipped one. It runs instead on push to `main`, a nightly 04:00 UTC cron (external contract drift is
+found next morning, not by a user), on `workflow_dispatch`, and on demand against a branch via
+`gh workflow run live.yml --ref <branch>`.
+
+Its launch step is the capability test invoked literally, on both runtimes:
+
+```bash
+mise exec -- uv run --extra dev harnessed test livecheck claude --json --keep
+```
+
+(the docker twin sets `CONTAINER_RUNTIME=docker` in the step's environment). Every part of that
+command line is load-bearing:
+
+- **`livecheck`, not `default`.** Stack names resolve through the user-overlay catalog too, so
+  `default` means the repo's minimal stack on a runner and whatever the developer's private overlay
+  defines on their machine — which, on the box this was written on, pulled in a recipe holding a
+  1Password reference and reached for the vault to assemble it. A test must never depend on private
+  recipes and must never be able to touch a secret; a repo-only name nobody overlays is how that is
+  guaranteed rather than hoped for.
+- **Why `time` is the recipe inside it.** `time` is a stdio MCP child, so a successful launch proves
+  the whole chain the container path owns: image, volumes, userns mapping, netns placement, hatago
+  binding, and a child server actually connecting through the hub. `ping` is deliberately *not*
+  there: it is `service:`-backed, which would add a second container and a health gate to a job
+  whose purpose is to prove the *agent* launches.
+- **`--json`** so a failure is machine-readable in the log rather than buried in prose.
+- **`--keep`** so the `if: failure()` diagnostics step has an instance to inspect. Without it,
+  `harnessed test` tears the instance down on its way out, and the collector finds no container at
+  all — which is exactly what happened on the first docker failure: the report said *re-run with
+  --keep, then exec … cat /tmp/hatago.log* and the run had already discarded the only copy. The
+  collector runs `|| true` throughout and can never change the job's verdict; its only job is to put
+  the evidence (`podman/docker logs`, the hatago log, identity and home inside the container,
+  volumes) into the run log. The runner is destroyed at job end, so nothing leaks.
+
+The suite half of the job is guarded against the oldest way to lie with a skip: the pytest live layer
+is gated by `HARNESSED_PODMAN=1` (the `support.podman` marker), and the shipped `conftest.py` **fails
+the run** if the gate is open but marker-governed tests skipped anyway — identified by the
+`live_podman` marker, never by skip-reason wording, because both earlier reason-matching attempts
+failed in opposite directions. A broken podman cannot masquerade as a green live run.
+
+The docker twin is a separate job rather than a matrix, because a matrix would rewrite the
+status-check context name and `live` is a required check — renaming a required context leaves branch
+protection waiting forever on one that never reports again. It exists at all only because
+`CONTAINER_RUNTIME` is honoured by `paths.active_runtime`: a GitHub runner has **both** binaries and
+detection prefers podman, so without the override the docker job would silently retest the podman
+path while reporting itself as docker coverage. `HARNESSED_DOCKER=1` gates its tests the way
+`HARNESSED_PODMAN=1` gates the podman ones.
 
 ## The oracle: a union of the visible and the declared
 
@@ -133,9 +206,12 @@ catalog ships no `direct:` stack today; author one and this oracle's MCP half go
 server.
 
 The corollary is the authoring rule: **declare what your Dockerfile delivers**. Anything a recipe
-does not declare — and the assembler cannot see — is invisible to this test. `rtk` documents the
-limit from the other side: it ships no skill/command/plugin surface and there is no `expect:` kind
-for "a binary runs", so its capability is verified manually (`rtk --version`) per its PLAN.md.
+does not declare — and the assembler cannot see — is invisible to this test. And for anything a
+*presence* oracle structurally cannot express ("a binary runs", "a hook fires"), the recipe-test
+convention below is the supplement: `rtk` is the worked example — its manifest explicitly notes
+there is no `expect:` kind for "a binary runs" and that `rtk --version` used to be checked manually;
+`tests/rtk-runs.sh` is that manual check automated, and `caveman` ships `hook-fires.sh` for the same
+reason.
 
 ## The run: launch, wait, look, tear down
 
@@ -149,12 +225,12 @@ flowchart TD
     ready -->|bound| mcp["introspect_mcp deadline-polls the hatago servers resource"]
     mcp --> fs["profile filesystem listing: skills, commands, plugins"]
     fs --> rtests{"run_tests"}
-    rtests -->|yes| rt["podman cp each tests dir and exec each script in the instance"]
+    rtests -->|yes| rt["copy each tests dir into the instance and exec each script"]
     rtests -->|no| diff["build_report: pure expected vs live diff"]
     rt --> diff
     diff --> fold["fold TEST results into the same report"]
     fold --> keepflag{"keep flag"}
-    keepflag -->|no| down["teardown the pod, then rmtree the scratch project"]
+    keepflag -->|no| down["teardown the instance, then rmtree the scratch project"]
     keepflag -->|yes| emit
     down --> emit["report.emit: markdown table or --json, returns the exit code"]
 ```
@@ -197,16 +273,20 @@ Two behaviours matter specifically to this test:
 
 - **A hub that never comes up is a hard exit 1.** "Headless callers (CI / capability tests) have no
   terminal to notice a degraded hub" — the launcher refuses to print a green SUCCESS line over a
-  dead MCP hub. Inside the launch subprocess the launcher itself waits up to 30 s
-  (`_wait_hatago`) and exits 1 if the port never binds, so by the time `launch_headless` returns,
-  `wait_ready`'s own 60 s deadline is a *second, independent* gate on the same port — not the first
-  line of defence. A stack whose hub is dead fails at step 3 with a `CapabilityError`, before any
-  probe has run.
+  dead MCP hub. Inside the launch subprocess the launcher itself waits up to 90 s (`_wait_hatago`)
+  for the port and exits 1 if it never binds — 90 s, not a rounder smaller number, because on docker
+  the hub was measured at 33.5 s to start listening: hatago binds only **after** connecting its
+  stdio children, so the floor is the hub plus every child plus the retry budget of any unreachable
+  server. A shorter bound failed deterministically while looking like a slow start. By the time
+  `launch_headless` returns, `wait_ready`'s own 60 s deadline is a *second, independent* gate on the
+  same port — not the first line of defence. A stack whose hub is dead fails at step 3 with a
+  `CapabilityError`, before any probe has run.
 - **No hub is probed when no hub should exist.** If `hub_transport: stdio` or every declared server
-  is `direct:`, the launcher sets `HATAGO_TRANSPORT=none` (or stdio) and treats the hub as up
-  without probing — probing would wait out the timeout and report a degraded hub over correct
-  configuration. `harnessed-start` reads the same variable, so the entrypoint and the launcher
-  cannot disagree about whether a hub exists.
+  is `direct:`, the launcher treats the hub as up without waiting on it, and passes
+  `HATAGO_TRANSPORT=<stdio|none>` to the container so `harnessed-start` starts nothing either —
+  probing would wait out the timeout and report a degraded hub over correct configuration. The
+  entrypoint reads the same variable, so the entrypoint and the launcher cannot disagree about
+  whether a hub exists.
 
 ## Readiness: two clocks, one gap
 
@@ -295,7 +375,9 @@ source.
 tool and assert on the output needs behavior, not presence. That supplement is a convention, not a
 schema field: **any `*.sh` under a resolved recipe's `tests/` directory is a test**, discovered
 sorted by `discover_recipe_tests`. Because the recipes are already resolved, discovery inherits the
-user-overlay precedence for free.
+user-overlay precedence for free. `rtk` (`rtk-runs.sh`: binary resolvable, `--version` identifies,
+`rtk gain` works, the PreToolUse hook survived assembly) and `caveman` (`hook-fires.sh`) are the
+shipped demonstrators.
 
 Two distinct invocation contexts share one set of pure helpers:
 
@@ -363,7 +445,8 @@ clean. Errors are swallowed: a teardown failure must not mask the report.
 
 `--keep` inverts both cleanups deliberately: the pod stays up **and** the scratch project dir
 survives (it is the pod's bind-mount; deleting it under a running pod breaks `podman exec`). That
-is the diagnostic path.
+is the diagnostic path — and the reason live.yml's launch step passes it: the report's remediation
+pointer is only actionable if the instance is still standing when someone reads it.
 
 ## The secret-hygiene invariant (T-02-07)
 
@@ -373,17 +456,25 @@ log, and hatago's children are MCP servers that take credentials from the enviro
 child prints exactly the thing this report must not carry.
 
 - The hatago log is **pointed at, never read**. `_HATAGO_LOG_PATH` (`/tmp/hatago.log`, the redirect
-  target in `catalog/base/harnessed-start`) exists only to spell `MCP_MISS_REMEDIATION`: *"re-run
-  with `--keep`, then `podman exec <instance> cat /tmp/hatago.log`"*. A missing MCP server's
-  `detail` names where to look and never quotes what is there. An earlier version of the module
-  copied a 200-line tail of that log into `CapabilityReport`; that was the T-02-07 violation this
-  shape exists to prevent, and the cost is real and accepted — a runner-only MCP failure is not
-  self-diagnosing from the CI log, which is precisely why the one-step remediation exists.
+  target in `catalog/base/harnessed-start`) exists only to spell the remediation, and
+  `mcp_miss_remediation()` is a **function** because it names the runtime: *"re-run with `--keep`,
+  then `<detected runtime> exec <instance> cat /tmp/hatago.log`"*. Hardcoding `podman` printed
+  advice a docker user cannot run — seen for real in the live-docker job, where the report told the
+  reader to type `podman exec` on a box whose stack lives in docker; it falls back to `podman` only
+  when no runtime resolves. A missing MCP server's `detail` names where to look and never quotes
+  what is there. An earlier version of the module copied a 200-line tail of that log into
+  `CapabilityReport`; that was the T-02-07 violation this shape exists to prevent, and the cost is
+  real and accepted — a runner-only MCP failure is not self-diagnosing from the CI log, which is
+  precisely why the one-step remediation and live.yml's `--keep` + diagnostics collector exist: CI
+  reads the log *out of band*, in a step that cannot change the verdict, while the report itself
+  never does.
 - Recipe-test failure detail is truncated to **one tail line, capped at 120 characters**
   (`_TEST_DETAIL_MAX`): `exit <n>: <last non-empty output line>`. Never a full transcript.
 - `CapabilityResult.detail` is documented as "short status reason", and
   `CapabilityReport.to_dict` carries a comment telling the next reader not to add a field that
-  carries container output.
+  carries container output. The guards are test-enforced: no `read_hatago_log` helper may exist, the
+  report's field set is pinned to `{stack, ok, results}`, and a stubbed end-to-end run fails if
+  anything shells into the container for output after introspection.
 
 Do not "improve" diagnostics by copying logs into the report; make the `--keep` path better instead.
 
@@ -394,15 +485,21 @@ The module is split so that everything decidable without a container needs none:
 - **Pure, unit-testable, no podman** — `schema.expected_capabilities` (manifest → expected),
   `build_report` (expected-vs-live diff), `discover_recipe_tests` (convention discovery),
   `fold_test_result` (exit-code folding), and the truncation helper behind the failure detail.
-- **Podman-touching, guarded behind the launch** — `launch_headless`, `wait_ready`, `introspect`
+- **Runtime-touching, guarded behind the launch** — `launch_headless`, `wait_ready`, `introspect`
   (and its probe helpers), `run_recipe_tests`, `teardown`, and the orchestrating
-  `run_capability_test`. These run in the live layer (`HARNESSED_PODMAN=1`), never in the hermetic
-  suite — which is exactly why a grammar drift in the launch command once broke every container-path
-  `harnessed test` while nothing caught it.
+  `run_capability_test`. These run only in the live layer (`HARNESSED_PODMAN=1`, the
+  `support.podman`-marked sweep in `tests/test_recipes_integration.py` and friends), never in the
+  hermetic suite — which is exactly why a grammar drift in the launch command once broke every
+  container-path `harnessed test` while nothing caught it, and why the live workflow exists.
 
-Runtime selection mirrors the bash dispatcher: `CONTAINER_RUNTIME` env, else `podman` if on `PATH`,
-else `docker`. The launcher binary resolves from an explicit `--harnessed-bin`, then
-`$HARNESSED_DIR/harnessed`, then `PATH`, raising a `CapabilityError` when none is found.
+Runtime selection has **one detector**: `paths.active_runtime` — `CONTAINER_RUNTIME` override
+first (an unrecognized value is refused, not silently ignored), else `podman` if on `PATH`, else
+`docker`, `None` when neither. `capability._runtime` wraps it for the oracle and raises
+`RuntimeError` when nothing resolves; `ctrquery._runtime` is the CLI-facing sibling that exits 1
+instead — a second scanner here would be a second answer to "which runtime is this", with argv
+built for one and ownership checked against the other. The launcher binary resolves from an
+explicit `--harnessed-bin`, then `$HARNESSED_DIR/harnessed`, then `PATH`, raising a `CapabilityError`
+when none is found.
 
 ## Not the same "capability": the backend matrix
 
@@ -417,9 +514,17 @@ noticing.
 
 ## What this oracle does not prove
 
-Anything about the **host** backend (it launches a pod), anything about interactive attach, and
-**anything a recipe did not declare and the assembler cannot see** — which is why the authoring rule
-("declare what your Dockerfile delivers") and the recipe-test convention exist. It also proves
-presence-and-connection, not usefulness: a connected server whose tools are wrong is green here, and
-only a recipe-authored `tests/*.sh` can say otherwise. Finally, the MCP probe observes the *hub* —
-a `direct:` server is not the hub's child and can only ever come from the backstop.
+The launch it verifies is a **container-backend** launch, full stop: `launch_headless` shells
+`harnessed container-run <harness> <project> --stack <stack> --fresh` with `HARNESSED_HEADLESS=true`,
+and every probe is an exec into the pod that creates. That is exactly why it proves **nothing about
+the host backend** — a green report says the images, volumes, userns mapping, netns placement and
+hatago hub compose for `container-run`, and is silent about `host-run`'s entirely different half
+(materialized host home, native `.mcp.json`, no hub). It is the same gap `live.yml` exists to close
+on the container side: "a build that never launches proves nothing about launching."
+
+Also unproven: anything about interactive attach; **anything a recipe did not declare and the
+assembler cannot see** — which is why the authoring rule ("declare what your Dockerfile delivers")
+and the recipe-test convention exist; and usefulness as opposed to presence-and-connection — a
+connected server whose tools are wrong is green here, and only a recipe-authored `tests/*.sh` can
+say otherwise. Finally, the MCP probe observes the *hub* — a `direct:` server is not the hub's child
+and can only ever come from the backstop.

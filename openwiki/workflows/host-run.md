@@ -1,11 +1,8 @@
 ---
 type: workflow
 title: "Host launch: host-run end to end"
-description: "The host backend's launch sequence — in-process assembly on every launch, the fingerprint-gated per-stack home materialization (skipping the container path's profile and image-label staleness gates), installs that must follow the wipe, the os.environ-is-the-box env delivery with the harness config-dir pinning last, share-back symlinks for claude and omp, wire_services sidecars as the one container-runtime touch (container-free for the AGENT only), the parity lint that keeps host launches in step with container launches, and the execvpe handoff. Configuration-only isolation: no pod, no network namespace, no egress firewall, your real home."
-tags: [host-run, hostbackend, hosthome, hostrun, execvpe, materialize, fingerprint, share-back, parity-lint, mise, claude-config-dir, pi-coding-agent-dir, isolation-none]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
+description: "Host launch, end to end: --stack XOR --recipe minting, in-process assembly on every launch, the fingerprint-gated per-stack home materialization (skipping the container path's profile and image-label staleness gates), installs that must follow the wipe, the os.environ-is-the-box env delivery with the harness config-dir pinning last and the agent PATH composed from the stack bin dir plus mise bin-paths (never shims), share-back symlinks for claude and omp, wire_services sidecars as the one container-runtime touch (container-free for the AGENT only), the parity lint, and the execvpe handoff. Configuration-only isolation: no pod, no network namespace, no egress firewall, your real home."
+tags: [host-run, hostbackend, hosthome, hostrun, execvpe, materialize, fingerprint, share-back, parity-lint, mise, mise-bin-paths, recipe-minting, claude-config-dir, pi-coding-agent-dir, isolation-none]
 sources:
   - id: openwiki-source-c45652791b6bc8bb3a3f3d3e
     resource: repo://src/harnessed/assemble.py
@@ -29,9 +26,16 @@ sources:
     resource: repo://src/harnessed/setupenv.py
   - id: openwiki-source-4d719c6f3a70a2ece04f213b
     resource: repo://src/harnessed/toollock.py
+  - id: openwiki-source-243e17ac0ee3e9beb4dfdaf9
+    resource: repo://tests/test_host_run_recipes.py
   - id: openwiki-source-f725ea11f1806a58b06d7f3e
     resource: repo://tests/test_launch_parity.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+  - id: openwiki-source-a488585d132d26b93d838e43
+    resource: repo://tests/test_tools_field_parity.py
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-12T09:54:25.902Z
 ---
 
 # Host launch: `host-run` end to end
@@ -92,7 +96,7 @@ Three container-shaped things this path does *not* do, and the one it does:
   `_host_stack_fingerprint`; both halves are described below.
 - **Sidecars are the exception.** For a stack with `services:`, the launch does reach the container
   runtime (build/revive sidecars via `_ensure_service`) even though the agent never does —
-  [wire_services](#wire_mcp-native-servers-no-hub) has the details.
+  [wire_mcp](#wire_mcp-native-servers-no-hub) has the details.
 
 The sibling verb is [`container-run`](/openwiki/workflows/container-run.md): same grammar, same
 stack resolution (`launcher._resolve_stack`), inverted capability order. The contract both
@@ -144,13 +148,23 @@ launcher.py is split into modules (bd harnessed-4l8, harnessed-0tk.1), and the l
 nothing exactly as the file it guards is rearranged.
 
 The ledger is grouped **by why**, because the reason is the part a future reader needs — a bare list
-of ~50 names would just be re-derived from scratch at every failure: image + container lifecycle
+of names would just be re-derived from scratch at every failure: image + container lifecycle
 ("there is no image and no container on the host"), bind-mount builders ("the host already has these
 paths"), credential/socket forwarders ("the host reaches these natively"), network/namespace work
 ("nothing to isolate or proxy on the host"), and same-capability-different-executor rows pairing
 each container half with its host twin (`_resolve_launch_secrets` ↔ `_resolve_launch_env`,
 `_run_container_setups` ↔ `_host_run_setups`, `_ensure_stack_volumes` ↔
 `_materialize_host_home` + `_host_run_installs`).
+
+The network/namespace group keeps growing as the container path does, and every recent row is the
+"What host-run never gives you" list turning up as test infrastructure — container-only **by
+nature**, each: `_without_userns` (strips a pod-level `--userns`; a host-native launch has no user
+namespace), `_preflight_runtime` (refuses a runtime whose id mapping cannot be named; the host runs
+as the invoking user and maps nothing), `_agent_placement_args` (netns/hostname/userns placement for
+a CONTAINER; the host has no namespace to place the agent in), `_netns_anchor` (names the pod or
+container others share a netns with; nothing to anchor on), and `api_endpoint_egress_hosts` (adds
+the model API host to the EGRESS FIREWALL allowlist; the host installs no firewall, so there is no
+allowlist to extend and the host's own routing already applies).
 
 The broker rows are container-only **by nature**, not by decision: each exists purely to move
 something across the pod boundary, and on the host there is no boundary to move it across — the
@@ -167,12 +181,56 @@ the container backend, or change the decision explicitly first.
 
 ---
 
+## The verb's grammar: `--stack` XOR `--recipe`
+
+`host_run` takes its stack from exactly one of two places, and `launcher._resolve_stack` — shared
+with `container-run` so the two verbs cannot drift apart on how a stack is chosen (bd
+harnessed-s84) — turns the invocation into `(stack name, minted_dir)`:
+
+- **`--stack <name>`** — an authored stack. `--recipe` must not also be given
+  ("provide either --stack or --recipe, not both"); the rejection fires before anything is launched
+  and before anything is minted.
+- **`--recipe r1 --recipe r2`** — compose a stack on the fly. `dynstack.derive_name`/`dynstack.mint`
+  write a generated `stack.yaml` under the generated catalog, named from the sorted recipe set
+  (`default.serena.superpowers`), and the minted manifest carries `extends: default` unless
+  `--no-extends` drops the base. Services passed with `--service` are part of BOTH the derived name
+  and the minted manifest — they are the stack's identity, so deriving without them would compute a
+  different name than mint writes. The recipe path calls no `_build_stack`: there is no image on
+  this verb to build, `_launch_host` assembles in-process.
+- **Neither** — the `default` baseline runs as-is, exactly as if `--stack default` had been typed.
+  Composing nothing on top of the baseline is a legitimate launch, not a malformed one, and it is an
+  authored stack — so there is no manifest to write and none is minted. `--extends <name>` is the
+  one knob that selects a different baseline.
+- **`--no-extends` with no recipe** — the one shape a bare invocation cannot be read as: it says
+  inherit from nothing, and with no recipe list there is nothing left to run, so it is an error.
+- The project path is the single positional in every form. An earlier design put the stack in that
+  slot, which made `host-run my-stack --recipe serena` launch the generated stack with the authored
+  name silently demoted to a project path, exit 0 — Typer binds positionals by DECLARATION order,
+  not by meaning. Naming the stack with a flag removes the ambiguity at the source.
+
+Minting is guarded: `_mint_lock` serializes the exists-check → mint sequence for one derived name,
+on a sibling `<derived>.lock` file that survives an rmtree of the guarded directory (#287).
+
+**Only the minter removes a minted manifest.** `_resolve_stack` returns `minted_dir` non-None only
+when *this* call created the manifest; `host_run` deletes it when the launch fails — a
+SchemaError/CollisionError from a bad recipe set, or a non-zero `typer.Exit` — because the orphan it
+would otherwise leave shows up in `harnessed list` and no GC reclaims it (volume-gc keys on volumes,
+and a stack that never launched owns none). Two carve-outs, both pinned in
+`tests/test_host_run_recipes.py`: a **pre-existing** manifest is left alone — deleting an
+already-working stack because today's launch broke is collateral damage — and a `typer.Exit(0)`
+must **not** clean up, because that is how `--create-aoe-only` reports success (`_aoe_register`
+raises it) after writing an aoe row whose recorded command names that manifest; deleting it would
+manufacture exactly the dead-on-arrival row the container path builds ahead of registering to avoid.
+
+---
+
 ## The sequence
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant RUN as launcher.host_run
+    participant RS as _resolve_stack
     participant LH as _launch_host
     participant BE as HostBackend
     participant RT as container runtime
@@ -180,8 +238,8 @@ sequenceDiagram
     participant HR as hostrun
     participant AG as agent process
 
-    RUN->>RUN: _require_supported_harness
-    RUN->>RUN: _resolve_stack
+    RUN->>RS: --stack XOR --recipe, mint when recipes given
+    RS-->>RUN: stack name and minted dir
     RUN->>LH: _launch_host
     LH->>LH: assemble in-process shared_identity=false
     LH->>LH: launchscript.write then _aoe_register
@@ -191,12 +249,13 @@ sequenceDiagram
     BE->>RT: _ensure_services builds or revives sidecars
     LH->>LH: _write_project_tool_env
     LH->>LH: _recipe_env onto os.environ
-    LH->>LH: PATH prepend stack bin plus mise shims
-    LH->>LH: _apply_host_mise_env on os.environ
+    LH->>LH: _apply_host_tool_path stack bin dir plus mise bin-paths
+    LH->>LH: snapshot user mise env then _apply_host_mise_env
     LH->>LH: harnessed_env folder contract on os.environ
     LH->>LH: _merge_host_claude_settings into the profile
     rect rgb(235,235,235)
         Note over LH,HR: home lock held
+        LH->>LH: --fresh drops the stamp and tool tree when asked
         LH->>BE: materialize_config spec
         BE->>HH: _rescue_host_credentials then _materialize_host_home
         LH->>BE: seed_auth spec
@@ -210,6 +269,7 @@ sequenceDiagram
     LH->>LH: _prompt_setup_notices
     LH->>BE: wire_mcp spec
     BE->>LH: apply_isolation both phases no-op
+    LH->>LH: _restore_user_mise_env into the exec env
     LH->>AG: os.execvpe with the harness config dir var
     Note over AG,RT: sidecars keep running after the agent exits
 ```
@@ -217,7 +277,8 @@ sequenceDiagram
 *One interactive launch. The grey block is the home lock — the only span across which a concurrent
 launch of the same `(stack, harness)` must wait. The wire_services step is the path's single
 container-runtime dependency: it fires only when the stack declares services, and the sidecars it
-starts outlive the agent. A service-less stack skips it and never touches a runtime.*
+starts outlive the agent. A service-less stack skips it and never touches a runtime. The mise
+redirect is undone before the exec: it exists for provisioning, not for the session.*
 
 ---
 
@@ -259,10 +320,14 @@ can never read stale content.
 
 ## Entry point and in-process assembly
 
-`launcher.host_run` (the Typer command) gates the harness, resolves the stack through the shared
-`_resolve_stack`, and calls `_launch_host`. On failure it removes a manifest *this invocation*
-minted — except on `typer.Exit(0)`, which is `--create-aoe-only` succeeding and must not clean up a
-row whose recorded command names that manifest.
+`launcher.host_run` (the Typer command) gates the harness (`_require_supported_harness`), resolves the
+stack through the shared `_resolve_stack` ([the grammar above](#the-verbs-grammar---stack-xor---recipe)),
+and calls `_launch_host`, which rejects any harness without a `_HOST_HARNESSES` row. On failure it
+removes a manifest *this invocation* minted — except on
+`typer.Exit(0)`, which is `--create-aoe-only` succeeding and must not clean up a row whose recorded
+command names that manifest. `host-exec` is the same command registered under a second name
+(`ctx.info_name` sets `exec_mode`): the same launch with nobody at the keyboard, so prompts skip
+rather than block.
 
 `_launch_host` **assembles in-process on every launch**:
 
@@ -273,14 +338,13 @@ assemble(None, stack, paths.profiles_root().parent, harness, strict=True, shared
 This is emit-only — no podman invocation, no image build — and it is what keeps the *agent path*
 container-free. Assembly is sub-second, so a rebuild-per-launch also sidesteps staleness bookkeeping
 entirely. The gates the host path skips are the container path's whole battery: `is_built`'s
-presence check, `staleness.check_profile_fresh`'s `.build-stamp` profile stamp, and the image-side
+presence check, `staleness.check_profile_fresh`'s profile stamp, and the image-side
 staleness machinery — the `harnessed.recipe-hash` label baked into every derived image and read back
 by `_built_image_hash`/`_stale_pairs`, plus `_container_stale`'s check that a running instance was
 not created from an older build. None of that has anything to attach to here, because assembly *is*
 this backend's validation gate and there is no image to go stale. **That is not the same as
-ungated**: the per-stack home rebuild keeps its own gate, `_host_stack_fingerprint`
-(launcher.py:2315/:2557, hosthome.py:36), which gates the expensive filesystem work the image build
-would otherwise have forced a refresh of — see
+ungated**: the per-stack home rebuild keeps its own gate, `_host_stack_fingerprint`, which gates the
+expensive filesystem work the image build would otherwise have forced a refresh of — see
 [the materialize contract](#the-materialize-contract). Two consequences worth knowing:
 
 - `shared_identity=False` suppresses the one emit step that writes outside the profile — omp's
@@ -336,10 +400,12 @@ config-dir pinning goes LAST** of all:
 2. **Recipe `env:`** — `os.environ.update(_recipe_env(host_recipes, project_path, mode="host"))`,
    applied *after* the launch env so **a recipe declaration still wins**, mirroring container mode
    where `podman run -e` beats `--env-file`.
-3. **The folder-env contract** (`setupenv.harnessed_env`), plus the PATH prepend and the mise
+3. **The folder-env contract** (`setupenv.harnessed_env`), plus the PATH prefix and the mise
    redirect — which **clears as well as sets** (`_apply_host_mise_env` removes an inherited
-   `MISE_STATE_DIR` it recognizes as its own former shape). See
-   [PATH and the mise redirect](#path-and-the-mise-redirect) below.
+   `MISE_STATE_DIR` it recognizes as harnessed's own former shape) and is **snapshot-first**:
+   `_launch_host` snapshots the user's own mise variables before the redirect and hands the
+   snapshot back at the exec, because the redirect is for provisioning, not for the session (#449).
+   See [PATH and the mise redirect](#path-and-the-mise-redirect) below.
 4. **`_harness_config_env` LAST**, but only inside the install/setup script environments, where an
    inherited `CLAUDE_CONFIG_DIR`/`PI_CODING_AGENT_DIR` must not survive (bd harnessed-8px.26). See
    [host-only install redirections](#host-only-install-redirections).
@@ -362,22 +428,76 @@ exclusive lock. Nothing is written into the repo.
 
 ### PATH and the mise redirect
 
-`_launch_host` prepends, in order: the stack bin dir (`_stack_tools_dirs(stack)[1]`), then the
-stack's own mise shims dir (`_host_tool_shims_dir` = `<tools>/mise/shims` — **not** the user's
-`~/.local/share/mise/shims`), then the inherited `PATH`.
+`_launch_host` composes the agent's PATH through one function, `hostrun._apply_host_tool_path`,
+which places `_stack_tool_path_prefix(stack)` at the front of `PATH`:
 
-**The shims entry is useless without the env redirect**, and shipping one without the other is the
-bug `_apply_host_mise_env` exists to prevent. A mise shim is a symlink to the mise binary, so it
-re-resolves the tool by `argv[0]` against `MISE_DATA_DIR` *at run time*: install-time redirection
-alone puts the binary somewhere the shim can never find again — `mise ERROR <tool> is not a valid
-shim`, because mise fell back to `~/.local/share/mise` where the stack installed nothing.
+```python
+[str(_stack_tools_dirs(stack)[1]), *(str(d) for d in _host_tool_bin_dirs(stack))]
+```
+
+— the **stack bin dir leads**, then the dirs `mise bin-paths` names for the stack's declared
+`tools:`, then the inherited `PATH`. The mise **shims dir is never on this PATH** (#449).
+
+**Why `bin-paths` and not shims.** A shims dir is not scoped to the stack's declared tool set:
+mise writes one shim per binary of every version ever installed under `MISE_DATA_DIR` and removes
+none when a tool leaves the config — measured on stack `default` when #449 was reported: 96 shims,
+6 declared tools, 28 installs. Ahead of the user's own PATH that dir failed two ways at once:
+
+1. A shim whose tool has no version in the *stack* config dies — `mise ERROR No version is set for
+   shim: <tool>`. `omp` was one, so the **agent binary itself** was shadowed by a broken shim and
+   `host-run omp` could not start at all.
+2. A shim that does resolve shadows the user's pinned version with the stack's — `node` resolved to
+   v26.8.1 out of the stack tree against the user's global `node = "24"`.
+
+`bin-paths` has neither problem: exactly the declared set, and real install dirs rather than
+symlinks that re-resolve against `MISE_DATA_DIR` at run time. **The cwd of that `mise bin-paths`
+call is load-bearing**: mise merges every config from the cwd upward, so resolving it in the project
+would put the PROJECT's `mise.toml` tools on the agent's PATH (measured: 8 paths from the harnessed
+repo against the 6 the stack declares) — so `_host_tool_bin_dirs` runs it with `cwd` at the stack's
+own mise root.
+
+Two more properties of `_apply_host_tool_path` matter:
+
+- It is **called twice per launch**, and both are needed: `_launch_host` calls it while composing
+  the PATH (the only call that fires when the fingerprint matched and installs were skipped);
+  `_host_install_tools` calls it again at its end, because on a FIRST launch nothing is installed
+  yet at the first call and `install.sh` — which runs next and configures binaries `tools:`
+  provides — has to resolve them. So it **removes before prepending** rather than skipping entries
+  already present: skipping is idempotent but not order-stable, and rebuilding the front makes both
+  calls agree.
+- It removes **every harnessed tools entry, not just this stack's**. Launching a stack from inside
+  another stack's host session inherits the OUTER stack's PATH, and filtering only against this
+  stack's own prefix left those entries behind the new ones — so a tool the inner stack never
+  declared still resolved, out of the outer stack's tree. A user's own toolchain entries are
+  untouched, because none of them live under the harnessed tools root. Same leak, and the same fix,
+  as the mise redirect below: provisioning state belongs to the launch that created it and must not
+  ride into the next one.
+
+**The mise redirect is provisioning-only since #449.** `_apply_host_mise_env` sets `MISE_DATA_DIR`
+and `MISE_CONFIG_DIR` so that *what mise installs and reads during provisioning* lands in the
+stack's own tree:
 
 | variable | value | redirected? |
 |---|---|---|
-| `MISE_DATA_DIR` | `<xdg_data>/harnessed/tools/<stack>/mise` | **yes** |
-| `MISE_CONFIG_DIR` | `<...>/mise/config` | **yes** |
+| `MISE_DATA_DIR` | `<xdg_data>/harnessed/tools/<stack>/mise` | **yes — provisioning only** |
+| `MISE_CONFIG_DIR` | `<...>/mise/config` | **yes — provisioning only** |
 | `MISE_STATE_DIR` | — | **deliberately NOT** |
 | `MISE_TRUSTED_CONFIG_PATHS` | carried from the user's own config + inherited env, deduped | re-set from user entries |
+
+`_launch_host` snapshots the user's own mise variables (`_snapshot_user_mise_env`, `None` = unset)
+*before* applying the redirect, and `_restore_user_mise_env` puts them back into the exec
+environment. A mise shim re-resolves its tool by `argv[0]` against `MISE_DATA_DIR` **every time it
+runs**, so carrying the redirect into the session broke every shim on the USER's own PATH — `node`,
+`gh`, `python`, and `omp` itself whenever the harness is one mise installed. Nothing harnessed puts
+on the agent's PATH is a shim any more, so the redirect has no run-time job left: the stack's
+`tools:` reach the agent as real install dirs, and everything else in the session resolves against
+the user's own mise — which is what a launch into the user's own project, with the user's own
+credentials, should give them. Restoring goes to the **snapshot** (a user who set `MISE_DATA_DIR`
+themselves keeps the value they chose; one who set none ends with none) — **except** a value
+harnessed itself wrote: launching a stack from inside another stack's host session is routine, so
+the snapshot frequently holds the OUTER stack's redirect, and restoring that hands the agent a data
+dir where its own binary was never installed. Harnessed-shaped values are therefore dropped, not
+restored, matched by the same narrow resolved-shape predicates below.
 
 **Why `MISE_STATE_DIR` is not redirected.** mise keeps its **trust store** in the state dir
 (`trusted-configs`, `tracked-configs`, and nothing else), and trust is a fact about the user and a
@@ -411,17 +531,23 @@ Three sharp edges are pinned in code and must not be "cleaned up":
   ours: an *unset* variable arrives as `""` and `Path("").resolve()` is the CWD, which under a
   process sitting in a stack's own dir made an absent variable match.
 - **`MISE_CONFIG_DIR` gets the same predicate** for the same inheritance trap: reading the outer
-  stack's config as "the user's" would propagate stack-level trust as a user choice.
+  stack's config as "the user's" would propagate stack-level trust as a user choice. (`MISE_DATA_DIR`
+  has it too — it is the one every shim resolves against.)
 - **The user's own `MISE_CONFIG_DIR` is honoured**, and the trusted paths are read *before* the
   redirect lands. Reading late would not over-grant, but it would silently pass over a config dir
   the user explicitly chose for the XDG default — the ordering protects them, and the source names
   the test that pins it (`test_a_user_chosen_config_dir_is_honoured`).
 
 The mise download cache is deliberately **not** redirected either — it is a cache, and sharing the
-user's means a host launch and a container build both stop re-downloading. `MISE_NPM_PACKAGE_MANAGER=`
-`pnpm` is applied after the `**os.environ` splat so it wins: mise's default `npm:` backend vetoes an
-install when any transitive dep lacks publisher-trust evidence, which kills correctly-pinned
-packages with no newer release to move to.
+user's means a host launch and a container build both stop re-downloading. `MISE_NPM_PACKAGE_MANAGER`
+`=` `pnpm` is applied after the `**os.environ` splat so it wins: mise's default `npm:` backend
+vetoes an install when any transitive dep lacks publisher-trust evidence, which kills
+correctly-pinned packages with no newer release to move to.
+
+`_host_tool_shims_dir` (`<tools>/mise/shims`) still exists and still has a job — it names where mise
+writes under the redirect, which makes the redirect checkable, and it is the PRIVATE path the
+`npm:`-tool install resolves `pnpm` through (below) — but it is a private plumbing detail of
+provisioning, never an agent-PATH entry.
 
 ### Host-only install redirections
 
@@ -460,7 +586,7 @@ top-level artifacts into an **unrelated** stack's home, ignoring the shim it was
 ## The materialize contract
 
 `paths.host_home(stack, harness)` → `$XDG_DATA_HOME/harnessed/home/<stack>/<harness>`. **It is not
-keyed by project** — `--host` isolates configuration and the stack *is* the configuration. It used
+keyed by project** — host-run isolates configuration and the stack *is* the configuration. It used
 to carry a `project_hash`, but only to dodge a self-inflicted hazard: when every launch was
 destructive, two projects sharing one dir meant a second launch could yank the dir out from under a
 running session. The wipe is now gated, so the hazard is gone — along with the per-project
@@ -501,6 +627,20 @@ Three properties hold together and must not be split:
    agent against a permanently half-installed stack, silently (bd harnessed-8px.15). The stamp lives
    inside the config dir deliberately, so a hand-deleted or half-written dir reads as "no
    fingerprint" and rebuilds rather than being trusted.
+
+### `--fresh`: the gate's escape hatch
+
+`host-run --fresh` (#452) discards this stack's fingerprint stamp **and** its host tool tree
+(`_host_fresh_wipe`). Removing the stamp alone is not enough: it forces the materialize to rebuild
+and FIRST_START to re-run `tools:`, but mise treats an already-installed version as a no-op — so a
+tool whose install is partial or broken would survive every "fresh" launch; wiping the tools tree is
+the half that makes the reinstall real. The wipe runs inside the home lock and *before*
+`materialize_config`, so a concurrent launch cannot observe a half-wiped tree. The spelling is
+shared with `container-run`, the behaviour is not: there `--fresh` tears down a pod; here there is
+no pod, and the stamp gate is host-only. The tools tree is keyed by STACK while the home is keyed by
+(stack, harness) — both deliberate: `tools:` is a property of the recipe closure, not of the
+harness, and a second lock would exist only to serialize the case `--fresh` is explicitly asking
+for.
 
 ### Daemon/runtime state is preserved; refetchable cache is not
 
@@ -740,13 +880,26 @@ when the fingerprint matched. `ATTACH` (outside the lock) runs `_host_run_setups
 The host half of the derived image's merged `RUN mise use -g … && mise install` layer — same specs,
 same sorted order, same pins. Without it, `tools:` was honoured in exactly one place
 (`emit.write_derived_dockerfile`), so moving a recipe's tool install out of its `install.sh` and
-into `tools:` would have deleted that binary from every `launch --host`, silently. Per-recipe
-checksums are merged into `$MISE_CONFIG_DIR/mise.lock` **before** the install
-(`toollock.write_stack_lock`, over the stack's redirected config dir) — mise enforces the lockfile
-and ignores every other spelling. An empty merged body **removes** a stale lock rather than leaving
-it to verify a tool set this stack no longer has, and two recipes locking one spec to different
-bytes fail closed with both named. mise absent on the host is announced with the tools it could not
-deliver — never silent.
+into `tools:` would have deleted that binary from every `launch --host`, silently. Everything mise
+touches is redirected into the stack's own tree via `_apply_host_mise_env` on the private
+subprocess env — that redirection is what makes host-side `tools:` possible at all — and mise
+absent on the host is announced with the tools it could not deliver, never silent.
+
+- Per-recipe checksums are merged into `$MISE_CONFIG_DIR/mise.lock` **before** the install
+  (`toollock.write_stack_lock`, over the stack's redirected config dir) — mise enforces the lockfile
+  and ignores every other spelling. An empty merged body **removes** a stale lock rather than leaving
+  it to verify a tool set this stack no longer has, and two recipes locking one spec to different
+  bytes fail closed with both named.
+- Any `npm:` spec additionally bootstraps `_HOST_PNPM_PIN` into the stack's own tree first: mise's
+  `npm:` backend shells out to a `pnpm`, and pnpm refuses to run when its bin dir is off PATH. The
+  container never hits this (the base image pins pnpm and puts mise's shims on PATH), so this path
+  reproduces that shape — installing pnpm into the stack tree and resolving it via the tree's
+  shims. That shims dir is a **private PATH for the install subprocesses only**, never the agent's
+  launch PATH (#449).
+- It ends with `_apply_host_tool_path(os.environ, stack)` — the second PATH call — because only NOW
+  do the bin-paths dirs exist: on a first launch, `_launch_host`'s own call ran against an empty
+  tools tree, and the `install.sh` that runs next has to resolve the `tools:` binaries it
+  configures.
 
 ### `_host_run_installs`
 
@@ -911,10 +1064,11 @@ After `wire_mcp`, the sequencer builds the final environment:
 
 ```python
 env = dict(os.environ)
-env[config_dir_var] = str(home)          # CLAUDE_CONFIG_DIR or PI_CODING_AGENT_DIR
+_restore_user_mise_env(env, user_mise_env)  # the redirect was for provisioning, not the session
+env[config_dir_var] = str(home)             # CLAUDE_CONFIG_DIR or PI_CODING_AGENT_DIR
 if harness == "omp":
     env["CLAUDE_CONFIG_DIR"] = str(_host_omp_claude_dir(home))
-os.chdir(cwd)                             # the project
+os.chdir(cwd)                               # the project
 ```
 
 Then either:
@@ -978,7 +1132,9 @@ scan skips the `<harness>.lock` file (not a dir) and the `<harness>.home` shim (
   prevent.
 - **A new env layer** — apply it to `os.environ` in `_launch_host`, and place it against the
   existing precedence deliberately: launch env before recipe env (recipes win), harnessed-owned
-  install keys after everything (the contract wins), `_harness_config_env` last of all.
+  install keys after everything (the contract wins), `_harness_config_env` last of all. If the layer
+  redirects a variable the user may have set themselves, decide where it stops: the mise redirect's
+  provisioning-only scope (`_snapshot_user_mise_env`/`_restore_user_mise_env`) is the precedent.
 - **A new stack-derived capability** — wire it into BOTH `_launch_host` and the container sequencer,
   or add it to `CONTAINER_ONLY` with the reason it cannot apply host-side. That is exactly the lint
   at the top of this page; and remember what it cannot see — a helper called with the wrong value

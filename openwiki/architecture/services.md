@@ -1,6 +1,6 @@
 ---
 type: concept
-title: "Service sidecars: scopes, ports, sockets, and what persists"
+title: "Service sidecars: scopes, ports, secrets, and lifecycle"
 description: "How shared services work: container name, project key, data dir, client env and drift are computed from the manifest plus the project path at every launch, while stable ports (a machine-wide registry under XDG data) and service passwords (0600 files under XDG state) are allocated once and persist; global scope is one host-published container that containerized agents reach at host.containers.internal and host-run clients at 127.0.0.1, project scope is one container per git common dir reached through a unix socket in a recipe-declared persist dir, and svcguards refuses destructive starts before the container exists."
 tags: [services, sidecars, derived-identity, stable-port, persistence, project-scope, unix-socket, svcguards, drift, client-env, wire-services]
 sources:
@@ -36,13 +36,13 @@ sources:
     resource: repo://src/harnessed/svcstate.py
   - id: openwiki-source-7b7c2d242869fee851828868
     resource: repo://tests/test_stable_port.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
+    at: 2026-09-12T09:54:25.902Z
 ---
 
-# Service sidecars: scopes, ports, sockets, and what persists
+# Service sidecars: scopes, ports, secrets, and lifecycle
 
 A **service** is a sidecar with its own image and `catalog/services/<name>/service.yaml`,
 referenced by a recipe via `mcp.servers[].service:` (an MCP surface) or attached by a recipe or
@@ -60,7 +60,8 @@ precisely what `direct:` bypasses.
 The code splits by verb. `svcstate.py` **derives** everything computable about a sidecar — and
 reads back the two values that were *allocated once* instead of recomputed; the catalog manifest
 (`ServiceDef`) declares what only the service itself knows; `svcguards.py` **refuses** launches
-that would corrupt or shadow data; `launcher.py` is the only module that starts, stops and
+that would corrupt or shadow data and, in the same read-and-raise style, reports a sidecar that
+died at startup (inspect the state, surface the log tail, exit 1); `launcher.py` starts, stops and
 health-checks containers. Identity is never stored on the containers it names — that is the
 property a second launch relies on to find the same service instead of starting a duplicate — but
 "never stored" must not be overread: the stable port and the password are deliberately written
@@ -69,6 +70,7 @@ down, and sections below say which is which.
 Related: [system overview](/openwiki/architecture/overview.md),
 [state, staleness, and GC](/openwiki/architecture/state.md),
 [precedence](/openwiki/concepts/precedence.md),
+[the CLI surface](/openwiki/operations/cli.md),
 [the folder-env contract](/openwiki/concepts/env-contract.md),
 [invariants and deliberate deviations](/openwiki/concepts/invariants.md),
 [container launch](/openwiki/workflows/container-run.md),
@@ -282,7 +284,7 @@ Both backends converge on `_ensure_services` → `_ensure_service` per reference
 ```mermaid
 flowchart TD
     refs["_service_refs: recipe service refs, recipe services, stack services"] --> alloc["allocate-once values: stable port, password"]
-    alloc --> want["_svc_run_cmd builds the pure run argv"]
+    alloc --> want["_svc_run_cmd builds the pure run argv (mounts, ports, env, userns)"]
     want --> hash["_svc_config_hash over the argv"]
     hash --> running{"container running?"}
     running -->|"yes"| drift{"_svc_drift_reason?"}
@@ -304,14 +306,24 @@ flowchart TD
 a container; the drift comparison runs against one that is already up.*
 
 The argv is built by `_svc_run_cmd`, which is **pure** — it reads the filesystem and writes
-nothing. That matters because it is called twice: once on the create path, and once on the check
-path against an *already-running* container, to compute what the current code *would* create. A
-write on the second call would fire for a container nobody asked to touch. Hence the two
-allocate-once values arrive as arguments rather than being resolved inside: `stable_port` and
-`password` both create machine-local state on a miss (a registry entry, a secret file), and
-`_ensure_service` resolves them once, at one visible place, on every path. Everything a container
-fixes at create time — mounts, published ports, env, userns — is in the argv, which is what makes
-hashing it a faithful fingerprint of the running container's configuration.
+nothing. That matters because it serves both paths: `_ensure_service` computes it *before* the
+running-container check, so every launch — including one against an *already-running* container
+nobody asked to touch — evaluates what the current code *would* create, and that same argv is what
+runs verbatim when a container is created. A side effect in the builder would fire on the check
+path. Hence the two allocate-once values arrive as arguments rather than being resolved inside:
+`stable_port` and `password` both create machine-local state on a miss (a registry entry, a secret
+file), and `_ensure_service` resolves them once, at one visible place, on every path. The builder
+also takes the runtime as its `rt` argument and splices `paths.userns_args(rt)` into the
+project-scope argv — the same pinned `keep-id:uid=1000` mapping agent containers run under, so the
+sidecar writes its bind-mounted data dir as the invoking host user. Unpinned, that was the loudest
+symptom of bd harnessed-rv2.1: the entrypoint's `mkdir -p /data/dolt` died with EACCES on any host
+whose uid is not 1000. Everything a container fixes at create time — mounts, published ports, env,
+userns — is in the argv, which is what makes hashing it a faithful fingerprint of the running
+container's configuration. And after `podman run -d` succeeds, one best-effort step precedes the
+readiness wait: when a corporate-proxy CA is configured, it is exec-installed into the sidecar's
+system trust store as root — best-effort because a service's base image may not ship
+`ca-certificates`, and the sidecar's own TLS egress (for an `in_repo` service, `dolt clone`/`push`
+over https) must trust the SSL-inspecting proxy just like a build does.
 
 ### Drift: recreate, never restart
 
@@ -328,9 +340,12 @@ configuration no longer matches — and a **missing** label counts as the second
 that predates labeling cannot be shown to match, and by construction predates every fix since.
 
 On drift, `_ensure_service` prompts to `podman rm -f` and recreate (proceeding automatically under
-`HARNESSED_HEADLESS`). **Data is always preserved** — named volume or bind mount; recreating the
-container is the only way a running sidecar picks up a change to how harnessed builds it. This is
-also why `harnessed svc recreate` exists as a verb and `restart` does not.
+`HARNESSED_HEADLESS`). The confirm is gated on `_can_prompt`, not a bare isatty: a
+`container-exec` launch has a real TTY and nobody at it, and a bare isatty hung scripted launches
+after assembly and before the service came back (#450, adversary finding 1). **Data is always
+preserved** — named volume or bind mount; recreating the container is the only way a running
+sidecar picks up a change to how harnessed builds it. This is also why `harnessed svc recreate`
+exists as a verb and `restart` does not.
 
 A second label, `harnessed.svc-stack`, records which stack a project-scoped sidecar was created
 for — its data dir is chosen by the stack (which recipe declares the persist entry), so rebuilding
@@ -349,14 +364,16 @@ moment later leaves the launch believing it succeeded. `_assert_service_running`
 state immediately; on death `_abort_dead_service` prints the container log tail — the reason is
 already in there — and exits 1. `_wait_service_healthy` then does two-phase readiness: raw TCP
 first for a published port (the ephemeral case asks the runtime which host port to probe), then
-the service's declared `healthcheck` exec'd **in the container** against a deadline. For a
-socket-only service there is no port to probe, so that healthcheck exec *is* the readiness
-signal. A healthcheck that never passes **aborts the launch** (bd harnessed-dwt): it used to warn
-and continue, which left the agent attached to something it could not talk to, failing far from
-the cause. There is no `required:` flag — a stack does not attach a sidecar whose health it is
-indifferent to. On timeout the **last healthcheck's own output** is surfaced, not the container
-log: for an auth failure the log shows a server running contentedly while the healthcheck holds
-the actual reason.
+the service's declared `healthcheck` exec'd **in the container** against a deadline — and while
+that loop runs, a container that *stops* is caught by the same status inspect and reported
+immediately (log tail, exit 1) instead of burning the rest of the deadline on execs that cannot
+possibly succeed. For a socket-only service there is no port to probe, so that healthcheck exec
+*is* the readiness signal. A healthcheck that never passes **aborts the launch** (bd
+harnessed-dwt): it used to warn and continue, which left the agent attached to something it could
+not talk to, failing far from the cause. There is no `required:` flag — a stack does not attach a
+sidecar whose health it is indifferent to. On timeout the **last healthcheck's own output** is
+surfaced, not the container log: for an auth failure the log shows a server running contentedly
+while the healthcheck holds the actual reason.
 
 ## The pre-start guards: assertions about host state, raised not acted
 
@@ -430,12 +447,19 @@ by entry point, and alternating `host-run` with `container-run` would flag drift
 sidecar on every launch (bd harnessed-wnf).
 
 One more pre-create step sits on the project path: `persist.guard_ownership` on the data dir,
-plus its `mkdir`. The persist dirs are ownership-guarded because under `paths.USERNS_ARG` the pod
-writes as the invoking host uid — a pre-existing dir owned by a different uid would silently
-EACCES inside the container. The guard reads the writer off the declared mapping
-(`paths.pod_host_uid()`), not `os.getuid()`, precisely so it can catch the mapping itself being
-wrong — compared against `os.getuid()` it waved through six consecutive red CI runs while the pod
-owned nothing and the entrypoint died on `mkdir -p /data/dolt`.
+plus its `mkdir`. The persist dirs are ownership-guarded because under the declared userns mapping
+the pod writes as one specific host uid — a pre-existing dir owned by a different uid would
+silently EACCES inside the container. The guard reads the writer off the **declared mapping**
+(`paths.pod_host_uid()`: the pinned `keep-id:uid=1000` on podman; on docker, `--userns=host` plus
+an explicit `--user`, with rootless or unreadable daemons refused), not `os.getuid()`, precisely
+so it can catch the mapping itself being wrong — and when the mapping cannot be resolved at all
+(bare `keep-id`, `auto`, `nomap`) it refuses *before* the absent-dir early return, because the pod
+would write even a dir harnessed is about to create as a uid nobody can name. Compared against
+`os.getuid()`, the guard waved through six consecutive red CI runs: the runner owned its own
+persist dir so the check passed, while the pod — on bare, unpinned `keep-id`, so still uid 1000 on
+the host — owned nothing and the beads-server entrypoint died on `mkdir -p /data/dolt` (bd
+harnessed-rv2.1). Pinning the mapping in the sidecar's run argv (`userns_args(rt)`, above) and
+reading the writer off the mapping in the guard are the two halves of that fix.
 
 ## How service client env reaches recipes
 
@@ -497,8 +521,12 @@ loopback is reachable — and it pushes to your git remote, so it is explicit, n
 `scope: project` changes what the verb needs. The data dir resolves through the stack's persist
 entry, so `svc` on a project service requires a project context and — except for `recreate` —
 `--stack`. `recreate` is the exception because it rebuilds the container *that is already here*:
-it reads the stack off the `harnessed.svc-stack` label (and for a pre-label container, off the
-agent instances for this repo), so from inside the project it takes no flags at all. And
+it reads the stack off the `harnessed.svc-stack` label, and for a pre-label container — which is
+every sidecar on a machine running this code for the first time — falls back to the agent
+instances for this repo, so the first recreate, the one that finally applies a fix, demands no
+flag; and because recreation stamps the label, the fallback can fire at most once. It still
+refuses to guess: *two* candidate stacks abort with "pass `--stack`", and so does the doubly-empty
+case — a container with no label and a repo with no agent instance for any of its worktrees. And
 `_ensure_service` itself refuses a project service when `project_path` is missing, directing the
 user to run it via a stack launch rather than `svc up` — the same reasoning as the `--stack`
 guard, one layer earlier.

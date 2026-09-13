@@ -3,9 +3,6 @@ type: Reference
 title: "The credential proxy model: four modes, the cheap annotation gate, and the readiness warning"
 description: "The reference for the credential-proxy migration vocabulary in launchenv.py: the four per-item classification modes (proxied, passthrough, placeholder, omit), _schema_declares_proxy's cheap annotation gate and its entry-schema-only limitation, the value-blind launch-time readiness warning, and the broker launch gate (proxy_schema_dirs, fail-fatal broker startup, the pod's 169.254.1.1 door) that the same annotation gate now feeds."
 tags: [credential-proxy, varlock, secrets-broker, env-schema, proxy-modes, readiness-warning, launch-gate]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
 sources:
   - id: openwiki-source-e7286046ccb85d63b8a07621
     resource: repo://.env.schema.example
@@ -27,9 +24,14 @@ sources:
     resource: repo://src/harnessed/paths.py
   - id: openwiki-source-40ea6de9292ca7a5603003bd
     resource: repo://tests/test_broker_launch_gate.py
+  - id: openwiki-source-d93dd2b98c101e2e05d79086
+    resource: repo://tests/test_external_contracts_live.py
   - id: openwiki-source-f725ea11f1806a58b06d7f3e
     resource: repo://tests/test_launch_parity.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-07T12:53:44.965Z" }
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-12T09:54:25.902Z
 ---
 
 # The credential proxy model: four modes, the cheap annotation gate, and the readiness warning
@@ -45,10 +47,13 @@ that appears in open work and has no other home in this wiki. This page is that 
 
 ## Where the model stands now that the broker has landed
 
-Epic #388 Phase 1 landed **Topology B**: a launch whose composed schema opts in now starts a real
-host-side `varlock proxy` broker (`src/harnessed/broker.py`) — **fail-fatal** if it cannot start —
-and wires the pod to it through pasta's `--map-host-loopback` at `169.254.1.1`. The broker's own
-lifecycle (spawn, poll, record, stop, reconcile) belongs to
+The roadmap's own word for #388 (snapshot 2026-09-09) is **half-landed**. Phase 1 shipped the
+**broker lifecycle, the loopback door and `--no-secrets`**: a launch whose composed schema opts in
+now starts a real host-side `varlock proxy` broker (`src/harnessed/broker.py`) — **fail-fatal** if it
+cannot start — and wires the pod to it through pasta's `--map-host-loopback` at `169.254.1.1`. The
+**behaviour change did not ship**: the launcher still resolves real values into the container env at
+launch. Both halves are needed before the security property is real, and only the first is in. The
+broker's own lifecycle (spawn, poll, record, stop, reconcile) belongs to
 [the secrets broker page](/openwiki/architecture/secrets-broker.md); this page stays with the
 classification model, the annotation gate both consumers share, and the warning.
 
@@ -62,6 +67,20 @@ Two facts keep the rest of this page true after that landing:
 - The readiness warning therefore still **states both tenses** (below), and the shipped
   `.env.schema.example` still carries no `@proxy` annotation: a schema with no `@proxy` is every
   schema shipped today.
+
+Three roadmap flags frame what has not landed:
+
+- **Docker starts no broker at all.** The roadmap's "known gap with no issue": the broker's door is
+  a pasta option on `pod create`, and docker has no pods, so a docker launch falls back to real
+  values in env. Today that is a note printed at launch and nothing else — no test asserts it — and
+  once the behaviour change lands, podman gains the property while docker silently does not.
+- **The live layer has been red since 2026-08-28** over this page's most fragile contract: four
+  tests, all in `TestVarlockProxyRulesOutput`, fail because `varlock proxy rules` output no longer
+  parses — issue **#462** (see the parser section below). One drifted contract, not a broken layer.
+- Retiring real-value env seeding (**#438**, **#439**) and classifying every schema item (**#441**,
+  with the per-item mode report grown into `harnessed test` — **#440**) come after the docker
+  question is decided, and #388 Phase 2 will gate the *effective* rule set before a broker starts,
+  so a schema edit made inside a pod cannot become policy at the next launch.
 
 One version note, carried unnormalized because the two halves were measured against different
 releases: launchenv.py's annotation shapes (`@proxy(domain=…)`, `@proxy=passthrough`,
@@ -154,7 +173,11 @@ An unreadable or absent schema is simply `False` — silent, no subprocess.
 the output cannot be trusted. It is the **only** source of per-item proxy mode — `varlock load
 --format json-full` reports `isSensitive` and the schema-wide egress setting but nothing per item —
 and `proxy rules` prints **for humans, with no `--format json`**. So this parses display text, which
-will drift.
+will drift. It has: the live suite has failed every run since **2026-08-28** because the real
+binary's output no longer parses — four tests, all in `TestVarlockProxyRulesOutput`, tracked as
+**#462**. The hermetic tests necessarily feed canned text and cannot notice the move; the live class
+exists precisely because it does, and its failure message is the parse check speaking ("either a
+header changed or the declared secret count disagrees with the lines").
 
 It therefore refuses to guess. The `Secrets (N)` header states its own count; if the number of lines
 parsed does not match `N`, or **either header is missing**, it returns `None` and the caller says so
@@ -239,7 +262,9 @@ on `pod create`, and the egress firewall `require`s an ACCEPT for the same addre
 **before** `pod create` — the pod's network args depend on whether one exists — and the door never
 appears without a broker. A runtime that does not use pods gets a *note* instead of a half-wired
 broker: with no `pod create` there is no way to deliver `169.254.1.1` into the container, so secrets
-resolve into the env as before. The broker is container-only **by nature** (the launch-parity ledger
+resolve into the env as before. The roadmap records that docker gap as known, with no issue and no
+test asserting the note — once the behaviour change lands, podman gains the property and docker
+silently does not. The broker is container-only **by nature** (the launch-parity ledger
 records `_broker_start_for`, `proxy_schema_dirs` and `_broker_stop_for` in `CONTAINER_ONLY`): a
 host-native launch runs the harness in the user's own session with their own credentials, and varlock
 resolves natively there already.

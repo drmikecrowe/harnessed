@@ -1,16 +1,23 @@
 ---
 type: mechanism
-title: "Supply-chain scanning: the gate, its thresholds, and its placement"
-description: "The scan layer that watches the catalog's downloads: osv-scanner + pip-audit with a pure-Python severity gate at CVSS >= HIGH (7.0), the build-then-scan ordering (the derived Dockerfile has no scan layer at all), the credentialed advisory in-image pass with its coverage accounting, and the online rescan path behind the SEC-04 nightly systemd timer."
-tags: [supply-chain, security-scan, osv-scanner, pip-audit, cvss-gate, harnessed-scan, rescan, nightly-scan, systemd-timer, podman-save, coverage-accounting]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
+title: "Supply-chain posture: pins, scans, and advisory reporting"
+description: "How harnessed pins and holds what it fetches (install.refs as data with the _mutable_archive_ref pin gate, mikes-universal-setup's prompt-injection hold rationale, skills-lock.json as an unmet bridge, the weekly CI pin check) and how it scans what got installed: no build-time scan layer in the derived Dockerfile, a credentialed advisory in-image pass with coverage accounting, and the online osv-scanner archive pass whose pure-Python CVSS >= HIGH gate is the only thing that can abort."
+tags: [supply-chain, security-scan, osv-scanner, pip-audit, cvss-gate, harnessed-scan, rescan, nightly-scan, systemd-timer, podman-save, coverage-accounting, pin-discipline, install-refs, pin-gate, skills-lock, hold, pin-check]
 sources:
+  - id: openwiki-source-4e2e2b93eeb15847052a26fb
+    resource: repo://.github/workflows/pin-check.yml
   - id: openwiki-source-e916c387e9195be48f6d9d41
     resource: repo://catalog/base/Dockerfile.harnessed-base
   - id: openwiki-source-c799522f988c7842c7395388
     resource: repo://catalog/base/harnessed-scan
+  - id: openwiki-source-d8815c75cbc458c83483cef4
+    resource: repo://catalog/recipes/mikes-universal-setup/install.sh
+  - id: openwiki-source-9366b4d0dccf44f6e9984710
+    resource: repo://catalog/recipes/mikes-universal-setup/README.md
+  - id: openwiki-source-63c26efd82591fccfe746499
+    resource: repo://catalog/recipes/mikes-universal-setup/recipe.yaml
+  - id: openwiki-source-453611660ffbf02a66fa4bf3
+    resource: repo://skills-lock.json
   - id: openwiki-source-0852603a38d760a77db2bc8a
     resource: repo://src/harnessed/cli.py
   - id: openwiki-source-eea4d18f75a13f889234865d
@@ -21,22 +28,38 @@ sources:
     resource: repo://src/harnessed/launcher.py
   - id: openwiki-source-8553af2aa8f78f1287a035ce
     resource: repo://src/harnessed/scan.py
+  - id: openwiki-source-7536da5c015fc2813c7693c5
+    resource: repo://src/harnessed/schema.py
+  - id: openwiki-source-dedbae614432467fbfc419d9
+    resource: repo://src/harnessed/update.py
   - id: openwiki-source-9090cceb822144ffaf7a8998
     resource: repo://systemd/harnessed-rescan.service
   - id: openwiki-source-7af162bd104477b196c3dcdd
     resource: repo://systemd/harnessed-rescan.timer
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+  - id: openwiki-source-879fde7c76ff19743a61749d
+    resource: repo://tools/scan-real-run.sh
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-12T09:54:25.902Z
 ---
 
-# Supply-chain scanning: the gate, its thresholds, and its placement
+# Supply-chain posture: pins, scans, and advisory reporting
 
-The scan layer is `src/harnessed/scan.py` (the gate), `catalog/base/harnessed-scan` (the in-image
-advisory pass), and the `rescan`/`scan` verbs in `src/harnessed/launcher.py` that drive both —
-scheduled nightly by the two units in `systemd/`. Its job: no built image ships a HIGH+ (CVSS ≥ 7.0)
-advisory without somebody seeing it, and a scanner that silently did nothing never reads as a clean
-result.
+The posture has two halves answering two different questions. **Pins** constrain what a build is
+allowed to fetch: every acquisition names something that cannot move, and content that *is*
+instructions is additionally held against automatic bumps. **Scans** watch what got installed
+anyway: an advisory credentialed pass in-image, plus the one online pass whose pure-Python CVSS
+gate can abort. Neither half is allowed to fail in the reassuring direction — a pin that moved
+never passes as pinned, and a scanner that silently did nothing never reads as a clean result.
 
-The single most misread fact about this layer is **where it runs**, so it comes first.
+The moving parts: `src/harnessed/schema.py` (pin validation and the `_mutable_*_ref` gates),
+`src/harnessed/update.py` behind `.github/workflows/pin-check.yml` (pin freshness and holds),
+`src/harnessed/scan.py` (the gate), `catalog/base/harnessed-scan` (the in-image advisory pass),
+and the `scan`/`rescan` verbs in `src/harnessed/launcher.py` that drive both — scheduled nightly
+by the two units in `systemd/`.
+
+The single most misread fact about the scan half is **where it runs**, so it comes first.
 
 ## Placement: build → scan, never a Dockerfile stage
 
@@ -273,6 +296,18 @@ because one label is `recipe: $(basename …)` — a directory name a recipe con
 deliberately does not *depend* on that guarantee, and `maxsplit=3` keeps the whole tail as the
 reason.
 
+### The real-execution layer: tools/scan-real-run.sh
+
+Unit tests say the code does what the tests claim; `tools/scan-real-run.sh` says what the **build
+prints**. It runs the actual `catalog/base/harnessed-scan` against a fake `$HOME` and stub scanners
+— osv-scanner stubbed to exit 128, snyk stubbed to report the two brace-expansion advisories every
+published npm bundles — and asserts on the summary an operator reads: exit 0 whatever it found (the
+scan is advisory and must never gate), the 128 recorded as a reasoned skip rather than a spurious
+"produced NO parseable output" warning, the acknowledged advisories printed by name but excluded
+from the totals, the all-clear line still reached, and `scan-report.json` agreeing with the printed
+summary. Stubs rather than real scanners on purpose: snyk and socket need live credentials and
+network, which a reproducible evidence command must not require.
+
 ## Where the tokens come from
 
 Scanner tokens are **env-only, never a build-arg** (so never baked into image history).
@@ -326,6 +361,133 @@ Each rung is bigger than the one below it, with a different reason:
 | whole scan container | 900s (`_SCAN_CONTAINER_TIMEOUT`) | `_scan_image_in_container` | backstop for the script wedging *outside* the scanners — one container ran **71 hours** at 0% CPU with no timeout above it (bd harnessed-8px.28) |
 | online archive scan | 1800s (`_SCAN_ONLINE_TIMEOUT`) | `_scan_image` | network plus `uv run` dependency resolution; bounded **because nobody watches** — an unattended hang wedges the timer silently and looks exactly like a nightly that keeps finding nothing |
 
+## Pin discipline: what the fetch may move on
+
+The scan layer watches what got installed; the pin layer constrains what a build may fetch in the
+first place. The rule: **every acquisition names something that cannot move** — a version tag or a
+full 40-hex commit SHA — and content that *is* instructions is additionally **held** against
+automatic bumps, because no scanner vets instructions. Enforcement is layered so the discipline
+survives contact with real scripts:
+
+- `tools:` entries are pinned mise specs (optional per-entry `hold:`), and an agent's `build_args`
+  values are the single source of truth for its pinned tool versions — `unpinnable:` must concede
+  each unpinned acquisition one entry at a time, never as a blanket excuse.
+- `install.refs[]` carries content pins **as data in the manifest**. `_parse_install_refs`
+  validates them at load, not at fetch: keys match `^[a-z][a-z0-9_]*$` so the key → env mapping
+  stays a total `.upper()`; `repo` is `owner/repo`, never a URL (the script composes the URL, so a
+  recipe switching from `git clone` to a tarball fetch needs no manifest change); `ref` must match
+  `_IMMUTABLE_REF_RE` — a version tag or a full 40-character commit SHA, since a branch moves and an
+  abbreviated SHA is not a stable identifier; and each ref may carry a `hold:` that must be a
+  non-empty reason, because the reason is shown to whoever decides whether to lift it.
+- `emit.install_env` renders each key to exactly `HARNESSED_REF_<KEY>` and `HARNESSED_REPO_<KEY>` —
+  deterministically and totally, identical keys in host and container mode. The script reads pins
+  from env and nothing else, with `:?` guards per variable: an unset ref means manifest and script
+  disagree about the key name, and a default would paper over that by fetching the default branch.
+- `install.cache` is **derived** from the refs — sha256 of the byte-order-sorted `key=repo@ref`
+  renderings, first 16 hex — so declaring a hand-written `cache:` alongside `refs:` is a schema
+  error, not a precedence rule (the hand-mashed key this replaced truncated three SHAs to 10 hex
+  and drifted from every one of them). Declaring `refs` without `install.script` is also an error:
+  the refs describe what a script fetches, and without one they are inert data `harnessed update`
+  would still offer to bump.
+- The text gates: `validate_pin` (recipe Dockerfiles, run from `assemble()` before anything is
+  emitted) and `_lint_script_file` (over `install.script` / `setup.script` bodies, with the recipe
+  threaded in) reject floating refs (`--branch main|master|HEAD`, `:latest`, `@latest`) and run the
+  `_mutable_clone_ref` / `_mutable_archive_ref` / `_mutable_fetch_ref` gates. `_mutable_fetch_ref`
+  walks `git fetch <remote> <ref>` token-by-token against a binary-audited option table and fails
+  **closed** on any option it cannot interpret — "can't tell which token is the ref" and "it moves"
+  have the same consequence. Routing every script-bearing field through `_lint_script_file` is what
+  keeps a pin moved out of a Dockerfile into a `.sh` inside enforcement.
+
+```mermaid
+flowchart TD
+    M["recipe.yaml: install.refs pin as DATA - owner/repo plus a version tag or full 40-hex SHA, each with an optional hold reason"] --> V["load: _parse_install_refs rejects floating refs, bad keys, refs without a script, and a cache declared alongside"]
+    V --> E["emit: HARNESSED_REF_KEY and HARNESSED_REPO_KEY env, identical in host and container"]
+    E --> S["install.sh names the variable on the archive URL line"]
+    S --> G{"_mutable_archive_ref: can the ref be PROVEN immutable?"}
+    G -->|"unresolvable variable or moving ref"| R["PinValidationError before anything is emitted"]
+    G -->|"install.refs first, literals second"| F["fetch at the pinned archive - cache key derived from the refs"]
+    M --> H["holds: harnessed update never offers the bump, and the weekly CI pin check reports held pins without failing"]
+```
+
+*Figure: the pin chain. The manifest owns the pin, the script owns the fetch, and the gate proves
+the URL line still names an immutable ref before the build emits anything.*
+
+### The archive gate resolves the pin it can now see
+
+`_mutable_archive_ref` exists because an archive download is a clone by another spelling (bd
+harnessed-po7): `curl …/archive/main.tar.gz` moves exactly as much as `--branch main`, and when the
+bead was filed, swapping a SHA for `archive/main.tar.gz` left every pin test green. The gate matches
+`github.com/…/archive/` and `codeload.github.com/…/(tarball|zipball|…)` URLs (codeload is the same
+download under another hostname *and* is in the egress allowlist, so omitting it would leave a
+reachable bypass) and asks whether each ref can be **proven** immutable:
+
+- a `refs/tags/`-qualified ref passes (self-describing);
+- a **named shell variable** (`$HARNESSED_REF_OAKOSS`) resolves one hop — against `install.refs:`
+  FIRST, literal assignments in the same body SECOND, because the script's own assignment wins at
+  runtime and precedence must mirror the shell's, not the author's intent — and then faces the same
+  immutability test; a variable with no resolvable source is *reported* ("cannot be shown
+  immutable"), not waved through;
+- a **positional parameter** (`$2`) passes through: the ref genuinely is not knowable from that
+  line, and failing closed would reject a recipe that is pinned exactly right.
+
+That pass-through was mikes-universal-setup's residual gap, recorded under the same bead: while the
+fetch hid its refs behind `fetch()`'s `$2`, the gate neither rejected nor *proved* those pins — it
+declined to look. The fix went into the script, not the gate: the archive URLs now name the variable
+on the URL line (`${HARNESSED_REPO_OAKOSS}/archive/${HARNESSED_REF_OAKOSS}.tar.gz`), which turns the
+pass-through into an actual check for both refs.
+
+### Holds: a compromised skill upgrade is prompt injection, not a CVE
+
+Pins make a fetch reproducible; **holds** decide whether `harnessed update` may offer to move one.
+mikes-universal-setup declares a recipe-wide `install.hold` (bd harnessed-c5t) whose reason is about
+what the content *is*, not about release mechanics: a skill is agent instructions executed with the
+agent's full tool permissions, so a compromised upgrade is prompt injection, not a CVE — no scanner
+in the osv/trivy/grype family vets it. Bumping a ref requires a human to have read the diff of the
+new content. Every ref additionally carries its own `hold:` naming its *class*, because acceptance
+is per ref: `oakoss` is structural (upstream publishes no releases and no tags, so a commit SHA is
+the only available pin — lifting the policy would change nothing), and `aminblg` is policy
+(SHA-pinned by design; the nearest tag is a content change, not a re-expression of the shipped
+commit). The recipe-wide hold is the **floor**: a ref added later without its own `hold:` is still
+held rather than silently bumpable.
+
+`harnessed update` reads these fields rather than comments: a held pin is never put in the
+interactive bump set and never fails `--check` — `check_exit_code` returns non-zero ONLY for a pin
+that is stale, unheld, resolvable, and past the minimum release age. Held, cooling, and unresolvable
+pins are reported in the output without failing, because a permanently-red check is one nobody
+reads. The catalog-wide test `tests/test_pin_hold_marker.py` pins the marker's existence (mikes-
+universal-setup must declare `install.hold`; no recipe may hold without a reason) precisely because
+a comment in a recipe is not readable by the updater.
+
+### skills-lock.json: the lock file the ecosystem cannot honor yet
+
+The repo carries a `skills-lock.json` — the vercel `skills` CLI's lock format (skill name →
+`source`, `skillPath`, `computedHash`). It is the *intended end state* for third-party skill
+fetching, and its gap is the reason the bridge exists: the CLI cannot pin to a SHA (`skills add
+repo#<sha>` runs `git clone --branch <sha>`, which fails on a commit — branches and tags only, both
+movable) and does NOT verify content on restore (`experimental_install` installs despite a wrong
+`computedHash`, proven 2026-07-24; upstream acknowledges it). A `skills-lock.json` written today
+would therefore record an unpinned, unverified fetch from a mutable branch — the same exposure as
+gsd-build, whose compromised upstream moved tags. Until upstream lands SHA pinning (#1439) and
+verify/real-install (#463/#549), `install.sh` supplies the pin+verify the ecosystem lacks, and the
+switch over is tracked in bd harnessed-197. The related precedent lives in mikes-universal-setup's
+README: the canonical GSD upstream repo was compromised once already, and any reference to it
+reappearing in the tree is treated as a regression.
+
+### The CI pin check reports; it does not gate PRs
+
+`.github/workflows/pin-check.yml` runs `harnessed update --check` over the whole catalog — weekly,
+Mondays 06:00 UTC, plus manual dispatch. **Deliberately not `pull_request`**: the check resolves
+live registries, so its result depends on what npm/PyPI/GitHub published today rather than on the
+diff — as a PR gate it would fail an unrelated contributor's branch the moment a third party cut a
+release (red through nobody's fault, unfixable by the author), which is the same false-signal
+problem bd harnessed-wx9 was about, pointed the other way. A failing *scheduled* run is the
+notification, the Renovate/Dependabot cadence rather than a merge block. The runner installs mise
+so backend-prefix pins resolve through `mise registry` to their backing repos' dated releases —
+without it those pins degrade to reported-but-unchecked "unresolved" rows, and the sweep would be
+silently incomplete. It exits non-zero only for a pin that is stale AND past the minimum release age
+AND not held (bd harnessed-tfm, harnessed-7zb, harnessed-4xu); held pins, cooling pins, and
+unresolvable ones are reported in the output without failing (bd harnessed-c5t).
+
 ## Related pages
 
 - `/openwiki/workflows/build.md` — where the post-build credentialed scan sits in the build's stage
@@ -337,3 +499,5 @@ Each rung is bigger than the one below it, with a different reason:
 - `/openwiki/concepts/invariants.md` — the invariant catalog entry for the coverage ledger, and the
   catalog's other supply-chain surfaces (pin freshness via `harnessed update`, per-recipe
   `mise.lock` checksums via `toollock.py`).
+- `/openwiki/architecture/catalog-and-schema.md` — the pin-validation gates in parser context:
+  `validate_pin`, `validate_agent_pin`, `_lint_script_file`, and the `install.refs` contract.

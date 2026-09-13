@@ -1,12 +1,11 @@
 ---
 type: concept
 title: "The openwiki recipe: this wiki generator as catalog content"
-description: "What a launch of the openwiki stack delivers — the host-driven integration of langchain-ai/openwiki — and why the install is a project-scoped pnpm install with a one-entry build allowlist instead of a tools: pin, why it needs no credential and no egress, and what the authored stack records by listing default explicitly."
-tags: [openwiki, recipe, stack, catalog, mcp, hatago, pnpm, strict-dep-builds, persist, host-driven, install-script]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
+description: "What a launch of the openwiki stack delivers — the host-driven integration of langchain-ai/openwiki — and why the install is a project-scoped pnpm install with a one-entry build allowlist instead of a tools: pin, why it needs no credential and no egress, what the authored stack records by listing default explicitly, and how the same must-build constraint is re-expressed in this repo's own CI runner."
+tags: [openwiki, recipe, stack, catalog, mcp, hatago, pnpm, strict-dep-builds, persist, host-driven, install-script, npm, github-actions]
 sources:
+  - id: openwiki-source-6d4b4e707b8d60b6ccfa3425
+    resource: repo://.github/workflows/openwiki-update.yml
   - id: openwiki-source-f82224b7b5b27300d9ecc2dc
     resource: repo://catalog/base/egress-firewall.sh
   - id: openwiki-source-567b7c36cfe22d7cb6bb18fc
@@ -43,7 +42,10 @@ sources:
     resource: repo://src/harnessed/volumes.py
   - id: openwiki-source-fbc6a5a8a732add3df9e162f
     resource: repo://tests/test_prose_lint.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-12T09:54:25.902Z
 ---
 
 # The openwiki recipe: this wiki generator as catalog content
@@ -59,7 +61,9 @@ so the deliverables below are not hypothetical.
 `catalog/` is authored content, not code, and this page is the recipe-shaped view of the mechanics
 [the catalog page](/openwiki/architecture/catalog-and-schema.md) documents in general: which schema
 fields the recipe exercises (`mcp`, `install`, `persist`, `env`, `expect`), and how the build and
-launch consume them. It is not a template for documenting every recipe.
+launch consume them. It is the schema's worked example for the corners a simple recipe never
+touches — a native addon that must build before the CLI can even load, the one place the house pnpm
+policy forces a project-scoped `allowBuilds` entry — not a template for documenting every recipe.
 
 Related: [credentials](/openwiki/concepts/credentials.md),
 [container launch](/openwiki/workflows/container-run.md), the
@@ -204,6 +208,47 @@ half-built tree. And because the CLI's own failure (`Could not locate the bindin
 14-line path list) reads like a broken Node install rather than a denied lifecycle script,
 `install.sh` checks for `better_sqlite3.node` **by name** and exits 1 saying what actually happened
 and which file to restore.
+
+## The same constraint in this repo's own CI runner
+
+The recipe is not the only consumer of this story. This repository runs openwiki against itself on a
+schedule, and `.github/workflows/openwiki-update.yml` must solve the identical problem —
+better-sqlite3 has to build, or the CLI cannot load — under the **opposite default**. A GitHub
+runner carries no pnpm policy, and npm 10/11 still executes dependency lifecycle scripts by
+default, so `npm install --global openwiki@0.4.3` builds the addon with no allowlist at all. The
+workflow's comment records why that trust is hedged: npm 12 blocks lifecycle scripts without an
+explicit opt-in, so the moment the runner's npm crosses that line the addon silently will not
+build. The next step therefore does what `install.sh` does — checks for the addon **by name**
+instead of trusting the install:
+
+```yaml
+- name: Verify the native addon built
+  # Fails loudly here instead of as "Could not locate the bindings file" mid-generation.
+  run: |
+    set -euo pipefail
+    root="$(npm root -g)"
+    if ! find "$root" -name better_sqlite3.node -print -quit | grep -q .; then
+      echo "::error::better-sqlite3 did not build. npm likely blocked its lifecycle script" \
+           "(npm 12 default). Add --allow-scripts=better-sqlite3, or install via pnpm with" \
+           "an allowBuilds entry as catalog/recipes/openwiki does." >&2
+      exit 1
+    fi
+    openwiki --help >/dev/null
+```
+
+One invariant, two expressions — and the remediation text in the CI step points back at this
+recipe as the worked example:
+
+| | openwiki recipe (in-container) | CI runner (`openwiki-update.yml`) |
+| --- | --- | --- |
+| Lifecycle-script default | pnpm `strictDepBuilds: true` — deny | npm 10/11 — allow (npm 12 will deny) |
+| Approval | `allowBuilds` in a project `pnpm-workspace.yaml` | none needed today |
+| Post-install verification | `install.sh` checks `better_sqlite3.node`, exit 1 with remediation | workflow step checks `better_sqlite3.node`, `::error` with remediation |
+
+The shared part is the verification-by-name discipline: whichever way the defaults lean, neither
+path ships an install that merely *resolved* the package — both assert the `.node` file exists
+before anything downstream can mistake a denied build for a broken runtime. (Operating the CI
+runner itself is [wiki automation](/openwiki/operations/wiki-automation.md)'s subject.)
 
 ## install.sh: guards, pin, and the wrapper
 

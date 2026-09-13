@@ -1,11 +1,8 @@
 ---
 type: concept
 title: "State: what lives where on disk, staleness, and GC"
-description: "The complete host-side state model: XDG-rooted profiles, per-stack host homes, named podman volumes, persist entries, the generated catalog, the secrets-broker records, and instance identity — plus how staleness is detected (existence, .build-stamp, the harnessed.recipe-hash image label, host/volume fingerprints) and what each garbage collector keys on."
-tags: [state, disk-layout, paths, staleness, fingerprint, garbage-collection, persist, volumes, instance-identity, secrets-broker]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
+description: "The complete host-side state model: XDG-rooted profiles, per-stack host homes, named podman volumes, persist entries, the generated catalog, the secrets-broker records, and instance identity — plus how staleness is detected (existence, .build-stamp, the harnessed.recipe-hash image label, host/volume fingerprints), how the runtime-aware ownership guard keys on the pod's mapped host uid, and what each garbage collector keys on."
+tags: [state, disk-layout, paths, staleness, fingerprint, garbage-collection, persist, volumes, instance-identity, secrets-broker, ownership-guard, runtime-detection]
 sources:
   - id: openwiki-source-ea70eb6c045047448e446296
     resource: repo://.gitignore
@@ -49,30 +46,36 @@ sources:
     resource: repo://src/harnessed/volumes.py
   - id: openwiki-source-7b7c2d242869fee851828868
     resource: repo://tests/test_stable_port.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-12T09:54:25.902Z
 ---
 
 # State: what lives where on disk, staleness, and GC
 
 harnessed keeps **none** of its state in the repo and none of it in the installed package: the
 clone/wheel stays immutable source, and everything the tool derives or accumulates lands under
-XDG roots or in podman named volumes. Every path, every instance name, and every project key is
-computed in exactly one place — `src/harnessed/paths.py`, whose module docstring states the rule
-outright ("All profile dirs, instance names, project relpaths, and container-internal paths are
-derived here. No caller computes these independently", fixing B6 scatter). `layout.py` exists
-alongside it for a narrower reason: the handful of derivations every module needs **before** it can
-do anything else (the harnessed home, the repo stacks dir, the derived image tag, the profile dir)
-would otherwise have to be imported *from* `launcher.py`, pointing the dependency the wrong way.
-That single-resolver rule is what makes the rest of this page safe to reason about: when a module
-needs to know where a stack's profile lives or what a pod is called, it imports the answer instead
-of re-deriving it.
+XDG roots or in named container-runtime volumes. Every path, every instance name, and every
+project key is computed in exactly one place — `src/harnessed/paths.py`, whose module docstring
+states the rule outright ("All profile dirs, instance names, project relpaths, and
+container-internal paths are derived here. No caller computes these independently", fixing B6
+scatter). `layout.py` exists alongside it for a narrower reason: the handful of derivations every
+module needs **before** it can do anything else (the harnessed home, the repo stacks dir, the
+derived image tag, the profile dir) would otherwise have to be imported *from* `launcher.py`,
+pointing the dependency the wrong way. That single-resolver rule is what makes the rest of this page
+safe to reason about: when a module needs to know where a stack's profile lives or what a pod is
+called, it imports the answer instead of re-deriving it.
 
 Related: [system overview](/openwiki/architecture/overview.md),
 [catalog and schema](/openwiki/architecture/catalog-and-schema.md),
+[container runtimes](/openwiki/architecture/runtimes.md) — the detector and id-mapping family the
+ownership guard consumes —
 [service sidecars](/openwiki/architecture/services.md) — sidecar identity, drift, and the stable-port registry —
 [the host secrets broker](/openwiki/architecture/secrets-broker.md) — the broker record's lifecycle —
 [the host run backend](/openwiki/workflows/host-run.md) — the host home's rebuild lifecycle —
 [credentials](/openwiki/concepts/credentials.md) — the secrets these trees deliberately do not hold,
+[invariants](/openwiki/concepts/invariants.md),
 [build pipeline](/openwiki/workflows/build.md),
 [dynamic stacks](/openwiki/workflows/dynamic-stacks.md).
 
@@ -106,7 +109,7 @@ flowchart LR
         penv["project-env/HASH.env"]
         iso["INSTANCE/isolated-auth and keyrings"]
     end
-    subgraph RT["podman named volumes"]
+    subgraph RT["named container-runtime volumes"]
         cv["harnessed-cfg-HARNESS-STACK"]
         tv["harnessed-tools-HARNESS-STACK"]
         dv["harnessed-dl-cache shared"]
@@ -291,28 +294,49 @@ The pod runs with `paths.USERNS_ARG = "--userns=keep-id:uid=1000,gid=1000"`: the
 user is mapped onto the image's uid 1000 whatever their host uid, so ownership stops depending on
 the coincidence of the user *happening to be* uid 1000 (the bare `keep-id` form failed six CI runs
 in a row with `mkdir: cannot create directory '/data/dolt': Permission denied`, bd harnessed-rv2.1).
-`persist.guard_ownership` therefore compares a target dir's owner against `paths.pod_host_uid()` —
-read off the declared mapping, never assumed to be `os.getuid()`:
+Docker has no `keep-id` — it exits 125 on the flag — so `paths.py` declares a second fragment,
+`DOCKER_USERNS_ARG = "--userns=host"`, and `paths.userns_args(rt)` hands each creation site the
+fragment for the runtime it is actually exec'ing, refusing an unrecognized runtime rather than
+defaulting to a guess about id mapping on a real bind mount. The runtime itself comes from
+`paths.active_runtime`, THE detector: the `CONTAINER_RUNTIME` env override wins first (an
+unrecognized value is refused, never silently ignored), podman is preferred where both binaries
+exist, and `ctrquery._runtime` delegates here — two detectors drifting would build argv for one
+runtime and check ownership against another, with nothing on the host saying so.
 
-- pinned `keep-id:uid=1000` → the invoking user, via `os.getuid()`;
-- `--userns=host` → `CONTAINER_UID` (1000);
+`persist.guard_ownership` compares a target dir's owner against `paths.pod_host_uid()` — read off
+the declared mapping for the active runtime, never assumed to be `os.getuid()`:
+
+- podman pinned `keep-id:uid=1000` → the invoking user, via `os.getuid()`;
+- `--userns=host` (the podman override value, or docker's constant) → `CONTAINER_UID`;
+- **docker under a verifiably ROOTFUL daemon → `os.getuid()`** — the same answer podman's pin
+  gives, reached by a different mechanism, because docker performs no mapping and harnessed runs
+  the agent as the invoking user explicitly (`paths.container_user_args`, #457);
 - **anything else → `None`, and `None` means refuse** (`PersistOwnershipError`) — and the
   unresolved check runs *before* the absent-path early return, deliberately: an unresolved mapping
   is a problem even for a dir harnessed is about to create, because the pod will write to it as a
-  uid nobody can name. An earlier version answered `1000` unconditionally and called it fail-safe;
-  it was not. Under bare `keep-id` on a uid-1001 host, podman maps host 1001 → container 1001 and
-  the image's uid 1000 is drawn from the **subuid** range, so the pod's writes land as ~100999 on
-  the host — answering "1000" would *accept* a persist dir the pod cannot write. Fail-open, in
-  precisely the state the original bug produces.
+  uid nobody can name.
+
+The refusal message is runtime-aware too, because the causes and remedies differ: under a docker
+daemon that IS rootless (or one whose `docker info` could not be read at all), the message says so
+and points at a rootful daemon or podman, rather than describing `keep-id` modes a docker user
+cannot select. An earlier version answered `1000` unconditionally and called it fail-safe; it was
+not. Under bare `keep-id` on a uid-1001 host, podman maps host 1001 → container 1001 and the
+image's uid 1000 is drawn from the **subuid** range, so the pod's writes land as ~100999 on the
+host — answering "1000" would *accept* a persist dir the pod cannot write. Fail-open, in precisely
+the state the original bug produces.
 
 Compared against `os.getuid()` instead, the guard waved through six consecutive red CI runs: the
 runner owned its own persist dir, the check passed, and the sidecar's entrypoint still died on
 `mkdir`. The scope limit is documented in the function itself: it reasons about the *declared*
 argument only; a rootful daemon or a missing subuid range still yields a silent EACCES that only
-the runner's `podman info --format '{{.Host.IDMappings}}'` can show. Two callers route through it —
-`mounts._persist_mounts` for every persist target, and the mcp-remote token store mount, which
-calls it *after* its `mkdir` so the check covers both a pre-existing foreign dir and one that raced
-in under `exist_ok=True`.
+the runner's `podman info --format '{{.Host.IDMappings}}'` can show. Because the guard is only
+CONSULTED where persist entries exist, the same refusal is duplicated up front: `launcher._preflight_runtime`
+runs at the top of `harnessed build` and `container-run` and refuses docker unless the daemon is
+verifiably rootful (#456), so a stack declaring no persist entry cannot run all the way into the
+bind-mount failure the guard exists to prevent. Three callers route through the guard itself —
+`mounts._persist_mounts` for every persist target, the mcp-remote token store mount, which calls
+it *after* its `mkdir` so the check covers both a pre-existing foreign dir and one that raced in
+under `exist_ok=True`, and the project-scoped service data dir at the moment a sidecar is created.
 
 ## Volumes, not layers
 
@@ -324,8 +348,8 @@ runtime** into named volumes, gated on a fingerprint:
 
 - `harnessed-cfg-<harness>-<stack>` — the composed agent config tree, mounted at `~/.claude`;
 - `harnessed-tools-<harness>-<stack>` — the tool tree at `~/.local`, one volume covering all three
-  PATH-bearing dirs (`$PNPM_HOME`, mise installs + shims, `$HARNESSED_BIN_DIR`), with podman's
-  copy-up carrying the base image's own mise/snyk in rather than hiding them;
+  PATH-bearing dirs (`$PNPM_HOME`, mise installs + shims, `$HARNESSED_BIN_DIR`), with copy-up
+  carrying the base image's own mise/snyk in rather than hiding them;
 - `harnessed-dl-cache` — deliberately **shared** by every stack at `~/.cache`, the runtime
   successor to the build's `--mount=type=cache` mounts (bd harnessed-1t4.2: a layer cache MISS
   must not mean a re-download).
@@ -345,6 +369,34 @@ never by parsing the name: a stack name may contain the same hyphens the name fo
 picks the content and the harness picks which profile tree is fanned into it, so two stacks sharing
 a volume would compose each other's skills.
 
+### The docker chown: fresh-volume only, sentinel outside
+
+Both content volumes and the shared cache are composed via **copy-up**: mount an EMPTY named
+volume over a path the image populates, and the runtime lifts that content into the volume — once.
+Podman chowns a new volume to match the container's user namespace implicitly; docker does not,
+so a new named volume starts `root:root` and the first populate step dies on EACCES.
+`volumes._chown_volume_for_docker` is the explicit version of what podman does for free — a
+throwaway `--user root` container that chowns the volume to `paths.container_owner_ids(rt)`, the
+invoking uid with group 0 on docker (the same ids `container_user_args` runs the agent as — that
+coupling is the point; neither half works alone). It is a no-op on podman, deliberately: podman
+already did it, and stating the rule twice invites disagreement.
+
+The subtle part is the gate. Docker performs copy-up **only while the volume is empty**, so the
+"have we chowned this yet" marker cannot live inside the volume: an earlier version wrote a
+sentinel FILE there to stop `chown -R` walking the shared download cache on every launch — it
+worked, and it suppressed copy-up outright, so `~/.local` came up with no image content at all and
+the agent died on `nohup: failed to run command 'hatago'` (measured both ways: an empty volume
+mounted at `~/.local` yields `bin share state` plus hatago; the same volume with one file written
+first yields only that file). So the state lives **outside** the volume: the caller asks
+`_volume_exists` *before* issuing `volume create` — which is idempotent and cannot answer that
+question afterwards — and only a volume **this run created** gets chowned. That still avoids the
+per-launch walk of an unbounded cache without putting a byte where docker is watching for
+emptiness. The chown container also mounts the volume at its REAL path (`~/.claude`, `~/.local`,
+`~/.cache`), not a scratch path: copy-up runs when the container starts, so seeding happens before
+the chown entrypoint runs and the chown lands on the seeded tree — chowning at `/mnt` let copy-up
+overwrite the ownership afterwards, and `cp -a` then failed with `Operation not permitted` setting
+timestamps on a dir it could write into.
+
 ### The fingerprint gate
 
 `_ensure_stack_volumes` is called by **both** `harnessed build` and `container-run`
@@ -359,10 +411,11 @@ from diverging. The gate:
   pinned tool for no benefit). Then `tools:` runs, then each recipe's `install.script` in its own
   one-shot container with that recipe's `tests/*.sh` immediately after it. Only **after** every
   step succeeds is the new fingerprint written into the volume — a failed install never certifies a
-  half-populated volume, so the next launch retries instead of trusting a stamp. Every populate
-  step carries `paths.USERNS_ARG`, matching the pod the agent inherits: a volume first populated
-  under the default userns is unusable by the agent (uid 1000 inside reads the files as owner 999
-  and every write EACCESes).
+  half-populated volume, so the next launch retries instead of trusting a stamp. Every compose and
+  install step carries the runtime's userns fragment via `paths.userns_args(rt)` (plus, on docker,
+  the explicit `--user`), matching the pod the agent inherits: a volume first populated under a
+  different mapping is unusable by the agent (uid 1000 inside reads the files as owner 999 and
+  every write EACCESes — verified in both directions).
 
 One state subtlety keeps install output alive across relaunches: the profile's `settings.json` is
 **merged** with the volume's rather than copied over it (`_merged_settings_text`), because the
@@ -410,7 +463,7 @@ its own freshness mechanism, keyed on the thing it certifies:
    launch has no image build to force a refresh (change what `emit` writes into settings.json and
    the recipe closure is byte-identical). It gates the **wholesale rebuild of the host home**
    (below) and, with the **image ID appended**, gates the container volumes too — the image
-   component is forced by podman's copy-up, which runs exactly once per volume, after which volume
+   component is forced by copy-up, which runs exactly once per volume, after which volume
    content wins permanently and a base image that gained a tool would otherwise never reach an
    existing stack.
 
@@ -484,8 +537,8 @@ The same affordability argument that gates the volumes applies here: a rebuild d
 `paths.install_cache_dir`, keyed by the recipe's pinned ref (a floating `cache:` value is a schema
 error, so the key never moves). A miss is "the directory does not exist"; bumping the pin yields a
 new directory, so an upgrade can never read stale content, and a first-launch-only gate would leave
-the home permanently empty. The container path binds the cache's **parent**, never the leaf: podman
-statfs's a bind source before the script runs, so a leaf mount would turn every miss into
+the home permanently empty. The container path binds the cache's **parent**, never the leaf: the
+runtime statfs's a bind source before the script runs, so a leaf mount would turn every miss into
 `statfs …: no such file or directory`, and the scripts' populate-a-sibling-then-rename idiom would
 become a cross-device rename onto a busy mountpoint.
 
@@ -533,8 +586,8 @@ Each GC keys on a different artifact, and the keying is deliberate:
   volumes (that is `volume-gc`'s job) and never touches host data.
 
 One asymmetry to know when changing the catalog: a stack that never **built** owns no volumes, so
-`volume-gc` cannot see it — if a freshly minted (generated) stack fails to build, `container-run`
-removes the manifest *its own invocation* created and leaves a pre-existing manifest alone (it may
+`volume-gc` cannot see it — if a freshly minted (generated) stack fails to build, both run verbs
+remove the manifest *their own invocation* created and leave a pre-existing manifest alone (it may
 be a working stack broken by today's recipe edit). The same resolution primitive also drives the
 omp block prune: `_prune_unlaunchable_omp_blocks` drops `harnessed:<stack>` blocks from the shared
 `~/.omp/agent` when `staleness.stack_resolves` fails, on both launch verbs, because a container

@@ -1,14 +1,13 @@
 ---
 type: "Reference"
 title: "Invariants: the deliberate deviations a reader must not clean up"
-description: "The catalog of constraints that read like defects but are load-bearing — each with the production failure it prevents and the bd id or issue number the source names. Now includes the secrets-broker/door invariants. The page to consult before 'fixing' anything in src/harnessed/."
-tags: [invariants, deliberate-deviations, fail-closed, cleanup-hazards, sequencing, naming-collisions, secrets-broker, pod-networking]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
+description: "The catalog of constraints that read like defects but are load-bearing — each with the production failure it prevents and the bd id or issue number the source names. Covers the secrets broker, the podman/docker uid world, the mutation layer, and mise's bin-paths contract. The page to consult before 'fixing' anything in src/harnessed/."
+tags: [invariants, deliberate-deviations, fail-closed, cleanup-hazards, sequencing, naming-collisions, secrets-broker, pod-networking, userns, mutation-testing]
 sources:
   - id: openwiki-source-362e06c30ccfdafd87339cb0
     resource: repo://ARCHITECTURE.md
+  - id: openwiki-source-e916c387e9195be48f6d9d41
+    resource: repo://catalog/base/Dockerfile.harnessed-base
   - id: openwiki-source-f82224b7b5b27300d9ecc2dc
     resource: repo://catalog/base/egress-firewall.sh
   - id: openwiki-source-78685e9ff43c4c0b3dd78667
@@ -57,19 +56,25 @@ sources:
     resource: repo://src/harnessed/volumes.py
   - id: openwiki-source-4d3b84558965c7b5921b9989
     resource: repo://tests/test_broker_pod_args.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+  - id: openwiki-source-6f7f4425dbef3a1cec350922
+    resource: repo://tools/gauntlet-456.sh
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-12T09:54:25.902Z
 ---
 
 
 # Invariants: the deliberate deviations a reader must not clean up
 
 This codebase carries many behaviors that look like defects: a script that refuses to set `-e`, a
-variable deliberately left pointing at the user's home, a symlink-into-the-user's-store mount, a
-container allowed to write a rw bind of the host's auth database, a host process holding real
-secrets that is recorded in a five-field file instead of a rich one, an abstract contract with six
-methods and no driver calling them. Each one is load-bearing, each was paid for by a named failure,
-and most name that failure in a comment (`bd harnessed-…` or an issue number). This page is the
-catalog. Each entry states:
+variable deliberately left pointing at the user's home, a chown that runs exactly once per volume
+and refuses to leave a marker behind, a detector split in two so a mutation tester can see it, a
+symlink-into-the-user's-store mount, a container allowed to write a rw bind of the host's auth
+database, a host process holding real secrets that is recorded in a five-field file instead of a
+rich one, an abstract contract with six methods and no driver calling them. Each one is
+load-bearing, each was paid for by a named failure, and most name that failure in a comment
+(`bd harnessed-…` or an issue number). This page is the catalog. Each entry states:
 
 - the behavior,
 - why it looks wrong,
@@ -82,7 +87,8 @@ issue outranks the behavior it limits — the unscoped broker rule in the firewa
 `HARNESSED_NET` override of the broker door are narrow on purpose, and their issues (#436, #437)
 are the record of why. Third, a green test suite proves almost none of these — the hermetic suite
 runs no podman, so container-behavior invariants (copy-up, userns, firewall policy, a packet
-crossing the broker door) were verified in measured spikes and live runs, not in pytest. See
+crossing the broker door) were verified in measured spikes and live runs, not in pytest. Even the
+mutation layer has to be handled with care to count as evidence at all (two entries below). See
 [the verification ladder](/openwiki/testing/verification-ladder.md) for what each rung can and
 cannot hold; this page points there instead of re-deriving gates.
 
@@ -110,6 +116,12 @@ entries sit inside), [build pipeline](/openwiki/workflows/build.md),
 | Atomic `os.replace` on the broker record | a plain write is one line | a torn write reading as corrupt → `reconcile` reaping a live broker |
 | A corrupt broker record reads as absent | a corrupt file is an error | `harnessed list` and every teardown path dying on the file they exist to clean up |
 | `USERNS_ARG` pinned to uid 1000; `pod_host_uid()` returns `None` | a fallback number is friendlier than `None` | bd harnessed-rv2.1: six red CI runs; fail-open ownership guard |
+| `_without_userns` matches the flag, not a literal | an inline compare against `keep-id` is shorter | bd harnessed-rv2.1: the pinned spelling silently stopped matching |
+| Docker volumes chowned once, to one owner id, never sentinel-gated | chown every launch, mark what you did | a sentinel in the volume suppressed copy-up: `~/.local` empty, `hatago` gone (PR #461 review) |
+| `USER 4242:0` probes the base image; `~/.claude` absent from the image chown list | chown the config dir in the image too | copy-up re-owned the volume out from under the runtime chown, permanently |
+| `_detect_runtime`/`_probe_docker_rootless` split from their caches | one cached function is simpler | mutmut generates zero mutants for cached functions — the layer reported green while blind |
+| The `mutants/` tree is deleted before each mutmut run | reusing the cache is faster | a stale cache reports `🫥 no tests` for functions tests do cover (30 mutants, measured) |
+| mise `bin-paths` on PATH; the mise redirect stops at provisioning | shims are mise's PATH mechanism; redirect everything, everywhere | #449: a dead shim shadowed the agent binary; a redirected session broke every user shim |
 | omp runs without `--profile`, rw host agent dir | sharing auth dirs looks like an isolation bug | login, usage ledger, session resume (#307) |
 | `MISE_STATE_DIR` not redirected | every other mise var is redirected | the user's trust store (empty store broke every trusted config) |
 | One ruamel `YAML` instance per load | a module-level instance is cheaper | parallel `-j` builds loading interleaved nonsense |
@@ -144,10 +156,11 @@ Three supporting facts are just as load-bearing:
   the *image ID* to the recipe-closure hash (bd harnessed-8px.21.3). Stripping the image component
   because it looks redundant with the recipe hash means a base image that gained a tool never
   reaches an existing stack and nothing signals it.
-- **The populate step must use `paths.USERNS_ARG`**, the same mapping the pod is created with. A
-  volume first populated under the default userns is unusable by the agent: uid 1000 inside reads
-  files owned by 999 and every write EACCESes. Verified in both directions in the harnessed-8px.21.1
-  spike.
+- **The populate step must carry the same `--userns` mapping the pod was created with**
+  (`paths.userns_args(rt)` — podman's pinned `USERNS_ARG`; docker's `--userns=host` plus
+  `container_user_args`). A volume first populated under the default userns is unusable by the
+  agent: uid 1000 inside reads files owned by 999 and every write EACCESes. Verified in both
+  directions in the harnessed-8px.21.1 spike.
 - **`fresh=` may destroy the config volume only because of what it holds.** Composition is purely
   additive, so the discard-on-fingerprint-change is what stops a dropped recipe's skills lingering
   forever; it is safe because credentials and the rw history dirs are *bind-mounted over* the
@@ -248,15 +261,18 @@ there — narrowing it is #437's plumbing, and the address must not be widened t
 In the launcher: `_apply_firewall` runs the script in a **throwaway container** that joins the
 pod's netns with `--cap-add NET_ADMIN --user root` — the agent container never gets `NET_ADMIN`,
 because the agent is the untrusted party and handing its namespace-mates rule-writing rights hands
-the confined process the key. The launcher then treats a zero exit as a *claim*, not a fact: it
-independently reads the OUTPUT policy back out of the netns (`_firewall_policy_is_drop`), and
-anything unreadable counts as "not confined" — "cannot prove it is confined" and "is not confined"
-must reach the same branch. Every silent-firewall bug so far has been a script reporting success
-it did not achieve; a guard that trusts the thing it guards is not a guard. On either failure the
-launch refuses to continue, and the `EGRESS` phase tears the pod down on **any** `BaseException` —
-by then the pod exists, so propagating would return the user their shell while an unconfined
-container kept running. `NO_FIREWALL=true` is the supported way to opt out; failing closed has to
-mean the thing we could not confine does not survive.
+the confined process the key. On a pod-less runtime the runner must state the *same* `--userns`
+mapping the agent has, not merely some mapping: iptables run from a different user namespace than
+the netns it configures returns EPERM, so a mismatch confines nothing and the agent runs wide open
+(#456). The launcher then treats a zero exit as a *claim*, not a fact: it independently reads the
+OUTPUT policy back out of the netns (`_firewall_policy_is_drop`), and anything unreadable counts as
+"not confined" — "cannot prove it is confined" and "is not confined" must reach the same branch.
+Every silent-firewall bug so far has been a script reporting success it did not achieve; a guard
+that trusts the thing it guards is not a guard. On either failure the launch refuses to continue,
+and the `EGRESS` phase tears the pod down on **any** `BaseException` — by then the pod exists, so
+propagating would return the user their shell while an unconfined container kept running.
+`NO_FIREWALL=true` is the supported way to opt out; failing closed has to mean the thing we could
+not confine does not survive.
 
 ## The broker door: one `--network`, and only with a broker behind it
 
@@ -355,7 +371,7 @@ Teardown order is broker first, never fatally, then `pod rm`: the broker is a ho
 live secrets and must not outlive the pod, but the pod must still come down if the stop fails, and
 `reconcile` reaps whatever this misses.
 
-## Userns is pinned to uid 1000, and `pod_host_uid()` refuses to guess
+## `USERNS_ARG` is pinned to uid 1000, and `pod_host_uid()` refuses to guess
 
 `paths.USERNS_ARG` is `--userns=keep-id:uid=1000,gid=1000`, not bare `keep-id`. Bare `keep-id`
 maps the *invoking host uid* to the same number inside, while the container process is the image's
@@ -371,14 +387,141 @@ mapping does not determine it** — and None means *unresolved*, callers must re
 guess. An earlier version answered `CONTAINER_UID` and called it fail-safe; it was fail-open: under
 bare `keep-id` on a host whose user is 1001, the pod's writes land as a subuid (~100999), so
 answering "1000" would accept a persist dir owned by host uid 1000 that the pod cannot write —
-precisely the state the original bug produces. `persist.guard_ownership` raises a named
-pre-launch error when the writer is unresolved, *before* the absent-path early return, because an
-unresolved mapping is a problem even for a dir harnessed is about to create. Replacing the `None`
-with any number turns the ownership guard into a rubber stamp again.
+precisely the state the original bug produces. Under docker the function answers `os.getuid()` only
+for a **rootful** daemon — where `container_user_args` runs the agent as the invoking user — and
+returns None for rootless or unreadable, the same refuse for the same reason. `persist.guard_ownership`
+raises a named pre-launch error when the writer is unresolved, *before* the absent-path early
+return, because an unresolved mapping is a problem even for a dir harnessed is about to create.
+Replacing the `None` with any number turns the ownership guard into a rubber stamp again.
+
+Two satellite rules keep the refusal honest:
+
+- **`_without_userns` matches the FLAG, never a literal.** `--userns` is a pod-level property
+  podman rejects on a member, so the pod's mount args cannot be handed to a member verbatim — the
+  helper strips them by `a.startswith("--userns")`. It used to be an inline inequality against the
+  bare `keep-id` spelling, which silently stopped matching the day `USERNS_ARG` was pinned (bd
+  harnessed-rv2.1): a filter keyed to a literal is a filter that breaks when the literal moves.
+  The strip is podman-only and inert today (no `mounts.py` builder emits `--userns`), and it stays
+  — an unconditional strip would silently swallow a mapping the moment any builder starts emitting
+  one.
+- **The refusal also runs at the top of the launch.** `_preflight_runtime` (#456) repeats the
+  unresolvable-mapping check before anything is created, because `persist.guard_ownership` only
+  guards where it is consulted — a stack that declares no persist entry never reached it and ran
+  all the way into the bind-mount failure. Podman is unconditionally fine (`USERNS_ARG` names the
+  mapping outright); docker needs a rootful daemon.
 
 The scope is honest in the docstring: this reasons about the *declared* argument only and cannot
 observe what podman actually did; a rootful daemon or a missing subuid range still ends in a
 silent EACCES, which only the live runner's `podman info` check (bd harnessed-rv2.3) can see.
+
+## Docker's flat-uid world: one owner id, stated once, proven at build time
+
+Docker has no `keep-id` (it exits 125 on the flag, #456), so harnessed states the owner explicitly
+and keeps it in exactly one place. `paths.container_user_args` runs the agent as
+`<invoking-uid>:0` — the uid because host bind mounts must see the invoker, the **group 0** because
+that is the only group a uid the image never created is guaranteed to hold — under
+`DOCKER_USERNS_ARG = --userns=host` (`host` rather than an omitted flag so a `userns-remap` daemon
+cannot map the image's uid into a subuid range, reproducing bd harnessed-rv2.1 under a new name).
+`paths.container_owner_ids` returns that same `(uid, gid)` as the chown target. One function so the
+two cannot drift: running as uid N against a volume owned by 1000 is not an improvement on the
+reverse — it is the same defect wearing different numbers. The base image pairs with this by giving
+`$HOME` to group 0 with group perms equal to user perms (and setgid, so created files inherit
+group 0); without that half a uid-1001 agent could not even *enter* `/home/harnessed` and died on
+`cp: cannot stat '/home/harnessed/.claude/'` with the volumes correctly owned (#457).
+
+`volumes._chown_volume_for_docker` then chowns each freshly created named volume — and it carries
+three deliberate orderings an agent will want to "simplify":
+
+- **Only a volume this run created is chowned.** Existence is asked *before* the idempotent
+  `volume create`, because afterwards the two are indistinguishable — and that distinction is what
+  keeps an unbounded `chown -R` off the shared download cache on every launch (the PR #461 review
+  objection).
+- **No sentinel inside the volume, ever.** The first version gated the chown on a marker file in
+  the volume. It worked, and it broke the launch: docker seeds a volume from the image's copy of
+  the mount point ONLY WHILE THE VOLUME IS EMPTY, so the sentinel suppressed copy-up, `~/.local`
+  came up without the image's tree, and the agent died with
+  `nohup: failed to run command 'hatago': No such file or directory`. The "have we done this"
+  state lives OUTSIDE the volume — in the `was_new` answer — so it never puts a byte where docker
+  is watching for emptiness.
+- **Mounted at its real path, not a scratch path.** Docker performs copy-up when the container
+  STARTS, so a chown container with the volume at its real mount point runs *after* seeding and
+  lands on the seeded tree. Chowned at `/mnt`, the volume's root was re-owned by copy-up the moment
+  it was mounted where it belongs: the agent could create files (group 0, mode 2775) but not set
+  timestamps on the directory itself, and `cp -a` died with
+  `preserving times for '/home/harnessed/.claude/.': Operation not permitted` — utimes() needs
+  ownership, which group 0 does not confer.
+
+Related refusals: "run the populate steps as root and chown afterwards" is rejected because it
+would let every recipe install script run as root and diverge from the podman path; and the base
+image **proves** the arbitrary-uid contract at build time with `USER 4242:0` — a stand-in for
+"whoever launched harnessed", chosen because the image's own uid 1000 is the one uid for which the
+group-bits bug is invisible, which is exactly how the docker defect reached a CI runner. Only
+`$HOME` and `~/.cache` are probed/chowned in the image; `~/.claude` is **deliberately absent** from
+that list, because copy-up re-applies the image directory's ownership on every mount while the
+volume is still empty — an image-owned `~/.claude` would re-own the config volume to uid 1000
+forever and the runtime chown could never stick. Creating it in the image was a real regression,
+measured on one volume.
+
+## The mutation layer can only see what it can mutate
+
+Two rules keep `mutmut` evidence honest, and both were paid for:
+
+- **The detectors are split from their caches.** `paths._detect_runtime` and
+  `paths._probe_docker_rootless` are plain functions behind the `lru_cache`-decorated
+  `active_runtime`/`docker_is_rootless` wrappers — deliberately. mutmut generates **no mutants for
+  a cached function**: the combined versions produced zero mutants and a clean report while the
+  mutation layer was silently blind to the detection logic, including every
+  refuse-rather-than-guess branch in it. Separating them makes the behaviour mutable and testable
+  without `cache_clear` gymnastics. Hoisting the body back into the cached function is the cleanup
+  this invariant forbids — it fails only in the tool nobody watches.
+- **The `mutants/` tree is deleted before each run.** mutmut caches its test→function mapping in
+  `mutants/` and does not re-collect stats for tests that did not exist when the tree was built, so
+  a stale tree reports newly-covered functions as `🫥 no tests`. Measured: 30 mutants across
+  `_detect_runtime` and `_probe_docker_rootless` sat at no-tests through two full runs with passing
+  tests calling them directly, and only a fresh tree attributed them. A cache that reports
+  "nothing tests this" when something does is a fail-open in the layer that exists to catch
+  fail-opens; `tools/gauntlet-456.sh` removes the tree so the verdict is reproducible, and reads
+  `mutmut results` unconditionally because a filter matching nothing is silent (exit 0, everything
+  `not checked`).
+
+## mise on a host launch: `bin-paths`, not shims; provisioning scoped, not session-carried
+
+A host launch puts the stack's `tools:` on PATH through `mise bin-paths` — the tools' real install
+dirs — and **never** through mise's shims dir (#449). A shims dir is not scoped to the declared
+tool set: mise writes one shim per binary of every version ever installed under `MISE_DATA_DIR` and
+removes none when a tool leaves the config (measured on stack `default`: 96 shims, 6 declared
+tools, 28 installs — the user's whole global set, left by a release that redirected the data dir
+without the config dir). Ahead of the user's PATH that dir failed two ways on every launch: a shim
+whose tool has no version in the stack config dies (`mise ERROR No version is set for shim` —
+`omp`'s shim shadowed the agent binary itself, so `host-run omp` could not start), and a resolving
+shim shadows the user's pinned version with the stack's (`node` v26 against a global `node = "24"`).
+`bin-paths` has neither: exactly the declared set, as real binaries. Two adjacent orderings are part
+of the same fix: `mise bin-paths` is resolved with `cwd=<mise root>` because mise merges every
+config from the cwd upward (resolving in the project put the *project's* tools on the agent's PATH
+— 8 measured against the 6 declared), and `_stack_tool_path_prefix` puts the stack bin dir FIRST
+and is composed in ONE place, because an `install.sh` may deliver a binary the `tools:` also
+declare and the recipe's copy must keep winning (two separate prepends silently inverted that).
+
+The redirect itself is **scoped to provisioning** since #449. `_apply_host_mise_env` points
+`MISE_DATA_DIR`/`MISE_CONFIG_DIR` at the stack's tree for install time and the scripts that inherit
+it — and the agent session gets the user's own mise env back via `_restore_user_mise_env`, because
+a shim re-resolves its tool by argv[0] against `MISE_DATA_DIR` every time it runs: a redirected
+session broke every shim on the *user's* PATH, the agent binary included
+(`mise ERROR omp is not a valid shim` on a nested launch). Restores go to the SNAPSHOT rather than
+deleting — a user who set `MISE_DATA_DIR` keeps their value — **except** a value matching
+harnessed's own path shape (resolved on both sides; empty rejected before the resolve), because
+launching a stack from inside another stack's host session is routine and the snapshot frequently
+holds the outer stack's redirect, not the user's choice. The same hygiene applies to PATH:
+`_apply_host_tool_path` removes EVERY harnessed tools entry, any stack's, before prepending its
+prefix — filtering only against this stack's own entries let a tool the inner stack never declared
+still resolve out of the outer tree. Provisioning state belongs to the launch that created it and
+must not ride into the next one; a user's own toolchain entries are untouched, because none of them
+live under the harnessed tools root.
+
+Why it looks wrong: shims are mise's own PATH mechanism, and "redirect everywhere, snapshot and
+restore" reads like needless ceremony. What it prevents is the #449 pair — a dead shim standing
+between the launch and the agent binary, and a session whose every shim resolves into a tree where
+nothing was installed.
 
 ## omp runs without `--profile`; the rw host agent dir is mechanism 1
 
@@ -402,7 +545,7 @@ never mutated.
 
 ## `MISE_STATE_DIR` is deliberately not redirected
 
-Every other mise variable a host launch touches is redirected into the stack's own tree:
+Every other mise variable provisioning touches is redirected into the stack's own tree:
 `MISE_DATA_DIR` and `MISE_CONFIG_DIR` point at the stack's tools dir. `MISE_STATE_DIR` pointed
 there too, once — and that broke every trusted project config. The state dir holds mise's **trust
 store** (`trusted-configs`, `tracked-configs`), and trust is a fact about the user and a config
@@ -654,7 +797,9 @@ hermetic suite; invariants whose mechanics live in podman (copy-up, userns, fire
 readback, the composed `pasta:` route itself) were established by measured spikes and live runs and
 are only exercised by the podman-gated layer — `tests/test_broker_pod_args.py` says so of itself:
 it asserts the argv the launcher hands `pod create`, and "what they cannot show is a packet
-crossing that route — no test in this repo starts a pod". See
+crossing that route — no test in this repo starts a pod". Even the mutation layer counts as a rung
+only when handled by the two rules above, because a blind or stale mutation report is exactly the
+green-looking nothing this page exists to catch. See
 [the verification ladder](/openwiki/testing/verification-ladder.md) for the rungs, and keep the
 issue ids in the comments: they are the provenance that lets the next reader distinguish a defect
 from a scar.

@@ -3,12 +3,11 @@ type: architecture
 title: "The host secrets broker: one varlock proxy per instance (Topology B)"
 description: "The host-side secrets broker (Epic #388 Phase 1, Topology B): why a host process holds the real credentials, the @proxy plus --no-secrets launch gate, the spawn/poll/record/stop/reconcile lifecycle, the pod's pasta door at 169.254.1.1, fail-fatal and fail-safe teardown semantics, and the five-field state record that leaks no secret by construction."
 tags: [secrets-broker, varlock, credential-proxy, topology-b, pasta, egress-firewall, teardown, reconcile, no-secrets, pod]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
 sources:
   - id: openwiki-source-f82224b7b5b27300d9ecc2dc
     resource: repo://catalog/base/egress-firewall.sh
+  - id: openwiki-source-72fe826953aaa47d17a811e4
+    resource: repo://ROADMAP.md
   - id: openwiki-source-085f2349c58adb4062c2803f
     resource: repo://src/harnessed/broker.py
   - id: openwiki-source-2b85b44d9f80bbb3b6ce747d
@@ -31,7 +30,10 @@ sources:
     resource: repo://tests/test_launch_parity.py
   - id: openwiki-source-bbf9cc1f144f5efff8ae1505
     resource: repo://tests/test_module_boundaries.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-12T09:54:25.902Z
 ---
 
 # The host secrets broker: one varlock proxy per instance (Topology B)
@@ -42,6 +44,17 @@ real values into outbound requests on the wire. The pod holds **placeholders** a
 broker through pasta's `--map-host-loopback,169.254.1.1`, which the egress firewall permits
 (**#436**). Nothing off-host can reach the broker, so there is **no `--expose` and no data-plane
 token** — Topology B deleted both, along with the WebSocket tunnel. Do not reintroduce them.
+
+The epic is **half-landed**, and the seam matters when reading this page: Phase 1 shipped the
+broker lifecycle, the loopback door and `--no-secrets`; the behaviour change did **not**. The
+launcher still resolves real values into the container env at launch (`varlock load` →
+`--env-file`), so today the broker is additional, not yet the only path — the roadmap's words are
+"both halves are needed before the security property is real, and only the first is in." Retiring
+real-value env seeding is future work: **#438** binds the broker's cert directory into the pod so
+the CA paths it emits resolve, and **#439** builds the launch env from the broker instead of
+resolving real values on the host — the point where "zero secrets in the initial container
+environment" becomes true. Phase 2 adds a further gate: the effective rule set is checked before
+the broker starts, so a schema edit made inside a pod cannot become policy at the next launch.
 
 `src/harnessed/broker.py` is the source of record for this subsystem. `launcher.py` consumes it
 through three seams (`_broker_start_for`, `_broker_stop_for`, `_broker_report`); `launchenv.proxy_schema_dirs`
@@ -312,9 +325,10 @@ Two more ordering facts close the launch-side loop:
 - The broker is started **before `pod create`**, because the pod's network args depend on whether
   there is one: without a broker the pod must not be handed a route to the host's loopback it has no
   use for. If `pod create` then fails — Ctrl-C included, same reasoning as EGRESS — the started
-  broker is stopped before re-raising: a broker that outlives the launch it was started for is a
-  host process holding live secrets that nothing will ever reap by name, worse than a leaked pod,
-  which at least `podman ps` can see.
+  broker is stopped **by name** (`_broker_stop_for(self.inst)`, which resolves the record and stops
+  that session) before re-raising: a broker that outlives the launch it was started for is a host
+  process holding live secrets that nothing will ever reap by name, worse than a leaked pod, which
+  at least `podman ps` can see.
 - The backend instance carries `self.broker` (set at BOUNDARY, `None` when the launch gets none) for
   exactly that failure handling — broker state is backend-instance state, not `LaunchSpec` input.
 
@@ -330,7 +344,15 @@ backend matrix records exactly this: "host: n/a (native varlock)".
 The pod-less runtime case is handled as a *note*, not a half-wired broker: the door is a pasta
 option on `pod create`, so a runtime with no pods has no way to deliver `169.254.1.1` into the
 container. Starting a broker there would produce exactly the half-wired state `--no-secrets` exists
-to avoid, so the launch says so and resolves secrets into the container env as before.
+to avoid, so the launch says so and resolves secrets into the container env as before. The note is
+gated on the schema actually opting in (`proxy_schema_dirs`) — a pod-less launch with no `@proxy`
+anywhere stays silent, because there is nothing to announce.
+
+Per the roadmap this fallback is a **known gap with no issue and no test**: docker has no pods, so
+a docker launch starts no broker, prints the note at launch, and falls back to real values in env —
+and **no test asserts that behaviour**. Once the secrets behaviour change lands, podman gains the
+property and docker silently does not; deciding and testing what a docker launch does about secrets
+is queued ahead of that change, before the gap becomes load-bearing.
 
 ## The three test modules as contracts
 

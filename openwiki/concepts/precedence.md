@@ -1,11 +1,15 @@
 ---
 type: concept
 title: "Precedence: who wins when sources conflict"
-description: "The single page of conflict-resolution rules in harnessed: layered env files (global vs project, last-wins, empty=off), declared schema vs stale shell export (both varlock's own semantics and the host launcher), the secrets broker must resolve the same composed set the --env-file path resolves, recipe env vs harnessed-owned values, the install-contract order in both launch modes, the settings.json merge direction across profile, volume and host, catalog-root shadowing, stack extends unions/overrides, the shipped default-stack baseline, and which running stack owns a service sidecar."
-tags: [precedence, env-files, env-contract, settings-merge, catalog-roots, stack-extends, default-stack, last-wins, overlay, secrets-broker, mise]
+description: "The single page of conflict-resolution rules in harnessed: layered env files (global vs project, last-wins, empty=off), declared schema vs stale shell export (both varlock's own semantics and the host launcher), the secrets broker must resolve the same composed set the --env-file path resolves, recipe env vs harnessed-owned values, the install-contract order in both launch modes, runtime selection (CONTAINER_RUNTIME beats PATH, unknown values refused), the docker volume chown gated on existed-before-create, install.cache derived from install.refs (declaring both is a schema error, not a precedence rule), the settings.json merge direction across profile, volume and host, catalog-root shadowing, stack extends unions/overrides, the shipped default-stack baseline, and which running stack owns a service sidecar."
+tags: [precedence, env-files, env-contract, settings-merge, catalog-roots, stack-extends, default-stack, last-wins, overlay, secrets-broker, mise, container-runtime, install-cache]
 sources:
+  - id: openwiki-source-d23342400719a98a734c089e
+    resource: repo://catalog/recipes/caveman/recipe.yaml
   - id: openwiki-source-147a7f2a13ce71e3e9764942
     resource: repo://catalog/recipes/default/recipe.yaml
+  - id: openwiki-source-63c26efd82591fccfe746499
+    resource: repo://catalog/recipes/mikes-universal-setup/recipe.yaml
   - id: openwiki-source-e9cc6c20ea9b111b6ff0861e
     resource: repo://catalog/stacks/default/stack.yaml
   - id: openwiki-source-72b5d686f860ea86c8592080
@@ -40,32 +44,38 @@ sources:
     resource: repo://src/harnessed/svcstate.py
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
     resource: repo://src/harnessed/volumes.py
+  - id: openwiki-source-80aa176b0256ebdcec6816de
+    resource: repo://tests/test_docker_userns.py
   - id: openwiki-source-568f82b2292ea5e02ccb4db8
     resource: repo://tests/test_install_script.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-09T09:34:57.295Z" }
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-09T09:34:57.295Z
+    at: 2026-09-12T09:54:25.902Z
 ---
 
 # Precedence: who wins when sources conflict
 
 harnessed deliberately lets the same value arrive from several places: a user-global secrets schema,
 a per-project `.env`, a stale shell export, a recipe's `env:`, harnessed's own contract keys, an
-install script's output, a parent stack, an overlay catalog, the secrets broker's schema set. Every
-one of those overlaps is settled by a rule that names a **winner**, and in almost every case the code
-records the production failure the *loser* of that rule once produced. This page is the single list
-of those rules; each section states the winner first and the bug second.
+install script's output, a parent stack, an overlay catalog, the secrets broker's schema set — even
+the choice of container binary itself. Every one of those overlaps is settled by a rule that names a
+**winner**, and in almost every case the code records the production failure the *loser* of that
+rule once produced. This page is the single list of those rules; each section states the winner
+first and the bug second.
 
 | Conflict | Winner | The failure the loser produced |
 | --- | --- | --- |
+| env `CONTAINER_RUNTIME` vs PATH order | **`CONTAINER_RUNTIME`, honoured FIRST**; an unknown value is REFUSED, not ignored | a typo'd `CONTAINER_RUNTIME=dcoker` silently falling through to podman would run the whole suite against the wrong runtime and report a pass; without the override, PATH order alone could never express a docker CI job (a runner has both binaries) |
 | global vs project env-file | **LAST assignment wins** (project) — the order *is* the mechanism | a first-hit presence check left the pod with no usable token *and* no credentials (bd harnessed-7bk) |
 | env-file vs host shell export | **any env-file declaration, empty included** | a stale export outranked every declared source, so a per-project token could never take effect (bd harnessed-36l) |
 | varlock schema vs the invoking shell | **the schema** — the shell is stripped (`env -u`) before `varlock run`, and the host launcher applies resolved values over `os.environ` | a leftover `OPENWIKI_PROVIDER=openai-compatible` export silently repointed a 13-hour wiki run (2026-09-04); a shell `OPENWIKI_MAX_OUTPUT_TOKENS=32768` beat the schema's 20000 and killed the run's one non-streaming call (2026-09-08) |
 | env-file set vs secrets-broker set | **the same composed set** — the broker gate mirrors `_resolve_launch_secrets` | #439: the pod would hold placeholders for secrets the broker never loaded |
 | empty value vs absent | **empty is a declaration meaning OFF** | forwarding past it would override the very intent that declared it |
 | recipe `env:` vs harnessed-owned keys | **harnessed-owned** | the host and container winners drifted (bd harnessed-8px.2) |
+| declared `install.refs` vs a hand-written `install.cache` | **neither — declaring both is a schema ERROR**, not a precedence rule | a picked winner would leave one declaration silently dead; the hand-mashed truncated cache key and the `*_SHA=` assignments it replaced drifted independently (caveman, mikes-universal-setup) |
 | baked image ENV vs launch-time re-application | **launch re-application (full resolved set)** | project-templated vars missing from the running agent's env |
+| volume this run created vs volume that already existed (docker chown) | **existed-before-create decides** — asked BEFORE the idempotent `volume create` | the sentinel-FILE gate it replaced suppressed docker's empty-volume copy-up: `~/.local` seeded empty and the agent died with `nohup: failed to run command 'hatago': No such file or directory` (PR #461 review) |
 | profile vs installer-written `settings.json` | **merge, never copy** | ccstatusline's `statusLine` vanished on every restart (bd harnessed-8px.19) |
 | required `defaultMode` vs a baked mode | **the baked mode** (floor, not override) | a recipe's own mode would be silently replaced |
 | hatago grant vs a baked `permissions.deny` | **required (grant wins, deny stripped)** | a recipe denying the hub would break every MCP tool |
@@ -78,6 +88,34 @@ of those rules; each section states the winner first and the bug second.
 | running vs stopped instance → which stack owns a sidecar | **running instances win outright**; longest harness prefix parses the name | a stopped stack-you-used-once would quietly decide which persist entry the rebuilt sidecar serves |
 
 ---
+
+## Runtime selection: `CONTAINER_RUNTIME` beats PATH, unknown is refused
+
+The most upstream conflict in the system is which container binary everything else runs on.
+`paths._detect_runtime` settles it in three clauses:
+
+- **`CONTAINER_RUNTIME` is honoured FIRST, and beats PATH order.** This is what makes a docker CI
+  job expressible at all: a GitHub runner has BOTH binaries installed, so PATH order alone always
+  yields podman and a docker job could not be written. Without the override, the `live-docker` job
+  "would silently retest the podman path while reporting itself as docker coverage" — a green tick
+  over a runtime nobody exercised.
+- **An unrecognised value is REFUSED with a `ValueError`, not ignored.** A typo'd
+  `CONTAINER_RUNTIME=dcoker` that silently fell through to podman would run the whole suite against
+  the wrong runtime and report it as a pass — exactly the shape of failure this module exists to
+  prevent. Blank or whitespace-only counts as unset (that is how a caller clears an inherited
+  value), and a forced name that is not actually installed resolves to `None` rather than handing
+  later argv a binary that cannot execute.
+- **Falling through, PATH prefers podman** — a real preference (pods, pasta networking,
+  `keep-id`), not an accident of iteration order.
+
+`active_runtime` is that answer behind one `lru_cache`, and it is THE detector: `ctrquery._runtime`
+and `capability._runtime` delegate to it instead of scanning PATH again. The stakes of a second
+opinion are concrete — argv-building sites take the runtime explicitly (the flags must match the
+binary being executed), while ownership reasoning (`pod_host_uid`, and through it
+`persist.guard_ownership`) calls the cached one; two detectors drifting apart would mean argv built
+for one runtime and ownership checked against the other, with nothing on the host saying so. The
+refusal side has its own rule one level down: `userns_args` refuses an unknown runtime rather than
+defaulting, because a guessed id mapping lands as a silent EACCES deep inside a container.
 
 ## Env-file layering: global → project, last-wins, empty=off
 
@@ -178,14 +216,14 @@ no upstream accepts.
 Two arenas, one winner in both: **harnessed-owned values beat catalog-authored `env:`, and
 catalog-authored values beat whatever the process inherited.**
 
-**The running container.** The podman command applies `-e` left-to-right, so the LAST wins. Recipe
-`env:` is passed **first** and harnessed-owned values (the folder-env contract, the setup env,
-`HATAGO_TRANSPORT`, the mise trust path) later — recipe env must not be able to clobber values the
-harness owns. That matches host mode, where `_recipe_env` is applied to `os.environ` and the
-folder-env contract overwrites it afterwards. Reversing the pair silently inverts precedence between
-the modes — the drift was caught while merging two changes that were each self-consistent alone
-(harnessed-0tk.7 and harnessed-8px.2), and is pinned by a test that asserts the ORDER of the argv,
-not its values.
+**The running container.** The podman command applies `-e` left-to-right, so the LAST wins — the
+ordering is written down in the argv assembly itself (launcher.py ~L3647, under the comment
+`ORDER IS PRECEDENCE`). Recipe `env:` is passed **first** and harnessed-owned values (the
+folder-env contract, the setup env, `HATAGO_TRANSPORT`, the mise trust path) later — recipe env
+must not be able to clobber values the harness owns. That matches host mode, where `_recipe_env` is
+applied to `os.environ` and the folder-env contract overwrites it afterwards. Reversing the pair
+silently inverts precedence between the modes — the drift was caught while merging two changes that
+were each self-consistent alone (harnessed-0tk.7 and harnessed-8px.2).
 
 **The host launch.** `os.environ` is the box, and `_launch_host` updates it in a deliberate order:
 launch secrets first, recipe `env:` second, the folder-env contract last. Each layer overrides the
@@ -202,11 +240,30 @@ inside a session."
 Container mode gets this from `{**resolve_recipe_env(...), **install_env}` passed as inline
 `-e VAR=…` assignments, which beat the image's preceding `ENV` lines; host mode from
 `env.update(recipe_env)` followed by `env.update(emit.install_env(...))`. Same winner both ways —
-the exact defect the harnessed-8px.2 merge exposed — and the precedence is asserted as *order*,
-not values (`tests/test_install_script.py::TestPrecedence`), so tightening a value cannot pass while
-breaking the ordering.
+the exact defect the harnessed-8px.2 merge exposed. `tests/test_install_script.py::TestPrecedence`
+pins it: the class docstring demands the precedence be asserted as ORDER, not values — the host
+test literally asserts the relative order of the two `env.update` calls inside
+`_host_run_installs`' source, and the container test asserts the resolved `-e` argv carries
+`HARNESSED_MODE=container` and never the recipe's attempted `recipe-tried-to-win` (the value-level
+rendering of the same ordering since the 8px.21.4 merge). Tightening a value therefore cannot pass
+while breaking the ordering, and `test_recipe_env_still_beats_the_inherited_environment` pins the
+middle layer so the contract cannot win by accident of everything else losing.
 
-Two host-only layers sit *after* the contract and are precedence rules in their own right:
+### One value, one declaration: `install.cache` is derived, not layered
+
+One apparent conflict is deliberately *not* a precedence rule at all. `install.refs` declares the
+upstream pins as data, and the cache key is **DERIVED** from them — sha256 of the canonical
+`key=repo@ref` rendering, first 16 hex. A recipe declaring BOTH `install.refs` and a hand-written
+`install.cache` is a **schema error**: "picking a winner would mean one of the two declarations is
+silently dead, and nobody can see which." This is precedence thinking applied at the schema layer —
+two sources for one key must be refused, not ranked. The motivation is measured: the pin used to
+live in two places kept in lockstep by comments — caveman's `CAVEMAN_REF` assignment plus its
+`install.cache:` line, and mikes-universal-setup's three `*_SHA=` assignments plus a hand-mashed
+cache key that truncated all three refs to 10 hex and drifted independently of every one of them.
+Deriving also buys the behaviour for free: bumping a `ref:` changes the derived key, which yields a
+fresh cache dir automatically instead of requiring a remembered second edit.
+
+Two host-only layers sit *after* the install contract and are precedence rules in their own right:
 
 - **The harness config-dir pinning runs LAST.** After the contract and the package-manager
   redirects, `_harness_config_env` pins `CLAUDE_CONFIG_DIR` (and omp's `PI_CODING_AGENT_DIR` /
@@ -235,6 +292,35 @@ build-time step sees what it can.
 Within one stack, **later recipes win** on an `env:` clash — `_recipe_env` updates the map in recipe
 order, deliberately matching the Dockerfile layering this replaces (a later `ENV` overrides an
 earlier one). Stack recipe order is the tie-breaker, so it is load-bearing, not stylistic.
+
+## A fresh named volume vs an existing one: the docker chown gate
+
+Docker gives a new named volume no user mapping: unless the image populated the mount point, the
+volume is an empty dir owned by `root:root`, and the first populate step dies with
+`cp: cannot create directory '/home/harnessed/.claude/./skills': Permission denied`. The fix — a
+throwaway `--user root` container running `chown -R`, exactly what podman does implicitly — needs
+its own precedence decision: **which volumes get chowned is decided by existed-before-create**, not
+by any state inside the volume.
+
+- `_volume_exists` is asked BEFORE `volume create` is issued, because `volume create` is idempotent
+  and cannot answer the question afterwards. Only a volume **this run created** is chowned — the
+  config volume in `_ensure_config_volume`, the tools volume and the shared download-cache volume in
+  `_ensure_stack_volumes` (where the gate is also what keeps a per-launch `chown -R` off an
+  unbounded shared cache). A volume that already existed was chowned when it was created.
+- The gate must run AFTER `volume create`: chowning a not-yet-created volume would create it
+  implicitly, with default ownership — the very state the chown exists to fix.
+- The failure the *loser* of this rule produced is recorded in `_chown_volume_for_docker`: an
+  earlier version gated the chown on a sentinel FILE written into the volume. It worked, and it
+  broke the launch — docker seeds a volume from the image's copy of the mount point ONLY WHILE THE
+  VOLUME IS EMPTY, so the sentinel suppressed copy-up, `~/.local` came up without the base image's
+  pnpm tree, and the agent died with `nohup: failed to run command 'hatago': No such file or
+  directory` (PR #461 review). The "have we done this already" state must therefore live OUTSIDE
+  the volume: existed-before-create answers the same review without putting a byte where docker is
+  watching for emptiness.
+- The chown itself is mounted AT THE VOLUME'S REAL PATH, not at `/mnt`: docker performs copy-up
+  when the container starts, so at the real path the chown lands on the seeded tree, while a `/mnt`
+  chown was overwritten by copy-up back to uid 1000 and `cp -a` failed on
+  `preserving times ... Operation not permitted`.
 
 ## `settings.json`: merge, never copy
 
@@ -391,12 +477,24 @@ agent instance container names — and that attribution has its own winner:
 
 ## Invariants an editor must not "simplify"
 
-- **Order is precedence** in the podman argument list (`recipe_env` before harnessed-owned `-e`s)
-  and in the host `os.environ` updates. Reordering either is a silent cross-mode inversion, and it
-  passes every value-level test.
+- **Order is precedence** in the podman argument list (`recipe_env` before harnessed-owned `-e`s,
+  written down at launcher.py ~L3647) and in the host `os.environ` updates. Reordering either is a
+  silent cross-mode inversion, and it passes every value-level test — which is why
+  `TestPrecedence` asserts the order the updates are applied in, not just their outcomes.
 - **The env-file forward is withheld on ANY declaration, empty included.** Tightening it to
   "non-empty declarations" reopens bd harnessed-36l; answering presence checks on the first hit
   reopens bd harnessed-7bk.
+- **`CONTAINER_RUNTIME` stays refuse-not-fallback, and stays FIRST.** Letting an unknown value fall
+  through to podman-first runs the suite against the wrong runtime and reports a pass; dropping the
+  override makes docker CI inexpressible wherever podman is also installed. A forced runtime whose
+  binary is absent answers `None`, never the name.
+- **The docker volume chown gate keys on existed-before-create, asked before `volume create`.**
+  A sentinel file inside the volume suppresses docker's empty-volume copy-up seeding; chowning
+  before `create` creates the volume implicitly with default ownership; re-walking existing volumes
+  every launch is the unbounded-shared-cache cost the review rejected.
+- **Never accept a hand-written `install.cache` alongside `install.refs`.** That is schema
+  validation, not precedence: a winner would leave one declaration silently dead, and the derived
+  key is what makes a pin bump yield a fresh cache dir without a remembered second edit.
 - **A failed read is "absent", not "empty"** (`_volume_read` returns `None`); and absent means
   "copy the profile", malformed means "keep the floor with a warning". Conflating any pair of these
   reintroduces bd harnessed-8px.19.
@@ -432,8 +530,12 @@ agent instance container names — and that attribution has its own winner:
   readiness warning that ride on this env-file layering.
 - [Secrets broker](/openwiki/architecture/secrets-broker.md) — the broker lifecycle behind the
   same-composed-set rule.
+- [Runtimes](/openwiki/architecture/runtimes.md) — what the `CONTAINER_RUNTIME` decision decides
+  downstream: userns mapping, ownership ids, pods and placement.
 - [Services](/openwiki/architecture/services.md) — the derived-not-stored sidecar identity the
   running-vs-stopped attribution feeds.
+- [Build](/openwiki/workflows/build.md) — the pipeline the install contract and the derived
+  install cache run inside.
 - [Host launch](/openwiki/workflows/host-run.md) — the sequencer that applies the host-side
   ordering.
 - [Container launch](/openwiki/workflows/container-run.md) — the `-e` argument order and the

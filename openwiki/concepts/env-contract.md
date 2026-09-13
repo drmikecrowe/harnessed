@@ -1,11 +1,8 @@
 ---
 type: concept
-title: "The env contracts: folder env and install env across both modes"
-description: "The two harnessed-owned environment contracts catalog-authored content may rely on — the folder-env contract (setupenv.harnessed_env, one key set on every surface a recipe runs on) and the install-env contract (emit.install_env, the deliberate project-free subset), each delivered by one mechanism per mode so the same winner holds in both — plus the host-only extras that belong to neither."
-tags: [env-contract, folder-env, install-env, environment-variables, setupenv, hostrun, emit, install-scripts, precedence]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
+title: "The env contract: what the agent's environment promises"
+description: "Every environment variable a harnessed launch sets or consumes, and where it is resolved: the two harnessed-owned contracts (setupenv.harnessed_env, the folder-env contract on every surface that has a project; emit.install_env, the deliberate project-free install subset), the launch-time secrets layer (launchenv: varlock .env.schema or plain .env, delivered as --env-file temp files container-side and os.environ updates host-side), the host-only extras that belong to neither contract, and why container env is set on the container rather than on one exec."
+tags: [env-contract, folder-env, install-env, environment-variables, setupenv, launchenv, hostrun, emit, install-scripts, precedence, mise-trust, secrets, prompting]
 sources:
   - id: openwiki-source-362e06c30ccfdafd87339cb0
     resource: repo://ARCHITECTURE.md
@@ -23,10 +20,14 @@ sources:
     resource: repo://src/harnessed/assemble.py
   - id: openwiki-source-0f0f277c40d34909acb07908
     resource: repo://src/harnessed/capability.py
+  - id: openwiki-source-6645354f3fef484959520bc4
+    resource: repo://src/harnessed/console.py
   - id: openwiki-source-eea4d18f75a13f889234865d
     resource: repo://src/harnessed/emit.py
   - id: openwiki-source-154371253083f8b9b656eefa
     resource: repo://src/harnessed/hostrun.py
+  - id: openwiki-source-2b85b44d9f80bbb3b6ce747d
+    resource: repo://src/harnessed/launchenv.py
   - id: openwiki-source-ecbe6256d6933ca2c8c9678f
     resource: repo://src/harnessed/launcher.py
   - id: openwiki-source-9e1601e7fac817552c717cd7
@@ -41,32 +42,42 @@ sources:
     resource: repo://src/harnessed/svcstate.py
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
     resource: repo://src/harnessed/volumes.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+  - id: openwiki-source-c29b89e41916d7bfeb2c4c80
+    resource: repo://tests/test_cli_commands.py
+  - id: openwiki-source-1d805b22128ec078f934e435
+    resource: repo://tests/test_host_mise_trust.py
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-12T09:54:25.902Z
 ---
 
-# The env contracts: folder env and install env across both modes
+# The env contract: what the agent's environment promises
 
 harnessed runs catalog-authored content — recipe Dockerfiles, `install.sh`, `setup.sh`, `init.run`,
 `setup.condition` — on two surfaces: containerized and host-native. A recipe author must be able to
-write one script and have the same names mean the same things in both. That guarantee is delivered
-by **two** harnessed-owned contracts, each with exactly one definition and one delivery mechanism
-**per mode**:
+write one script and have the same names mean the same things in both. Everything a launch sets or
+consumes falls into four layers, and the layering *is* the precedence order (lowest wins first):
 
-| Contract | One definition | Where it exists | Defined by |
+| Layer | One definition | Who authors it | Where it is resolved |
 | --- | --- | --- | --- |
-| **folder-env** | `setupenv.harnessed_env` | every phase that has a project: the container runtime and host launches alike | the project path, the harness, the mode |
-| **install-env** | `emit.install_env` | the `install:` phase only — the fingerprint-gated container install into the per-stack volumes, and the per-launch host install | the recipe, the harness, the mode |
+| **launch secrets / dotenv** | `launchenv._resolve_launch_secrets` (container) and `launchenv._resolve_launch_env` (host) — two shapes of one resolution | the user: `~/.config/harnessed/` and the project's `.env.schema` / `.env` | per launch, host-side, before anything else runs |
+| **recipe `env:`** | `setupenv._recipe_env` — the single declaration behind all three consumers | the recipe | build time for the project-independent subset, launch time for the rest |
+| **folder-env contract** | `setupenv.harnessed_env` | harnessed | per launch, per mode |
+| **install-env contract** | `emit.install_env` | harnessed | per install, per mode — a deliberate **subset** of the folder-env |
 
-The install-env is a **deliberate subset** of the folder-env, not a rival: it carries no project
-variables because its phase has no project mounted. Everything else a script may see falls outside
-both contracts and is off-limits to catalog authors — notably the host-only package-manager
-redirects, which scripts must never read by name.
+The folder-env contract is the promise this page turns on: one set of variable names with the same
+meanings on every surface catalog-authored content runs on. The install-env is a **deliberate
+subset** of it, not a rival: it carries no project variables because its phase has no project
+mounted. Everything else a script may see falls outside both contracts and is off-limits to catalog
+authors — the host-only package-manager redirects, the mise redirect and trust variables,
+`_harness_config_env`.
 
 Related: [services](/openwiki/architecture/services.md) (where the socket and `client_env` values
 come from), [container launch](/openwiki/workflows/container-run.md) and
 [host launch](/openwiki/workflows/host-run.md) (the two sequencers that inject the contract),
 [precedence](/openwiki/concepts/precedence.md) (the full conflict table this page's ordering facts
-come from), [credentials](/openwiki/concepts/credentials.md).
+come from), [credentials](/openwiki/concepts/credentials.md) (the secrets layer's token rules).
 
 ---
 
@@ -124,7 +135,22 @@ already has the contract box-wide from `podman run -e`.*
 - **The container itself** — `podman run -e`, one `-e VAR=…` pair per variable. This is what makes
   the whole box agree: a hook or a later `podman exec` never sees the attach shell, and `bd`
   silently accepts an empty `--server-socket` rather than failing, so a socket var that existed only
-  on one exec was a silent fallback to a wrong config.
+  on one exec was a silent fallback to a wrong config. The full `-e` block, in order:
+
+  ```text
+  podman run -d --name <inst>
+    --env-file <global> --env-file <project>     # launch secrets, global -> project
+    -e <recipe env ...>                          # FIRST - catalog-authored, must not clobber
+    [-e CLAUDE_CODE_OAUTH_TOKEN]                 # withheld per the credentials rules
+    -e <folder-env contract (harnessed_env)>
+    -e <setup env (_container_setup_env)>
+    -e MISE_TRUSTED_CONFIG_PATHS=<mount_path>
+    -e HATAGO_TRANSPORT=<http|stdio|none>
+  ```
+
+  **Order is precedence**: podman applies `-e` left-to-right, so the last wins. Recipe `env:` goes
+  first because it is catalog-authored; harnessed-owned values follow. Reversing the pair silently
+  inverts precedence between the modes.
 - **Both `setup.condition` eval sites** — `_collect_setup_notices` (the user-facing notice gate) and
   `_confirm_setup` (the confirm gate, reached from both modes' setup paths). Conditions run
   host-side in the project dir with the contract in env, which is why a condition may be written
@@ -136,7 +162,7 @@ already has the contract box-wide from `podman run -e`.*
 - **The host agent process** — `os.environ` in `_launch_host`. On the host there is no container to
   set env on, so `os.environ` *is* the box; the export is set before setups run so they see it too.
 
-The two columns of that list are the point. The container has a box (the pod) and the mechanism is
+The two halves of that list are the point. The container has a box (the pod) and the mechanism is
 `podman run -e`; the host has no box, and `os.environ` of the launching process is made to play that
 role, so the exec'd agent inherits everything. **A delivery mechanism wired into one mode only makes
 the host and container winners drift** — the declaration then works on one surface and is a silent
@@ -190,6 +216,27 @@ setup env is resolved **host-side** (a `setup.config` item may prompt, which mus
 container starts) and set as real container env — not `podman exec -e` — so hooks and later execs
 see what the setup script saw; the exec itself passes no env, and it runs before the egress firewall
 closes since a first-run setup is exactly the step that downloads.
+
+### Who may be asked: the prompting gate
+
+Several of these env resolutions can *block on a question* — a `setup.config` prompt, a
+`setup.confirm`, a service-drift recreate. Whether harnessed may ask is one predicate,
+`console._can_prompt()` = `sys.stdin.isatty() and not in_exec_mode()` (#450). `isatty` alone was the
+whole test and is still right for CI and piped launches, but it is wrong for the `host-exec` /
+`container-exec` verbs: those run from a real terminal, with a real TTY, and still have nobody at
+the keyboard — the operator handed over a prompt and is waiting for an exit code. The run verbs
+declare exec-mode once, via `console.set_exec_mode`, and every blocking site gates on the predicate.
+
+`_confirm_setup` — the `setup.confirm` gate, reached from both modes — is the shape to copy:
+
+- **Without consent it skips, never runs.** No TTY (headless/CI) and `-exec` alike print a warning
+  and leave the setup undone; "nobody objected" is not consent for a commit into someone's repo.
+- **The `setup.condition` is consulted *before* prompting** (same host-side evaluation, same env
+  contract, as `_collect_setup_notices`), so the question only fires when there is actually
+  something left to do — a prompt that fires every launch trains people to answer without reading.
+- The same predicate gates `_resolve_setup_config`'s interactive prompts (non-interactive falls back
+  to the declared default), `_prompt_setup_notices`, the service-drift recreate confirm, and
+  `_acknowledge_warnings`.
 
 ---
 
@@ -267,6 +314,75 @@ therefore: **never roll your own shim — use `$HARNESSED_HOME_SHIM`.**
 
 ---
 
+## Launch-time secrets: the `.env.schema` / `.env` layer
+
+Below both contracts sits the layer the *user* authors. `launchenv.py` resolves it — pure
+resolution, nothing in the module knows about podman or the CLI — in **two shapes of the same
+answer**, because the two modes consume env differently:
+
+- `_resolve_launch_secrets` returns an ordered list of `--env-file` paths, for the container path:
+  podman needs a **file**.
+- `_resolve_launch_env` returns a `KEY -> value` map, for the host path: `os.environ` **is** the box,
+  so nothing is written to disk.
+
+Both read the same sources in the same **global → project** order, and that shared precedence is the
+reason they live in one module — the two must not drift:
+
+1. `~/.config/harnessed/.env.schema`, resolved via `varlock load` when varlock is on `PATH` (opt-in:
+   needs the schema present); else a bare `~/.config/harnessed/.env` read literally.
+2. The project: `<project>/.env.schema` via varlock (varlock itself cascades `.env`/`.env.local`
+   overlays on top of the schema); else `<project>/.env` normalized and read literally.
+
+Failure degrades, never hard-fails: a varlock timeout (60 s, so an unattended launch cannot hang
+forever on a 1Password prompt), a non-zero exit, or invalid JSON yields "no secrets from this
+schema" with an error naming the directory. The resolved env is also what the egress firewall asks
+for the agent's own API hosts (`launchenv.api_endpoint_egress_hosts`) — `ANTHROPIC_BASE_URL` comes
+from the user's schema, not from any recipe, so nothing else would tell a default-DROP firewall
+about a gateway setup.
+
+The container path's files are **generated temps, never the user's own**:
+
+- a plain `.env` is copied to a mode-0600 temp and normalized — one pair of surrounding quotes and
+  any `export ` prefix stripped, because podman's `--env-file` keeps quotes literal;
+- varlock output is written from `--format json` (raw values), not `--format env` (which double-quotes
+  everything podman would ingest literally);
+- a value containing a newline is **skipped with a warning** rather than written — podman reads a
+  value to end-of-line, so a PEM block would arrive truncated and every following line reparsed;
+- the temps are unlinked in a `finally` as soon as podman has ingested them (T-05-06): resolved
+  secret values must not linger on disk, whatever happens to the launch.
+
+The `--env-file` list is consumed by `seed_auth`, deliberately **after** every aborting check in
+`materialize_config` so an early exit cannot strand resolved secrets on disk; podman applies the
+files in order with **last-wins**, which is why the order is global → project (the project
+overrides the global). `mounts._env_files_value` answers "what value does this var end up with"
+using the same last-wins walk and distinguishes an explicit **empty string** ("declared, and turned
+off") from absent — the distinction the token-withholding rules in
+[credentials](/openwiki/concepts/credentials.md) are built on. For an `isolated_auth` stack,
+`_strip_var_from_env_files` deletes the token's assignment from the resolved temps in place — safe
+precisely because none of them is the user's file.
+
+## Recipe `env:`: built where, launched where
+
+Recipe `env:` is one declaration (`setupenv._recipe_env` iterating `schema.resolve_recipe_env` per
+recipe, later recipes winning on a clash) consumed by three surfaces: the build-time install step,
+the setup script, and the agent process. Its delivery has a **build-vs-launch split**:
+
+- **Build** (container mode): `emit.write_derived_dockerfile` resolves each recipe's env with
+  `project_path=None`. `resolve_recipe_env` **omits** — never half-substitutes — any var whose
+  template needs the project (`{project_dir}`, an unresolvable `{persist:…}`), and the surviving
+  project-independent subset is emitted as real image `ENV` lines, placed before the recipe's own
+  Dockerfile body so a build-time `RUN` sees them.
+- **Launch** (both modes): the *full* resolved set — project-templated values included — is
+  re-resolved with the project known and set on the box: `-e` pairs in the container's `podman run`
+  (the image's `ENV` already carrying the build-resolvable subset is not sufficient — a value
+  templated on `{project_dir}` or an `in_repo` persist dir is unknowable at build), and
+  `os.environ.update(_recipe_env(...))` on the host.
+
+The split is what lets one `env:` declaration serve a Dockerfile `RUN`, an `install.script`, and the
+running agent without any of them seeing a half-substituted path.
+
+---
+
 ## Host-only extras: NOT part of either contract
 
 Alongside the install contract, the host install and setup executors also redirect the package
@@ -283,6 +399,56 @@ These are host-only **by design**: container-side the image already provides the
 recreate. They are **not part of the both-modes contract**, and a script must not depend on their
 values — for a path you need to name, use `$HARNESSED_BIN_DIR`, which *is* contractual.
 
+### The mise redirect and `MISE_TRUSTED_CONFIG_PATHS`
+
+Host provisioning redirects mise at the **stack's own instance** (`_host_mise_env`:
+`MISE_DATA_DIR` and `MISE_CONFIG_DIR` under the stack's tools tree), because a mise shim re-resolves
+its tool by `argv[0]` against the data dir *at run time* — install-time redirection alone puts the
+binary where the shim can never find it again. The redirect is scoped to provisioning (installs and
+the recipe scripts that inherit it); the **agent** gets the user's own mise back before the exec
+(`_restore_user_mise_env`), because nothing harnessed puts on PATH is a shim any more and carrying
+the redirect broke every shim on the user's own PATH, the agent binary included. `MISE_STATE_DIR` is
+deliberately **not** redirected — mise keeps its trust store there, and trust is a fact about the
+user and a config file, not about which stack happens to be running.
+
+`MISE_TRUSTED_CONFIG_PATHS` is the trust seam, and the two modes set it by opposite-but-mirrored
+rules:
+
+- **Host: carry, never invent** (bd harnessed-67u). `_apply_host_mise_env` reads the user's own
+  `settings.trusted_config_paths` out of their mise `config.toml` — *before* the `MISE_CONFIG_DIR`
+  redirect lands, so a user-chosen config dir is honoured — unions it with the inherited value,
+  dedupes, and joins with `:` (mise's only delimiter). It sets nothing when the composed list is
+  empty, because an empty value is a value mise would read. Harnessed naming its own paths here is
+  rejected by design: a mise config can carry `_.source`, so granting trust is **code execution**,
+  and auto-trusting on directory entry would hand that to any repo you walk into. Carrying entries
+  the user (or the inherited environment) already chose grants nothing.
+- **Container: name the mount root** (bd harnessed-8px.27). `podman run` carries
+  `-e MISE_TRUSTED_CONFIG_PATHS=<mount_path>` because setup scripts run as
+  `podman exec … bash <script>` — neither a login nor an interactive shell — so the image's own
+  `mise trust -a` (in `~/.bashrc` and `/etc/profile.d`) never runs, and any setup invoking a mise
+  shim died with `Config files … are not trusted`. serena hit this: its binary *is* a mise shim, so
+  merely running it loads the project's config. It is set **on the container, not the exec**, for
+  the same reason as everything else in the `-e` block — hooks and later execs must agree with what
+  the setup script saw — and preferred over `bash -lc`, which would fix trust only as a side effect
+  of login-shell behaviour (reordering `PATH` and pulling in everything else a login shell does).
+
+The contrast is the rule: container-side the only config in play is the one harnessed put there (the
+mount root), so naming it grants nothing; host-side the environment belongs to the user, so
+harnessed only carries what they already chose.
+
+### The project's own copy
+
+A launch also hands the **project** the same tool env the agent gets: `_write_project_tool_env`
+(on both backends) records `_recipe_env(mode="host")` plus the service `client_env` into one 0600
+dotenv under `$XDG_STATE_HOME/harnessed/project-env/`, keyed on the git common dir so every worktree
+of a checkout shares it, regenerated every launch — it carries the service password, so it is
+referenced from the state dir, never copied into the repo. **No mise config is written into the
+project** (bd harnessed-7mt): mise keys trust per config file and trust does not cascade, so a
+harnessed-dropped `mise.local.toml` re-prompted in every new worktree — and since a mise config can
+carry `_.source`, trusting one grants code execution. Removing the file *removes the prompt* instead
+of defeating it; configuring a plain shell is opt-in, via a loader pointed at
+`harnessed project-env-path`.
+
 Two further pieces of host-side env sit outside both contracts and are layered around them:
 
 - **Recipe `env:`** (mode-resolved) is set on the launching process and inherited by everything;
@@ -297,8 +463,20 @@ Two further pieces of host-side env sit outside both contracts and are layered a
 ## Precedence: the contract always wins
 
 The rows that matter here are in [precedence](/openwiki/concepts/precedence.md); restated only as
-far as this page needs them. Identical in both modes: **inherited environment → recipe `env:` →
-harnessed-owned contract.** The contract wins.
+far as this page needs them. Identical in both modes, bottom to top: **inherited environment →
+launch secrets / `.env` → recipe `env:` → harnessed-owned contract.** The contract wins.
+
+```mermaid
+flowchart TD
+    INH["inherited environment"] --> SEC["launch secrets -- .env.schema / .env"]
+    SEC --> REC["recipe env -- catalog-authored"]
+    REC --> CT["harnessed-owned contract -- always wins"]
+    CT --> EX["host-only extras + _harness_config_env, layered after"]
+```
+
+*The ladder. Container mode realizes it as `--env-file` first, then `-e` left-to-right with recipe
+env first and harnessed-owned values last; host mode realizes it as successive `os.environ.update`
+calls in the same order.*
 
 - Container mode, install step: the executor merges
   `{**resolve_recipe_env(...), **install_env(...)}` and passes the result as `-e VAR=…` — the dict
@@ -307,7 +485,10 @@ harnessed-owned contract.** The contract wins.
   assignments beating `ENV`. Container mode, launch: `podman run -e` applies `-e` left-to-right with
   recipe `env:` passed **first** among the `-e` block and harnessed-owned values later.
 - Host mode: `env.update(install_env(...))` runs after `env.update(recipe_env)`, and
-  `os.environ.update(harnessed_env(...))` runs after `os.environ.update(_recipe_env(...))`.
+  `os.environ.update(harnessed_env(...))` runs after `os.environ.update(_recipe_env(...))` — which
+  itself runs after `os.environ.update(_resolve_launch_env(...))`, the secrets layer, applied
+  *before* recipe env so a recipe declaration still wins and a stale shell export never beats the
+  declared schema.
 
 The two orderings are not independent facts: reversing either one **silently inverts precedence
 between the modes**, which is the harnessed-8px.2 merge defect and the same reason the delivery
@@ -343,5 +524,13 @@ mechanism.
 - **Scripts defend themselves with the contract.** Shipped install scripts open with
   `: "${HARNESSED_CONFIG_DIR:?…}"` guards and read `HARNESSED_REF_*` / `HARNESSED_REPO_*` instead of
   carrying pins in the script text — the contract's keys are the only sanctioned inputs.
+- **The prompting gate is one predicate.** Every site that can block a launch on a question routes
+  through `console._can_prompt()`, so a new blocking prompt cannot forget the `-exec` case (#450)
+  the way the confirm gate originally did.
+- **The trust variables have an auditable shape.** Host-side `MISE_TRUSTED_CONFIG_PATHS` only ever
+  contains entries read from the user's own config or handed in by the inherited environment
+  (`tests/test_host_mise_trust.py` pins the carry-don't-invent rule, the `:` delimiter, the dedupe,
+  and fail-closed on unreadable config); container-side the single `-e` is asserted on the source of
+  `apply_isolation` so it cannot be dropped from the `podman run` line silently.
 - **Authoring docs restate the tables** (the shipped harnessed-catalog skill lists the install env
   and the "never roll your own shim" rule), so the contract is the same in code, docs, and examples.

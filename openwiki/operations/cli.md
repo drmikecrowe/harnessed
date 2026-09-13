@@ -1,12 +1,11 @@
 ---
 type: reference
 title: "Operations: the command surface and lifecycle verbs"
-description: "The full harnessed verb surface across both entrypoints (harnessed and harnessed-tools), each verb mapped to its owning module and the lifecycle stage it manages — the launch-verb grammar (the verb picks the backend, a flag picks the stack), build and reconciliation, instance teardown and secret-broker reporting, sidecars, capability tests, pin updates, the garbage collectors, the nightly rescan — plus the per-project launcher scripts a launch leaves behind."
-tags: [cli, commands, verbs, lifecycle, build, reconcile, svc, rescan, update, test, persist-prune, launch-script, garbage-collection]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
+description: "The full harnessed verb surface across both entrypoints (harnessed and harnessed-tools), each verb mapped to its owning module and the lifecycle stage it manages — the launch-verb grammar (the verb picks the backend, a flag picks the stack), the non-interactive -exec variants of the run verbs, build and reconciliation, instance teardown and secret-broker reporting, sidecars, capability tests, pin updates, the garbage collectors, the nightly rescan — plus the per-project launcher scripts a launch leaves behind."
+tags: [cli, commands, verbs, lifecycle, build, reconcile, svc, rescan, update, test, persist-prune, launch-script, garbage-collection, exec]
 sources:
+  - id: openwiki-source-3b6f61ac560f049f559456d0
+    resource: repo://.github/workflows/live.yml
   - id: openwiki-source-23775c3de52f3ab95a13cb8b
     resource: repo://README.md
   - id: openwiki-source-085f2349c58adb4062c2803f
@@ -17,8 +16,12 @@ sources:
     resource: repo://src/harnessed/catalogseed.py
   - id: openwiki-source-0852603a38d760a77db2bc8a
     resource: repo://src/harnessed/cli.py
+  - id: openwiki-source-6645354f3fef484959520bc4
+    resource: repo://src/harnessed/console.py
   - id: openwiki-source-3d73552d55725e6e392c06df
     resource: repo://src/harnessed/hosthome.py
+  - id: openwiki-source-154371253083f8b9b656eefa
+    resource: repo://src/harnessed/hostrun.py
   - id: openwiki-source-2b85b44d9f80bbb3b6ce747d
     resource: repo://src/harnessed/launchenv.py
   - id: openwiki-source-ecbe6256d6933ca2c8c9678f
@@ -33,6 +36,8 @@ sources:
     resource: repo://src/harnessed/report.py
   - id: openwiki-source-8553af2aa8f78f1287a035ce
     resource: repo://src/harnessed/scan.py
+  - id: openwiki-source-2e234f8645cb88b1fd759f98
+    resource: repo://src/harnessed/setupenv.py
   - id: openwiki-source-5e89566b7a4e43a53be5c7b2
     resource: repo://src/harnessed/svcstate.py
   - id: openwiki-source-dedbae614432467fbfc419d9
@@ -43,7 +48,12 @@ sources:
     resource: repo://systemd/harnessed-rescan.service
   - id: openwiki-source-7af162bd104477b196c3dcdd
     resource: repo://systemd/harnessed-rescan.timer
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+  - id: openwiki-source-e5035bb9cb1bedfb5acde039
+    resource: repo://tests/test_exec_verbs.py
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-12T09:54:25.902Z
 ---
 
 # Operations: the command surface and lifecycle verbs
@@ -51,9 +61,9 @@ generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
 harnessed is driven through **two CLIs with one division of labor**:
 
 - **`harnessed`** — `launcher.py`'s Typer app (`pyproject.toml` wires `harnessed = harnessed.launcher:main`). Every verb that can touch the container runtime, launch an agent, or manage host-side state lives here.
-- **`harnessed-tools`** — `cli.py`'s argparse app. Its verbs are **emit-only or analysis-only, with exactly one exception**: assemble a profile without a runtime, drive the nightly online scan, style-check prose, and manage persist dirs never touch podman/docker — but **`test` launches a real headless instance**, shelling out to `harnessed container-run <harness> <project> --stack <name> --fresh`, so it needs podman/docker and can leave service sidecars running after the test's instance teardown. The "emit-only" label describes the **assembler** — which is exactly the scope cli.py's own docstring puts "NEVER invokes podman/docker" on — not the whole CLI.
+- **`harnessed-tools`** — `cli.py`'s argparse app. **Every verb except `test` is emit-only or analysis-only** — assemble a profile without a runtime, drive the nightly online scan, style-check prose, and manage persist dirs never touch podman/docker. **`test` is the single exception** that keeps this CLI from being describable as runtime-free: it drives a real headless launch, shelling out to `harnessed container-run <harness> <project> --stack <name> --fresh`, so it needs podman/docker and can leave service sidecars running after the test's instance teardown. Both of cli.py's self-descriptions scope "emit-only" / "NEVER invokes podman/docker" to the **assembler** — which reads the catalog and writes the profile under `--build-dir` — not to the whole CLI.
 
-The operational rule about *who may run what* lives at the top of [AGENTS.md](https://github.com/drmikecrowe/harnessed/blob/main/AGENTS.md) (and is mirrored in CLAUDE.md): the two interactive run verbs hand the terminal to a live agent session and are not for automation to invoke.
+The operational rule about *who may run what* lives at the top of [AGENTS.md](https://github.com/drmikecrowe/harnessed/blob/main/AGENTS.md) (and is mirrored in CLAUDE.md): the two interactive run verbs hand the terminal to a live agent session and are not for automation to invoke. The `-exec` verbs are the automation-facing counterpart — same grammar, prompts replaced by their non-interactive branches.
 
 Related: [system overview](/openwiki/architecture/overview.md),
 [state, staleness, and GC](/openwiki/architecture/state.md),
@@ -69,13 +79,14 @@ Each verb with its owning module and the lifecycle it manages. Function names ar
 | Command | Owner | Lifecycle |
 | --- | --- | --- |
 | `harnessed container-run` / `host-run` | `launcher.container_run` / `launcher.host_run` → `ContainerBackend` / `HostBackend` | **Launch** — covered by the container-run and host-run pages |
+| `harnessed container-exec` / `host-exec` | the **same** `container_run` / `host_run` functions under second names (#450) | **Non-interactive launch** — the run verbs with nobody at the keyboard; identical grammar and flags |
 | `harnessed build [<stack> [<harness>]]` | `launcher.build` → `_build_stack`, `_build_images_cmd`, `_reconcile_stacks` | **Build** — profile + images + volumes; reconciliation sweep |
 | `harnessed list` | `launcher.list_stacks` | **Inspect** — authored stacks + instances (running and stopped) + live secret brokers |
 | `harnessed stop <stack>` / `rm <stack>` | `launcher.stop` / `launcher.remove` | **Instance teardown** — pods/containers only |
 | `harnessed prune` | `launcher.prune` | **Idle reaping** — instances detached past `--idle` |
 | `harnessed new <stack>` | `launcher.new_stack` | **Authoring scaffold** — `stacks/<name>/stack.yaml` |
 | `harnessed install` / `uninstall <stack>` | `launcher.install_stack` / `launcher.uninstall_stack` | **Per-stack shim** in `~/.local/bin` |
-| `harnessed test <stack> <harness>` | `launcher.test_stack` → `cli._run_test` → `capability.run_capability_test` | **Verification** — the capability oracle |
+| `harnessed test <stack> <harness> [--project] [--keep] [--json]` | `launcher.test_stack` → `cli._run_test` → `capability.run_capability_test` | **Verification** — the capability oracle |
 | `harnessed scan <stack> [<harness>]` | `launcher.scan` | **Re-scan**, scoped to one stack |
 | `harnessed rescan [<image>]` | `launcher.rescan` | **Re-scan**, whole fleet — the nightly timer's ExecStart |
 | `harnessed update [--check]` | `launcher.update_pins` → `update.py` | **Pin maintenance** across the catalog |
@@ -112,8 +123,8 @@ and differ in **backend** and nothing else; both end by replacing the launcher p
 (`os.execvp`), which is why the
 [AGENTS.md rule](https://github.com/drmikecrowe/harnessed/blob/main/AGENTS.md) exists. The full
 walks live on the container-run and host-run pages. What this page owns is the **verb grammar**
-(below), the **minted-manifest cleanup rule** (below), and the **launcher scripts** each launch
-leaves behind (below).
+(below), the **minted-manifest cleanup rule** (below), the **`-exec` variants** (below), and the
+**launcher scripts** each launch leaves behind (further down).
 
 The grammar is defined once and shared by both verbs — `_STACK_OPT`, `_RECIPE_OPT`, and
 `_EXTENDS_OPT` are module-level option objects, so the two verbs' grammars cannot drift:
@@ -159,6 +170,54 @@ dynamic one whose manifest already existed, yields None. The ownership rule that
 - `typer.Exit(0)` must **not** trigger cleanup: `--create-aoe-only` ends that way after registering
   a row whose recorded command names this manifest, so deleting it would manufacture exactly the
   dead-on-arrival row the flow otherwise avoids.
+
+### The `-exec` verbs (#450): the run verbs with nobody at the keyboard
+
+`host-exec` and `container-exec` run the same launch as `host-run` and `container-run` with one
+contract change: **nobody is at the keyboard**. The caller handed over a prompt and is waiting for
+an exit code — output streams to the terminal, the exit code is the agent's, and backgrounding is
+the caller's job (`&`, `nohup`, or whatever supervisor runs the job).
+
+- **Same function, second name — never a wrapper.** The verbs are registered as
+  `app.command("host-exec")(host_run)` and `app.command("container-exec")(container_run)`: the run
+  verbs' *own* callbacks. Typer builds one click command per registration, so each body reads
+  `ctx.info_name` to tell which name the operator typed. Twenty-odd options across the two verbs
+  make a forwarding wrapper a second signature — a guaranteed drift the moment one verb gains an
+  option — and `test_exec_verbs.py` asserts **callback identity**, not wrapper behavior.
+- **`_can_prompt()` is the gate, not `isatty()`.** `console._can_prompt()` returns
+  `sys.stdin.isatty() and not _EXEC_MODE`. `sys.stdin.isatty()` alone was — and still is — right
+  for CI and a piped launch, and wrong for `-exec`: those run from a real terminal, with a real
+  TTY, and still have nobody at it, where a `typer.prompt` does not ask a question, it hangs a
+  script. `console.set_exec_mode` is called once per run — inside `_launch_host` for the host verb,
+  at the top of `container_run` for the container verb.
+- **Every blocking site already had a non-interactive branch** — they were designed for CI and
+  piped launches — so `-exec` takes that same branch rather than inventing a second policy per
+  site. The setup-notice prompt (`_prompt_setup_notices`) returns False instead of stopping on
+  `[O]k / [T]erminal / [D]ismiss / [Q]uit` with no one to type a letter; the warning acknowledgement
+  (`_acknowledge_warnings`) is skipped right before the exec handoff; sidecar-drift recreation
+  proceeds automatically, exactly as headless; a stale profile, an older-build running instance,
+  and an unreachable aws-sso ECS server all take their designed decline branches (error + exit 1,
+  or attach-as-is); `setup.confirm` (which guards a step that *writes to the user's repo* — a real
+  TTY with nobody at it is not consent) takes its skip branch, and the second prompt in the same
+  loop, `setup.config`'s own `prompt:`, rides in as `interactive=_can_prompt()` on both backends.
+  The enumeration is itself tested: no non-comment bare `sys.stdin.isatty()` may appear in
+  `launcher`, `hostrun`, or `setupenv`.
+- **`container-exec` allocates no pty.** The attach argv is `podman exec -i` with `-t` added only
+  when exec mode is off: a pty makes the harness switch to its fullscreen renderer, so the answer
+  the caller asked for is drawn on the alternate screen buffer and wiped at exit, while the escape
+  sequences that survive land in whatever the caller piped the output into. `-i` stays in both
+  modes — a prompt arriving on stdin has to reach the agent. `container-exec --shell` is refused
+  outright (exit 2): `--shell` starts no harness, and `-i` without a pty would hand the caller a
+  shell it cannot drive.
+- **The provenance line survives the alias.** `_typed_invocation` counts `host-exec`/`container-exec`
+  as the same verb via an explicit two-entry map — named explicitly rather than matched by prefix,
+  so a `container-exec` invocation still cannot caption a `host-run` script. Rejecting the alias
+  would drop the `# as typed:` comment from every scripted launch while none of the two hazards the
+  check exists for is present.
+
+```sh
+harnessed container-exec omp . -- -p "summarize the diff"   # plain text out; exit code is the agent's
+```
 
 ## `build`: three forms and the reconciliation sweep
 
@@ -214,6 +273,14 @@ The sweep's semantics, each of which is load-bearing:
   previously-built-but-no-longer-declared stacks will be missed, then reconciles the declared
   pairs anyway — aborting would overreact, but saying nothing would print "All stacks up to date"
   over a sweep that never looked.
+
+Bare `build` is **exactly** base+agent images plus the sweep — nothing else: no derived stack
+image, no credentialed rescan, no volume creation. That exactness is load-bearing: the
+live-verification workflow provisions a fresh runner with bare `harnessed build` rather than
+`build default claude`, because the named form's extra work is precisely what the live tests redo
+themselves in separate processes (where the build-once cache cannot deduplicate it), and
+pre-creating a stack's volumes before the tests that exercise volume creation would mask a
+cold-start failure.
 
 `--corp-proxy-ca-crt` is a one-time setup: it persists the CA bundle under
 `$XDG_CONFIG_HOME/harnessed/` and later builds auto-inject it into the base image trust store.
@@ -292,15 +359,16 @@ at the *first* `--`. `uninstall` removes the shim.
 
 ## `test`: the capability oracle
 
-`harnessed test <stack> <harness>` verifies that a built stack delivers what its manifests
-declare. The verb:
+`harnessed test <stack> <harness> [--project <path>] [--keep] [--json]` verifies that a built
+stack delivers what its manifests declare. The verb:
 
 1. Auto-assembles first when the stack is not built or its profile is stale
    (`staleness.check_profile_fresh`) — a test must run against a current build, and the rebuild
    here is the same fingerprint-gated `_build_stack` a launch uses.
 2. **Delegates to a subprocess**: `uv run` (or `python3`) `-m harnessed.cli test <stack>
-   <harness> --root …` with `PYTHONPATH`, `CONTAINER_RUNTIME`, and `HARNESSED_DIR` set. The
-   subprocess is deliberately **unbounded**: the child bounds its own work
+   <harness> --root …` with `PYTHONPATH`, `CONTAINER_RUNTIME`, and `HARNESSED_DIR` set, forwarding
+   `--project`, `--keep` (keep the instance up for debugging), and `--json` (structured output for
+   CI) to the child. The subprocess is deliberately **unbounded**: the child bounds its own work
    (`capability.DEFAULT_TEST_TIMEOUT = 120` per test), and a second deadline out here would only
    cut off a run that is legitimately still going. The child's return code becomes the exit code.
 
@@ -331,11 +399,13 @@ rejected with the valid-actions error.
   is not offered and the action is deliberately not named "restart". Recreate tears down and
   rebuilds through the same `_ensure_service` path (`force_recreate=True`); data — the named
   volume or the bind-mounted persist dir — is untouched. Recreate is also the one action that
-  needs no `--stack` from inside the project: it reads the stack back off the container's
-  `harnessed.svc-stack` label, and for a container predating that label, off the agent instances
-  running for this repo (running instances win over stopped ones; more than one candidate is an
-  error demanding `--stack`). `up`/`recreate` compute the **same widened mount** a launch computes,
-  so a sidecar started via `svc up` never gets a narrower git surface than one started by a launch.
+  needs no `--stack` from inside the project: it **infers the stack from the container's
+  `harnessed.svc-stack` label** and, for a container predating that label, from the agent
+  instances running for this repo (running instances win over stopped ones; more than one
+  candidate is an error demanding `--stack`). After one labelled recreate the flag is no longer
+  needed — the recreate itself stamps the label. `up`/`recreate` compute the **same widened
+  mount** a launch computes, so a sidecar started via `svc up` never gets a narrower git surface
+  than one started by a launch.
 - **`sync`** execs the service's own `sync:` command *inside its container* (`podman exec … bash
   -lc <sync_cmd>`), unbounded — a catalog-authored sync is explicit, watched work (a database
   import legitimately runs for many minutes; Ctrl-C is the control). It exists for a server whose
@@ -344,8 +414,9 @@ rejected with the valid-actions error.
 - **Drift detection.** At create time the sidecar is stamped with `harnessed.svc-config-hash` (a
   digest of the full `podman run` argv). Every later `up` re-derives what the code *would* create
   today and compares: a healthy-looking container whose config hash no longer matches prompts for
-  recreation before a harness launches (proceeding automatically headless). Without this, a
-  sidecar drifts arbitrarily far from the code that would create it today and nothing notices.
+  recreation before a harness launches (proceeding automatically headless — and under `-exec`,
+  which is the same non-interactive branch). Without this, a sidecar drifts arbitrarily far from
+  the code that would create it today and nothing notices.
 - `scope: project` services otherwise require `--stack` for every action, because the persist
   entry that holds their data is resolved through the stack.
 
@@ -400,9 +471,14 @@ flowchart TD
     G -->|no| GREEN["exit 0"]
 ```
 
-*The nightly path. The timer is a user unit: copy to `~/.config/systemd/user/` and enable with
-linger — without `loginctl enable-linger`, the user systemd instance is torn down on logout and
-the timer never fires.*
+*The nightly path. The timer is a user unit: copy to `~/.config/systemd/user/` and enable with*
+
+```sh
+systemctl --user enable --now harnessed-rescan.timer
+```
+
+*after `loginctl enable-linger $USER` — without lingering, the user systemd instance is torn down
+on logout and the timer never fires.*
 
 ### The timeout story
 
@@ -463,10 +539,11 @@ Each garbage collector keys on a different artifact, and the keying is deliberat
 the [state page](/openwiki/architecture/state.md)):
 
 - **`host-gc`** lists every host config home with age, size, and credential status; `--prune`
-  removes only dirs whose **stack no longer resolves in the catalog** — a dir whose project path
-  exists is never removed, because a missing path can mean an unmounted volume, and deleting that
-  config would be data loss. Real `.credentials.json` files are overwritten with null bytes and
-  fsync'd before removal.
+  removes only dirs whose **stack no longer resolves in the catalog**. Since the per-stack
+  re-keying, the config dir *is* the stack identity, and the stack name sits right there in the
+  path — a resolvable signal, unlike the old per-project breadcrumb whose `project_hash` was a
+  one-way SHA1 that could not be resolved back to anything. Real `.credentials.json` files are
+  overwritten with null bytes and fsync'd before removal (`_scrub_host_home`).
 - **`volume-gc`** matches volumes **by label** (`harnessed.role`, `harnessed.stack`,
   `harnessed.harness`), never by parsing names — a stack name may contain the same hyphens the
   name format uses. Same orphan rule as host-gc; a volume whose stack still resolves is **never**

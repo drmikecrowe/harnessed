@@ -1,7 +1,7 @@
 ---
 type: workflow
 title: "Build pipeline: from stack and harness to profile, images, and populated volumes"
-description: "The end-to-end harnessed build: in-process emit-only assembly, the staged podman build context, the base/agent/derived image lineage, fingerprint-gated volume population, the baked-settings merge, and the two scan passes — naming the module that owns each stage and the exact order they run in."
+description: "The end-to-end harnessed build: in-process emit-only assembly, the staged podman build context, the base/agent/derived image lineage, fingerprint-gated volume population, the baked-settings merge, and the post-build credentialed scan — naming the module that owns each stage and the exact order they run in."
 tags: [build, assemble, emit, profile, derived-image, agent-image, build-context, cache-mounts, recipe-hash, volumes, parallel-builds, scan, podman]
 sources:
   - id: openwiki-source-e916c387e9195be48f6d9d41
@@ -36,14 +36,16 @@ sources:
     resource: repo://src/harnessed/schema.py
   - id: openwiki-source-14bd2e9ce8d26435ef5776a8
     resource: repo://src/harnessed/staleness.py
+  - id: openwiki-source-5e89566b7a4e43a53be5c7b2
+    resource: repo://src/harnessed/svcstate.py
   - id: openwiki-source-49ee9cf3450e26c1ce6d9dc6
     resource: repo://src/harnessed/synclinks.py
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
     resource: repo://src/harnessed/volumes.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
+    at: 2026-09-12T09:54:25.902Z
 ---
 
 # Build pipeline: from stack and harness to profile, images, and populated volumes
@@ -74,7 +76,8 @@ deliberately does not touch),
 
 ```mermaid
 flowchart TD
-    cli["harnessed build stack harness"] --> asm["assemble.assemble - in process, emit only"]
+    cli["harnessed build stack harness"] --> pre["launcher._preflight_runtime - refuse a runtime whose uid mapping harnessed cannot name"]
+    pre --> asm["assemble.assemble - in process, emit only"]
     asm --> load["Stage 1 schema.load_stack_with_recipes - overlay-first catalog resolution"]
     load --> lint["Stage 2 recipe lints plus validate_agent_image - fail fast before any file is written"]
     lint --> srv["_merge_servers and _resolve_service_servers plus the hub and direct gates"]
@@ -85,12 +88,12 @@ flowchart TD
     hatago --> dock["Stage 4 emit.write_derived_dockerfile - recipe ENV plus system layers, no scan layer"]
     dock --> fan["synclinks.LinkSyncer.fan - skills commands rules into .claude"]
     fan --> identity["stack identity per harness, then staleness.write_stamp written last"]
-    identity --> base["Stage 5 launcher._build_base_image - hatago and the scanners are baked here"]
-    base --> agent["launcher._build_agent_image - pin-gated build args from agent.yaml"]
+    identity --> base["Stage 5 launcher._build_base_image - parameterised base, always rebuilt, cache-backed"]
+    base --> agent["launcher._build_agent_image - standalone run-path fallback image, once per process"]
     agent --> rh["Stage 6 assemble.compute_recipe_hash"]
-    rh --> derived["launcher._build_derived_image - labels harnessed.recipe-hash"]
+    rh --> derived["launcher._build_derived_image - staged build context, harnessed.recipe-hash label"]
     derived --> vols["Stage 7 volumes._ensure_stack_volumes - fingerprint-gated installs"]
-    vols --> scan["Stage 8 launcher._scan_image_in_container - credentialed and advisory"]
+    vols --> scan["Stage 8 launcher._scan_image_in_container - credentialed rescan, tokens resolved on the host"]
     scan --> settings["launcher._merge_baked_settings - volume first, then image"]
     settings --> open["_merge_baked_opencode for opencode only"]
     open --> report["_surface_scan_report - the credentialed report wins"]
@@ -266,42 +269,53 @@ re-declared after `FROM` because ARG is scoped to the build stage it is declared
 `RUN` bodies can reference `${HARNESS}` — recipes are harness-independent, and the build arg is how
 one body branches per harness.
 
-**`tools:` and `install:` are not emitted here.** They run at container RUNTIME into per-stack
-volumes, gated on a fingerprint, because baking them as image layers made every recipe edit cost a
-layer rebuild: measured at **307s** for a one-line change to `gsd-core/install.sh`, against **4.3s**
-for the same install executed natively. Almost none of that was download (the cache mounts already
-covered it) — it was podman committing layers over a large tree, which a volume write skips
-entirely.
+**`tools:` and `install:` are not emitted here** (bd harnessed-8px.21.4). They run at container
+RUNTIME into per-stack volumes, gated on a fingerprint, because baking them as image layers made
+every recipe edit cost a layer rebuild: measured at **307s** for a one-line change to
+`gsd-core/install.sh`, against **4.3s** for the same install executed natively. Almost none of that
+was download (the cache mounts already covered it) — it was podman committing layers over a large
+tree, which a volume write skips entirely.
 
 What remains in the image is exactly what a volume **cannot** carry: recipe `env:` (a shell export
 dies with the script that set it) and system-level Dockerfile bodies — `USER root`, `apt-get`,
 writes to `/usr` — which harnessed will not do on a host and cannot do in a volume.
 
-There is **no scan layer** in the emitted Dockerfile. It used to be the final `RUN`, but since
-installs stopped being image layers it scanned an image containing no stack content and still
-printed "no high/critical advisories" — off 1 of 4 scanners. A green-looking result covering almost
-nothing is worse than no result. The real scan is the
-[credentialed post-build pass](#stage-8--the-two-scan-passes).
+There is **no scan layer** in the emitted Dockerfile (bd harnessed-8px.21.5). It used to be the
+final `RUN`, but since installs stopped being image layers it scanned an image containing no stack
+content and still printed "no high/critical advisories" — off 1 of 4 scanners, with osv reporting
+"no skills/ or commands/ dir to scan". A green-looking result covering almost nothing is worse than
+no result. The real scan is the
+[credentialed post-build pass](#stage-8--the-two-scan-passes). (Two comments in the repo still
+describe the removed layer in the present tense — the `_build_stack` comment above the derived
+build and the scanners block in `Dockerfile.harnessed-base` — but the emitter and
+`_build_derived_image`'s docstring are authoritative: no layer, ever.)
 
 ## Stage 5 — images (`launcher.py`) and the image lineage
 
 `_build_stack` builds the shared images then the derived one, each through
 `launcher._staged_build_context()` ([below](#the-staged-build-context)):
 
+- `_preflight_runtime(rt)` runs **first**, before anything is created — see
+  [the preflight](#the-preflight).
 - `_build_base_image(rt)` → `harnessed-base:latest`, from `catalog/base/Dockerfile.harnessed-base`.
-  This is where **hatago is baked** (`pnpm add -g @drmikecrowe/hatago-mcp-hub@0.1.2`, the maintained
-  fork that carries per-server tool filtering) plus the core runtimes (node/pnpm/python/bun/rust/go),
-  the extra-tools set, the four supply-chain scanners, `harnessed-scan`, `harnessed-start`, and the
-  `op` shim — **there is no separate hatago image**. Always rebuilt first, cache-backed (a no-op
-  when the Dockerfile is unchanged), because every other image sits in its lineage and a stale base
-  would silently propagate into all of them.
+  The parameterised base is **always rebuilt**, cache-backed (a no-op when the Dockerfile is
+  unchanged), because every other image sits in its lineage and a stale base — after an edit to the
+  base Dockerfile, its scanner installs, or extra-tools — would silently propagate into every
+  derived image. This is where **hatago is baked** (`pnpm add -g
+  @drmikecrowe/hatago-mcp-hub@0.1.2`, the maintained fork that carries per-server tool filtering)
+  plus the core runtimes (node/pnpm/python/bun/rust/go), the extra-tools set, the four supply-chain
+  scanners, `harnessed-scan`, `harnessed-start`, and the `op` shim — **there is no separate hatago
+  image**.
 - `_build_agent_image(rt, harness)` → the per-harness agent image, named by
   `catalog/agents/<harness>/agent.yaml`'s `image:` field, resolved by `layout._agent_image`. The
   manifest's `build_args` are the single source of pinned versions, passed as `--build-arg` by
   `_agent_build_arg_flags`; the agent Dockerfiles' `ARG`s carry **no defaults** and guard with
   `:?` — an empty `CLAUDE_VERSION` is never a valid pin, so a build path that omits the flag fails
   rather than handing the installer an empty argument and accepting whatever it decides that means.
-  Built at most once per process (N stacks sharing a harness share one agent image).
+  Built at most once per process (N stacks sharing a harness share one agent image), cache-backed.
+  **Why it still runs when the derived image does not need it as a parent is the
+  [lineage question](#the-lineage-and-the-disagreement-the-source-carries)**: it is the **fallback
+  image** `harnessed run` uses for a stack with no derived image yet.
 - `_build_derived_image(rt, derived, dockerfile, ctx, recipe_hash)` →
   `harnessed-<harness>-<stack>:latest` from the emitted Dockerfile. It labels the image
   `harnessed=true` (how `rescan` finds it) and `harnessed.recipe-hash=<hash>`, and **never** passes
@@ -312,6 +326,17 @@ nothing is worse than no result. The real scan is the
 - `_build_service_image(rt, name)` for each of `_service_refs(stack)` — the three-way union of
   recipe `mcp.servers[].service`, recipe `services:`, and the stack's own `services:`. Layer-cached
   and built once per process, so service images are ready before first run.
+
+### The preflight
+
+`_preflight_runtime(rt)` is the first statement in `_build_stack`, before the stack is even looked
+up. It refuses — one `docker info`, then exit 1 — a **docker** runtime whose id mapping harnessed
+cannot name: a rootless daemon (the container's uid is drawn from the caller's subuid range, so
+every file written through a bind mount lands owned by an unpredictable id the agent cannot read
+back), or a daemon whose rootfulness could not be determined. Podman is unconditionally fine,
+because `paths.USERNS_ARG` names the mapping outright. `persist.guard_ownership` already refuses
+the same condition, but only where it is *consulted* — a stack with no persist entry never reaches
+it — so the check exists here too, at the top, where the error is still attributable to the launch.
 
 ### The lineage, and the disagreement the source carries
 
@@ -333,13 +358,13 @@ recipe.
 README's "Why the agent installs last" paragraph and three launcher comments assert an "agent-last"
 design: the standalone agent image "is no longer the FROM parent of the derived stack images"
 because the emitter "inlines the agent's Dockerfile body as their LAST layers instead" — under which
-an agent bump would rebuild only the agent layer plus the scan while the recipe layers stay cached
-and harness-independent (a stack declaring `harnesses: [claude, omp]` would build its recipe layers
+an agent bump would rebuild only the agent layer while the recipe layers stay cached and
+harness-independent (a stack declaring `harnesses: [claude, omp]` would build its recipe layers
 once and both harnesses would share them). The emitter implements no such inlining —
 `write_derived_dockerfile` takes only `(profile_dir, stack_name, harness, recipes)`, reads no agent
 manifest at all, and emits exactly the `FROM harnessed-${HARNESS}` header plus recipe `env:` and
 bodies. So the agent-parent lineage is what the code builds today, and the agent-last rationale —
-including its "an agent bump rebuilds only the agent layer + scan" cache property — is the
+including its "an agent bump rebuilds only the agent layer" cache property — is the
 intended-but-not-implemented half; the bump cost that rationale exists to remove is the cost
 currently being paid. Anyone touching the lineage must settle it deliberately: change the emitter's
 `FROM`, the launcher's lineage comments, the README paragraph, and the agent Dockerfiles
@@ -349,7 +374,8 @@ invariant is the cache property, not any single line.**
 One half of the agent-last story IS true today, and it is why `_build_agent_image` still runs once
 per process and must keep doing so: the plain agent image is the **fallback** a container launch
 uses for a stack that has no derived image yet
-(`derived if _image_exists(rt, derived) else _agent_image(harness)`).
+(`derived if _image_exists(rt, derived) else _agent_image(harness)`), and it is the image whose
+`~/.claude`/`~/.local` content podman's copy-up lifts into a fresh config volume.
 
 ### The staged build context
 
@@ -373,8 +399,8 @@ Two details around the extra-tools file:
 
 - It is **seeded** first (`catalogseed._ensure_extra_tools`) from
   `catalog/base/extra-tools.default.txt` into the user-owned `~/.config/harnessed/extra-tools.txt`
-  when absent (migrating a pre-move repo-root `extra-tools.txt` if one is still lying around). It is
-  staged **into the build context, never back into `catalog/`** — `catalog/` is a published
+  when absent (migrating a pre-move repo-root `extra-tools.txt` if one is still lying around). It
+  is staged **into the build context, never back into `catalog/`** — `catalog/` is a published
   artifact, and setuptools follows symlinks.
 - It is **normalized then validated on the host**, and the *same normalized text* is staged.
   `schema.normalize_extra_tools` strips a UTF-8 BOM and folds CRLF to LF; `schema.parse_extra_tools`
@@ -450,17 +476,57 @@ Claude Code's installer making `~/.claude/downloads`). Both restores are deliber
 `chown -R`: a recursive chown over a home holding mise/pnpm/rust toolchains rewrites every file into
 a new layer for nothing.
 
-The base build then **probes** what it just repaired, and fails there if the probe fails: as
-`${USERNAME}`, create and remove a directory in `$HOME` **and** in `~/.cache`. This is the real
-operation, not a proxy — `test -w` checks only the write bit, and creating an entry needs write AND
-search, so a `d-w-------` home passes `test -w` and still fails the `mkdir ~/.claude` the claude
-image opens with. `~/.cache` is probed too because it is the directory that actually shipped broken
-once, while `$HOME` alone passed. Failing in the base is the point: the fault is in the base, and
-the alternative is a child-image error that names the wrong image.
+## The base image's ownership contract
+
+The last third of `Dockerfile.harnessed-base` is a single deliberate contract about *who can touch
+`/home/harnessed`*, paid because three separate launches died on it:
+
+- **Group 0 owns the home directory.** `/home/harnessed` is `chown ${USERNAME}:0` and `chmod 2775`
+  — setgid, so anything the agent creates inside inherits group 0 instead of reverting to its own
+  gid. This is the arbitrary-uid half: podman maps the invoker ONTO uid 1000 (owner perms decide),
+  but docker maps nothing — `--user 1001` is an identity the image never created, and a `0750
+  harnessed:harnessed` home could not even be TRAVERSED by it. Group 0 is the one group such an uid
+  is guaranteed to hold, `paths.container_user_args` runs the docker agent as `<invoker>:0`, and
+  neither half works alone.
+- **The volume mount points `.cache` and `.local` get the same group-0 treatment** — created
+  `chown ${USERNAME}:0`, mode 2775. Docker COPIES UP an image directory's content AND ownership
+  when an empty named volume is mounted onto it, so a mount point the image already has must be
+  born correct; correcting the volume at `/mnt` first is silently undone by the copy-up.
+- **`~/.cache` is recursed** (`chgrp -R 0` + `chmod -R g=u`) — and only `~/.cache`. Group-0 at the
+  top level was not enough: the agent writes into PRE-EXISTING subdirectories the build left owned
+  `harnessed:harnessed 0755` (`.cache/uv`, `.cache/mise`, `.cache/pnpm`), which a `<invoker>:0`
+  process cannot enter; the hub's `uvx`-backed `time` server died on exactly that. `~/.cache` is
+  kilobytes, so the recursion is free.
+- **`~/.local` is deliberately excluded from the recursion**: it is ~1.6 GB of mise/pnpm/uv
+  toolchains, and a recursive pass would copy the lot into a new layer — the exact waste this file
+  warns against twice. The tools VOLUME (chowned by `volumes._chown_volume_for_docker`) is what
+  makes it writable at runtime.
+- **`~/.claude` is deliberately ABSENT from the list**, and creating it here was a real regression:
+  copy-up re-applies the image directory's ownership on EVERY mount while the volume is still
+  empty, so an image-side `~/.claude` kept the volume empty and uid-1000-owned forever, and the
+  compose step failed with `preserving times … Operation not permitted` (utimes needs ownership,
+  which group 0 does not confer). With no image directory there is no copy-up, and the chown sticks.
+
+The base then **proves** the contract twice before the build may end:
+
+1. **The `${USERNAME}` probe** — as the image's own user, create and remove a directory in `$HOME`
+   **and** in `~/.cache`, failing the BASE build if either fails. It performs the real operation
+   rather than a proxy (`test -w` checks only the write bit; creating an entry needs write AND
+   search, so a `d-w-------` home passes `test -w` and still fails the `mkdir ~/.claude` the claude
+   image opens with), and `~/.cache` is probed because it is the directory that actually shipped
+   broken once while `$HOME` alone passed. Failing in the base is the point: the fault is in the
+   base, and the alternative is a child-image error that names the wrong image.
+2. **The arbitrary-uid probe** — `USER 4242:0`, an uid the image has never heard of, mkdir+rmdir in
+   `$HOME`, failing the base build with a message naming docker's `<invoker>:0` otherwise. It runs
+   as 4242 rather than `${USERNAME}` because uid 1000 is the OWNER: the first probe cannot see
+   group-bit faults at all, which is exactly how the docker defect reached CI — every local check
+   was run by the one uid for which the bug is invisible. Only `$HOME` is probed here: the other
+   dirs are runtime volumes, chowned to the invoker by `volumes._chown_volume_for_docker`, so
+   requiring group-writability in the IMAGE would assert more than the design promises.
 
 At runtime the torch passes to the shared `harnessed-dl-cache` volume at `~/.cache`
-([below](#stage-7--volume-population-volumespy)) — the direct successor to these mounts, so a
-fingerprint-gated reinstall is a re-link rather than a re-download.
+([below](#stage-7--volume-population-volumespy)) — the direct successor to the build's cache
+mounts, so a fingerprint-gated reinstall is a re-link rather than a re-download.
 
 ## Stage 6 — `compute_recipe_hash` and the `harnessed.recipe-hash` label
 
@@ -487,11 +553,12 @@ kept in a side-file manifest, so **the hash can never drift from the image it de
 ## Stage 7 — volume population (`volumes.py`)
 
 `launcher._build_stack` calls
-`_ensure_stack_volumes(rt, stack, harness, prof, derived, recipes)` **after** the derived image and
-**before** the scan and the settings merge. This ordering is what makes `build` meaningful now that
-it emits system layers only: build populates and then scans; launch populates and runs. The same
-call is `ContainerBackend.provision_tools(spec, FIRST_START)`, which is what keeps the two paths
-from diverging.
+`_ensure_stack_volumes(rt, stack, harness, prof, derived, build_recipes)` **after** the derived
+image and **before** the scan and the settings merge (bd harnessed-8px.21.3/.21.4). Since `build`
+emits system layers only, this is where a stack actually becomes complete — build populates and
+then scans; launch populates and runs. The same call is
+`ContainerBackend.provision_tools(spec, FIRST_START)`, which is what keeps the two paths from
+diverging. Fingerprint-gated, so rebuilding an unchanged stack is a no-op.
 
 Two named volumes per `(stack, harness)` — the key is load-bearing because the composed content
 differs on **both** axes: the recipe closure picks the content, the harness picks which profile tree
@@ -531,9 +598,15 @@ nothing left for a mount to shadow. This replaced the per-subdir `:ro` bind-moun
 mount whose gate was mere existence. The rule to keep: **never mount a profile directory over a
 config subtree**.
 
-The populate step must use the **same userns mapping** as the pod (`paths.USERNS_ARG`,
-`--userns=keep-id:uid=1000,gid=1000`): a volume first populated under the default userns is unusable
-by the agent — uid 1000 inside reads the files as owner 999 and every write EACCESes.
+Every populate container runs under **the same userns mapping the pod runs under**, spliced from
+`paths.userns_args(rt)` (the same fragment `_build_stack` puts on the scan container's volume
+args, and the same call `launch` makes): podman gets `paths.USERNS_ARG`,
+`--userns=keep-id:uid=1000,gid=1000`; docker gets `--userns=host`; an unrecognized runtime is
+**refused** rather than defaulted, because a defaulted mapping lands on a real bind mount. A volume
+first populated under a different mapping is unusable by the agent — uid 1000 inside reads the files
+as owner 999 and every write EACCESes. The docker path additionally chowns a volume **this run
+created** to the invoking user (`_chown_volume_for_docker`), asked *before* `volume create` because
+`volume create` is idempotent and cannot tell a new volume from an old one afterwards.
 
 `settings.json` is the one file **merged** rather than copied during composition
 (`volumes._merged_settings_text` → `jsonmerge._deep_merge_json(installed, profile_obj)`), because
@@ -569,14 +642,18 @@ the scripts' populate-a-sibling-then-rename idiom atomic.
 `harnessed build` is **deliberately credential-free** as far as tokens go: `_build_derived_image`
 never passes a secret, so recipe verification never depends on 1Password being authorized, and
 build never starts or resolves the launch-time secrets broker — that is a `launch` subsystem whose
-gate (a `@proxy` annotation plus an unset `--no-secrets`) simply never fires on a build. The
-consequence is that the build performs one scan, and the token-gated scanners sit it out:
+gate (a `@proxy` annotation plus an unset `--no-secrets`) simply never fires on a build. And there
+is no build-time scan layer to speak of: bd harnessed-8px.21.5 removed it from the emitted
+Dockerfile, and bd harnessed-8px.21.4 had already moved what it used to scan out of the image. So
+the build performs exactly one scan, **after** the build and the volume population, and the
+token-gated scanners only run because tokens are resolved host-side:
 
 1. **Credentialed in-image scan** (`launcher._scan_image_in_container`) — the one `_build_stack`
    runs, after the volumes and before the settings merge. It runs the image's baked `harnessed-scan`
-   in a throwaway container **with the stack volumes mounted** (once installs stopped being image
-   layers, an image-only scan still passes and still prints green while covering less — a narrower
-   scan that reports green is worse than a failing one) and with tokens resolved **host-side**
+   in a throwaway container **with the stack volumes mounted** (`vol_args` = `paths.userns_args(rt)`
+   plus the config and tools volumes; once installs stopped being image layers, an image-only scan
+   still passes and still prints green while covering less — a narrower scan that reports green is
+   worse than a failing one) and with tokens resolved **host-side**
    (`_resolve_launch_secrets(None)` → user-global `.env.schema` via varlock, else a bare `.env`),
    handed to podman as a mode-0600 temp `--env-file`, unlinked afterwards. varlock never runs
    in-container: 1Password app-auth binds the grant to the calling host application. **This is the
@@ -594,8 +671,8 @@ The container is deliberately **not** `--rm` on the first pass: its report is th
 contains snyk/socket findings, and a removed container takes it with it — which is exactly how a
 green "no high/critical" verdict got printed over a build that had just reported 4 high. It is kept
 just long enough to `cp` the report out, then removed in a `finally`. The whole container is bounded
-at 900s (a backstop for the script wedging outside the scanners — one ran **71 hours** at 0% CPU),
-generous relative to `harnessed-scan`'s own per-scanner 120s bound.
+at 900s (`_SCAN_CONTAINER_TIMEOUT`, a backstop for the script wedging outside the scanners — one ran
+**71 hours** at 0% CPU), generous relative to `harnessed-scan`'s own per-scanner 120s bound.
 
 `_surface_scan_report` then prints the one-line summary. It keeps the credentialed report over any
 image-baked one (`keep_existing=rescan_report`) — copying the image-baked report over it would
@@ -697,8 +774,9 @@ process-global and `build` can run more than once in-process.
 ## Focused tests
 
 The suite runs no real podman (it is podman-**gated**, not podman-driven), so the container-level
-invariants here — copy-up, userns mapping, cache-mount ownership, the pnpm symlink behaviour — were
-established in measured spikes and live builds, not in pytest. What the hermetic suite does hold:
+invariants here — copy-up, userns mapping, cache-mount ownership, the pnpm symlink behaviour, the
+group-0 contract — were established in measured spikes and live builds, not in pytest. What the
+hermetic suite does hold:
 
 - the **emit** surface: the `.mcp.json` shapes (http vs stdio, direct entries, the reserved `hatago`
   key, `url_env` placeholders), the settings floor and `merge_settings` (floor-not-override,

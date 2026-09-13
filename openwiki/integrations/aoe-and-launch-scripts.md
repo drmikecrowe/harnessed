@@ -3,9 +3,6 @@ type: Integration
 title: "Agent of Empires mirror and per-project launch scripts"
 description: "The optional register-only aoe tmux bridge and the per-project launcher scripts a launch writes into the repo: identity and the two-key drift hazard, detached writes, the flags aoe add accepts, the sentinel licence, and the trailing `--` that routes human flags to harnessed and aoe resume flags to the agent."
 tags: [aoe, agent-of-empires, launch-script, register-only, drift-repair, tmux, git-exclude, launcher-script]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
 sources:
   - id: openwiki-source-3b6f61ac560f049f559456d0
     resource: repo://.github/workflows/live.yml
@@ -29,7 +26,12 @@ sources:
     resource: repo://tests/test_aoe.py
   - id: openwiki-source-243e17ac0ee3e9beb4dfdaf9
     resource: repo://tests/test_host_run_recipes.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+  - id: openwiki-source-520a9dee7476f47a75991220
+    resource: repo://tests/test_launchscript.py
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-12T09:54:25.902Z
 ---
 
 # Agent of Empires mirror and per-project launch scripts
@@ -47,11 +49,12 @@ launch was. `src/harnessed/aoe.py` is the whole bridge; `launchscript.write` and
 `launcher._aoe_register` are the two call sites, both invoked by `container-run` and `host-run`,
 both after the backend's last validation gate.
 
-Related: [invariants](/openwiki/concepts/invariants.md),
+Related: [harnesses](/openwiki/integrations/harnesses.md),
+[CLI reference](/openwiki/operations/cli.md),
+[invariants](/openwiki/concepts/invariants.md),
 [state](/openwiki/architecture/state.md),
 [container run](/openwiki/workflows/container-run.md),
-[host run](/openwiki/workflows/host-run.md),
-[dynamic stacks](/openwiki/workflows/dynamic-stacks.md).
+[host run](/openwiki/workflows/host-run.md).
 
 ## The contract: optional, one-way, register-only, never fatal
 
@@ -60,7 +63,8 @@ harnessed **neither requires nor installs aoe**. When aoe is installed (`aoe` on
 mirrors itself into a dedicated `harnessed` aoe profile: one group per git repo, one session per
 launch. Everything the bridge does is scoped to that profile, so a user's own sessions in
 aoe's `default` profile are never touched, reordered, or removed. `HARNESSED_NO_AOE=1` turns the
-whole thing off for someone who has aoe installed but does not want harnessed near it.
+whole thing off for someone who has aoe installed but does not want harnessed near it. The live CI
+job deliberately does not provision aoe at all — the bridge's tests skip, and never fail the run.
 
 Three properties define the contract, and every line of `aoe.py` is shaped by them:
 
@@ -245,12 +249,12 @@ installed?)", because sending a user to inspect the wrong row is worse than no m
 `_sessions` is the read every decision runs on, and it is defensive in both directions. Any
 transport or parse failure returns `[]` — aoe prints a human "No sessions found" line instead of
 `[]` for an empty profile, so a decode failure is an ordinary outcome here, not an anomaly. And
-the live/trash distinction does **not** exist in the JSON: `aoe list --json` returns a trashed
-session with the same fields and the same shape as a live one — no status, no `trashed_at`,
-nothing to filter on (verified against 1.14.1). The only filtering that exists is therefore done
-by harnessed itself: `aoe session list-trash` (which has no `--json`) is scraped for ids, matched
-as the one fixed-width hex token on a line because titles are free text, and subtracted from the
-list.
+the live/trash distinction does **not exist in the JSON**: `aoe list --json` returns a trashed
+session with the same fields and the same shape as a live one — no status field, no `trashed_at`,
+nothing a client could filter on (verified against 1.14.1). The only filtering that exists is
+therefore done by harnessed itself, client-side: `aoe session list-trash` (which has no `--json`)
+is scraped for ids, matched as the one fixed-width hex token on a line because titles are free
+text, and subtracted from the list.
 
 The trash read **fails open**: when it cannot say, every row `list` returned is kept — at worst a
 trashed row suppresses one registration, which is today's behavior. Failing closed (dropping the
@@ -432,8 +436,10 @@ characters plus tab first — a newline would close the comment and let the next
 which is the one way a display-only field becomes code. `launcher._typed_invocation` refuses to
 emit a line that would lie: no line at all when the process never went through `main` (a
 `CliRunner` test would otherwise emit the bare word `harnessed`, which reads as a real launch) or
-when the recorded argv names a different verb than the launch being written. A provenance comment
-that misreports the launch beneath it is worse than no comment.
+when the recorded argv names a different verb than the launch being written — with the `-exec`
+alias (`host-exec` / `container-exec`) counting as its run verb, named explicitly rather than
+matched by prefix, so a `container-exec` invocation still cannot caption a `host-run` script. A
+provenance comment that misreports the launch beneath it is worse than no comment.
 
 ### The git exclude entry
 
@@ -503,6 +509,7 @@ stale one, because `rm` is destructive and unattended.
   real binary in a throwaway profile it creates and deletes, skipped when aoe is absent, to pin
   exactly what a mock cannot prove — the duplicate refusal, that `remove` only trashes, and that
   `_sessions` hides trashed rows; and `tests/test_launchscript.py` pins the sentinel, the two
-  refusals, and the quoting against `aoe.command_for` as the authority. The hermetic suite and
-  CI deliberately do **not** provision aoe: its tests are reported as skipped and never fail a
-  run — a declared choice, not a gap.
+  refusals, and the quoting against `aoe.command_for` as the authority — executing the written
+  scripts against a stub `harnessed` rather than parsing them, so a quoting bug shows up as a
+  different argv. The hermetic suite and CI deliberately do **not** provision aoe: its tests are
+  reported as skipped and never fail a run — a declared choice, not a gap.

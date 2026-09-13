@@ -1,12 +1,11 @@
 ---
 type: integration
 title: "Harness integrations: one canonical profile, five readers"
-description: "How the same Claude-canonical .claude/ profile is consumed by claude, omp, opencode, antigravity and codex: each harness's MCP route to the hatago hub (emitted .mcp.json vs image-baked configs vs omp's seeded mcp.json), the direct-server guard the container path re-validates at launch, the host backend's two-harness record (CLAUDE_CONFIG_DIR / PI_CODING_AGENT_DIR), omp's host asymmetries, and the per-harness attach commands."
-tags: [harnesses, claude, omp, opencode, antigravity, codex, hatago, mcp, HARNESS_CONFIG_DIR, attach-command, host-run, container-run]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
+description: "How the same Claude-canonical .claude/ profile is consumed by claude, omp, opencode, antigravity and codex: each harness's MCP route to the hatago hub (emitted .mcp.json vs image-baked configs vs omp's seeded mcp.json), the direct-server guard the container path re-validates at launch, the agent manifests behind the Dockerfile.harnessed-<harness> naming and the harness-parameterised derived image, claude-only auth wiring (isolated_auth warning, credential mount shape), the capability-test harness parameter and runtime-named remediation line, the host backend's two-harness record (CLAUDE_CONFIG_DIR / PI_CODING_AGENT_DIR), omp's host asymmetries, and the per-harness attach commands."
+tags: [harnesses, claude, omp, opencode, antigravity, codex, hatago, mcp, HARNESS_CONFIG_DIR, attach-command, host-run, container-run, isolated-auth, capability-test]
 sources:
+  - id: openwiki-source-e5bf46666000bd68717f274f
+    resource: repo://catalog/agents/claude/agent.yaml
   - id: openwiki-source-e97e467aad41adb4abb9095b
     resource: repo://catalog/base/Dockerfile.harnessed-antigravity
   - id: openwiki-source-847694293edccc1d5cba4d95
@@ -21,6 +20,8 @@ sources:
     resource: repo://src/harnessed/assemble.py
   - id: openwiki-source-78dc7c6f542f6ce83d4c2629
     resource: repo://src/harnessed/attachcmd.py
+  - id: openwiki-source-0f0f277c40d34909acb07908
+    resource: repo://src/harnessed/capability.py
   - id: openwiki-source-9a53d80e292611f0100f90b1
     resource: repo://src/harnessed/capmatrix.py
   - id: openwiki-source-eea4d18f75a13f889234865d
@@ -31,11 +32,18 @@ sources:
     resource: repo://src/harnessed/hostrun.py
   - id: openwiki-source-ecbe6256d6933ca2c8c9678f
     resource: repo://src/harnessed/launcher.py
+  - id: openwiki-source-543fcb721a3a990cb4f9dbbb
+    resource: repo://src/harnessed/layout.py
   - id: openwiki-source-9e1601e7fac817552c717cd7
     resource: repo://src/harnessed/mounts.py
+  - id: openwiki-source-7b2070fd28fc0a337d8c3539
+    resource: repo://src/harnessed/paths.py
   - id: openwiki-source-7536da5c015fc2813c7693c5
     resource: repo://src/harnessed/schema.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-12T09:54:25.902Z
 ---
 
 # Harness integrations: one canonical profile, five readers
@@ -50,7 +58,10 @@ per `(stack, harness)`, and no harness gets a re-authored variant. What differs 
 
 Related: [backends](/openwiki/architecture/backends.md),
 [architecture overview](/openwiki/architecture/overview.md),
+[catalog and schema](/openwiki/architecture/catalog-and-schema.md),
+[credential proxy](/openwiki/concepts/credential-proxy.md),
 [invariants](/openwiki/concepts/invariants.md),
+[build](/openwiki/workflows/build.md),
 [container launch](/openwiki/workflows/container-run.md),
 [host launch](/openwiki/workflows/host-run.md).
 
@@ -112,6 +123,27 @@ harness, and `harnesses:` on a stack is only a build-time convenience listing wh
 `hooks.skip_harnesses`, `only_harnesses` — validates against `HARNESS_CONFIG_DIR` at
 parse/load time, so a typo like `ompp` fails with a list of valid names instead of silently
 doing nothing.
+
+### The agent manifest and the derived image names
+
+Each harness's image is declared by an agent manifest, `catalog/agents/<harness>/agent.yaml`,
+which pairs the harness name with the image tag (`image: harnessed-<harness>`) and the
+Dockerfile that builds it (`dockerfile: catalog/base/Dockerfile.harnessed-<harness>` — all five
+current manifests declare the path explicitly, alongside the pinned tool versions the Dockerfile's
+required `ARG`s consume as build args; a missing arg fails the build rather than installing an
+unpinned tool). The manifest's path is the authoritative one, but the *name* is a convention the
+code falls back to when a manifest omits the field: both `assemble.validate_agent_image` (the
+agent-image pin lint) and `launcher._build_agent_image` resolve
+`agent.dockerfile or f"catalog/base/Dockerfile.harnessed-{harness}"`, so a harness's Dockerfile
+is always named after the harness.
+
+The stack image is derived from it: `_build_stack` emits
+`profiles/<stack>/<harness>/Dockerfile.harnessed-<stack>` — `ARG HARNESS=<harness>` followed by
+`FROM harnessed-${HARNESS}:latest` — and builds the derived image `harnessed-<harness>-<stack>`
+from it, so one template serves every (stack, harness) pair and the FROM parent is selected by
+the build arg the assembler set. The standalone agent image is still built (once per process;
+N stacks sharing a harness share one image) because a launch falls back to it when no derived
+image exists yet.
 
 Profile emission is per harness (`profiles/<stack>/<harness>/`) because the identity *surface*
 differs even though the content tree does not (`assemble.py`):
@@ -247,6 +279,68 @@ and codex silently truncates AGENTS.md at `project_doc_max_bytes` (32 KiB), so t
 truncates *itself* — under the cap, with a visible marker and a warning — rather than let codex
 cut mid-rule.
 
+## Claude-only auth: the one place the pipeline branches on the harness
+
+Everything above is per-harness *reading*. The auth path is where harnessed genuinely branches
+on `harness == "claude"` — and where a claude-only feature says so out loud when another harness
+reaches it. Every Claude credential surface in `mounts.py` is gated: `_claude_creds_seed_mount`,
+`_claude_isolated_auth_mount`, `_claude_oauth_token_args` and the `.claude.json` onboarding stub
+`_claude_config_seed_mount` all return empty for a non-claude harness — omp explicitly, because
+it authenticates from the `auth_credentials` table of `agent.db` in the shared `~/.omp/agent`
+and reads no Claude credential (its hooks bridge never opens the stub either).
+
+The credential **mount shape** is identical on both claude paths: a single file, mounted **rw**
+over the composed config volume at `$CONTAINER_HOME/.claude/.credentials.json` — rw because a
+ro mount blocks Claude Code's in-container token refresh (the "gets logged out" bug). Only the
+*source policy* differs:
+
+- **Shared identity** (`_claude_creds_seed_mount`): a per-instance copy of the host's
+  credentials, re-seeded when the copy's `expiresAt` has passed, skipped entirely when a
+  long-lived `CLAUDE_CODE_OAUTH_TOKEN` is configured (the token supersedes the file), with the
+  `claude setup-token` remediation printed on every launch of this legacy path.
+- **Own identity** (`isolated_auth: true` on the stack): nothing seeded from the host. The stack
+  gets its own per-instance store, seeded `{}` so the agent comes up logged **out** and `/login`
+  writes the other account's credentials there; it is never re-seeded, survives ordinary
+  recreates on purpose, and `--fresh` is the way back to logged-out. Off the same condition the
+  launcher suppresses the host token forward, and the stub drops the host identity half
+  (`oauthAccount`/`userID`) — a stack running as somebody else must not carry your account
+  metadata.
+
+And the **warning**: the `isolated_auth` gate is harness-conditional, not merely
+flag-conditional. On a non-claude harness the launch prints that the stack "sets `isolated_auth`
+but `<harness>` keeps its credentials outside `~/.claude/.credentials.json`, so the flag does
+nothing here — this launch uses the host identity", then falls through to the normal path.
+That fall-through is deliberate, not a hole: omp reads the same `CLAUDE_CODE_OAUTH_TOKEN` the
+claude branch would strip, so suppressing it there would leave an omp launch with no auth at
+all while the warning promised isolation. The identical harness gate guards the token forward
+in the container env assembly. (`isolated_auth` is honored on the container backend only — the
+host backend's `seed_auth` runs only the harness's `share_state` and reads no such flag.)
+
+## Where harness identity surfaces to the user
+
+Two smaller places put the harness — and the runtime — in front of the user by name:
+
+- **The capability test takes the harness as a positional.** `harnessed test <stack> <harness>`
+  validates the name against `HARNESS_CONFIG_DIR`, then threads it through
+  `capability.run_capability_test` → `launch_headless` — which replays the harness-first
+  `container-run <harness>` grammar for a headless `--fresh` instance named
+  `harnessed-<harness>-<stack>-<project-hash>` — → `introspect`. The primary MCP probe is the
+  harness-independent `hatago://servers` resource; the harness name only routes the headless
+  LLM backstop: claude gets `--mcp-config … --strict-mcp-config` (the same isolated view the
+  real session has), omp gets `--profile`, and opencode/antigravity/codex rely on their
+  image-baked MCP configs.
+- **The remediation line names the runtime at report time.** When a declared server never
+  connects, the report's detail reads "not connected (checked …) —" followed by
+  `mcp_miss_remediation()`, a *function* because the runtime is not known until it is detected:
+  it prints `re-run with --keep, then `<runtime> exec <instance> cat /tmp/hatago.log`` with
+  `paths.active_runtime() or 'podman'`. Hardcoding `podman` once told a docker user to run a
+  command that did not exist on their box (seen in the live-docker CI job); falling back to
+  `podman` only when no runtime resolves is the one case where naming one is a guess.
+
+Elsewhere the harness is already the user's own positional (`container-run`/`host-run`/`test`)
+or the stack's declared build fan-out; instance names, host homes (`<stack>/<harness>`),
+profile dirs and derived image tags all key on the (stack, harness) pair.
+
 ## Host mode: the harness record and its lever
 
 Container mode mounts the profile over the harness's config dir. Host mode has nothing to
@@ -299,7 +393,7 @@ harness, not carried by analogy:
 ### The config-dir variables, pinned for catalog-authored scripts
 
 `hostrun._HARNESS_CONFIG_DIR_ENV` pins the same levers wherever catalog-authored content runs
-host-side (installs, setup scripts, the `setup.condition` eval), applied **last**:
+host-side (installs, setup scripts), applied **last**:
 
 | harness | variable | points at |
 |---|---|---|
@@ -434,9 +528,11 @@ is the base table; two harnesses override it in code:
 | `codex` | `codex` | config is baked; nothing to pass |
 
 `_attach` composes one `bash -l -c` line — `mise trust -a`, the Model A init prologue (folder
-env + inline `init.run`), the keyring prefix if any, then the harness tail — and execs it via
-`podman exec -it -w <start_dir>`. A `--` passthrough suffix is appended shell-quoted to the
-harness command, skipped under `--shell`.
+env + inline `init.run`), the antigravity keyring prefix if any, then the harness tail — and
+execs it via the runtime's `exec` (`-i` always; `-t` except on an `-exec` verb, where a pty
+would trip the harness's fullscreen renderer; `-e TERM=xterm-256color`; `-w <start_dir>`).
+A `--` passthrough suffix is appended shell-quoted to the harness command, skipped under
+`--shell`.
 
 ### The omp session-dir key, pinned to the host
 

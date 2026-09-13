@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8ceacdcf5585b5de2dbf1f6c781a06c373839b992e6224fde207809af770f424",
+  "pageVersion": "sha256:f27ec462e759aed8ea06eff1389619382dc2a3dacbed0a7b9ccdb996327a89bf",
   "claims": [
     {
       "id": "claim_252d58a4136d4bab8deb980788528260",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -30,7 +30,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         },
         {
           "resource": "repo://src/harnessed/synclinks.py",
@@ -40,7 +40,7 @@
     },
     {
       "id": "claim_53c525fbe57644ad88937f39ceb0e18d",
-      "statement": "The build stages run in a fixed order with named owners: schema.py load+validate → synclinks.py fan (fail-fast collision) → emit.py profile tree + .mcp.json + hatago.config.json + derived Dockerfile → assemble.py orchestration + compute_recipe_hash → launcher._build_stack: base image, agent image, derived image, volume population, credentialed re-scan, baked-settings merge, service image builds.",
+      "statement": "The build stages run in a fixed order with named owners: launcher._preflight_runtime first (refuse a runtime whose uid mapping harnessed cannot name) → schema.py load+validate → fail-fast recipe lints and validate_agent_image → emit profile tree (.mcp.json, settings floor, hatago.config.json, derived Dockerfile) → synclinks.py fan (fail-fast collision) → harness identity + staleness stamp → assemble.compute_recipe_hash → launcher._build_stack: always-rebuilt cache-backed base image, the standalone agent image (built as the run-path fallback image), the derived image from a staged build context labelled with the recipe hash, volume population, credentialed re-scan, baked-settings merge, service image builds.",
       "evidence": [
         {
           "resource": "repo://src/harnessed/assemble.py",
@@ -52,7 +52,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         },
         {
           "resource": "repo://src/harnessed/synclinks.py",
@@ -70,7 +70,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -104,7 +104,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -164,7 +164,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         },
         {
           "resource": "repo://src/harnessed/staleness.py",
@@ -192,7 +192,7 @@
         },
         {
           "resource": "repo://src/harnessed/volumes.py",
-          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+          "version": "repo-file-v1:sha256:7053ebf8b10b4bf4e21cbe3b13f5a2b393f95af58e66004babe38f6507f6655c"
         }
       ]
     },
@@ -206,7 +206,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -216,11 +216,11 @@
       "evidence": [
         {
           "resource": "repo://catalog/base/Dockerfile.harnessed-base",
-          "version": "repo-file-v1:sha256:d2c857bf490059d5ce6b311d578439f77102a30a41b6e7a257493d6df38e6359"
+          "version": "repo-file-v1:sha256:c092674f565a7a886a953d59a5fafa87dcfa26e391ec6137bafbc34fc99bf79f"
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -234,7 +234,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -244,13 +244,13 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
     {
       "id": "claim_a0a5991670f544818cee7b77b535dfca",
-      "statement": "As the code stands, the standalone per-harness agent image IS the derived image's direct FROM parent (every agent manifest's image: is harnessed-<harness>, matching the emitter's FROM harnessed-${HARNESS}:latest), so base → agent → derived ordering inside _build_stack is required — the derived build's FROM has nothing to resolve until the agent image exists — and _build_derived_image passes no --build-arg because the emitter's in-file ARG HARNESS=<harness> default makes the tag resolve. The README's \"Why the agent installs last\" paragraph and the launcher's three \"agent-last\" comments claim otherwise — that the agent image is \"no longer the derived image's parent\" because write_derived_dockerfile \"inlines the agent's Dockerfile body as their LAST layers\", so an agent bump would rebuild only the agent layer + scan while recipe layers stay cached and harness-independent — but the emitter reads no agent manifest and inlines nothing, so that cache property is intended-but-not-implemented and an agent pin bump currently invalidates every derived stack's cached recipe layers. The verified half of the agent-last story is the fallback role: container-run falls back to the plain agent image for a stack with no derived image yet (derived if _image_exists(rt, derived) else _agent_image(harness)), which is why _build_agent_image must keep running once per process. Anyone touching the lineage must change the emitter's FROM, the launcher's lineage comments, the README paragraph, and the agent Dockerfiles together and re-check the cache property.",
+      "statement": "As the code stands, the standalone per-harness agent image IS the derived image's direct FROM parent (every agent manifest's image: is harnessed-<harness>, matching the emitter's FROM harnessed-${HARNESS}:latest), so base → agent → derived ordering inside _build_stack is required — the derived build's FROM has nothing to resolve until the agent image exists — and _build_derived_image passes no --build-arg because the emitter's in-file ARG HARNESS=<harness> default makes the tag resolve. The README's \"Why the agent installs last\" paragraph and the launcher's three \"agent-last\" comments claim otherwise — that the agent image is \"no longer the derived image's parent\" because write_derived_dockerfile \"inlines the agent's Dockerfile body as their LAST layers\", so an agent bump would rebuild only the agent layer while recipe layers stay cached and harness-independent — but the emitter reads no agent manifest and inlines nothing, so that cache property is intended-but-not-implemented and an agent pin bump currently invalidates every derived stack's cached recipe layers. The verified half of the agent-last story is the fallback role: container-run falls back to the plain agent image for a stack with no derived image yet (derived if _image_exists(rt, derived) else _agent_image(harness)), which is why _build_agent_image must keep running once per process. Anyone touching the lineage must change the emitter's FROM, the launcher's lineage comments, the README paragraph, and the agent Dockerfiles together and re-check the cache property.",
       "evidence": [
         {
           "resource": "repo://README.md",
@@ -262,7 +262,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -276,7 +276,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -290,7 +290,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         },
         {
           "resource": "repo://src/harnessed/schema.py",
@@ -304,7 +304,7 @@
       "evidence": [
         {
           "resource": "repo://catalog/base/Dockerfile.harnessed-base",
-          "version": "repo-file-v1:sha256:d2c857bf490059d5ce6b311d578439f77102a30a41b6e7a257493d6df38e6359"
+          "version": "repo-file-v1:sha256:c092674f565a7a886a953d59a5fafa87dcfa26e391ec6137bafbc34fc99bf79f"
         },
         {
           "resource": "repo://src/harnessed/emit.py#L1062-L1095",
@@ -328,7 +328,7 @@
       "evidence": [
         {
           "resource": "repo://catalog/base/Dockerfile.harnessed-base",
-          "version": "repo-file-v1:sha256:d2c857bf490059d5ce6b311d578439f77102a30a41b6e7a257493d6df38e6359"
+          "version": "repo-file-v1:sha256:c092674f565a7a886a953d59a5fafa87dcfa26e391ec6137bafbc34fc99bf79f"
         },
         {
           "resource": "repo://src/harnessed/emit.py#L1062-L1095",
@@ -346,7 +346,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -356,11 +356,11 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         },
         {
           "resource": "repo://src/harnessed/volumes.py",
-          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+          "version": "repo-file-v1:sha256:7053ebf8b10b4bf4e21cbe3b13f5a2b393f95af58e66004babe38f6507f6655c"
         }
       ]
     },
@@ -370,11 +370,11 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         },
         {
           "resource": "repo://src/harnessed/volumes.py",
-          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+          "version": "repo-file-v1:sha256:7053ebf8b10b4bf4e21cbe3b13f5a2b393f95af58e66004babe38f6507f6655c"
         }
       ]
     },
@@ -384,11 +384,11 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/hosthome.py",
-          "version": "repo-file-v1:sha256:a68e3eceb8fce207dfa5992008ef59cd5792ee877506e1f96fdacb2627370871"
+          "version": "repo-file-v1:sha256:71b0e9cec777e201456a8d7c95b5f6d6e7c5dc18460b6efc68b34ca30e06edf1"
         },
         {
           "resource": "repo://src/harnessed/volumes.py",
-          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+          "version": "repo-file-v1:sha256:7053ebf8b10b4bf4e21cbe3b13f5a2b393f95af58e66004babe38f6507f6655c"
         }
       ]
     },
@@ -398,21 +398,21 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/volumes.py",
-          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+          "version": "repo-file-v1:sha256:7053ebf8b10b4bf4e21cbe3b13f5a2b393f95af58e66004babe38f6507f6655c"
         }
       ]
     },
     {
       "id": "claim_76b9598fab194a7aa654c8763c02d86e",
-      "statement": "The volume population step must use the same userns mapping as the pod (paths.USERNS_ARG, --userns=keep-id:uid=1000,gid=1000): a volume first populated under the default userns is unusable by the agent — uid 1000 inside reads the files as owner 999 and every write EACCESes.",
+      "statement": "Every volume-populate container runs under the same userns mapping the pod runs under, spliced from paths.userns_args(rt): podman gets paths.USERNS_ARG (--userns=keep-id:uid=1000,gid=1000), docker gets --userns=host, and an unrecognized runtime is refused rather than defaulted. A volume first populated under a different mapping is unusable by the agent — uid 1000 inside reads the files as owner 999 and every write EACCESes; on docker a volume this run created is additionally chowned to the invoking user (_chown_volume_for_docker), asked before volume create because volume create is idempotent.",
       "evidence": [
         {
           "resource": "repo://src/harnessed/paths.py",
-          "version": "repo-file-v1:sha256:ceb67c0d5557b4b72531e5d02ce6e36281a96abb7305ff547eb1d20e27000ea0"
+          "version": "repo-file-v1:sha256:b2f4c8d4cc2a7dacddbfc9e47578dc19b0a00f866ee0335bea907783f19f732a"
         },
         {
           "resource": "repo://src/harnessed/volumes.py",
-          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+          "version": "repo-file-v1:sha256:7053ebf8b10b4bf4e21cbe3b13f5a2b393f95af58e66004babe38f6507f6655c"
         }
       ]
     },
@@ -422,11 +422,11 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         },
         {
           "resource": "repo://src/harnessed/volumes.py",
-          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+          "version": "repo-file-v1:sha256:7053ebf8b10b4bf4e21cbe3b13f5a2b393f95af58e66004babe38f6507f6655c"
         }
       ]
     },
@@ -436,7 +436,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/volumes.py",
-          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+          "version": "repo-file-v1:sha256:7053ebf8b10b4bf4e21cbe3b13f5a2b393f95af58e66004babe38f6507f6655c"
         }
       ]
     },
@@ -456,7 +456,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/volumes.py",
-          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+          "version": "repo-file-v1:sha256:7053ebf8b10b4bf4e21cbe3b13f5a2b393f95af58e66004babe38f6507f6655c"
         }
       ]
     },
@@ -465,7 +465,7 @@
       "statement": "The build's one scan, launcher._scan_image_in_container, runs the image's baked harnessed-scan in a throwaway container with the stack volumes mounted and with tokens resolved host-side (_resolve_launch_secrets(None) → user-global .env.schema via varlock, else a bare .env) handed to podman as a mode-0600 temp --env-file unlinked afterwards; it is the only path on which snyk and socket actually run, is skipped by --no-security-scans (HARNESSED_NO_SCANS=true), and is advisory — it reports posture and never gates the build.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L4643-L4728",
+          "resource": "repo://src/harnessed/launcher.py#L4873-L4958",
           "version": "repo-lines-v1:sha256:6c57e462d16470593b06a0c3e46c5fd070b50cde19108ab4f97db087157abf77:eyJzZWxlY3RlZExpbmVDb3VudCI6ODYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyMjI2MDc5NDhkMGQyODEwODc2MzRmYTY4YWIxYWI4NWFhODgyYzdlNWY4ZGFlNzQ5YTQ5YjI3Mjk2MzJlZWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmMTM4ZDgzYjU5MWU0YTMwMzJjYzJlYzU4MmNlYTg0OTE5N2U2OTg5YjVlODU3YmE4YjExNDc3MDNlYTI3YzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1NzlhZWUxYzA2NWIxMzNhNmIxYWY3OGY5MTk5N2NmM2VkNTE4N2Y4ZGQ2ODY1MjhmYTAyZmRkZDYyMTg4NGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNjNjMmFhMDNhMDk5NWE1ODU0ZmExNjFhZDg4OWE0MWFhNjc5MTZjMDhmNWY5ZDliZGQ2OTBhODc0Yjc5YmMifQ"
         }
       ]
@@ -475,8 +475,8 @@
       "statement": "The scan container is deliberately not --rm: its report is the only one that ever contains snyk/socket findings and a removed container takes it with it, which is exactly how a green no-high/critical verdict was once printed over a build that had just reported 4 high. It is kept just long enough to cp the report out, then removed in a finally; the whole container is bounded at 900s (_SCAN_CONTAINER_TIMEOUT) because a scan container once ran 71 hours at 0% CPU.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L4631-L4728",
-          "version": "repo-lines-v1:sha256:a8542f67af52b1b2da83a051d9b7d341d1836fd5446b79ea03c22e23a680ab4b:eyJzZWxlY3RlZExpbmVDb3VudCI6OTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjZjBiODUxZjc3MGE0N2JlYTM0MDI5YmZmMDMyYTc0Y2ZmYmQ1NGM3YmM4MDdkZDYwZmYzMzBiZDU0MTU5MzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmMTM4ZDgzYjU5MWU0YTMwMzJjYzJlYzU4MmNlYTg0OTE5N2U2OTg5YjVlODU3YmE4YjExNDc3MDNlYTI3YzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxZGE5NDRlYWY4ZDAwOGI0OWJmNmMwYWVhMTI1NzUyZDY0NjUzMGQ2OTVkNWNiNTBlZGMwYzkxOTcwZTZlY2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNjNjMmFhMDNhMDk5NWE1ODU0ZmExNjFhZDg4OWE0MWFhNjc5MTZjMDhmNWY5ZDliZGQ2OTBhODc0Yjc5YmMifQ"
+          "resource": "repo://src/harnessed/launcher.py#L4863-L4958",
+          "version": "repo-lines-v1:sha256:69ed9a3c3503e8250887cbf7538052c9e90f52c8bbaa7c89deb132cc0e4e9a95:eyJzZWxlY3RlZExpbmVDb3VudCI6OTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3YmU4OGI5ZDk1MWFmYTQyOTJiOWY0MDk2MTViNTJiZmZjZGM5NWFlYzEyYzRlMWEwYWI0MzA1OTZiYzA0MTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmMTM4ZDgzYjU5MWU0YTMwMzJjYzJlYzU4MmNlYTg0OTE5N2U2OTg5YjVlODU3YmE4YjExNDc3MDNlYTI3YzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxNWVlZDlkZTYzZTM1ZGFhNzMzNWYyYzQ2MzcxNGIyOTExOGQzNDlkNTRlZjc1YzdjZTRlZGZlMjI3ZDE0N2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNjNjMmFhMDNhMDk5NWE1ODU0ZmExNjFhZDg4OWE0MWFhNjc5MTZjMDhmNWY5ZDliZGQ2OTBhODc0Yjc5YmMifQ"
         }
       ]
     },
@@ -486,7 +486,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         },
         {
           "resource": "repo://src/harnessed/scan.py",
@@ -504,7 +504,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -524,7 +524,11 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+        },
+        {
+          "resource": "repo://src/harnessed/svcstate.py",
+          "version": "repo-file-v1:sha256:822d4d9d904f69b1567f676ff0a4d76c0a7cd9da96703e0614d27b2ef2a98ffd"
         }
       ]
     },
@@ -533,7 +537,7 @@
       "statement": "The parallel-build default is _DEFAULT_JOBS = max(1, min(4, (os.cpu_count() or 2) // 2)) — half the cores, capped at 4 — deliberately not cpu_count, because a stack build is mostly podman build, podman serializes chunks of its image store, and each derived image is multi-GB.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L319-L324",
+          "resource": "repo://src/harnessed/launcher.py#L322-L327",
           "version": "repo-lines-v1:sha256:b498ad166e94a2d0f564c8ff29d191b98f5f790d4ae9cf5e762e34e123b85dd0:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWVjZGJhMjIyMmNhNTE0ZDIxZjBlZGU2MjVhYzllOGRlYTVlMjUxOTRmNjczMGUzMGQwNjZhMTkzYmMxY2ZmMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmRlMGNhYzA1YzhkYTE5N2NlYzZjYTI0MmE1NDNlNzhjMDAxMjc3NzcyMTM0MzY4NGQyZWI0YTI4ZTQ4OWQzNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzhlYTYyZTQ4OTI5MjNlZThlMGY5NjU4Y2Q1OGRjODdlYTU2N2U1ZWM5NWU3MmQxNzZkOWJjZmM1ODg0MGI3ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzk3YjhhODhlNjNhNjY0ZDAzZTU3NTZhYmM4YmExOTBhNzJlZGM0NTU5MzA3ZjNhZmI0MmE3MWFmM2NjMzE3MSJ9"
         }
       ]
@@ -543,8 +547,8 @@
       "statement": "Each parallel build runs under a (label, colour) tag from proc._BUILD_TAG, a ContextVar defaulting to None: proc._say prefixes every line with the label (highlight=False so rich's auto-highlighter does not split a tag like mystack(omp) mid-word) and proc._run routes through proc._run_tagged, which folds a build's stderr into its own lane and escapes podman's STEP markers. The pump thread is started with copy_context().run because a ContextVar is not inherited by a bare threading.Thread; unset means a serial build streams output through untouched.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L963-L1011",
-          "version": "repo-lines-v1:sha256:97f612f6605fe877a998eeb398a7a67ab1d0da3b54318123638874191817dc72:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzNmRiOWEwODNmMjI3NmJjZDM0MTJjNGVjYTY2ZmJkMzU4NjA4ODI2NTU2MDNiNWM5ODlkODBjZjdlNTE5MDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3YWUxYTdkM2Y2NDAwMWU4MzZiMjYzODYwNWU0MDQ5ZTNmMzI5MTFiOWM1MzNhMTY0MWQ4MGFhMmIxYjc5M2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk0MjExMzgyN2I0YTRmODY0NGNhYWM3YjU2NDQyYzdkMWY0NjJiNWI5MWJjNTRjNzYzNmJkYjhjZWNlYzA3ZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0NzI3YjYzYTM0MjRmZmU3NzZjY2ZlYjI5MTM2MjFhOTAzZGFlZDAxNDg0MDA1YjM2NDJlMDdjMmRhM2VjNGEifQ"
+          "resource": "repo://src/harnessed/launcher.py#L971-L1015",
+          "version": "repo-lines-v1:sha256:5c0dda4202118f7a0926a7fc6f822afa0776c2ca7e6ae097908fbfcad4b712c3:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5YzcxNDk3Y2ZjODJlNmZlMGZmZmYwYjA2MjM2NWVmNDk3MTUzODhhNjU0N2I5N2ExMzAwZjdlZWEyOGYwMmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3YWUxYTdkM2Y2NDAwMWU4MzZiMjYzODYwNWU0MDQ5ZTNmMzI5MTFiOWM1MzNhMTY0MWQ4MGFhMmIxYjc5M2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBmZmRhODkyM2UxMGM2ODI4YmZkYTlhYmRlZTQzNzA2NWE2YTJkNmVhZWNhZmNjMDE5MjUzNTQ1NjkxMmRlNjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0NzI3YjYzYTM0MjRmZmU3NzZjY2ZlYjI5MTM2MjFhOTAzZGFlZDAxNDg0MDA1YjM2NDJlMDdjMmRhM2VjNGEifQ"
         },
         {
           "resource": "repo://src/harnessed/proc.py",
@@ -557,7 +561,7 @@
       "statement": "_build_shared_once serializes the shared images (harnessed-base, per-harness agent images, service images) with one threading.Lock plus a process-wide _SHARED_IMAGES_BUILT set, holding the lock across the build and not just the set check — a claim-then-release would let a second worker build its derived image FROM a base that does not exist yet. Building each once per process is enough because nothing between two pairs in the same run can change the shared Dockerfiles.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L518-L540",
+          "resource": "repo://src/harnessed/launcher.py#L521-L543",
           "version": "repo-lines-v1:sha256:95533953d17f143eca6a88fce3f943a3d417ece9cb87d6c2843ddbcf85bd553a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyNjEwNjNlMTMxODJjOTE1YTYxNmI5ZTg0OWEwMmQ3ZDYwNTlmYjIwNzVmYmVhMmMwZmY0OTgyMTkzZDE1NDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxYjU1OTI4ZDVhYWM5YTZiZTQwNDgyOTgwOWRhZGE5OTBjODgzMmFlMmY5NDM0ZjQ5MGJjOWJmOTA3NzY1NDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY0YTVmYWM3NDc0OGFiYzJhMDhmYjBiNDY2NWRlNWZkYzFlOGYyZTBiZTVmMWUzM2JkNTAxZmM1NTg4YmMzYzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMyNDllNDUzN2I0ZWY0MGY0NmQ3NzVmMDg3YTliNDYyMzlhZTk5NmQ1M2JmMzYxNzJkYThlMDY5YjdhZmM1N2MifQ"
         }
       ]
@@ -567,8 +571,8 @@
       "statement": "_build_stack_guarded sets the tag, runs _build_stack, and returns [exc] on failure rather than raising — returning is what lets one stack fail without killing the siblings already mid-build; every pair gets its shot and the failures are reported together at the end before a single typer.Exit(1).",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L963-L1011",
-          "version": "repo-lines-v1:sha256:97f612f6605fe877a998eeb398a7a67ab1d0da3b54318123638874191817dc72:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzNmRiOWEwODNmMjI3NmJjZDM0MTJjNGVjYTY2ZmJkMzU4NjA4ODI2NTU2MDNiNWM5ODlkODBjZjdlNTE5MDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3YWUxYTdkM2Y2NDAwMWU4MzZiMjYzODYwNWU0MDQ5ZTNmMzI5MTFiOWM1MzNhMTY0MWQ4MGFhMmIxYjc5M2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk0MjExMzgyN2I0YTRmODY0NGNhYWM3YjU2NDQyYzdkMWY0NjJiNWI5MWJjNTRjNzYzNmJkYjhjZWNlYzA3ZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0NzI3YjYzYTM0MjRmZmU3NzZjY2ZlYjI5MTM2MjFhOTAzZGFlZDAxNDg0MDA1YjM2NDJlMDdjMmRhM2VjNGEifQ"
+          "resource": "repo://src/harnessed/launcher.py#L998-L1015",
+          "version": "repo-lines-v1:sha256:66f3239edd6651eb24f4f02ddecdd5c01f67e2357f2462ff02c4fe39f8531479:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiM2RiMWQ4YzljNzg3OTc2MTk2ZDI0MWU4MmE1M2YyMDBjZTZhMjBiMDFiNjUwNmU5NzAwNzJiMGZiMGE0NTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3YWUxYTdkM2Y2NDAwMWU4MzZiMjYzODYwNWU0MDQ5ZTNmMzI5MTFiOWM1MzNhMTY0MWQ4MGFhMmIxYjc5M2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQxMzcyODk5NDQwYWExMmNjOGYyNTFkMzg3YzVhZTE4MjcyNDA1OGJhZjQxMWI2OGNkN2RlZmYzYjQ1NzU2NDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0NzI3YjYzYTM0MjRmZmU3NzZjY2ZlYjI5MTM2MjFhOTAzZGFlZDAxNDg0MDA1YjM2NDJlMDdjMmRhM2VjNGEifQ"
         }
       ]
     },
@@ -578,7 +582,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -591,8 +595,8 @@
           "version": "repo-file-v1:sha256:c39524dd07c2a7c936efe9f890d91e7a4597a1414fa589207cbb665e1c2b7ca9"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L4631-L4728",
-          "version": "repo-lines-v1:sha256:a8542f67af52b1b2da83a051d9b7d341d1836fd5446b79ea03c22e23a680ab4b:eyJzZWxlY3RlZExpbmVDb3VudCI6OTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjZjBiODUxZjc3MGE0N2JlYTM0MDI5YmZmMDMyYTc0Y2ZmYmQ1NGM3YmM4MDdkZDYwZmYzMzBiZDU0MTU5MzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmMTM4ZDgzYjU5MWU0YTMwMzJjYzJlYzU4MmNlYTg0OTE5N2U2OTg5YjVlODU3YmE4YjExNDc3MDNlYTI3YzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxZGE5NDRlYWY4ZDAwOGI0OWJmNmMwYWVhMTI1NzUyZDY0NjUzMGQ2OTVkNWNiNTBlZGMwYzkxOTcwZTZlY2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNjNjMmFhMDNhMDk5NWE1ODU0ZmExNjFhZDg4OWE0MWFhNjc5MTZjMDhmNWY5ZDliZGQ2OTBhODc0Yjc5YmMifQ"
+          "resource": "repo://src/harnessed/launcher.py#L4863-L4958",
+          "version": "repo-lines-v1:sha256:69ed9a3c3503e8250887cbf7538052c9e90f52c8bbaa7c89deb132cc0e4e9a95:eyJzZWxlY3RlZExpbmVDb3VudCI6OTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3YmU4OGI5ZDk1MWFmYTQyOTJiOWY0MDk2MTViNTJiZmZjZGM5NWFlYzEyYzRlMWEwYWI0MzA1OTZiYzA0MTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmMTM4ZDgzYjU5MWU0YTMwMzJjYzJlYzU4MmNlYTg0OTE5N2U2OTg5YjVlODU3YmE4YjExNDc3MDNlYTI3YzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxNWVlZDlkZTYzZTM1ZGFhNzMzNWYyYzQ2MzcxNGIyOTExOGQzNDlkNTRlZjc1YzdjZTRlZGZlMjI3ZDE0N2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNjNjMmFhMDNhMDk5NWE1ODU0ZmExNjFhZDg4OWE0MWFhNjc5MTZjMDhmNWY5ZDliZGQ2OTBhODc0Yjc5YmMifQ"
         }
       ]
     },
@@ -626,7 +630,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -664,7 +668,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -674,15 +678,15 @@
       "evidence": [
         {
           "resource": "repo://catalog/base/Dockerfile.harnessed-base",
-          "version": "repo-file-v1:sha256:d2c857bf490059d5ce6b311d578439f77102a30a41b6e7a257493d6df38e6359"
+          "version": "repo-file-v1:sha256:c092674f565a7a886a953d59a5fafa87dcfa26e391ec6137bafbc34fc99bf79f"
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         },
         {
           "resource": "repo://src/harnessed/paths.py",
-          "version": "repo-file-v1:sha256:ceb67c0d5557b4b72531e5d02ce6e36281a96abb7305ff547eb1d20e27000ea0"
+          "version": "repo-file-v1:sha256:b2f4c8d4cc2a7dacddbfc9e47578dc19b0a00f866ee0335bea907783f19f732a"
         }
       ]
     },
@@ -692,7 +696,7 @@
       "evidence": [
         {
           "resource": "repo://catalog/base/Dockerfile.harnessed-base",
-          "version": "repo-file-v1:sha256:d2c857bf490059d5ce6b311d578439f77102a30a41b6e7a257493d6df38e6359"
+          "version": "repo-file-v1:sha256:c092674f565a7a886a953d59a5fafa87dcfa26e391ec6137bafbc34fc99bf79f"
         }
       ]
     },
@@ -712,17 +716,69 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launchenv.py",
-          "version": "repo-file-v1:sha256:4be22cd21919ac66ee26e22e37b5fc2f403dcf7beae7626fb407105adb5bef01"
+          "version": "repo-file-v1:sha256:ac34a08af5fde24499f5fed231addd685ab686401bbb6829a7dda3f0095f1147"
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+        }
+      ]
+    },
+    {
+      "id": "claim_f0deeb96f565425db2ef7723196d48f3",
+      "statement": "launcher._preflight_runtime is the first statement of _build_stack, before the stack is even resolved: it refuses (exit 1) a docker runtime whose id mapping harnessed cannot name — a rootless daemon (the container's uid is drawn from the caller's subuid range, so bind-mount writes land owned by an unpredictable id the agent cannot read back), or one whose rootfulness `docker info` could not determine. Podman is unconditionally fine because paths.USERNS_ARG names the mapping outright; the check exists in the build path because persist.guard_ownership refuses the same condition only where it is consulted, and a stack with no persist entry never reaches it.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1268-L1301",
+          "version": "repo-lines-v1:sha256:068b9666a2ac33d38aa9dd84771063b3db79b917fd99686b787c97f20c739ecf:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwNGZhZDU3YmQyNzQwODM5MzE3MTAwYWU0MDI0YjgxYTU3NTYyNmNmMzI2NTIxMTMyY2RhZTYxNzA3NDhiNTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1NjM4NDk0YzUxMmIzNjBmZjE1Y2E1OGMxY2U4ZjdiOTQ4YzZjM2VjNTRmOGU1N2Q1ZTJmMzU2NDdjYTAxNTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEwZjdiMjM0NWU5ODU2ZmM5MWQxMTZjMTIwNzQ4NjcyY2RjYTMxMWU4MWU5ZWQ2MTkyYzMxMjRmNjhkYmRkMzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiMDYzNGFhM2FjMTIyYWRhMmY5N2ZiY2MxMWY3Yzk3MDFjNzczNjFiY2E1OGYyYzEzNmM0MDI1YzQ1NmZjNzcifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L676-L676",
+          "version": "repo-lines-v1:sha256:b008acb941c37237ca2406c2d7c8c2277978e4a77f6d336ec6230e71b8eef6c7:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjAwOGFjYjk0MWMzNzIzN2NhMjQwNmMyZDdjOGMyMjc3OTc4ZTRhNzdmNmQzMzZlYzYyMzBlNzFiOGVlZjZjNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjAwOGFjYjk0MWMzNzIzN2NhMjQwNmMyZDdjOGMyMjc3OTc4ZTRhNzdmNmQzMzZlYzYyMzBlNzFiOGVlZjZjNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzNlODBkOGVlMmU2Yzk5ZjFkOTgxOTMyMDkzYWNkOWIwNDgxNzhkOTdkZmVlMmE2OGFjZmQ2YmFjY2NhYjRmNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjE5MDc3MGQ1ZWVhZWFlYWRkMjBmYjBiMGZiNGM5MTJjMjQ0NzVmZGQ2YWU3YzZlOGQ2NTYwM2MyMTQ4NzFlNSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_2ff4731f80bd4b53910c61d6d6107641",
+      "statement": "Dockerfile.harnessed-base commits a group-0 ownership contract for /home/harnessed: the home dir is chown ${USERNAME}:0 with mode 2775 (setgid, so new entries inherit group 0 — the arbitrary-uid half, since a docker agent runs as <invoker>:0 and group 0 is the only group an uid the image never created is guaranteed to hold, while a 0750 harnessed:harnessed home could not even be traversed by it); the volume mount points .cache and .local get the same treatment because docker copy-up seeds a mounted volume with the image path's content AND ownership; ~/.cache is recursed (chgrp -R 0 + chmod -R g=u) because the agent writes into pre-existing harnessed-owned subdirectories the build left at 0755; ~/.local is deliberately excluded from the recursion (~1.6G of mise/pnpm/uv toolchains would be rewritten into a new layer); and ~/.claude is deliberately absent from the list because an image-side ~/.claude re-triggers copy-up re-ownership of the still-empty volume on every mount, which once made the compose step fail on utimes.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/Dockerfile.harnessed-base#L296-L374",
+          "version": "repo-lines-v1:sha256:121dd5a90e970406f0e55226d151268bdfea33f6c78ec4ebfb7ef33747acf77e:eyJzZWxlY3RlZExpbmVDb3VudCI6NzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlMzViZjkzZDJiNjczMzlhZTk5ZWVhYzIwNzE0NjlmMmQ0YmQzZGU5Y2IxNzJmZDVjOWU3MzJiY2E4MGFiNjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlZjZiNTk0ZjFiOWEwZTBiMWE2MWIxYTUyZjE0OGZhZGMzNjUwYzY1YzBkM2FiNzhmYjMwYzVkYWNlNGRlNzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNhN2ExYzJlOGFkYWNlZTBhZTQxMTAxZGNlMGMyNzdhNjIyNTY5NDhkMDk4ZTRkOTNkNTQyMmM3NjVhZmZmZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM1NDQwM2U2MTU0YjQwOThlMDJjNTA5ZjIzOWFmNzE5ODNmZWRiNzVlZjUxZmE2M2Q3ZmM1OWNiOTAyY2MwZDYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L130-L139",
+          "version": "repo-lines-v1:sha256:8663fbaea2cee945c6fb4734a91352ebc8872e88e566273fcc107374620c8a51:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyNTU1MDhlNzc1M2Q2NTEzNTA3OTgzYzIwMWYyZmIxYjZlZmY4Y2NjNWM2ZGExNDMxZTYwZTRhYzkyMjVkZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiMmVmNjkwYmYyOTRhYmYyYjI2MjA3NmIzOTNlOTI3ZGQwZTZiYWZkNWU0OWFkNGY2MDg2ZGNiNzlhYjkzOWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUzYzYyMWE0NTlhZDRhOTQxMjVmN2QxODRmMjU2YWU1MTk2YWVlZjc3NDhmZDhhMmMyN2VmZDIzNDg0MmQzNjIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_466fd1ea0a7f45d6b696c4b6ec12e364",
+      "statement": "The base build proves the arbitrary-uid contract at build time with a second probe run under USER 4242:0 — an uid the image has never heard of — which creates and removes a probe directory in $HOME and FAILS THE BASE BUILD (naming docker's <invoker>:0 and printing ls -ld of the directory) if it cannot. It runs as 4242 rather than ${USERNAME} because uid 1000 is the owner and passes whatever the group bits say — the blind spot that let the docker defect reach CI, where every local check was run by the one uid for which the bug is invisible — and only $HOME is probed here because the other directories are runtime volumes chowned to the invoker by volumes._chown_volume_for_docker.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/Dockerfile.harnessed-base#L376-L391",
+          "version": "repo-lines-v1:sha256:25c8935e4148f7fa98d7d6ff4a1db95477e1709a50b72089114ae04547411db6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhYjA2YWEyYzY1MGJhZjNhYjc3NDEzNGVhOGIwMmJkYWNhNDBmMjJkOTVjODdmMmViMmRkMjkwNGM5OTA2OWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjMmY5OWZjZjdhNzY3YzAxNzQ0MDczY2M5ODJjODNmYTUwODVmMzQwNDY2NjRjYTFkOGM5ZTY3ZmU4YzIxNDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI0Y2UxODJkOTQzYmNjMjk4MTIzNTY1ZGRhODlhY2I5YTRkNTVmZDBlYjM3NzYxYTI5NGNjZThmOGI0MGUzZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkM2ZiYTMxMjRiMTgwNDBiMzY3NTEwNTcxYzc1NDg4MjQxOWUyNjg2YzZlNTMxYTZhYmZlZmMxMTBjZGI5NzIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ccb2d00933b6490a8721c0d53b21a6a7",
+      "statement": "In _build_stack the credentialed re-scan writes its report to <profile>/scan-report.json after unlinking any report left by a previous build (a stale file would otherwise be taken for this scan's output), and hands the scan container the stack volumes via vol_args built from paths.userns_args(rt) plus the config and tools volumes; _surface_scan_report afterwards keeps that credentialed report over any image-baked one (keep_existing=rescan_report) and prints an explicit note when no report was produced — a build that scanned nothing must not look identical to a build that scanned everything and found nothing.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1204-L1256",
+          "version": "repo-lines-v1:sha256:73de30a4815e0bb4bd56500d3eb90d274e8e97f8b854a3b5903555abeab32d6e:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4NTgwZWU3YWNhYTAzNWY3NWQyMmNkYjZiYTYzYTExMGM1MTlhYjRiMmJhMzAxZmIzY2Q4NjBlNWI5N2JhNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxYTJlNTBlNDcyM2YxMmFiYWEzNjdjODQwYjNmOTFlMTU5NTFmZTAyMzQwOWM2YzhhNWFlYTY1YzIwNzBiMzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJhMTNkNDQ4MTU0OGJmNzgzNjIyZTE2ZGQ1M2IyYzRiMjAwMGFjYWJlMDZjMmRlNTU5NDY4MmIzNmFlMzkzNWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQyYzNhYzhmZTFkM2YxMDc2MDI4YzdkMzQwYjc1M2NiYzBhM2FmYjA0NmMyOWE0MmM2YWQ5YzVhODNkMjYxNTgifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L721-L743",
+          "version": "repo-lines-v1:sha256:825781781789295d5c96d8aa01611f1b4dbf7c6c5c1465a67ce3b7e660a613b5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI1ZTE0NDhkNTE3NDM1ODUxMDUzN2M3NTE4YjcxYmE5M2JiNDgzMzg1NzQzZWJmM2M1NTFlZmVjYjgyMmE1NDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzYWU5NGQxODcyNWJkYWMyM2FmYjA0ZWMyZmRkZTM5ODlmMjg2Mjc5MTZlOTkwY2YyYjM5YWYzYjM4YzZiZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE3ZjdmZjk2MzM5ZGY2Mjg5YThmY2M5MDY4NDM5MTlkZDkzYjA2MDdjMmM1MzM4NDllY2VjZTU5N2NkODIwYTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU3YjVmZmEzZDVhOGQ3MmU5NmQ1OTg1YWFiOGE5OWQ2Y2UyOWJkZDFhZGRjNTkzODVlZTg5Y2JmNzgzN2I4ZGIifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.4.3",
-    "at": "2026-09-08T23:17:55.419Z"
+    "at": "2026-09-12T09:54:25.902Z"
   }
 }

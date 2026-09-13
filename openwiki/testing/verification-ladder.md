@@ -1,7 +1,7 @@
 ---
 type: "Reference"
 title: "The verification ladder: what each gate proves and what it does not"
-description: "What each verification gate proves and what it does not — the hermetic pytest suite, the HARNESSED_PODMAN live layer, the lint layers, the pin check, the capability oracle, and the wiki's own drift gate with its regeneration path and retry patch."
+description: "What each verification gate proves and what it does not — the hermetic pytest suite, the two-job live layer (podman and docker) behind HARNESSED_PODMAN/HARNESSED_DOCKER, the lint layers, the pin check, the capability oracle, and the wiki's own drift gate with its regeneration path and retry patch."
 tags: [ci, testing, verification, supply-chain, openwiki, drift]
 openwiki_generated: true
 sources:
@@ -33,6 +33,8 @@ sources:
     resource: repo://src/harnessed/capability.py
   - id: openwiki-source-2b85b44d9f80bbb3b6ce747d
     resource: repo://src/harnessed/launchenv.py
+  - id: openwiki-source-7b2070fd28fc0a337d8c3539
+    resource: repo://src/harnessed/paths.py
   - id: openwiki-source-8eaa0f25ca9e5f6b6822e5f9
     resource: repo://src/harnessed/report.py
   - id: openwiki-source-7536da5c015fc2813c7693c5
@@ -45,6 +47,8 @@ sources:
     resource: repo://tests/test_broker_launch_gate.py
   - id: openwiki-source-4d3b84558965c7b5921b9989
     resource: repo://tests/test_broker_pod_args.py
+  - id: openwiki-source-80aa176b0256ebdcec6816de
+    resource: repo://tests/test_docker_userns.py
   - id: openwiki-source-d93dd2b98c101e2e05d79086
     resource: repo://tests/test_external_contracts_live.py
   - id: openwiki-source-3ab0707808526f92ef714a7c
@@ -57,17 +61,17 @@ sources:
     resource: repo://tools/openwiki-retry-patch.py
   - id: openwiki-source-42360cb3e257ef7023d23d39
     resource: repo://tools/preflight.sh
-generated: { by: "openwiki/0.4.3", at: "2026-09-09T09:34:57.295Z" }
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-09T09:34:57.295Z
+    at: 2026-09-12T09:54:25.902Z
 ---
 
 
 # The verification ladder
 
-Four CI gates, one oracle they share, two packaging/mutation checks, a drift check over this wiki
-itself plus the regeneration path that stands behind it, and local tools that replay the ladder
+Four CI workflows, one oracle they share, two packaging/mutation checks, a drift check over this
+wiki itself plus the regeneration path that stands behind it, and local tools that replay the ladder
 before a PR. The organizing rule is stated once and never relaxed: **a green at one rung says
 nothing about any rung above it.** A green pytest run performs no `podman build` and no
 `harnessed container-run` — CLAUDE.md says exactly that, in one line, at the end of its test
@@ -80,28 +84,36 @@ and silently withholds what was never checked. `tools/preflight.sh` exists to re
 (see [The developer loop](#the-developer-loop)).
 
 Related: [system overview](/openwiki/architecture/overview.md),
+[container runtimes](/openwiki/architecture/runtimes.md),
 [invariants](/openwiki/concepts/invariants.md),
 [supply chain: scans, pins, locks](/openwiki/operations/supply-chain.md),
 [the capability test](/openwiki/workflows/capability-test.md),
+[the mutation gauntlet](/openwiki/testing/mutation-gauntlet.md),
 [harnessed quickstart](/openwiki/quickstart.md).
 
 ```mermaid
 flowchart TD
     change["a change on a branch"] --> pr["pull_request"]
-    pr --> pytest["test.yml - pytest and pytest-py313"]
-    pr --> lint["lint.yml - ruff then pyright then shellcheck"]
+    pr --> pytest["test.yml: jobs pytest and pytest-py313"]
+    pr --> lint["lint.yml: ruff then pyright then shellcheck"]
     pytest --> merge["merge to main"]
     lint --> merge
-    merge --> live["live.yml - push to main plus nightly 04:00 UTC"]
-    live --> gate["HARNESSED_PODMAN=1 suite via tools/run-tests.sh"]
-    gate --> skipped{"any live_podman-marked test skipped?"}
-    skipped -->|"yes"| red["run refuses to exit green"]
-    skipped -->|"no"| oklive["container contracts verified within a day"]
-    weekly["weekly Monday 06:00 UTC"] --> pins["pin-check.yml - harnessed update --check"]
+    merge --> live["live.yml: push to main, nightly 04:00 UTC, workflow_dispatch"]
+    ondemand["a PR that touches the container path: gh workflow run live.yml --ref branch"] --> live
+    live --> pod["job live: HARNESSED_PODMAN=1, four issue-462 varlock deselects"]
+    live --> dock["job live-docker: CONTAINER_RUNTIME=docker, HARNESSED_DOCKER=1"]
+    pod --> suite["same suite, via tools/run-tests.sh"]
+    dock --> suite
+    suite --> launch["harnessed test livecheck claude --json --keep"]
+    launch --> skipped{"a live_podman-marked test skipped while the gate was open?"}
+    skipped -->|"yes"| red["conftest fails the run"]
+    skipped -->|"no"| oklive["both runtime contracts verified within a day"]
+    weekly["weekly Monday 06:00 UTC"] --> pins["pin-check.yml: harnessed update --check"]
 ```
 
 *Which workflow runs when, and the one refusal that turns a skip into a failure. Nothing in this
-diagram runs the live layer or the pin check on a pull request.*
+diagram runs the live layer or the pin check on a pull request — the branch dispatch is the author
+opting in, not a trigger.*
 
 ---
 
@@ -168,7 +180,7 @@ a fixed number.
 
 ---
 
-## Rung 2 — the live layer behind `HARNESSED_PODMAN=1`
+## Rung 2 — the live layer behind `HARNESSED_PODMAN=1` (and `HARNESSED_DOCKER=1`)
 
 `.github/workflows/live.yml` is the home for everything the hermetic runner skips. It triggers on
 `workflow_dispatch`, `push: [main]`, and a nightly `cron: "0 4 * * *"` (04:00 UTC — contract drift
@@ -180,6 +192,21 @@ skipped one**. Post-merge plus nightly catches drift in the external contracts �
 inspect/port/images output formats, and the live behaviour of every pinned tool — within a day,
 which is the timescale those actually change on.
 
+The gap an author actually fears — *my change broke the launch path* — is closed **on demand,
+against the author's own branch**:
+
+```bash
+gh workflow run live.yml --ref <branch>
+gh run watch "$(gh run list --workflow live.yml --branch <branch> -L1 --json databaseId -q '.[0].databaseId')"
+```
+
+That is the whole mechanism, and it exists because a regression and external drift are different
+risks with different owners: PR #461 was one approval from merging with six podman tests red, which
+no automatic PR-time trigger was watching. The dispatch is a judgement call the author makes; the
+automatic run on `main` and the nightly still catch what the author does not. CLAUDE.md makes it a
+rule, not a suggestion: change any file on the container path and dispatch this workflow against
+your branch **before asking for review**.
+
 The automatic triggers were only enabled after the suite was measured green against a real podman
 (`HARNESSED_PODMAN=1 pytest` → 2166 passed, 1 skipped). Scheduling a nightly job against a suite
 that is red from day one produces a check people mute within a week, which verifies exactly as much
@@ -189,33 +216,73 @@ no harness (a usage error — all 7 parametrizations failed in 27 s without podm
 persist round-trip against a stack that never existed under any naming scheme, and a transitive
 `mcp` 2.0.0 rename that killed a shipped recipe's server at import in every container.
 
-### The shape of the job
+### Two jobs, one suite, two runtimes
 
-- **`timeout-minutes: 60`.** Observed runtimes were 15:03, 14:41 and 23:47; a 30-minute budget came
-  within six minutes of a kill, and a timeout kill presents as an *unrelated* failure — the worst
-  way for this job to go red. mise also provisions shellcheck and pyright on a cold runner now,
-  widening the gap further.
-- **Podman availability is verified loudly**, not assumed: `podman --version` plus `podman info`,
-  installing it if the runner image ever drops it. This job's entire value is that podman is really
-  here; if it were absent the suite would skip its way to a green tick.
+"Supported" that is not continuously verified is a claim, not a fact — and harnessed claims both
+podman and docker. So the workflow carries **two jobs, not one**: `live` (podman) and `live-docker`
+(docker). Both run the same suite through the same wrapper; the podman job exports
+`HARNESSED_PODMAN=1`, the docker job exports `CONTAINER_RUNTIME=docker` and `HARNESSED_DOCKER=1` on
+every step that needs them.
+
+The docker job is **not a matrix leg**, and that is deliberate: a matrix rewrites the status-check
+context to `live (podman)` / `live (docker)`, and `live` is about to become a required check —
+renaming a required context leaves branch protection waiting forever on one that never reports
+again. It is the same trap `test.yml` records for `pytest`, and the reason `pytest-py313` is its own
+job rather than a second matrix entry.
+
+The docker job was also **inexpressible until two code changes landed**, which the workflow's own
+comment records:
+
+1. A GitHub runner has **both** binaries, and detection prefers podman — PATH order alone always
+   yields podman. The job only became writable when `CONTAINER_RUNTIME` was honoured — as the
+   **first** branch — in `paths._detect_runtime` behind `paths.active_runtime`. An unrecognised
+   value is **refused rather than ignored** there: a typo'd `CONTAINER_RUNTIME=dcoker` that
+   silently fell through to podman would run the whole suite against the wrong runtime and report
+   it as a pass.
+2. The runner is uid **1001**, and until `paths.container_user_args` ran the agent as the invoking
+   user, docker wrote every bind-mount file as host uid 1000 (#457). That made the job impossible
+   rather than merely red: podman's `keep-id` maps the invoking user on; docker has no such mode,
+   so `--user` is stated explicitly and the volume is chowned to match.
+
+`CONTAINER_RUNTIME` is what **forces** the runtime, not merely informs it: without it detection
+picks podman, which is installed on the runner too, and the job would silently retest the podman
+path while reporting itself as docker coverage — a green tick over a runtime nobody exercised.
+`HARNESSED_DOCKER` gates the docker-only tests the way `HARNESSED_PODMAN` gates the podman ones.
+
+Both jobs **verify their runtime instead of assuming it**. The podman step runs `podman --version`
+plus `podman info`, installing podman if the runner image ever drops it — this job's entire value is
+that podman is really here, and if it were absent the suite would skip its way to a green tick. The
+docker job needs no install step (docker is preinstalled) but asserts `docker info` rather than
+`--version`: a client binary with no reachable daemon passes the version check and fails every test
+afterwards, which is the least readable way for this job to go red.
+
+### The shape of each job
+
+- **`timeout-minutes: 60`** in both. Observed runtimes were 15:03, 14:41 and 23:47; a 30-minute
+  budget came within six minutes of a kill, and a timeout kill presents as an *unrelated* failure —
+  the worst way for this job to go red. mise also provisions shellcheck and pyright on a cold runner
+  now, widening the gap further.
 - **`aoe` is deliberately not provisioned.** ARCHITECTURE.md and `src/harnessed/aoe.py` both say
   harnessed "neither requires nor installs" it, and its tests carry no `live_podman` marker, so they
   are reported and never fail the run — a declared choice, not a gap. (The workflow's comment still
   credits `mise.toml` with provisioning `dolt`; `mise.toml`'s `[tools]` declares only shellcheck,
   pyright, varlock and openwiki today — the beads-era need is gone, that recipe having been retired.
   Read the comment as history, not as a current dependency.)
-- **`mise` is installed with a pinned version** (`2026.8.2`) because `tools/run-tests.sh` shells out
-  to mise on its first line — without it the job dies having run nothing.
+- **`mise` is installed at a pinned version** (`2026.8.2`) in both jobs because
+  `tools/run-tests.sh` shells out to mise on its first line — without it the job dies having run
+  nothing.
 
 ### The base image must exist before pytest starts
 
-The workflow runs a bare `mise exec -- uv run --extra dev harnessed build` **before** invoking
-pytest, and the ordering is load-bearing: `test_live_verification_debt.py` skips two gated tests
-unless `localhost/harnessed-base:latest` exists, and evaluates that precondition at **collection
-time** — before any test runs. The capability sweep later in the suite does build the image, which
-is why this looked like it should already work, but by then the skip decision is made. Both tests
-skipped on every run the workflow had ever done until this was fixed — and because they carry the
-`live_podman` marker, they were what failed the run, not the aoe and dolt gates the report listed.
+Both jobs run a bare `mise exec -- uv run --extra dev harnessed build` **before** invoking pytest,
+and the ordering is load-bearing: `test_live_verification_debt.py` skips two gated tests unless
+`localhost/harnessed-base:latest` exists, and evaluates that precondition at **collection time** —
+before any test runs. `test_external_contracts_live.py` carries the same collection-time
+precondition (`_needs_base_image`). The capability sweep later in the suite does build the image,
+which is why this looked like it should already work, but by then the skip decision is made. Both
+tests skipped on every run the workflow had ever done until this was fixed — and because they carry
+the `live_podman` marker, they were what failed the run, not the aoe and dolt gates the report
+listed.
 
 It is a **bare** `build`, not `build default claude`, because bare `build` (`launcher._build_images_cmd`)
 builds exactly the base and agent images and then reconciles stacks (`_reconcile_stacks`) — a no-op
@@ -224,33 +291,141 @@ credentialed supply-chain rescan, and create the stack's podman volumes: work th
 inside pytest in a separate process the build-once cache cannot deduplicate, and volume creation
 ahead of the tests that exercise volume creation would mask a cold-start failure.
 
-`GITHUB_TOKEN` is **required** on both the build and the test step, not a nicety: mise's aqua
-backend resolves several pinned tools through `api.github.com`, an unauthenticated runner shares one
-heavily-used rate-limit pool, and when it runs out the API answers 403 mid-layer
-(`aqua:cli/cli@2.96.0 … 403 Forbidden`) — which reads as a broken pin when the pin is fine. Passing
-the workflow token raises the limit from 60/hr per IP to 1000/hr per repo, needs no secret to be
-configured, and is read-only. The test step needs it for the same reason at one remove: stack images
-install their `tools:` at container runtime through mise, so an unauthenticated 403 there fails a
-test rather than a build, which is harder to read.
+### GITHUB_TOKEN on every step that can reach api.github.com
 
-### The fail-closed skip accounting
+`GITHUB_TOKEN` is **required** on the build step, the suite step, and the launch step of **both**
+jobs — not a nicety. mise's aqua backend resolves several pinned tools through `api.github.com`, an
+unauthenticated runner shares one heavily-used rate-limit pool, and when it runs out the API answers
+403 mid-layer (`aqua:cli/cli@2.96.0 … 403 Forbidden`) — which reads as a broken pin when the pin is
+fine. Passing the workflow token raises the limit from 60/hr per IP to 1000/hr per repo, needs no
+secret to be configured, and is read-only. The suite step needs it for the same reason at one
+remove: stack images install their `tools:` at container runtime through mise, so an unauthenticated
+403 there fails a test rather than a build, which is harder to read.
 
-The suite itself is invoked **through `tools/run-tests.sh -v`** with `HARNESSED_PODMAN=1`, never as a
-hand-composed pytest line, so CI and a developer's box run the same thing by construction.
+### Runner identity: diagnostics that run before the suite
 
-`tests/conftest.py` holds the guard that makes this rung honest: **when `HARNESSED_PODMAN=1` is set
-and any governed test skipped, the run refuses to exit green.** "Asked for live verification and
-silently delivered none" is the exact failure mode this exists to catch — a broken podman cannot
-masquerade as success here.
+Both jobs print a **Runner identity** step before pytest starts. This exists because the two bugs
+that kept the podman job red for six consecutive runs were both claims about the runner's
+environment that no log there could confirm or refute: harnessed-rv2.1 turned on the runner's uid —
+never printed — and harnessed-rv2.2 on whether hatago's child servers spawned at all. One `id -u`
+settles the first; the report carries the hatago log for the second. **A diagnostic that only runs
+after a passing suite diagnoses nothing** — deliberately before the suite, then.
 
-The division of labour inside that guard is deliberate and was learned the hard way:
+The step prints, per job:
 
-- **Skip *reasons* are pattern-matched for the report only** — to name what sat out.
-- **The fail-closed decision uses the `live_podman` marker, never the wording** of the reason —
-  because the one skip that failed a real run was the one reason not printed. Discovery of *what to
-  list* may be fuzzy; the decision of *whether to fail* may not be.
+- `id -u` / `id -g` / `id -un`, plus `podman info --format '{{.Host.IDMappings}}'` (podman job) or
+  `docker info --format 'rootless=…'` over `SecurityOptions` (docker job) — the identity inputs the
+  `--user`/`keep-id` argv depends on.
+- `git branch --show-current` and `UV_PROJECT_ENVIRONMENT`. `tools/run-tests.sh` resolves its venv
+  through mise's `_BRANCH`, which is exactly `git branch --show-current` — so whether
+  actions/checkout leaves a local branch or a detached HEAD decides whether that is `main` or the
+  empty string, and an adversarial review and the author reached opposite conclusions from
+  documentation alone. Neither can be settled without a run, so the run prints it. **Empty is not a
+  failure**: the venv path just collapses to a shared one.
+
+### The suite is invoked the way your laptop invokes it — and refuses to lie about skips
+
+The suite is invoked **through `tools/run-tests.sh -v`** with the gate environment set — never as a
+hand-composed pytest line, so CI and a developer's box run the same thing by construction. The
+wrapper absorbs the three traps that fail locally while CI stays green: the per-branch venv outside
+the repo, the mandatory `--extra dev`, and mise's untrusted-config refusal.
+
+`tests/conftest.py` holds the guard that makes this rung honest, and it works in two registers:
+
+- **Skips are reported in words.** At session end the run prints a `live verification` section
+  listing every skip that looks like a gate on a real external system, with the count and the plain
+  statement that nothing in the run exercised a real podman, container, or external binary. On a
+  hermetic run that section is the honest answer to "what did not execute".
+- **The fail-closed decision uses the `live_podman` marker, never the wording.** When
+  `HARNESSED_PODMAN=1` is set and any `live_podman`-marked test skipped, `pytest_sessionfinish`
+  forces the exit status to 1: "asked for live verification and silently delivered none" is the
+  exact failure this exists to catch, and a broken podman cannot masquerade as success here. The
+  reason-pattern (`_LIVE_SKIP_RE`) is used **for the report only** — the cost of missing one in the
+  listing is an incomplete sentence, while a wording-based *decision* has already failed twice in
+  opposite directions: matching reasons containing `HARNESSED_PODMAN` missed the image-precondition
+  skips, which fire only when the gate is open (fail-open inside the guard against fail-open);
+  inverting to "anything not allowlisted" would have failed runs over platform and
+  optional-dependency skips that have nothing to do with podman. Tests behind other gates (dolt,
+  aoe) are not marked, so they are irrelevant here **by construction rather than by exemption** —
+  there is no list to keep.
+
+The marker is applied by the `@podman` decorator in `tests/support.py` — the one definition of the
+gate — and it travels with the test whichever `skipif` ends up doing the skipping, so a stacked
+image-precondition skip still reports it.
 
 A skip count is not neutral information on a run that asked for the gated layer.
+
+**The one deliberate narrowing: the four #462 deselects.** The podman job's suite step deselects
+four **named** tests of `TestVarlockProxyRulesOutput` — every mode the parser knows, the gate/binary
+agreement on opting in, the no-annotation case, and the bare-`@proxy` invalid-schema case. `varlock
+proxy rules` stopped parsing for `_varlock_proxy_modes` on 2026-08-28 — upstream display drift,
+unrelated to anything in this repo — and the job had been red on `main` ever since, with the parser
+failing **closed** exactly as designed. Leaving the failures in was not a cosmetic cost: a failed
+step **ends the job**, so the launch step below never ran, and the job that exists to prove a podman
+stack reaches a running agent was proving nothing instead, for a reason no PR author could act on.
+The four are named one by one rather than deselecting the class, the file, or the marker, **so a new
+failure anywhere else in that module still goes red**. They are deleted when #462 closes — and its
+acceptance criteria keep `_varlock_proxy_modes` returning `None` on untrusted output rather than
+widening the parser to swallow the drift.
+
+### The hermetic pin that keeps the two runtimes apart
+
+The docker job exports `CONTAINER_RUNTIME=docker` for its whole step — and `tests/conftest.py`
+deletes it again for every test. The autouse `_pin_container_runtime` fixture does three things:
+clears the `active_runtime` and `docker_is_rootless` lru_caches, `monkeypatch.delenv`s
+`CONTAINER_RUNTIME`, and pins `paths.active_runtime` to return `podman` for the hermetic suite. Two
+problems forced the pin, and a third arrived with the docker job:
+
+1. Before it, the suite's result depended on **which binary the developer had installed**:
+   `active_runtime()` reads PATH, so on a podman box the ownership tests took the podman branch and
+   on a docker-only box the docker one — 17 of them changed outcome across the two, one test went
+   green on both for different reasons, and a hermetic suite whose answers move with the host's
+   tooling is not hermetic.
+2. `docker_is_rootless()` is `lru_cache`d, so whichever test reached it first — under whatever HOME,
+   PATH and `subprocess` patching it had in force — decided the value every later test saw: 31
+   unrelated failures under `pytest-randomly` that all vanished when the same files ran alone.
+3. `_detect_runtime` honours `CONTAINER_RUNTIME` **before** it looks at PATH, so the live-docker
+   job's export made `test_it_looks_for_the_right_binaries_and_prefers_podman` answer "docker" on a
+   PATH holding only podman — green on every developer box, red only in the one job that sets it.
+
+Tests *about* the docker branch override the pin inside the test body, where a function-scoped
+`monkeypatch` beats an autouse fixture (`tests/test_docker_userns.py` does exactly that, and
+captures the real detectors at import because the fixture has already replaced
+`paths.active_runtime` with a plain lambda that has no `cache_clear`).
+
+### The launch step: a build that never launches proves nothing about launching
+
+Both jobs finish with `mise exec -- uv run --extra dev harnessed test livecheck claude --json
+--keep`. The build path and the launch path share almost no code past image assembly, so a green
+build is not evidence about the half users actually run — this is the step that would have caught
+#458, where `harnessed build` exited 0 on docker while `container-run` was creating the agent with
+`--network=container:<a pod that is never created>`.
+
+Three choices in that one line are each load-bearing:
+
+- **`livecheck`, not `default`.** Stack names resolve through the user-overlay catalog too, so
+  `default` means one thing on a runner and another on a developer's machine — where it pulled in a
+  private recipe holding a 1Password ref. **A test must not be able to reach a secret.** `livecheck`
+  is a repo-only name nobody overlays.
+- **`--keep`.** `harnessed test` is the headless launch plus the stack's declared capability
+  assertions — it stands the instance up, waits for hatago, asserts, and tears down. `--keep` makes
+  the teardown *not happen*, so the diagnostics step below has something to inspect. Without it, the
+  failure message says "re-run with --keep, then exec … cat /tmp/hatago.log" about a container the
+  run has already discarded — exactly what happened on the first docker failure. The runner is
+  destroyed at job end, so nothing leaks.
+- **`--json`**, so a launch failure is machine-readable in the log rather than buried in prose.
+
+The **Collect launch diagnostics** step that follows (`if: failure()`) is the counterpart to
+`--keep`: it dumps `ps -a`, the logs of every `harnessed-` container, the hatago log via `exec … cat
+/tmp/hatago.log`, the in-container identity and `$HOME` layout, and the volume list. Every command
+is `|| true` and the step runs only on failure, so it can never change the job's verdict — its only
+job is to put the evidence in the run log, because a launch failure that names a log the job did not
+collect is undiagnosable without pushing another commit.
+
+One honesty note about the docker job: the conftest fail-closed guard is defined for the podman gate
+(`HARNESSED_PODMAN=1` plus the `live_podman` marker), so it does not count docker-gated skips. The
+launch step is therefore not decoration in that job — it is where the docker path's end-to-end
+verdict actually comes from.
 
 ### What the live tier asserts — and the seam it stops at
 
@@ -323,9 +498,11 @@ unverified; read it as "at least this is broken", never as "only this is broken"
 
 ### The exact argv
 
-- ruff: `uv run --extra dev ruff check src tests tools`
-- pyright: `pyright --pythonpath "$(uv run --extra dev python -c 'import sys; print(sys.executable)')"`
-- shellcheck: `shellcheck $(git ls-files '*.sh')`
+```bash
+uv run --extra dev ruff check src tests tools
+pyright --pythonpath "$(uv run --extra dev python -c 'import sys; print(sys.executable)')"
+shellcheck $(git ls-files '*.sh')
+```
 
 The pyright `--pythonpath` is not optional. `mise.toml` puts the venv **outside the repo**
 (`UV_PROJECT_ENVIRONMENT` under `~/.local/share/harnessed/venvs/<branch>/.venv` — one venv per
@@ -562,6 +739,11 @@ everything, while a single change runs
 `HARNESSED_DIR=$PWD mise exec -- uv run --extra dev mutmut run "*<function>*"` and reads
 `mutmut results`.
 
+The full gauntlet mechanics — changed-line scope derivation, the silent-filter trap, verdict
+tooling — live on [the mutation gauntlet page](/openwiki/testing/mutation-gauntlet.md), and
+`tools/gauntlet-456.sh` shows one issue's transcription of the whole ladder in cost order, with
+every merge-gate argv copied from the workflows verbatim.
+
 ---
 
 ## A fifth gate that is not a rung: this wiki's drift check and regeneration
@@ -653,6 +835,12 @@ glm-5.3-flash (94 LLM calls, a clean exit, no tool call — PR #445 run 6), and 
 second attempt** sharing the worker's virtual backend — attempt 2 sees the page markdown attempt 1
 already wrote — before the page is skipped.
 
+The nightly workflow applies the **same patch to its own runner**: after the npm-global install, a
+step runs `python3 tools/openwiki-retry-patch.py "$(npm root -g)/openwiki/dist/agent/repository-runner.js"`.
+The patch's version gate and idempotence are what make that safe — patching the npm-global layout
+was verified to produce a runner byte-identical to the locally patched one, so CI and a laptop run
+the same corrected runner rather than two divergent forks of upstream.
+
 The patch is defensive about its own applicability, on purpose:
 
 - It is **idempotent**: a marker identifies an already-patched runner; `--check` exits 0/1 to report
@@ -678,7 +866,7 @@ gitignored live clone that only a `main/` checkout has).
 | Gate | Where | Runs on | Proves | Does not prove |
 |---|---|---|---|---|
 | hermetic pytest | `test.yml` jobs `pytest` / `pytest-py313` | PR + push main | pure functions, assembly oracle, emitted text, repo-asset invariants, order independence | any container behaviour — no podman build, no `container-run`; gated tests skip, and a skip is not a pass |
-| live layer | `live.yml` job `live` | push main + nightly 04:00 + dispatch | real `podman build`/run, capability oracle per stack, external contract drift within a day | nothing on PRs; nothing about the host backend; and no packet across the broker's 169.254.1.1 route — that argv layer is asserted hermetically, through injected seams |
+| live layer | `live.yml` jobs `live` (HARNESSED_PODMAN=1) and `live-docker` (CONTAINER_RUNTIME=docker, HARNESSED_DOCKER=1) | push main + nightly 04:00 + dispatch; per branch on demand via `gh workflow run` | real `podman build`/run **and** the same under docker, capability oracle per stack, a real `livecheck` launch, external contract drift within a day | nothing on PRs; nothing about the host backend; and no packet across the broker's 169.254.1.1 route — that argv layer is asserted hermetically, through injected seams |
 | lint | `lint.yml` job `lint` | PR + push main | ruff correctness/security at zero, pyright basic at zero, shellcheck over every tracked script | runtime behaviour; layers after a red one never ran |
 | pin check | `pin-check.yml` job `pins` | weekly Mon 06:00 + dispatch | stale, unheld, past-age pins across the catalog | nothing about code correctness; nothing on PRs by design |
 | capability test | `harnessed test <stack> <harness>` | inside the live layer, or by hand | the manifest's declared capabilities are present in a running instance | undeclared capabilities, host-mode behaviour, interactive attach |
@@ -699,7 +887,7 @@ run the script, do not hand-compose `mise`/`uv`/`pytest`. It handles worktree se
 and absorbs three traps that fail locally while CI stays green — the per-branch venv living outside
 the repo, the mandatory `--extra dev`, and mise's untrusted-config refusal (the enumeration lives in
 `live.yml`'s own comment and in the run-tests skill; CLAUDE.md states the count and points there).
-It is what `live.yml` invokes, so CI and a developer's box run the same thing by construction.
+It is what both live jobs invoke, so CI and a developer's box run the same thing by construction.
 **Record the baseline test count before your change: a drop is a regression even if your new tests
 pass.** Supports one file, filters, `-x`; the suite is small and fast enough to always run whole.
 
@@ -722,17 +910,10 @@ run answers "what else is broken" in one pass instead of four.
 
 **The two end-to-end oracles.** A contribution is done when `harnessed test <your-stack>` is green
 and the live integration test passes — those two, not the hermetic suite, are the checks that
-exercise real containers, and nothing on this ladder substitutes for either. For the git workflow
-itself — worktree per change, full suite passing before proposing a merge, PR into `main`, signed
-commits — see [AGENTS.md](https://github.com/drmikecrowe/harnessed/blob/main/AGENTS.md) and
-[CONTRIBUTING.md](https://github.com/drmikecrowe/harnessed/blob/main/CONTRIBUTING.md); this page
-deliberately does not restate it.
- of four.
-
-**The two end-to-end oracles.** A contribution is done when `harnessed test <your-stack>` is green
-and the live integration test passes — those two, not the hermetic suite, are the checks that
-exercise real containers, and nothing on this ladder substitutes for either. For the git workflow
-itself — worktree per change, full suite passing before proposing a merge, PR into `main`, signed
-commits — see [AGENTS.md](https://github.com/drmikecrowe/harnessed/blob/main/AGENTS.md) and
+exercise real containers, and nothing on this ladder substitutes for either. For the container path,
+the live jobs themselves are the third: dispatch `live.yml` against your branch (both runtimes gate
+there now) before asking for review. For the git workflow itself — worktree per change, full suite
+passing before proposing a merge, PR into `main`, signed commits — see
+[AGENTS.md](https://github.com/drmikecrowe/harnessed/blob/main/AGENTS.md) and
 [CONTRIBUTING.md](https://github.com/drmikecrowe/harnessed/blob/main/CONTRIBUTING.md); this page
 deliberately does not restate it.

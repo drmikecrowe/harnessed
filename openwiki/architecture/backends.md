@@ -1,16 +1,18 @@
 ---
 type: architecture
 title: "Execution backends: the six-capability contract and backend-owned sequencing"
-description: "The backend.ExecutionBackend seam — six capabilities (materialize config, provision tools, wire MCP, seed auth, wire services, apply isolation), backend-owned sequencing with no shared driver, the two-phase capabilities FIRST_START/ATTACH and BOUNDARY/EGRESS (with the secrets broker started inside the container BOUNDARY), LaunchSpec versus backend-instance state, the registry, and the module-boundary rule that keeps backend.py free of launcher imports."
-tags: [execution-backends, backend-contract, capability-set, sequencing, launchspec, provision-tools, apply-isolation, seed-auth, secrets-broker, capmatrix, module-boundaries, hostbackend, containerbackend]
+description: "The backend.ExecutionBackend seam — six capabilities (materialize config, provision tools, wire MCP, seed auth, wire services, apply isolation), backend-owned sequencing with no shared driver, the two-phase capabilities FIRST_START/ATTACH and BOUNDARY/EGRESS (with the secrets broker started inside the container BOUNDARY, which itself branches: pod create on podman versus a flat self-owned-netns container on docker), LaunchSpec versus backend-instance state, the registry, and the module-boundary rule that keeps backend.py free of launcher imports."
+tags: [execution-backends, backend-contract, capability-set, sequencing, launchspec, provision-tools, apply-isolation, seed-auth, secrets-broker, capmatrix, module-boundaries, hostbackend, containerbackend, docker]
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
+    at: 2026-09-12T09:54:25.902Z
 sources:
   - id: openwiki-source-f2bd22307a3451ac2519580c
     resource: repo://BACKENDS.md
   - id: openwiki-source-f566bbdd90ebc6ec3b85626a
     resource: repo://src/harnessed/backend.py
+  - id: openwiki-source-0f0f277c40d34909acb07908
+    resource: repo://src/harnessed/capability.py
   - id: openwiki-source-9a53d80e292611f0100f90b1
     resource: repo://src/harnessed/capmatrix.py
   - id: openwiki-source-6f84913afc580e4d73fac66a
@@ -29,7 +31,7 @@ sources:
     resource: repo://tests/test_launch_parity.py
   - id: openwiki-source-bbf9cc1f144f5efff8ae1505
     resource: repo://tests/test_module_boundaries.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
 ---
 
 # Execution backends: the six-capability contract and backend-owned sequencing
@@ -90,7 +92,8 @@ changing behavior**:
 flowchart TB
     subgraph HOST["host backend - sequenced by _launch_host"]
         H1["wire_services"] --> HL["home lock taken"]
-        HL --> H2["materialize_config"]
+        HL --> H0["--fresh wipe - optional"]
+        H0 --> H2["materialize_config"]
         H2 --> H3["seed_auth"]
         H3 --> H4["provision_tools FIRST_START"]
         H4 --> HU["lock released"]
@@ -104,10 +107,12 @@ flowchart TB
         C2 --> C3["materialize_config"]
         C3 --> C4["seed_auth"]
         C4 --> C5["wire_mcp"]
-        C5 --> C6["apply_isolation BOUNDARY - broker start"]
-        C6 --> C6b["pod create"]
-        C6b --> C6c["podman run member"]
-        C6c --> C7["provision_tools ATTACH"]
+        C5 --> C6["apply_isolation BOUNDARY"]
+        C6 --> C6q{"runtime uses pods"}
+        C6q -->|"podman"| C6a["broker start, pod create, member run joins the pod"]
+        C6q -->|"docker"| C6n["no broker, no pod - agent container owns its netns"]
+        C6a --> C7["provision_tools ATTACH"]
+        C6n --> C7
         C7 --> C8["apply_isolation EGRESS"]
     end
 ```
@@ -115,10 +120,11 @@ flowchart TB
 *What each sequencer's capability order looks like. The host's `apply_isolation` calls are no-ops on
 that backend (isolation `none`); they are made anyway so the host path exercises the whole contract
 rather than quietly implementing five sixths of it. The container `BOUNDARY` phase is expanded into
-the three steps it actually performs — the secrets broker start, `pod create`, and the member
-`podman run` — because on this backend that single `podman run` is both the isolation boundary and
-the delivery mechanism. Non-contract sequencer steps (assembly, aoe registration, env setup, the
-re-attach branch, the CA install between `BOUNDARY` and `ATTACH` on the container path) are elided.*
+the branch it actually takes — on podman the secrets broker start, `pod create`, and the member run
+joining the pod's netns; on a pod-less runtime no broker and no pod, the agent container owning its
+own netns — because on this backend that single run is both the isolation boundary and the delivery
+mechanism. Non-contract sequencer steps (assembly, aoe registration, env setup, the re-attach
+branch, the CA install between `BOUNDARY` and `ATTACH` on the container path) are elided.*
 
 A backend therefore **implements the capabilities and orders its own launch**. What a fixed-order
 driver would break is precise: it would have to reorder one of the two existing paths, and reordering
@@ -133,17 +139,23 @@ The two conforming implementations live in `launcher.py`:
 | backend #2 | `harnessed host-run` | `launcher.HostBackend` (`isolation = ISOLATION_NONE`) | `launcher._launch_host` |
 
 The host backend has its **own verb**, and that is deliberate (bd harnessed-ltj): the two verbs share
-**no flags but `--rm`** — `--fresh`, `--no-firewall`, `--mount-folder`, `--agent-start-folder` and
+**no flags but `--rm` and `--fresh`** — `--no-firewall`, `--mount-folder`, `--agent-start-folder` and
 `--shell` all describe a pod that does not exist on the host path, so a combined verb could only
-accept them and do nothing. What host mode isolates is **CONFIGURATION, not the filesystem**: the
-stack's assembled profile is materialized into a per-stack `CLAUDE_CONFIG_DIR` and the harness is
-exec'd against your real machine, in your real project, with your real credentials. `container-run`
-is what adds the container boundary too.
+accept them and do nothing. `--fresh` is the one exception, and it is a **shared spelling, not shared
+behavior** (#452): on `container-run` it tears down the pod; on `host-run` it discards the stack's
+fingerprint stamp and host tool tree (`_host_fresh_wipe`), which is the host backend's own staleness
+cache and had no escape hatch at all before. What host mode isolates is **CONFIGURATION, not the
+filesystem**: the stack's assembled profile is materialized into a per-stack `CLAUDE_CONFIG_DIR` and
+the harness is exec'd against your real machine, in your real project, with your real credentials.
+`container-run` is what adds the container boundary too.
 
 **Pod launching is the container backend's, not the host backend's.** `pod create` and the member
-`podman run` both live inside `ContainerBackend.apply_isolation(BOUNDARY)`, and `HostBackend`
-creates neither a pod nor a container — the launch-parity ledger records even `instance_name` as
-container-only for exactly that reason ("names the container/pod; a host launch creates neither").
+`podman run` both live inside `ContainerBackend.apply_isolation(BOUNDARY)` — on the podman branch of
+it, anyway; on a pod-less runtime there is no pod to create and the flat container *is* the boundary
+(see the BOUNDARY branch below). `HostBackend` creates neither a pod nor a container — its class
+docstring opens with "no podman, the agent runs as a process on this machine", and the launch-parity
+ledger records even `instance_name` as container-only for exactly that reason ("names the
+container/pod; a host launch creates neither").
 
 The verb picks the backend and nothing else; both share one grammar and one stack-resolution path
 (`launcher._resolve_stack` — they "differ in backend, never in how a stack is chosen", bd
@@ -152,7 +164,11 @@ harnessed-s84). Neither backend is a subclass of the other, and neither inherits
 That parity ledger is a test, not prose (`tests/test_launch_parity.py`): it fails when
 `container-run` calls a stack-derived helper `_launch_host` does not, unless the ledger records a
 written reason — and it fails the other way too, when the ledger names a helper the container path
-no longer calls, so a stale entry is a licence nobody needs.
+no longer calls, so a stale entry is a licence nobody needs. The ledger now also carries the
+pod-vs-pod-less placement helpers the docker shape introduced — `_rt_uses_pods`, `_agent_placement_args`,
+`_netns_anchor`, `_without_userns`, `_preflight_runtime` — each recorded as container-only **by
+nature**, because a host-native launch has no namespace to place an agent in and no user namespace to
+strip a flag from.
 
 ## The two-phase capabilities, and why they take a `phase` argument
 
@@ -167,7 +183,7 @@ scripts run on first start (fingerprint-gated), `setup.script` at attach time."*
 | | FIRST_START | ATTACH |
 | --- | --- | --- |
 | **host** | `tools:` then `install:` (`_host_install_tools`, `_host_run_installs`), gated on `self.rebuilt`; the fingerprint stamp is written only after the installs succeed | `_host_run_setups` then `_host_run_inits` |
-| **container** | `_ensure_stack_volumes` — composes **both** volumes in one call, because podman's copy-up populates them together | `_run_container_setups` — `podman exec` each pending script |
+| **container** | `_ensure_stack_volumes` — fingerprint-gated; composes **both** volumes in one call, because podman's copy-up populates them together | `_run_container_setups` — `podman exec` each pending script |
 
 The gate behind `self.rebuilt` is the host backend's substitute for staleness checks it does not
 run. The container sequencer gates its launch on two of them — `staleness.check_profile_fresh` (the
@@ -211,8 +227,29 @@ That is why the container's env assembly (folder-env contract, setup env, recipe
 than in `materialize_config`. The setup env is resolved there too, because a `setup.config` item may
 prompt and that must happen before the container starts.
 
-`BOUNDARY` is also where the launch's **secrets broker** is started — the container backend's only
-interaction with it, and the host backend's none at all:
+And `BOUNDARY` now **branches on the runtime**. On podman, `_broker_start_for` runs first, then
+`pod create` — the userns mapping and the hostname are **pod-level properties** there (members
+inherit them and podman rejects `--userns` on a member), and ports are pod-level too, which is why
+mcp-remote's OAuth publish lives on the create. The agent's `podman run` joins as a `--pod` member.
+On a pod-less runtime (docker) there is no `pod create` and no broker either: `_agent_placement_args`
+gives the agent container its own hostname, its own `--userns` mapping and its own `--user`, so the
+**agent itself owns the netns** that `_netns_anchor` then hands to the firewall runner and the
+service sidecars. That placement is a pure function returning argv precisely because its userns half
+was once wrong on docker and no test could see it (#456). A `@proxy` schema under a pod-less runtime
+is *told* the broker is not started — the pod it needs a route to cannot exist — and secrets resolve
+into the container env as before, rather than leaving the launch half-wired to a proxy that is not
+there.
+
+One nearby strip is honestly inert today, and the source says so: `wire_mcp` runs the member mount
+args through `_without_userns` **on podman only**, because `--userns` is pod-level and podman rejects
+it on a member — but no `mounts.py` builder emits `--userns`, so the strip is a no-op on both
+runtimes. The in-source correction is deliberate: the first version of that comment claimed more than
+was true, and what remains is the part that is — an unconditional strip would silently swallow a real
+mapping the moment any builder starts emitting one, and on docker the mapping is delivered by
+`_agent_placement_args`, not by the mount args at all. Keep that honesty.
+
+`BOUNDARY` is also where the launch's **secrets broker** is started on the podman path — the
+container backend's only interaction with it, and the host backend's none at all:
 
 - `_broker_start_for` runs **before `pod create`** because the pod's network args depend on whether
   a broker exists: without one, the pod must not be handed a route to the host's loopback it has no
@@ -296,14 +333,17 @@ Backends are addressed by name:
 
 `backend.py` imports nothing from `launcher.py` and never will, and `capmatrix.py` makes the same
 pledge. Both cite `tests/test_module_boundaries.py` — bd harnessed-4l8, the launcher.py split's
-direction rule — as the enforced boundary, and the enforcement is two tests. The first parametrizes
-every module in the file's `EXTRACTED` ledger over one check that parses the module and rejects any
-`launcher` import at any depth, including a function-local one (which keeps the coupling while
-looking clean at the top of the file). The second fails the build when any module that imports the
-shared `harnessed` console is missing from the ledger, so "unlisted" cannot quietly mean
-"unenforced". Two ledger entries never lived in `launcher.py` at all: `broker.py` and `schema.py`
-are listed because they report through the shared console — the property the ledger actually
-tracks, which is why the completeness test keys on console imports rather than extraction history.
+direction rule — as the enforced boundary, and it is also the reason the **implementations live in
+`launcher.py`**: the split's docstring keeps the Typer surface and the podman orchestration there,
+and every extracted module is held to depending *into* the extracted logic, never back out. The
+enforcement is two tests. The first parametrizes every module in the file's `EXTRACTED` ledger over
+one check that parses the module and rejects any `launcher` import at any depth, including a
+function-local one (which keeps the coupling while looking clean at the top of the file). The second
+fails the build when any module that imports the shared `harnessed` console is missing from the
+ledger, so "unlisted" cannot quietly mean "unenforced". Two ledger entries never lived in
+`launcher.py` at all: `broker.py` and `schema.py` are listed because they report through the shared
+console — the property the ledger actually tracks, which is why the completeness test keys on console
+imports rather than extraction history.
 
 The direction of the dependency is the point: the **implementations live in `launcher.py`, beside
 the ~100 private helpers they call**, so the dependency points *into* the contract and the seam adds
@@ -351,6 +391,15 @@ is the machine-checked record, deliberately not duplicated in prose:
 > A table no test reads rots. BACKENDS.md §4 — the prose version — went stale without anyone noticing:
 > it still recorded `service sidecars — host: ✗ (yet)` long after `HostBackend.wire_services` started
 > calling `_ensure_services`.
+
+Do not confuse the two things that share the word *capability*. The **capability oracle** (`harnessed
+test`) answers whether a *build* delivered its manifest — and its actor is the **container** backend:
+`capability.launch_headless` sets `HARNESSED_HEADLESS` and runs `container-run <harness> <project>
+--stack <stack> --fresh` headless, so every capability it verifies is verified across the pod
+boundary, which is exactly why a green oracle proves nothing about the host backend. `capmatrix`
+answers a different question — which recipe primitives a backend *honors* — and is checked at
+launch, not at test time. See
+[capability-test](/openwiki/workflows/capability-test.md) for the oracle itself.
 
 `capmatrix.MATRIX` maps backend name → primitive → `SUPPORTED` or `DEGRADED`. `PRIMITIVES` —
 `skills`, `tools`, `install`, `setup_script`, `servers`, `services`, `egress` — is the row axis the
@@ -421,6 +470,8 @@ directory shape), not threading a second `if harness ==` through five call sites
 - [architecture overview](overview.md) — where the seam sits in the module graph.
 - [container-run](/openwiki/workflows/container-run.md) and
   [host-run](/openwiki/workflows/host-run.md) — the two sequencers step by step.
+- [capability test](/openwiki/workflows/capability-test.md) — the other "capability": the
+  container-backend oracle that proves a build delivered its manifest, and what it does not prove.
 - [invariants](/openwiki/concepts/invariants.md) — the fail-closed firewall, the composed config
   volume, and the other deliberate deviations a backend author must not "clean up".
 - [credentials](/openwiki/concepts/credentials.md) — the referenced-never-replicated SOP behind

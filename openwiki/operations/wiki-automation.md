@@ -1,7 +1,7 @@
 ---
 type: mechanism
 title: "Wiki automation: mise tasks, the retry patch, and the CI update workflow"
-description: "How this repository regenerates and validates its own wiki: the mise openwiki-* tasks and the openwiki_env guard that strips provider exports before varlock, tools/openwiki-retry-patch.py and the skipped-page failure it fixes, the scheduled GitHub workflow that banks finished pages as a PR even when the run fails, and the .openwikiignore read boundary the generator honors."
+description: "How this repository regenerates and validates its own wiki: the mise openwiki-* tasks and the openwiki_env guard that strips provider exports before varlock, tools/openwiki-retry-patch.py and the skipped-page failure it fixes on both the local and CI runners, the scheduled GitHub workflow that banks finished pages as a PR even when the run fails, and the .openwikiignore read boundary the generator honors."
 tags: [openwiki, wiki, mise, github-actions, ci, retry-patch, varlock, drift, cron, automation, openwikiignore]
 sources:
   - id: openwiki-source-6d4b4e707b8d60b6ccfa3425
@@ -12,12 +12,16 @@ sources:
     resource: repo://.openwikiignore
   - id: openwiki-source-72b5d686f860ea86c8592080
     resource: repo://mise.toml
+  - id: openwiki-source-6b70da595cfd5823cd7cabe6
+    resource: repo://tools/openwiki-drift.py
   - id: openwiki-source-d1f45dd4433e3f1723ccd204
     resource: repo://tools/openwiki-retry-patch.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-09T09:34:57.295Z" }
+  - id: openwiki-source-fe078b2633c2f110ea126c1b
+    resource: repo://tools/wiki-links.py
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-09T09:34:57.295Z
+    at: 2026-09-12T09:54:25.902Z
 ---
 
 # Wiki automation: mise tasks, the retry patch, and the CI update workflow
@@ -27,8 +31,9 @@ The wiki under `openwiki/` is generated, never maintained by hand. The generator
 (2026-08-29); `latest` would make the provider env-var contract an unpinned assumption. Two entry
 points run it and both execute the same command, `openwiki code --update --print`: locally
 `mise run openwiki-update`, and in CI the scheduled workflow `.github/workflows/openwiki-update.yml`
-(daily `cron: "0 8 * * *"` plus `workflow_dispatch`). A third task, `mise run openwiki-drift`,
-decides whether regeneration is worth running at all.
+(daily `cron: "0 8 * * *"` plus `workflow_dispatch`). Both runners apply the same page-worker retry
+patch before generating — locally through the task itself, in CI through a dedicated step. A third
+task, `mise run openwiki-drift`, decides whether regeneration is worth running at all.
 
 Related: [what the drift gate proves](/openwiki/testing/verification-ladder.md) — the gate's
 semantics live there, not here — [the openwiki recipe](/openwiki/integrations/openwiki-recipe.md)
@@ -41,22 +46,24 @@ flowchart TD
     changed["code changes on main"] --> driftq["mise run openwiki-drift - exit 1 means cited code changed"]
     driftq -->|"clean"| current["wiki is current - nothing to do"]
     driftq -->|"drift"| local["local - mise run openwiki-update, from main/"]
-    local --> patch["tools/openwiki-retry-patch.py runs first - idempotent"]
+    local --> patch["tools/openwiki-retry-patch.py runs first - idempotent, mise-layout default glob"]
     patch --> envw["openwiki_env - env -u strips provider exports, then varlock run --filter wiki keys"]
     envw --> gen["openwiki code --update --print"]
-    nightly["CI - openwiki-update.yml - nightly 08:00 UTC plus manual dispatch"] --> ciinstall["npm install -g openwiki 0.4.3, then verify better_sqlite3.node exists"]
-    ciinstall --> cirun["openwiki code --update --print - stock runner, no retry patch"]
+    nightly["CI - openwiki-update.yml - nightly 08:00 UTC plus manual dispatch"] --> ciinstall["npm install -g openwiki 0.4.3 + mermaid + jsdom, then verify better_sqlite3.node exists"]
+    ciinstall --> cipatch["same retry patch, explicit npm-global path - byte-identical result"]
+    cipatch --> cirun["openwiki code --update --print - provider env pinned inline"]
     cirun --> queue["durable page-job queue - each finished page is written as it completes"]
     gen --> queue
-    queue -->|"worker ends without submit_page"| retry["one fresh retry - patched runner only"]
+    queue -->|"worker ends without submit_page"| retry["one fresh retry - both runners"]
     retry -->|"second miss"| skip["page skipped - run finalizes interrupted, diff base not advanced"]
     queue --> pr["create-pull-request runs even on failure - banks finished pages"]
     skip --> pr
     pr --> merge["merge makes that progress the next run's baseline"]
+    pr --> red["propagate step re-raises the failure - job still reports red"]
 ```
 
-*The regeneration loop. CI banks partial progress even on a failed run; the drift gate decides when
-a local regeneration is worth starting.*
+*The regeneration loop. CI banks partial progress even on a failed run and still reports red; the
+drift gate decides when a local regeneration is worth starting.*
 
 ---
 
@@ -66,7 +73,7 @@ a local regeneration is worth starting.*
 
 | Task | What it does | The non-obvious part |
 | --- | --- | --- |
-| `openwiki-drift` | Recomputes each Claim's evidence digest against the tree, exits non-zero when cited code changed | No model call, no network, no varlock — the cheap check before deciding to regenerate (gate semantics: [verification ladder](/openwiki/testing/verification-ladder.md)) |
+| `openwiki-drift` | Verifies each **line-ranged** evidence anchor's digest against the tree, exits non-zero when cited code changed; whole-file evidence and unknown version schemes are skipped and counted, never silently verified | No model call, no network, no varlock — the cheap check before deciding to regenerate (gate semantics: [verification ladder](/openwiki/testing/verification-ladder.md)) |
 | `openwiki-update` | Generate or refresh `openwiki/`, no prompts | Runs the retry patch **first**; handles the first run too |
 | `openwiki-init` | Reconfigure from scratch | Walks the setup wizard **unconditionally**, even when already configured |
 | `openwiki-chat` | Interactive openwiki session against this repository | Same env guard as `openwiki-update` |
@@ -127,6 +134,21 @@ generated wiki and start over; ordinary generation belongs to `openwiki-update`.
 `openwiki-visualize` deliberately skips varlock: it only serves Markdown already on disk, so routing
 it through `varlock run` would touch 1Password for nothing.
 
+### The other wiki surface: `docs/`
+
+The tasks above generate `openwiki/`, the agent-facing wiki. The repository also carries a
+human-facing one: `docs/` is a gitignored live clone of the GitHub wiki — not a submodule, no
+pinned commit, pull it yourself with `git -C docs pull`. The wiki serves pages under a **flat
+namespace** (`guides/beads.md` on disk is published at `/wiki/beads`), so a relative link that looks
+correct on disk breaks once published — which is why the rewrite is a task, not a habit.
+
+`mise run docs` runs `tools/wiki-links.py` to rewrite links in place: relative `.md` targets inside
+`docs/` become wiki URLs, repo-source targets become blob/tree URLs on `main`, and a dead target is
+reported rather than rewritten into a tidy-looking 404. It also checks every guide under
+`docs/guides/` is listed in `_Sidebar.md`. `mise run docs-check` is the read-only form (exit 1 if
+anything would change) for CI or a pre-push hook. Run `docs` after editing the wiki; this is also
+the second reason the openwiki tasks insist on `main/` — the clone only exists there.
+
 ---
 
 ## The retry patch: `tools/openwiki-retry-patch.py`
@@ -135,16 +157,16 @@ it through `varlock run` would touch 1Password for nothing.
 
 A page worker whose stream ends without a `submit_page` call is marked **skipped** by openwiki, the
 page snapshot is restored, and the run finalizes **`interrupted` without advancing the diff base** —
-one quit costs the next run a full regeneration of the whole changeset. Observed with
-glm-5.3-flash: 94 LLM calls, a clean exit, no tool call, no error (PR #445 run 6). Neither upstream
-0.4.3 nor 0.5.0 retries a skipped page — verified against the 0.5.0 tarball on 2026-09-08. Until
-upstream ships a retry, this patch gives each page worker **one fresh second attempt** before the
-page is skipped.
+one quit costs the next run a full regeneration of the whole changeset. The trigger, as recorded in
+the workflow: a final turn that ends **thinking-only** — no text, no tool call — because the model
+spends its whole completion budget on reasoning. Observed with glm-5.3-flash: 94 LLM calls, a clean
+exit, no tool call, no error (PR #445 run 6). Neither upstream 0.4.3 nor 0.5.0 retries a skipped
+page — verified against the 0.5.0 tarball on 2026-09-08. Until upstream ships a retry, this patch
+gives each page worker **one fresh second attempt** before the page is skipped.
 
 ### What the patch changes
 
-It edits the mise-installed runner (`dist/agent/repository-runner.js` under
-`~/.local/share/mise/installs/npm-openwiki/0.4.3/...`) inside `runPageAgent`: the single
+It edits the installed runner (`dist/agent/repository-runner.js`) inside `runPageAgent`: the single
 `const agent = createDeepAgent({...})` becomes a `createWorkerAgent` factory, and the worker call is
 wrapped in a two-attempt loop. The retry **shares the worker's virtual backend**, so attempt 2 sees
 the page markdown attempt 1 already wrote. A first miss emits a named event
@@ -165,13 +187,25 @@ The patch must never guess at a moving target:
   restores the `.orig` backup; `--check` exits 0/1 to report patched state without touching
   anything), and every write is followed by a `node --check` syntax check.
 
-### Local only
+### Applied on both runners, anchored differently
 
-The patch is wired into the local task alone. Its default target glob is the **mise** install
-layout, and `openwiki-update.yml` runs the stock npm-installed runner with no patch step — a skipped
-page in CI still finalizes the run interrupted. That is survivable there for exactly one reason: the
-durable page-job queue plus the PR banking step (next section) mean the finished pages still become
-the next run's baseline.
+The patch used to be wired into the local task alone; it now runs on **both** runners. Its default
+target glob is the **mise** install layout, which is what the local task hits when it runs the patch
+with no argument. CI installs openwiki with npm, so its dedicated step passes the runner path
+explicitly:
+
+```bash
+python3 tools/openwiki-retry-patch.py "$(npm root -g)/openwiki/dist/agent/repository-runner.js"
+```
+
+The workflow records the verification behind that trust: patching an npm-global-layout copy produces
+a runner **byte-identical** to the locally patched one, and the patch is idempotent and
+version-gated (it would refuse anything but 0.4.3).
+
+The patch is one retry, not a guarantee. A worker that misses **twice** still lands in
+`skipRepositoryPage`, and the run still finalizes `interrupted`. That residual case is survivable on
+CI for exactly one reason: the durable page-job queue plus the PR banking step (below) mean the
+finished pages still become the next run's baseline.
 
 ---
 
@@ -188,12 +222,12 @@ in the job needs them.
 
 ### Install, then verify the native addon actually built
 
-The workflow installs with `npm install --global openwiki@0.4.3` (plus `mermaid` and `jsdom`, which
-add high-fidelity validation of the pages' Mermaid diagrams) — deliberately **not** the recipe's
-project-scoped pnpm install. The two differ because their constraints do: the recipe installs under
-`catalog/base/pnpm/config.yaml`, whose `strictDepBuilds: true` denies better-sqlite3's build script
-and forces a project-scoped allowlist; this runner has no such policy, and npm 10/11 still runs
-dependency lifecycle scripts by default.
+The workflow installs with `npm install --global openwiki@0.4.3` plus pinned `mermaid@11.16.0` and
+`jsdom@29.1.1` (which add high-fidelity validation of the pages' Mermaid diagrams) — deliberately
+**not** the recipe's project-scoped pnpm install. The two differ because their constraints do: the
+recipe installs under `catalog/base/pnpm/config.yaml`, whose `strictDepBuilds: true` denies
+better-sqlite3's build script and forces a project-scoped allowlist; this runner has no such policy,
+and npm 10/11 still runs dependency lifecycle scripts by default.
 
 That default is going away — npm 12 blocks dependency lifecycle scripts and requires explicit
 opt-in — and when this runner's npm crosses that line the addon will silently not build while the
@@ -205,6 +239,13 @@ surfaces as `Could not locate the bindings file` mid-generation rather than at i
 [The openwiki recipe](/openwiki/integrations/openwiki-recipe.md) documents the image-side twin of
 this same constraint; two runners, one constraint, and each solution is the one that fits its
 runner's defaults.
+
+### The retry patch, before generating
+
+Between verify and generate, a dedicated step applies `tools/openwiki-retry-patch.py` to the
+npm-global runner (see [the retry-patch section](#applied-on-both-runners-anchored-differently)).
+CI therefore gets the same one-fresh-retry-per-page-worker behavior the local task gets — the two
+runners no longer differ on skipped-page handling, only in how the patch locates its target.
 
 ### The generation step: durable queue over fail-fast
 
@@ -222,14 +263,29 @@ The trade-off is the opposite of a lint gate's, and right for a job whose output
 rather than binary — and the failure is still surfaced: the last step re-raises when
 `steps.openwiki.outcome == 'failure'`, so the job reports red.
 
-The model env is `OPENWIKI_PROVIDER: openai-compatible` against `glm-5.3`. Two env facts are
-deliberate:
+The provider and model env is pinned **inline in the step** — the same provider configuration the
+local tasks resolve from the schema, expressed as workflow env because CI has no varlock and no
+1Password (the workflow comment carries the exact values, the endpoint, and the secret wiring).
+Two env facts are deliberate:
 
-- **`OPENWIKI_MAX_OUTPUT_TOKENS` is unset.** glm-5.3 is a reasoning model: reasoning tokens are
-  drawn from the completion budget, so a tight output cap returns HTTP 200 with **empty content and
-  no error** — a silently blank page. The model's own ceiling stays in force; do not add the
-  variable without re-measuring against this model. (The local task strips the same variable for a
-  different, measured reason — the non-streaming timeout guard — see the environment guard above.)
+- **The provider's Anthropic-compatible face, not its OpenAI-compatible face, with the model pinned
+  to `glm-5.3-flash`.** The face choice is measured, not taste: non-streaming HTTP on the
+  OpenAI-compatible face dies at undici's default 300-second `headersTimeout`, and that face's
+  streaming flag is broken in openwiki 0.4.3 **and** 0.5.0 (the `wrapModelCall` middleware returns
+  an object). The Anthropic client streams SSE by default inside the agent loop, so response
+  headers arrive immediately and long glm turns survive. Verified end-to-end in PR #445 run 8 — the
+  first complete finalize in eight attempts. The API key is wired from a repository secret whose
+  *name* is a legacy of the first, abandoned provider attempt.
+- **`OPENWIKI_MAX_OUTPUT_TOKENS: "20000"` — set, and bounded on both sides.** It is REQUIRED for
+  glm on this provider: the `@anthropic-ai/sdk` client guard
+  (`_calculateNonstreamingTimeout: 3600*maxTokens/128000 > 600s`) refuses any **non-streaming** call
+  whose cap exceeds 21,333, and the planner is that one non-streaming call. 20,000 keeps it under
+  the guard while leaving room for reasoning plus the `submit_page` call — glm draws reasoning
+  tokens from the completion budget, and a cap this size measured fine locally. Do **not** raise it
+  above 21,333, and do **not** drop it low: a low cap returns HTTP 200 with empty content and no
+  error — a silently blank page. (The local task strips this same variable from the shell for the
+  different, measured reason above — an export would override the schema. In CI there is no schema
+  to override, so the value is pinned here, measured against this model.)
 - **No `LANGCHAIN_TRACING_V2`.** That variable gates openwiki's interactive setup wizard
   (`setup/credentials/steps.js`), which additionally requires a TTY (`cli/app/app.js`) that CI does
   not have. It is needed for a terminal run; here it is redundant.
@@ -307,8 +363,12 @@ never opened.
 
 ## The operating loop
 
-1. **Check first**: `mise run openwiki-drift`. Exit 0 — the wiki is current, stop. Exit 1 — cited
-   code changed; the output names the Claims to re-verify.
+1. **Check first**: `mise run openwiki-drift`. Exit 0 — no line-cited evidence changed, stop.
+   Exit 1 — cited code changed; the output names the Claims to re-verify. The check is bounded by
+   design: it verifies line-ranged evidence anchors only, and whole-file evidence plus unknown
+   version schemes are skipped, counted, and printed as a separate `skipped` line — never silently
+   treated as verified. What that boundary means for trust is the
+   [verification ladder](/openwiki/testing/verification-ladder.md)'s subject.
 2. **Regenerate**: `mise run openwiki-update` from `main/`. The retry patch re-applies itself, the
    env guard guarantees the schema's provider wins, and `openwiki code --update --print` runs
    one-shot.

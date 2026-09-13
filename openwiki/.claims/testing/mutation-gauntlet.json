@@ -1,0 +1,374 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:9435ecc9482af29dd08ceea1871b9c28dc1ec5926c5b43970972aac3b773d771",
+  "claims": [
+    {
+      "id": "claim_fbef07601faa421d9c977479d2b32bcb",
+      "statement": "The #456 mutation layer exists because coverage cannot distinguish a test that fails when code breaks from a test that merely executes a changed line — diff-cover at --fail-under 100 proves only execution — so mutmut mutates the changed functions, and a killed-mutant score computed only from tests that run without a container is what exposes a fully-covered change as still untested.",
+      "evidence": [
+        {
+          "resource": "repo://pyproject.toml#L42-L57",
+          "version": "repo-lines-v1:sha256:ee498ea67be8d6a39a318ca0ab2fcb910e387abe7d3195570fbee2716735a4e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxZjgzM2JlMDI3OWNiZjRiZmE4ZDg1NjhiMzU2NTBiNmRiZTVhYzViMmYxMzhhMGRjMzI4NWI2YjRlNjc1NmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1NDk5NDVjM2EzNjE3MjY5YTIyMGJlYTQxOTg3NzdkMmNmMzM2YzdiMjYzMjhmZDgwNzQwY2M0MGU2OWE4MzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzMjdhNmUzZWYzMjEyMzRmZTI1N2IzYTg2OTQ5MTM5MjFlMzU3ZjFjMzJkZTAxNGZhMjQzMWNjMjg0YzJlNjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxNzliNGY3OGQ1Y2ZhNDU2YjRlZjEyMjVjZjkyOGE5NDAxOTdlMjY2YmM2ZmQ5NDlkNWZmZTZiMjcwYjBiYzkifQ"
+        },
+        {
+          "resource": "repo://tools/gauntlet-456.sh#L85-L98",
+          "version": "repo-lines-v1:sha256:8bce93584e178fd0d0a627bacd9d18b360412313602b18fd7760530a0f17372d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViNDhjZDY1ZDZmYTkyMGM0ZmYwMTkyNTVmZmMzNTAwZjc5OTdkZjAwNWQwNDkyNzhmNDc3ZWJhNDQ5MzgxZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzYTc2MTM1MmU2NzhhNWQwNzNmM2ZiNmJjNjAyMmVmNmRjODhlZjBmZmQ1MDMwNmMyZWUyNTk4YjM0YzEyMDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzZTAxYWFhZmJlNGY3MjA2NTQ1Yzg2NWYxMzI5NjU5YmMxMmE5NzZhODFhYjYyMTkzMTgzZmJiZjhkOTM4NWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhNWZmMTZkZGZlYzE2NmFiZWZlYzEyYzY4M2NhNjNmYWJjN2FkODU2NDhjMTU1MzUyYmU5N2UzNTRmMzI2MGIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_fdf20ed9686346b789768c9487e3338b",
+      "statement": "Mutation scope is derived rather than typed: gauntlet-456.sh lists changed Python sources with `git diff --name-only <GAUNTLET_BASE>...HEAD -- 'src/harnessed/*.py'` (logged to mutation-scope.txt) so glue changed alongside the logic is mutated too, with the base overridable via GAUNTLET_BASE so the script keeps working across rebases and renames.",
+      "evidence": [
+        {
+          "resource": "repo://tools/gauntlet-456.sh#L20-L25",
+          "version": "repo-lines-v1:sha256:5b7c71fb31dd8ab7a6c90819ca8d479e3f25c4448dbebc7b4ba1bfe98d86b14a:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGNiYzU3YTQzZjEyNzEyZDRmMGM1ODFiNDMzYWY1MGRkMjAwNzkzNTUyNzA0ZWM5MGQxYjY4M2E2ODIwOTQxYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjBmYzNhYjFkNzg4YmEyNDZlMmZjZWE5NDJmZjhkMzBmMzYzNDI2N2U1NmM3ZWEyNTQ0MjljZWE4ZTJmNDM4MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjkxNjI2OTc4ZjZhZDBiMTY2M2UxZjE3ZWI1NDY4MWJmNTY0Yjg3MGNhY2I1YjFhZDQ2YTA2ZTI4N2MyNzQ0ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTY1OTgwODYxOTA2YmIxOGNhYWZhNTlmNTZiYzkzYTY3M2FmMDFhNmQ3N2I0Zjg4NDQwMTQxNDFjNDI4NTMzZCJ9"
+        },
+        {
+          "resource": "repo://tools/gauntlet-456.sh#L89-L98",
+          "version": "repo-lines-v1:sha256:e8e805b87f5f48970a0714447b312379dbd5c62897140734425c5eebcb88ea27:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyN2IzZjNjZmVmOGQ4NDQ5NjgxYTYzODg3NmE2ZmUwYTkwZDIxZmEwOTdlNDUwZDY0NzE0NWRkNjY4OTJmYTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzYTc2MTM1MmU2NzhhNWQwNzNmM2ZiNmJjNjAyMmVmNmRjODhlZjBmZmQ1MDMwNmMyZWUyNTk4YjM0YzEyMDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmZDMxMDc0MGEyNTVmNjQ2Yjc5M2RjNmVhYmM4NDVlNjRiMTA3NzNmZWVkMTQxMTQyY2QyZDQ1NTY4MTQ2ZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhNWZmMTZkZGZlYzE2NmFiZWZlYzEyYzY4M2NhNjNmYWJjN2FkODU2NDhjMTU1MzUyYmU5N2UzNTRmMzI2MGIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_af2ed969d33d459db3a5cb728c60aa1c",
+      "statement": "tools/mutation-targets-456.txt is the single source of the changed-function list for both mutation layers — gauntlet-456.sh appends `*` to each line as mutmut run filters and mutation-verdict-456.sh loops the same lines to demand killed mutants and no survivors — because when it was two hand-edited lists they had already drifted: eight changed decision functions (the docker --user/ownership/netns half of #456) appeared in neither, raised on PR #461 review.",
+      "evidence": [
+        {
+          "resource": "repo://tools/gauntlet-456.sh#L134-L141",
+          "version": "repo-lines-v1:sha256:29853f19b2f6cdc1626785b0796216e5bc4a57fb087550c181c37441779d4247:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzQ3MTlmNTUwNDU4ZjJhZjhjZDk4NDY1N2E0MmEwYWY1Y2RiODM5MDkwMDY2ZmI1ODkxNmM5ODA3MThmYWExOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTVkOTZlZWYwZjBlODAyMzkxN2I3YThhNzE2NzFjYWIzNzk4MjkzMThjODI2ZTVmNjcxMjFmMTc3MmFmODA1NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2U3NjkzNTllZDg3OGY0ZGQyNWY3ZDE3ZDFkOTAwNmNlYzU5YWFhZTZkMzFiNjI1MmIzYTY3ZGJjM2Q1NjdmMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGRiYTIwNzM5YTU3MDBiYzE1N2E5YzhlNzFlNjY3MjMyZDUyYWRhNmU0MzdkZTcxZTk4NGY2ODVkMmIyYzc4MiJ9"
+        },
+        {
+          "resource": "repo://tools/mutation-targets-456.txt#L1-L13",
+          "version": "repo-lines-v1:sha256:1841edd1215016072f9948437db246b7f396b26bbc36d249922eb3c734afbbe0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMTcwMjc3OWIxNzYxZmUzNzVlMGI2YmJlZGY0OGVhOWNjODliNmYyM2RkNTZhOGYyOGI5NDkxYzk1MmNkY2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5MWMzZWFjMWM4NjFlMWZhMTZlNTBkNGUyOTYwMmI3ZjMzYWY2ZTdiZTViZjk0MjA4ZDA5MjFjZTgxMDlkODEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg2NGUyNDAyNWJmZDA3OGUxMGNiNmNiYjkzNGRjMTI4MDI4MzEyZjZiYTgyOGEwNjQwZjdhMjYxMzM1YjVlN2QifQ"
+        },
+        {
+          "resource": "repo://tools/mutation-verdict-456.sh#L30-L35",
+          "version": "repo-lines-v1:sha256:bcb02d39483911f79d2f522c6c029cb875619185408ed1bc0ac654aa53ff2726:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDNhYWQyZTc5ODhmZDgyYTRhNGM4ZWI3MjdiYmM0ZmU3ODg2ZGU0Y2E0N2U2YTY3OWQwOWQyM2NlYmQ4YTRiMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGFjN2Y2NDRiNWExNDY0YTE3N2U0ZGViMzZiNzg4ZjZjODAwZWNkNGQ1NGFmN2NiMGFjMTY1ZDg0ZjM4MjJlOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODMwMzM2Y2NiZWRjNzVjZmUxM2NjZWYyNzZjOGQyN2JhMjAyN2YyN2YzYzVlMTExZDI5YmMzMGQ4MTJkYTBiMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTA4YTM5Yzg1ZTRhMTU5MDBmZGRhMjQzYWIxYzc1MmJhYzQ5NjQ0OTUyYjdhOTFiMmU1NDkxNjM5ZWYyZjc2NyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_4ca8c641dce64d049cd103f838aee5c3",
+      "statement": "mutmut names mutants `harnessed.<module>.x_<function>__mutmut_N` (no `src.` prefix, `x_` before the function, `x__` when the function is private), the targets list uses exactly this spelling for the sixteen #456-changed functions, and both scripts hard-fail if the targets file parses to nothing so an emptied list fails the layer rather than silently skipping it.",
+      "evidence": [
+        {
+          "resource": "repo://pyproject.toml#L46-L51",
+          "version": "repo-lines-v1:sha256:87bda26441b5681475daec1cc7a88cbe873f8789031dc882912ce31cd07b439e:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjI1NTM2MWM5YTM3ZTFmM2E4YTQ1MGFjZGI4ZTczZDFmZTc2OGJiMDNiM2ZiMDQwYzA4NWE5OTdmZTA0NGM4MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNmEyNDQ0OGEyNTM3MTRiNTZkZGRlYTQ1ZDhjODI4NjRmY2YxNDkyNGE1YzEzODZiNzUxY2IwZWMxMDY5ZThiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTYwYmJhNTI1M2ViYTRjOGJjYjI1NDQ5NjE4NDVhMmQ3ZjhkOGQ2YzJiN2VkYjBhZmM4YWIzNDRhMzFlMzQ3NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmVkZTQwZTQ3MjRjYzE4NTc4NTFkNGMyZTg3N2ViYTRlYWVkMjFlY2M5ZTBjZGVjNWFkZTM5MDA4MDdiMTA4NSJ9"
+        },
+        {
+          "resource": "repo://tools/gauntlet-456.sh#L140-L141",
+          "version": "repo-lines-v1:sha256:7dd36b360fb65250d47b69aab33ff7a6d4e5a6e9acfd629cf343c19bfeb8fccc:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2Q2NDIzMjliYjA5ZGI2YzlmODI1MGVkMmU3YjcyOTY4NmYyYjY5YjA4YzYwYzc2YzU5Yzc4NTRiN2ZjNWZhYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTVkOTZlZWYwZjBlODAyMzkxN2I3YThhNzE2NzFjYWIzNzk4MjkzMThjODI2ZTVmNjcxMjFmMTc3MmFmODA1NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGU5MjE0MmE3ZGQ3Zjk5ZGM4OTAyNDhkYTk4MTQwNGRiMzZiNzhmZDI5NjkxNjNjNjg0ODQyYWYyMmY4MTY4MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGRiYTIwNzM5YTU3MDBiYzE1N2E5YzhlNzFlNjY3MjMyZDUyYWRhNmU0MzdkZTcxZTk4NGY2ODVkMmIyYzc4MiJ9"
+        },
+        {
+          "resource": "repo://tools/mutation-targets-456.txt#L10-L29",
+          "version": "repo-lines-v1:sha256:056b75bb95baaa2c41374e04af5f0bbd5094086ce2420a3bf01119687da786a2:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyYzQ4NThlMjJjYzJjOTY3YjQyMTUwZmE1NTA1NjJhMmM4MzljMmNlYmNhYWI5MWNhYmRmNmY0ZGEwMjAwMjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhZGYzMmU0YWQ5OTkwYmEwMWY4ZDU2Y2QxZWYxMjdkMzI4MjA3OGJjOWQ1ZDQyNGEwOTRlMWViOGQwM2YzOWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwZmNmZTJlNTVlNzUzMzgyN2EwOTIzYTY1OTFjZTNjZGNkODdmYzU5ZDg5ZjEyNTVhZTVjNTQ1N2IzMjAzMTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://tools/mutation-verdict-456.sh#L34-L35",
+          "version": "repo-lines-v1:sha256:01bfd1bf6bf264882346e4655818812416b0b96e4760e03643929cb2569ae3b6:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTFlODUyYTRkYTYxN2Q2YjgzZDEyNDZkYjc5ZTIwYmM0YWFjMzhmMmJhYWVlNTliZGUyYTM2OWVjZmQ4ZGQzNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGFjN2Y2NDRiNWExNDY0YTE3N2U0ZGViMzZiNzg4ZjZjODAwZWNkNGQ1NGFmN2NiMGFjMTY1ZDg0ZjM4MjJlOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTdmM2NjMGMxM2I1ZjcwNGU2MDc2ZjA2ZTk3ZTRjNWNlYTU3MjZjMGZlMTE3NDg4MzgzM2U0ZTlhYzAzOTFkMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTA4YTM5Yzg1ZTRhMTU5MDBmZGRhMjQzYWIxYzc1MmJhYzQ5NjQ0OTUyYjdhOTFiMmU1NDkxNjM5ZWYyZjc2NyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_e3c20045f48b41eba039a5f2d3644106",
+      "statement": "A mutmut filter matching nothing is silent — mutmut exits 0, generates the mutants tree, and `mutmut results` reports every mutant `not checked`, indistinguishable from a clean run — which is why the gauntlet runs `mutmut results` unconditionally and reads its output rather than its exit code; on the layer's first pass the gauntlet reported all-layers-passed over 51 survivors and five filters that had matched nothing at all.",
+      "evidence": [
+        {
+          "resource": "repo://pyproject.toml#L48-L51",
+          "version": "repo-lines-v1:sha256:167d23f054a2859c8fb32ff7f02c59facbd9661688be118a4c28e4fb70772186:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmYwZjY0MzcxZWNkYWNhYjQ2ZjM2Y2E0ZTc1ZGM5MWVhMDVkNDAzNDExYjEwMmY4NjMxYmUzOGUzMTNkZGYwOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNmEyNDQ0OGEyNTM3MTRiNTZkZGRlYTQ1ZDhjODI4NjRmY2YxNDkyNGE1YzEzODZiNzUxY2IwZWMxMDY5ZThiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzU1Yjg3YzIzNzU1ODI2ZGM3OTM3Y2RiMDIxNzJjZGU2YjdiZjRlMzdkZWZjNjI3YTExYzVkZTQ5ZDk3MGE5OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmVkZTQwZTQ3MjRjYzE4NTc4NTFkNGMyZTg3N2ViYTRlYWVkMjFlY2M5ZTBjZGVjNWFkZTM5MDA4MDdiMTA4NSJ9"
+        },
+        {
+          "resource": "repo://tools/gauntlet-456.sh#L136-L145",
+          "version": "repo-lines-v1:sha256:b58c9c4b83d0eed4be7ff339d7aa8681de1058e1694fb7e02bb02fd359228f16:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjZGZkYmQwYjQ0NTlkNzE2Yzc4N2VmNjU4ZWI3YjE3ZTYxYjFhOTBkMTM1ZjYxYjM4ZmM3ZjE4ZWE2MTc2MmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkYzNlMzE5ZDkwNzRhZjUwZmQwODI2N2I3NmU5YzVlMjQ0YzcyMTI0YTViOTc0YWJhMzVlMGEyYWYzZTNmOWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRjZWI0ZjMyZDljMTFkMzk1Yzg4NmI0MjNlNmEzNzY3MWQwMmM4ZGM2NzI5YjhhNWViM2Q0NjRhYWY3MzQ2NjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5YTg4MGFiZmVmYmZmODFkNTcyN2U0NjlhZTE3NjY3MmU4MTc4ZDBmNGE0YWEzOTdkMmY0NDViN2UxNzliMTMifQ"
+        },
+        {
+          "resource": "repo://tools/mutation-verdict-456.sh#L17-L28",
+          "version": "repo-lines-v1:sha256:c2f652d4f417f4e7e1d671a93c3f8c27dfdc0767da89cc7724ef863f2b877bea:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdhZDBkZDExNzY0OGQ2OTdjZTU5MGFlNTBhZDhkNjZkMGM4YTFhM2RkYmVhYzhkMmJhNTQ0MjMyYmU4NTAzZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwYWI4NTE0MTA5ODY3ZmU0ZDUyZmFjOWQ3ZjNlZWY1MzQ2ODk3Mjg1NWNjNjMyMWFkMTQ4YjQ0NzYyYjJiNGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyODgyMzE2NDY1ZDA0NDg0OTA4MjYxNTlhMzA0OTU5MDliMWU3MzZjZGQwNmU2OGYwZGU3ZTA4YWZlZmU0ZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNkZDQ4YTc1OGM1YTA5MTA3MjI4M2VlNzMxYzgzZDBmOWYzZmMzZThhMGYzMDI3ZTE3YjMyMDcyZDQ1ZTNhNGEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ea34121cecc44f15ad8fff2ccf92e5e5",
+      "statement": "mutmut generates zero mutants for an lru_cache-decorated function, so paths._detect_runtime and paths._probe_docker_rootless are deliberately plain functions beside the lru_cache(maxsize=1) wrappers active_runtime and docker_is_rootless — the combined versions produced no mutants and a clean report while the layer was blind to every refuse-rather-than-guess branch, and hoisting the bodies back into the caches reintroduces that blindness.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/paths.py#L186-L192",
+          "version": "repo-lines-v1:sha256:a036230795ae00991f4ab5715269d7fae3b041f9008d68ff3540a0a7306d796f:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTU0NjRkNjdhOGVmMmNlNTQ4NDMwNjU4MzUzMjJhODA5ZmQ1MzczZmQ5MjYwNDNjMTFiNGUzMTc2ODQwNWE2OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTZhNzE1MjU3MmVlODRmMTA5MDZjNzRiOWYyYTkyNDM0ZGRhYjBlM2M0MjgxM2IwNGU1OTdlZmNlYzk1MWIyNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTBkYjYyNzExMDQyODMxYWJkN2M0ZDdhYmM0OTRhMmJlYzgyYTRkZTBjNTEzODNhNzZlMzM2OWNmMjYwOThjMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzI5ZmIyMTZjY2Y5ZTQyNzZlMGE0OWYwYTBkZTJkMTljNTA1MzRlNTcyZjc0YjViOWI3YzgzODUzNDYxNmJiNiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L60-L67",
+          "version": "repo-lines-v1:sha256:b7140858ddf851227a1473cf89798dd48b84c739bac756d31d27c41b03fadd45:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjU4YWZhZTcwZjYxMmMwNGQ5YTlmMmE3MzQ0OGUxOWU3MTlkYjg2NWRkOTdmYmQyZjU3ZWEyODM4ZDgxM2ZjNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTZhNzE1MjU3MmVlODRmMTA5MDZjNzRiOWYyYTkyNDM0ZGRhYjBlM2M0MjgxM2IwNGU1OTdlZmNlYzk1MWIyNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDM1YWIxNTAzZTBjZmI5ZjlkZWFkNzVmZjM3Y2UwNTBmMzE4ZmM2MzY1NzFhZTliMDA3ZjRjNjJiNjUwNzA5YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjBkMmI5MWRlYmE1ZjI1OGFlMWM0MDI5NjcyMTE5NmYxMzQ2Yzc5YTBkZjYzNjk3Y2MwNDhmMzkwNTEwYzc2ZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_58e1dbb893c0472393c0451ed7a43c65",
+      "statement": "mutmut's tree copy dereferences symlinks, so catalog/*.local arrive as real directories and link-asserting tests (test_dynstack.py::test_the_default_recipe_ships_the_authoring_skill) fail inside the mutants tree, making the runner report `failed to collect stats` and execute no mutants; mutmut 3 exposes no --tests-dir flag, so gauntlet-456.sh narrows `tests_dir` in pyproject.toml via a scripted edit guarded by an assert of exactly one `tests_dir = [\"tests/\"]` occurrence, with a trap restoring the original file on EXIT/INT/TERM.",
+      "evidence": [
+        {
+          "resource": "repo://pyproject.toml#L70-L73",
+          "version": "repo-lines-v1:sha256:c3e7451090aa8fd5a8e9e9541fe149ec867534725755131222f1fa49dd92981a:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODBkNDM3NzU4MDRhNjc3ZmMyYTk3MTEyMWFmYTEyOGM3YjgwZWNlOWMxODE3ODlkZTRlOTY3MjYwOTM3ZDY2OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjYyZTY3MDU5MGYzZDU3YjlmNDRkMmYyZWEyMTMzZjQyMmQ1OWQ3YTVkNWM1NDAyOGNjMzJiNmUwNGQ0ZjAzOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjIzYTM3ZTk3OTNkMjU0MDM5ZjI3NjU5YmY3MTVkODAxZDJhMmZmMWU4NzcxNzFjNjIwYzU5ODM1YTY2NTIxOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDNhMzY2OTNlNzRlZGJmOTk2M2I5NTM0MTk2ODI0NGFhYmRiYTcwNzE3MmU5YmJhNjg0ZGY5NzkwN2JhMzk1NCJ9"
+        },
+        {
+          "resource": "repo://tools/gauntlet-456.sh#L100-L123",
+          "version": "repo-lines-v1:sha256:178f8b0ea91964b5f132cf1451d255509673d3e45ce9aa46e654cc3e5d367fdf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5MTgzYmFiMmIwYTU2MTY5OGYzM2NhMWViYzdmOTQwMTc1NTA0ZTU2ZTYyY2FmMzBlNzQ4YjVhNGYxMjJhN2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhMjFjNWIzYmZmMDI5OWMwMTYxNDcwNDY4ZjM1NWU1YjRhZmNmMTdhNWY1OTNhYjY4Mzk0ZWY3YWYzMTljZGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZkM2MyNGZhMWUzYzRjMjY0NWUyMGVhZGUwNTdiMWFlZTkxOTU0M2NhYTY3ZGExZmM0ZWU1ZjBhNzVlNjk4YjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlNmI1ZjVlMDM5NWU0NzEyMTViNjJjNTNlN2M3ODkzMmM5NDM1NDRhNjA3NTRhOWZmNjgyOTQ4ZDUyYjA1YjkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2cc52122011b4996b0de3e721c7181c3",
+      "statement": "Every mutmut invocation in the gauntlet exports HARNESSED_DIR=$PWD because paths.harnessed_home() resolves harnessed's home through the src/harnessed/catalog symlink, which does not exist in the mutants tree.",
+      "evidence": [
+        {
+          "resource": "repo://pyproject.toml#L68-L69",
+          "version": "repo-lines-v1:sha256:1de27bc01191a7b62d536c1c0926c0908e2f3edf7549c29c9d7e6785c2e7e001:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmE2MTc2ZmZhYzMxYTY2M2U0ZWRlZDdkN2NjMmI1MWQ0MDM3NDExNjAwYzA5NTdhMjVkZmJmY2JlMTc4OWQ4NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTM5ODJmMDVkNDM1MjNhNjBjN2EzNmY5MjAyZjljODFlZmNiNGVkZWQ5OTJhNTA1ZTQyZDI3ZWJhYWQ0NWQ1MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmExZDUyMTdlNTQzODU3MmE5MjU5ZWY1MTRkNzE3YTc4ZjZmMGViZGMyZGQwYTU4MmRkYjM1ZDMxYmE2ZWM0NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjc0YjMyODllMzBkY2Q0ZjQwYjkwYjJkYTJjYWQ0OWYzZThiMDRjYWEyNGU4MDZhNTU3ZDVkNGZiZGQ1ZDY0NiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L334-L365",
+          "version": "repo-lines-v1:sha256:472c848993df59e709e38cce8b6e125f81cc29d30214da1aa1838b1cd2e49adf:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI0YzYzMDRhYzk1YjJmODYwNTNmZjVjMDQwNWE0ZGY5Yzg0ZmQ4N2Q2NzYxNjZkYzM4NGY1OTEzN2Y3MThkMDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhZGFmYmI1NjQ3Zjc2ODczOWJlNjE4NzFhM2FkNTA4NThkZTNmZGM4Nzk2Y2ExYzE3YTYzODY2MjVhYjNjMGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3NTZiYjUyYjY2NTAyYTZmZjc1NjhhZWQyOWRiZGEwMjdjMDVhMTI3NmM5ODFiN2ZjMGZmMTBlNmRhOTQ1OTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ4MzRkYmFjZjA4N2I5ZGYwMDE5MmQzMDZjYTUzMWIzMTZkNmZmN2UwZDI4NzYyZmE4OTgzNDU5MzI3OGVhZGIifQ"
+        },
+        {
+          "resource": "repo://tools/gauntlet-456.sh#L143-L145",
+          "version": "repo-lines-v1:sha256:ccf11d4a99592af2a7cfc70193849cf3572e9cf69f873f71d2cefc794a02ade9:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGJlYWVkOTAwODExNTVlY2U4YTYwNmZhYmU5Y2Q5Yzg5YjAxZTdjM2JiZjllY2RlMzk5ZTZlMDRhZTc0YTEwMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWRjM2UzMTlkOTA3NGFmNTBmZDA4MjY3Yjc2ZTljNWUyNDRjNzIxMjRhNWI5NzRhYmEzNWUwYTJhZjNlM2Y5YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2U5MTgxMTgxMjg0MDc2YTgxN2Q4MTdiNGEzMzU4MmU2YzgwMmIzYmFjNzhiN2E1Nzc3MDFiMWRmYjcwMmYwZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDlhODgwYWJmZWZiZmY4MWQ1NzI3ZTQ2OWFlMTc2NjcyZTgxNzhkMGY0YTRhYTM5N2QyZjQ0NWI3ZTE3OWIxMyJ9"
+        },
+        {
+          "resource": "repo://tools/gauntlet-456.sh#L95-L96",
+          "version": "repo-lines-v1:sha256:fd641ca6e8cb6f4b411f81f5576ffa73513b4dc33f81931f6ba23a25153e24f1:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTFhZmNhNTIzOWIxMTA5YWQzZjVkOWM3OWU4YWE5MjE5MjMxNmE0ZDY0ZWMyYTlkNmNjYWRlN2E1ZjIyMjhlYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTBmMzkxMTA1MWMxNjJmY2MwMzlhMzNmZGRmZGZjNTc0ZTFiMjgyYTgzMDc4YjA2MTI1YzZjYThkNDk3ZmZjNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDc1MjM3YjNiYzQzYjNjODExYmQ4NTBiYzA2NjY2NTM0Mjk5YjkyNjA3ZTVhYTRlNjcwMDZlYTk4MzJjNTI1ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmQzYzI0ZmExZTNjNGMyNjQ1ZTIwZWFkZTA1N2IxYWVlOTE5NTQzY2FhNjdkYTFmYzRlZTVmMGE3NWU2OThiNSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_9015bb4be182454ca53c88c5c05ffa03",
+      "statement": "The mutants/ tree is deleted before every mutmut run because mutmut caches its test-to-function mapping there and does not re-collect stats for tests created after the tree was built, so a stale tree reports newly-covered functions as `🫥 no tests` — measured: 30 mutants across _detect_runtime and _probe_docker_rootless sat at no-tests through two full runs with passing tests calling them directly; a cache that reports \"nothing tests this\" when something does is a fail-open in the layer that exists to catch fail-opens.",
+      "evidence": [
+        {
+          "resource": "repo://tools/gauntlet-456.sh#L125-L132",
+          "version": "repo-lines-v1:sha256:ef21ac5905841acd132d513d959f9fcdc095b4aa00c13d9cf17d4df1f5080440:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTJlOGMyYTVlMmE5ODkzZmJhYjM4NDIzMjhmNzdiOWVkYjg3MTkwYTA4Mjg0ZWIzYjRiMDZiZTRlMzU3Y2RmNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGZkODRiMzhiYWFiOTY5ZjI4ZmJjNTE4YmYzYTJhN2RhZDRkZWU0Y2ZhN2I1NzgxOTg4MzBkMjhkMWZlNjgwYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjBlMmU4YWEyNTQ3ZThlNDUwM2Q5ZjIzNTMxYmZhZjMwNTI5YzQ1NzczNzJhMmFiZjhlNmQyMmI1ZTc4MDFkYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGNlYjRmMzJkOWMxMWQzOTVjODg2YjQyM2U2YTM3NjcxZDAyYzhkYzY3MjliOGE1ZWIzZDQ2NGFhZjczNDY2NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_61e11150f99d45f9bfa11f02013640ec",
+      "statement": "[tool.mutmut] shapes the score's honesty: paths_to_mutate is src/harnessed/, and also_copy copies whole directories (tests/, .github/, catalog/, tools/, schemas/, mise.toml, README.md) because the suite asserts repo assets and imports support/conftest as top-level modules — anything a test reads must exist in the mutants tree or every mutant reports \"survived\" for want of a runnable suite — and a mutant must be killed by a test running without a container, or the score measures the HARNESSED_PODMAN gate rather than the tests.",
+      "evidence": [
+        {
+          "resource": "repo://pyproject.toml#L52-L63",
+          "version": "repo-lines-v1:sha256:b8f3a6f5914a766b40c8a05fb19eae55b636118511cceb14628d4f6d308abc62:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxYjJiNmY4MmNkOGU4ZGM2MzZjYjQ4YTNhMzRiZmE2NTgwMzYwZWNmOTJhNTJjODMwNGVkOGM2YmY0OTJkMzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxNjQxMDFmNzJlZmQ2NDY2NjkzOTcwMmRkZDAwNjRhZGJiYzk2YjBiMzI5Mzg0N2UyN2FmMmQ5NDY4M2MzMzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4MmM4YTU0MmZmYjYxZTNjY2Q4NzM2M2NhN2M5M2IwODM0ZWU2MjAyNWY3NWU5NjkwZjUxNTc4NWY4ZThiNTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjNTlkNzVkYmFhMDgyODg4MTk3ZTZmN2FjOGY3Y2YwY2UwNWE3MTlmYmZiODM5YTk4N2IwMDdmMjQ5YmU4YTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8206b68813c746eba89bbde635582864",
+      "statement": "The mutation layer is judged by tools/mutation-verdict-456.sh, not by mutmut's exit code (which is 0 whether every mutant died or every one survived); reading mutation-targets-456.txt so it certifies exactly the functions the run mutated, it counts per function from the run log the statuses 🎉 killed, 🙁 survived, 🫥 no-tests, and fails the layer when killed+survived+no-tests is zero (silent filter), when no-tests is nonzero (uncovered, not passing — counted separately so the verdict says which of the two happened), or when any survivor is not an exact line in the classified allowlist.",
+      "evidence": [
+        {
+          "resource": "repo://tools/mutation-verdict-456.sh#L17-L65",
+          "version": "repo-lines-v1:sha256:8a31658947b0464d58c9142cac8f5b58198f89b7eb06f63746ae3a024ffcd809:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdhZDBkZDExNzY0OGQ2OTdjZTU5MGFlNTBhZDhkNjZkMGM4YTFhM2RkYmVhYzhkMmJhNTQ0MjMyYmU4NTAzZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlMzU0ZTY2OGQyYWE2MzM4MGVjZTZiYTVkNWNmNTk2ZGYxMWFhYWU5MTVkNGNiODM0YzM5NTVmZjYzMGU3NzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyODgyMzE2NDY1ZDA0NDg0OTA4MjYxNTlhMzA0OTU5MDliMWU3MzZjZGQwNmU2OGYwZGU3ZTA4YWZlZmU0ZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNlNjQzYTM2OWNjNGEwZGZiODAyOGYwYjM0NzgyYjllZmQwZjZhZDBiYjM2YmU4YzJkMjljZmI2NTJjMWE5MjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8c6c25f43e3e49948a3bc2b6ddbdfd0e",
+      "statement": "The verdict checks the allowlist in reverse — every entry must still match a surviving mutant in the log — and distinguishes two kinds of stale with different remedies: a mutant that still exists but is now killed means a test got stronger (delete the entry), while a mutant that no longer exists means the source state changed and every other numbered entry for that function is suspect and must be re-read; found on the PR #461 review pass where 13 _preflight_runtime entries named numbers the function no longer generates.",
+      "evidence": [
+        {
+          "resource": "repo://tools/mutation-verdict-456.sh#L68-L90",
+          "version": "repo-lines-v1:sha256:0a21898abd5d7c6118a50191d7f13ee81cf49b0c608746faefdc10fe6e253cab:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3OTgzMDA1ZWNiNGEzMGQ1ODU1YmMwMGU5YzFmNDk5NGQzNjQwNWZkN2FkNGU4ZDZhODJlMjRhMmM2MmQ2YzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmZDA5ZDNiZDE5YTUzMTIyMWQ1MDNhZmYxMjIzMDE5MjNmNDQzYmFlZGMyNDhkNDRlZjFmOTU1OTMwZDgxMjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUwZmE5YjY0ZGZlYjJjY2RlZDc5NTQzMmMyYWEyMDMyM2VmZjcyMWM0OWViYzQxNTA1NmEzYWQ1Yjk0ODZkODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ2YjhjOWE2NmZmYzAzMjIzYjc1Y2I4OTFmYWQzZWY2MWM0OWExMGM1MmYzYzI3MzUyMjYxNDFiOTRkYTk3ZTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bf08f50dee35489ba218448182cdd597",
+      "statement": "The verdict's survivor grep uses the braced pattern \"${fn}__mutmut_\" deliberately: unbraced $fn__mutmut_ parses as the unset variable fn__mutmut_, the pattern matches nothing, and every survivor would pass unclassified — shellcheck SC1087 caught it, the same silently-matching-nothing failure shape this layer exists to catch.",
+      "evidence": [
+        {
+          "resource": "repo://tools/mutation-verdict-456.sh#L53-L65",
+          "version": "repo-lines-v1:sha256:351ac9519c49b577b35e87d3730975074d39dc5e8af47c98d7a9cebe279aeed7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwMjU0MWZmYWYzYjQ1NmIxZTUxOWQxOGY1OGVhYmY1ZGJiNTA3ZTc2M2U5N2JkNTc2MjYzOTJhZjY2OTc3ODQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlMzU0ZTY2OGQyYWE2MzM4MGVjZTZiYTVkNWNmNTk2ZGYxMWFhYWU5MTVkNGNiODM0YzM5NTVmZjYzMGU3NzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5NThiMTA4ZjcwMDk3N2QwNzUzNGRjOTM1ZGIwOGQ3ZmZmY2Q0MTVhNzY3MTc5Mzc5MzczZTc2YmQ0ZjU5MjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNlNjQzYTM2OWNjNGEwZGZiODAyOGYwYjM0NzgyYjllZmQwZjZhZDBiYjM2YmU4YzJkMjljZmI2NTJjMWE5MjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6455128446e0420ca7ae044b489c3ff7",
+      "statement": "mutation-verdict-456.sh is split out of gauntlet-456.sh and takes the log path as an argument so it can be run and controlled on its own against a known-bad input — inline, the only way to exercise it was a 15-minute full gauntlet, which meant in practice it was never exercised at all, and a gate nobody can cheaply run is a gate nobody has proven can fail.",
+      "evidence": [
+        {
+          "resource": "repo://tools/mutation-verdict-456.sh#L1-L15",
+          "version": "repo-lines-v1:sha256:5758ab3212d5bf1b73b25363a59591c6492d740f442a0bb7b112cd52e5c40c27:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkOTVmYzA0YTgwYzk1MmY0OWNlNDE4ODYyN2M1M2IwZmJlOGM0NDA0MWI5NTJkNTkyYWNkMWRlOTk4NjE0NjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwYjg5MGI5YWVlZGNlZGNkNDJhZjEwNjE5ZWNkNWQ4YWMzM2NmNDFlMjIxMzFjYzY3YmUzYTExNTlhODcyN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU2OTEwM2Y1MTA4YWU1MTI2ZjYyMTQ2YjUxM2YwYWNmYTU4N2RmYjZiMWQwNGY3YWNhODQzNDA1MzI2N2M4Y2IifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2c7cebe65ed64d8dbef72d46a16daaef",
+      "statement": "Every entry in tools/mutation-allowlist-456.txt is one classified claim (\"this mutant survives and no behaviour turns on it\"), and the single class ever listed is mutmut's string mutation of error-message text (\"x\" -> \"XXxXX\", case inversion), allowed only because no branch, comparison, or call argument reads a message literal; mutants that changed exit codes or command argv were fixed with tests, never listed, so the file contains only ctrquery.x__runtime, capability.x__runtime, launcher.x__preflight_runtime and persist.x_guard_ownership message entries.",
+      "evidence": [
+        {
+          "resource": "repo://tools/mutation-allowlist-456.txt#L1-L20",
+          "version": "repo-lines-v1:sha256:75b899e0d9cd2c564111214ca9747a344cbc8c747570c1b86d8cfa26e8dd984a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1YjBhNmE3NDFiMjllM2MzMjkwNmEwMWM3OWE1NzMxYTI5YjI5MDk3OTRlOGQ3NDg1ZDI3MDQ1OWU3NWQyZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxYTVlOWFlMmNkN2I2YTQ3MDU4NjQ1ZDdkMmYyZTIwMGIzZjE2OTY5OWIwMTU3NTMxNWIyNzY3N2RmZWE2NTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiOTdiNDVmMzAyMzEyY2JkNTRmYjA2MzhiZDczOWI5NmZlZTBiYWQ2MzA1YjFhODRlNGZhMjMyN2RlODY5NDIifQ"
+        },
+        {
+          "resource": "repo://tools/mutation-allowlist-456.txt#L39-L87",
+          "version": "repo-lines-v1:sha256:265b3e65550e880c58112a195f2cba5728a9db760ccaf470ca2022f49a68b82d:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU4M2E4MDNjYmU4MzhjNTRjMzEzMDJiYTM1MDViMjQ5MmFkZDJhYjdmZjI2ODg0ODc0NjQwNGZlZjUwZjA2ZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcyM2E4YWNiYmRiNzU5MWUyNmE3YWU3YTNiMDU0MzVjYzlhMDE2NjA0NzYwNWNiODgwNDQ3NjI1MTIzYjhhMGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZjMGE3MjQxMzU3ODY4YWIyYWQ5NDkzY2VkOTliZTQxYTNjNzhlNWNhNDdjMGUxOWE5M2JjY2ZkNjU1OGI4ZDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f5359987b27748268895f43b666d8e6a",
+      "statement": "The classification stays narrow because the tests assert real message content: guard_ownership's message must name the path, the cause (\"rootless\"), the uid, \"subuid\", BOTH remediations, \"docker info\" in the unreadable-daemon variant, and the bare pinned mapping; _preflight_runtime's must name cause/uid/subuid/both remediations and exit 1; _runtime's must name the missing runtimes and exit 1 — each per-function reason names the assertions that keep it from being a blanket pass.",
+      "evidence": [
+        {
+          "resource": "repo://tools/mutation-allowlist-456.txt#L14-L20",
+          "version": "repo-lines-v1:sha256:5497c4e2d3a4eb2c3b5b7e089109666661887e4ab1563b55ff046065d0f4571e:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTUzNmQyZDU2ODQ0NjZkMTViMmQ4ZmJhNzJkOThlMmE3MDA4Y2M4NzFhZTlkNGY4MTdiNWFiNzkzZWE0MjQ2YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDFhNWU5YWUyY2Q3YjZhNDcwNTg2NDVkN2QyZjJlMjAwYjNmMTY5Njk5YjAxNTc1MzE1YjI3Njc3ZGZlYTY1NyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWZlZGFjOWRmNTg5NDgzMzc3ZmYzZTI4YmEwYzRiZDQwNzc5MGRhOWU4MTZlM2JjZjAyYmQ1YjIyMmNiMDYwOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2I5N2I0NWYzMDIzMTJjYmQ1NGZiMDYzOGJkNzM5Yjk2ZmVlMGJhZDYzMDViMWE4NGU0ZmEyMzI3ZGU4Njk0MiJ9"
+        },
+        {
+          "resource": "repo://tools/regen-allowlist-456.py#L23-L31",
+          "version": "repo-lines-v1:sha256:88a75d9da517968f8beb097d6e14ec828a29bea40d383e69ec347bc371cbdfaa:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg2MTlkZjk0MGM3MjM5M2U3ZDhlNDc3MDg1M2ZhOTNiODYyYjAzNTM1ZjJhNWJkZTE0MDBmZjNmZTU1NzY5YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjA4N2QzZmUyZTBiMWRkNTljODU3NDFjODljZTExZmVkYzJlZDg5Mzk3OTM2MWJhNWIwMzg1MTJlZmU1YzZmMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTQ4ZDc0ODNkMDYwZjE3MjJlMjQ1MzY4ODgzMzQyNTZiNTQ5MGU4YmJlODY5ODIwNjc2Y2E5ZWFmMzUwOWNjOSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_02be9b8caafb40708ba02409e6be6f4d",
+      "statement": "tools/regen-allowlist-456.py only records what survived a run log into the allowlist and never classifies: it refuses to write an empty allowlist, and it refuses any function whose survivors lack a REASONS entry (a new function with survivors is a classification decision, not a regeneration), so its output can only ever carry message-text-only reasons and a survivor of any other shape surfaces as an unclassifiable refusal rather than a widened allowlist.",
+      "evidence": [
+        {
+          "resource": "repo://tools/regen-allowlist-456.py#L1-L12",
+          "version": "repo-lines-v1:sha256:f876abb4fbe0f6363f511bd9495be7e5fa1db457d6534662e7371b752da346aa:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjZTEyZWJjOTAyZWE4ZmQwMjgzYmViMWYxMTkwNDNiYmJkNzYwNDFjYTQxNTFlN2NlZDRlNWQ4MDdkZDE1NjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2ZWUxYWEzZmVlZTEwMGYyNjNkMDI2NTVlNmEzZTcwMTE3NGFmODQ3ZjczMmE4OTQ3ZjM3Y2U5YzgxZGQ0OTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhYWY3NjM3Y2I2ZTdlNWRiODVkNjM0Mjc0NjAxNGRmMDQxY2NkNTU4YTkyMGIyOWViNmFjNzE5ZDdiYWY1YzIifQ"
+        },
+        {
+          "resource": "repo://tools/regen-allowlist-456.py#L34-L52",
+          "version": "repo-lines-v1:sha256:1912090f341eebfa20061071f98b37248710e42cf060cecde9532259aa8295f4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiMzk3OTMzYTI0YTgwMWVlOTIzMzI3YmQ2OWEwMTA0OWMwNzc5MTUwMjFjZjJlYzM5ZGRhNGY4MWFhODM3ZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzMDg2NmUxYmNjNWFiNzZlM2VmNTkwMTJkMGFkMzlhNjg3YWJlMDAyM2I0MzhhY2IxMTMwYTE4ODI1ZTgxOTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5ZjkzMDgzYzE5NzEyMWI5ODI3MDBiYThhZmFiZDE3MjJjZjFkM2U3NDA0NTA5ZTgwZWZhMjcyNDdmNjJmMDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQzYWI5N2JjOWJhZTkzYWJiZDQzM2FhYjVlNDEwZjFlMjk0Zjg5MmE5NjY0MzI4MTEwNmNkYmZjY2Y1NzA4ZTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_dbba3abe28384a549039dfad9209da64",
+      "statement": "Regeneration is not a fix — rerunning regen-allowlist-456.py over a fresh log lists every survivor and therefore passes, the gaming move the gate exists to prevent — so removals are explained in the allowlist header, which records PR #461's two distinct removal reasons (_preflight_runtime__mutmut_12 still exists but is now killed; _preflight_runtime__mutmut_23.._35 no longer exist because the function now generates 21 mutants).",
+      "evidence": [
+        {
+          "resource": "repo://tools/mutation-allowlist-456.txt#L23-L36",
+          "version": "repo-lines-v1:sha256:de798e1839ce079145a76f7d9f9825a51e3e5484eb414f58a7d88f30579bd0b8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyYzQ4NThlMjJjYzJjOTY3YjQyMTUwZmE1NTA1NjJhMmM4MzljMmNlYmNhYWI5MWNhYmRmNmY0ZGEwMjAwMjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4ZjhmYzM1M2EyNzk1MWZjYjBhMDkxMWNkZGQ5MjdhNWE2OWMwMDFjODY0Y2MyOGI2ZjM4MzJjOGM0OTM4MjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkwMDVkNTY3NGY3NWRkNjIxZGFlNjIzYWU0MTdlM2FmNWU1NjYzYzEzYjM1ODE1NmQ4ZWQ3ZTc3OWQzMmMzNGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcyN2E2ZmUzZTU2ZTI0YmM3NmRiODU4OTM0OWRhNTkzMzU1YjNmNTVmNjVhY2YwYzZhYjQwOWNjNGM1OTQ3YjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7f9ec412e51e42fcb15b5f04d3f8e40c",
+      "statement": "tools/show-survivors-456.py prints each surviving mutant as a unified diff against its x_<fn>__mutmut_orig sibling by parsing mutants/src/harnessed/<module>.py with ast — read-only, avoiding mutmut show's ~40-second per-survivor package rebuild — and reports any survivor it cannot locate (missing mutants file or missing function pair) with a count and exit 1 (\"classification is INCOMPLETE\") instead of skipping it, because a classifier that quietly drops what it cannot parse produces a short list that looks like progress; the reporting replaced a FileNotFoundError crash on PR #461 review.",
+      "evidence": [
+        {
+          "resource": "repo://tools/show-survivors-456.py#L1-L11",
+          "version": "repo-lines-v1:sha256:526e9cdd094dd64f345c3ff394b712348cef342a1d4b8f687f67f9d0b046a23d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyNWI0NGZjYzIyNmJlYjllZTQzMmZhNWEzOGZkYTMxMjhiYjAyMzIxMmM4MTM0OTEwM2YxY2MzZTVmY2EwNmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1YjZlODcwNmI0MzA0N2YyYTZkYjY3ZjEzMjYzODU5NTYwNGU2N2YzNjk2Njg3NmNlMDE1OGYwMDUzZTZiZDEifQ"
+        },
+        {
+          "resource": "repo://tools/show-survivors-456.py#L44-L72",
+          "version": "repo-lines-v1:sha256:39b30d66c81f450b058e1af2f75d39106aa92a2b0dfc0112741fcf2c9ea983d6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjNTU4MzNmN2VmZWY3Mzg3Y2ZlNTg1OTZkMGMzYWIxODMwOTcwNzI1MTcwNjViYWIxNDMwODRhZDk5ZmU2M2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzMDg2NmUxYmNjNWFiNzZlM2VmNTkwMTJkMGFkMzlhNjg3YWJlMDAyM2I0MzhhY2IxMTMwYTE4ODI1ZTgxOTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExZjkwMGNiZjE0MGI4MTI4ZjJjNzExZjdkNzU3YTg1YzIwMTA2ZjUxYWQxMzc2M2VkZTBhZmFhZDBmZTI4MzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1NzIyYjhjNGYyODMxYTA4YTZmZjE2OGQxNjUxMTRiNmZkYmFjZjk4NDIxNTM2NjI3NzY5M2JkY2IzYmQwMjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e1247d85cced4139b88cf991c828dcd4",
+      "statement": "gauntlet-456.sh runs every layer even after one fails and exits nonzero at the end if any failed — fail-fast was measured wrong three times because a red diff-cover meant the two randomized-order runs and the entire mutation layer never executed, so the report could say nothing about them — with each layer's full output captured under GAUNTLET_LOGS and its exit code printed, under set -euo pipefail with no swallowed exit codes.",
+      "evidence": [
+        {
+          "resource": "repo://tools/gauntlet-456.sh#L20-L25",
+          "version": "repo-lines-v1:sha256:5b7c71fb31dd8ab7a6c90819ca8d479e3f25c4448dbebc7b4ba1bfe98d86b14a:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGNiYzU3YTQzZjEyNzEyZDRmMGM1ODFiNDMzYWY1MGRkMjAwNzkzNTUyNzA0ZWM5MGQxYjY4M2E2ODIwOTQxYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjBmYzNhYjFkNzg4YmEyNDZlMmZjZWE5NDJmZjhkMzBmMzYzNDI2N2U1NmM3ZWEyNTQ0MjljZWE4ZTJmNDM4MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjkxNjI2OTc4ZjZhZDBiMTY2M2UxZjE3ZWI1NDY4MWJmNTY0Yjg3MGNhY2I1YjFhZDQ2YTA2ZTI4N2MyNzQ0ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTY1OTgwODYxOTA2YmIxOGNhYWZhNTlmNTZiYzkzYTY3M2FmMDFhNmQ3N2I0Zjg4NDQwMTQxNDFjNDI4NTMzZCJ9"
+        },
+        {
+          "resource": "repo://tools/gauntlet-456.sh#L30-L52",
+          "version": "repo-lines-v1:sha256:e88a2b486d4c6c9ef21af86687fc593f693f9400ff7643a1ad0f17b9d838b7bb:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViNDU3NjQwN2Y0Mjc4NjA1MjEzM2Q4NWE2YmU2YmE2OWExZGNjM2ZjYmNhMWI3YzVhZDU5NTVjNGY3YTg5YzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzZWY3MGY2ZWUwOTBlYTZkMDRmZTlhOTg1YTdmZThlM2I0YjVjMmJhNzI4YThmYmU2MzUwMzhjYzAyY2QxMTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZlYjZmYzM3MTFlNGUwZjI0MjAyNmVmNjdlYzlmYTcyYjk2NjRiMTg4NGNhZTE1N2RmNGY0OTZlMTU1OThlZDQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_76450b0ca8024c799caca63d69149a84",
+      "statement": "The property tests that kill survivors' neighbours are themselves shaped by the mutation layer: hypothesis properties over _without_userns (removes every --userns spelling and nothing else, identity when none present, idempotence) and pod_host_uid (only a keep-id mapping onto the image uid resolves; bare keep-id, auto, nomap and every other mode answers None) are module-level functions because under mutmut the same file executes from repo-tree and mutants-tree executors and hypothesis fails HealthCheck.differing_executors on a test method across two self executors sharing one example database, with monkeypatch used as a context manager so patches cannot leak between generated examples.",
+      "evidence": [
+        {
+          "resource": "repo://tests/test_userns_properties.py#L14-L22",
+          "version": "repo-lines-v1:sha256:b9f49c3b38e4f0cb599acd7c2d5dacd6850f285031de9d19b64ec5c8a24caa9c:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDZmMjBkYmFkNWJmZGI1ZjZlMGQ3NmZlYjY1MjE5MjI1ODkyMDAyMmUxNjg4NzBhZTFhN2IxNDFkODY4NTI2OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWRiYWRiYjZjNmYwYzIzNGEyZTg1MmIzZDk1YTFmNWQyMjI4MzMxNjY1MWI2NDlhMWJlZjE1NGZlYzkyOTQ2NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzI5NzQ2MzExN2I5MGNiYTI4NGNmNzhlYTMzZmY5MDhmODZmMTQwYTRjNzFmZWZmMDI4YzBiZmUxMDM5YmQ4NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWFhZjc2MzdjYjZlN2U1ZGI4NWQ2MzQyNzQ2MDE0ZGYwNDFjY2Q1NThhOTIwYjI5ZWI2YWM3MTlkN2JhZjVjMiJ9"
+        },
+        {
+          "resource": "repo://tests/test_userns_properties.py#L51-L95",
+          "version": "repo-lines-v1:sha256:898bb6f0780684a96269e959609652d371737767ffbfad436cacada1fb42e3b7:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1OTQ1ZWNlNTg3ZGE1ZjBhM2M5NjIxNzA4ZTNjMDA3NmRlM2MxZGM0YzRmMWJlYWJjODYxNDkwZWQ3ZDEyZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyYzZjYzQ5ZmViZmYwYmZhOTg0ZGY5NzNmNzQwN2YwZmMxOWU4ZjZlMjdmOGNkMGU5MTdhZDM2NzM0MGVlNDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBmYzc2MGZlZGQxNGVhMjc2OTVjZjFjNmFhZDM3NDNkYTIxMDdlZGRhYzhhNTE5NGI2YTgwZTMxMTJlMmU2YzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_373f0e3b976c4e4dbf45ba16e16c370a",
+      "statement": "The assertions that kill survivors' neighbours pin content, not execution: test_docker_userns asserts typer.Exit exit_code == 1 (Exit(None)/Exit(0) also raise and both mean success; two surviving mutants sat exactly there) plus cause/uid/subuid/both remediations (15 message mutants survived while only one substring was asserted), and test_persist_allowlist asserts \"--userns=\" not in msg so the removeprefix-to-removesuffix mutant dies even though the positive substring assertion holds either way.",
+      "evidence": [
+        {
+          "resource": "repo://tests/test_docker_userns.py#L421-L437",
+          "version": "repo-lines-v1:sha256:7e519a4ab828f0a0183f9b0c5bb6d8e9da8493737d1f92fa8c70b2873d0c43d8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjMWNkNzE5ZjUxYWUxYjY2ZDM2YzkzNmRjYjUzYzk3Mzg5OTljZGY1ODUzNWZhMzM3ZGE1NTE5ZjBkNDA2NjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyNWVlOTFlZmZjOWZlMjhlNzNhM2Y2YWVhZTM2MzgyMDM5OWI2YjZiZDQyMWNlZjYzZDIyZDBkYjRjYjE4ZGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2YmZiZGVlNmRmODNiN2NkZmM5NzRlOTc5ZGE0OTQ2OGNkNGNlZTUxMGEzZDBhZGQ1MmI5OTE5MmY2ZGUwMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZiNzExNjkyZTI1Y2QwNjBmZGFlYjJjZTQ0YmNhN2M0NDNkZWNmOTIyNjVkMjgxMzYwNzU0YzRjMmNmZGMxMmQifQ"
+        },
+        {
+          "resource": "repo://tests/test_persist_allowlist.py#L155-L175",
+          "version": "repo-lines-v1:sha256:833cc684c6a69f41f98261029669379acefa828c27c7a0366fcc0fe6089baba8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3MGRhNzU0Yzk2ZDUwMmJiNjNlNmE5NGEzZWY1ZTM4NDkxZTE0ZTQ0NmRkYzZmMTUyNTNhMzU0NjUwODE5MTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5ZDc1NjNlNjhmNWE0ZDkyM2ViYmE0NDE5ZDg4MDI3Nzk1ZmQ2MGI0NGFhMWExNjllZjMxOGI0Njk0ZDIzZjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg1NjZhMGUzODc5OTQxYTFjMDYzN2M2YTI2YTQ5ODExYTRjZjI5NDY1YTNkYjg4NjYzYTk5OTYxZWYxNzM5OGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFiOTRkMWU0MDY4NjI0OWIwNzliYTA2ODA3ODgyY2M4N2UxOTdmNWIxYmJjZjgyMjY3MzNhNTJmOGVjNWQ3OWEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e89baf45745a4075bb9d66ee5450afb2",
+      "statement": "paths._probe_docker_rootless's argv is asserted spelled exactly because mutation showed case-mutation survivors (\"docker\"->\"DOCKER\", \"info\"->\"INFO\", \"--format\"->\"--FORMAT\" fail on case-sensitive filesystems) and lowercasing the Go template returns empty output so every rootless daemon reads as rootful — the fail-open the function exists to prevent; its three-valued contract (True/False/None, with nonzero exit, FileNotFoundError, PermissionError and TimeoutExpired all resolving to None) is driven through subprocess directly, on lines diff-cover had reported unexecuted.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/paths.py#L186-L202",
+          "version": "repo-lines-v1:sha256:c7b26158aaac63788691877d66af443bb20bdce0563695843fcae1c5d469bf46:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1NDY0ZDY3YThlZjJjZTU0ODQzMDY1ODM1MzIyYTgwOWZkNTM3M2ZkOTI2MDQzYzExYjRlMzE3Njg0MDVhNjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzOTczMjE3ZTgyYmI2NGNhYjMzYzM4NWJlMzFhNmE5MTdlZjc3NGNkODJhY2NmYzEyNDZiMjk3ODdjYTA3N2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEwZGI2MjcxMTA0MjgzMWFiZDdjNGQ3YWJjNDk0YTJiZWM4MmE0ZGUwYzUxMzgzYTc2ZTMzNjljZjI2MDk4YzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkYWY5OTRkMjU5NjcyYWEzZTllOWRkNzViNTBiY2ZiNjk2NTNiYTBiMzQxMWVhZmUxZGRiNDBmMTMyMjY4NDEifQ"
+        },
+        {
+          "resource": "repo://tests/test_docker_userns.py#L475-L511",
+          "version": "repo-lines-v1:sha256:eb773948699741867de4f5b6331314a526fa6e14485103061e949047845895a7:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlMTU3YzZhMGQwMzg4ZGIwZTEyZGEwMDE1ZThmOTJmZWZiNWQ0N2FmYzkwYjQ3ZjNiY2MxNzNlNTAwZjlhNjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1M2EyMDdkNzMyN2QzMTJmMmUxMGUxYzNiYTZhNDBmZTY4ZDVhNWQ0NjVhMDIzNmVhZTFjNjVmZmUzMjE2M2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiMGM1MGI3MjZkY2M0YWQ1YzI5ZDZjMmYyZDNkZmFkMjE5OTczOThkOTc0NzlmMjFiMzcxZDcyN2RiYmI5MTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyZDllYWVjYmJlMDZlMDM4MjAwNDhhYmE1YjVkNDAxMGNiNGJmNjM3YTljMTJiZDIxMDdjNGU3ZTE0ZTcwODAifQ"
+        },
+        {
+          "resource": "repo://tests/test_docker_userns.py#L542-L561",
+          "version": "repo-lines-v1:sha256:8cc8c1c8937fd20a9d62419df7b39aec47264db3fb75e89899a1f76c96ba2372:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1NWI5NWFkMDQ5NDQ2M2NmMTI5ZjViOTNjNzg3ODY2ZDY4OWU4ZWYyY2ViOTgwMDMwZWQ0Y2UyNWI3MTYyMzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViYzAyNjRjZGFmNWQxOTY5ZjVhMTBmMGZiY2E5YTg2ODA5Y2M1MTZiYTdjMmI1Y2Y3MDMzYTdhNmEwYWY4N2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5MjRkYjNkZDlmMzU5YjYwZmE3NWJjMTg3ODU4ODNhYjI2ODE4MjNlNWU4ZmJkMGM3MzU0ZTViZTlkOWY2ZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc4N2RmZGQ0YTA2OWZlMjdmMjAzMmEzYmU0YzE0ODRhNmI1NDEwOTRhODMwZWY0NDRkZGI5YTU4NjljYWI1MGIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2f3d0330e34e49959fd4f2e77ace5ea5",
+      "statement": "Adding launcher._firewall_runner_argv to the mutation selectors on the PR #461 review pass exposed 19 survivors killed only by an element-for-element argv pin (\"run\"->\"XXrunXX\", \"--cap-add\"->\"--CAP-ADD\", \"root\"->\"ROOT\", \"-v\"->\"-V\"), each producing a runtime error or a runner that starts without NET_ADMIN and silently installs no rules — the shape of #429, where the defect hid behind a container that appeared to run fine.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1499-L1535",
+          "version": "repo-lines-v1:sha256:b673670b6e64829b79c9569f9303af52442ab864d135944f458cce5087713b39:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1YTMxNmVkMTNjMTc0NmY0YjEyZjYwMzc1NTA5NDI0ZWM3NDFmNTYzZmEwN2U5MmM0ODRjNjEyMjc5NGRhNDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkNDJiYmE3MmZkZmUzNWQ4NzhkMWZhMjI2NjM0ODNmMDEzZWRlYTQ1Y2VhYTg1NWE3YWFlNmY5Yjk0ZWZjYWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4OGM1NWUzYTU1YjQ3ODk3Njc4MTc0OWQ3MmJmYzllYmZjNTZlMzQ5YmNkNWUyNmYwMmNmN2VlNjg2ZWUwMmYifQ"
+        },
+        {
+          "resource": "repo://tests/test_docker_userns.py#L564-L574",
+          "version": "repo-lines-v1:sha256:4ccfe1739f87f955db0b563182898036186620ff3d6225551fedb65c5f616ead:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExNjRjZDA5YzU0Y2U3NWU4OWQ3MGY4MWY1YmMwMTdlNDA5NzVjYzYxZjUzNmI2ZmZlYTM3MDc2YTlkMTAyMjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjNWU4ODY2NTI2NGRjYzNlYTMwZGIwNWRiOThhZTk4MjUwMDU5OWM0Njg1NTRlNTAwNzc0MWE0YzE2NzcyNmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFkMDZiNDkzYTI2ZTg2YjlkYWI3OWYxMzRhNjEyMDA2MmRmNzlkZTQ4MGJhNjY2OWNmOGViNDQ2OTBkZDc2YzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2e7f8b2f33ca4d8fa442dae6e0514dc1",
+      "statement": "The suite's source sweeps are guarded against passing vacuously the same discipline the mutation layer enforces at mutant granularity: test_userns_mapping's no-bare-keep-id sweep is paired with an AST-bound check that launcher.py and volumes.py still call paths.userns_args, added on PR #461 review after the assertion kept passing while every executable reference was gone, matched only by docstrings.",
+      "evidence": [
+        {
+          "resource": "repo://tests/test_userns_mapping.py#L81-L113",
+          "version": "repo-lines-v1:sha256:6df71d0f11301748322290d44c3ff413ef6fc52f15d1949faafa5e06e657517e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2ZjJiZjM2ZmVhMTIzYmUxNTM3MDUzMWQ5ZGY1OWZhZjMzYmNiZTY0OWY5ZjA0MGRhNWJmMTIyMDI5OWFlYzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU5MTNiMjBlYzQ0YmM4OWVkYjdlZGE3MDNkMTM4Y2I2NTBlZDU3ZjY0ZTg1NmVjZGVmMmJhZWUxZGVlOWRkYmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNjNmU1NWVlMjNmMjc3ZjI1ZmRjZDc3N2U3ZDA1ODc1OGE0YTM3MGNjZTc2NTBmOTk0MmQ5OTFhMGM1ZmIxZDYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a02c8dc2025a47d7bc651cae5b8ceffe",
+      "statement": "The targets list contains both ctrquery._runtime and capability._runtime because #456 moved runtime detection down into paths.active_runtime, leaving two thin wrappers — the CLI-facing one printing \"neither podman nor docker found on PATH\" and exiting 1, the capability-oracle one raising RuntimeError — whose error paths still needed constraining; capability.x__runtime entered the selectors on the PR #461 review pass.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/capability.py#L289-L300",
+          "version": "repo-lines-v1:sha256:da058095f16f19833a9261c0170f76be9493b6dabaa46318e26a243205174381:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkZmYwYTcxNDFiNDEyMDg1N2U2MDdkOGExOTQ0ODU4Mzg4NjAwNWExYWM2YjU2YWFjZmNkYWFkNjY3YTI3MjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjZTZmMzM3Y2JhMjc4MTBjZjM1ZDdkMzgwZTI2MGE4ZDIxZjkwNzFiMGUzM2QyODM0ZjNkMjAyMzAwOTQ1NDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFhNzc5MTA0ZDYzZWZlMGUzMmJkOWQyZmI4YzZjNjk4NzMyOTdlMGUxNTNiOTUwMzlkYjZmMGE1MzY1NGE4NzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg1MzIxZjU2ODk1MGVjODJhOTRkYTI1ZjYzMzIwMmU1NTVkOTY4NzBjMTFjMGFiNDI3MDRhNTE3MjY5Yzg4MmIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/ctrquery.py#L21-L35",
+          "version": "repo-lines-v1:sha256:67c2a3d0a8fbe1b7b487d6a38766613175bc2cd3c5d9462c2e87d16e7ad09e22:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkZmYwYTcxNDFiNDEyMDg1N2U2MDdkOGExOTQ0ODU4Mzg4NjAwNWExYWM2YjU2YWFjZmNkYWFkNjY3YTI3MjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjZTZmMzM3Y2JhMjc4MTBjZjM1ZDdkMzgwZTI2MGE4ZDIxZjkwNzFiMGUzM2QyODM0ZjNkMjAyMzAwOTQ1NDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhOGRmMmY4ZjZkYzZhYmUxYWMxOTJkZDQ5OThiZjdiYWI5NzA3Y2U2MWFlZDM2MGExYTVmNDQyNTFlZDEwNjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1Nzk1ZTVlMmNlYmY3OTY0OGNhM2UzOTgzZmFiNDBlMmUxMjE1YTNjOTg5ZmQzNzlkMDg1YmE0OWMyYTQwN2IifQ"
+        },
+        {
+          "resource": "repo://tools/mutation-allowlist-456.txt#L43-L48",
+          "version": "repo-lines-v1:sha256:affef39f9cf4f87cedcd154815a3b1fe748d9aab5850c3989fa1643b5703df02:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTQ4NDM0ZWQyZjZiODU2OTIyNjRlNmJiN2E5NzdhNGJlNjRjMDIxN2UxMzA5MTA1NzQwOTg5OWQyMGI4MmYxZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGEwMGMxMDIzNmFiYjY0YzZlNWIzNGRlNDk4YmZhOGUwY2Q0MGRjYzNkYmY3YjQxZDZkNTA0Y2YxYmRjMzE4OCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjIyYmQ1NDU0YzBkY2NhNDgzZGM2MmRmNjIzYjg1ZjI2YzAxOTZhZmNmNDNiNGNkNmNmYWJmODdjZjgzOTUyYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2YxM2RmMmRkNWQwMzgyNTg3MzgyZTY0YTIyMjRmMDFhY2MxNzc5ZjIyMTM2OWE1NzM3MjgzOWRkNjE3Mjg0NiJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-12T09:54:25.902Z"
+  }
+}

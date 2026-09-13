@@ -1,0 +1,404 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:2258d828c29608c212e263ac2452d8c6c75e4f3e258116b0b6c3667521b4f99b",
+  "claims": [
+    {
+      "id": "claim_aee9c866e80c4ffdb8c2364bb4abd609",
+      "statement": "paths.active_runtime() is the single container-runtime detector: it honors CONTAINER_RUNTIME before PATH, raises ValueError for any value other than podman or docker (a typo must not silently fall through to podman), returns None if the forced binary is absent, and prefers podman where both exist; argv-building sites take rt explicitly while reasoning sites (pod_host_uid, persist.guard_ownership) self-detect, and ctrquery._runtime and capability._runtime delegate to the one detector (#459) so argv is never built for one runtime while ownership is reasoned about under another.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/capability.py#L289-L300",
+          "version": "repo-lines-v1:sha256:da058095f16f19833a9261c0170f76be9493b6dabaa46318e26a243205174381:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkZmYwYTcxNDFiNDEyMDg1N2U2MDdkOGExOTQ0ODU4Mzg4NjAwNWExYWM2YjU2YWFjZmNkYWFkNjY3YTI3MjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjZTZmMzM3Y2JhMjc4MTBjZjM1ZDdkMzgwZTI2MGE4ZDIxZjkwNzFiMGUzM2QyODM0ZjNkMjAyMzAwOTQ1NDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFhNzc5MTA0ZDYzZWZlMGUzMmJkOWQyZmI4YzZjNjk4NzMyOTdlMGUxNTNiOTUwMzlkYjZmMGE1MzY1NGE4NzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg1MzIxZjU2ODk1MGVjODJhOTRkYTI1ZjYzMzIwMmU1NTVkOTY4NzBjMTFjMGFiNDI3MDRhNTE3MjY5Yzg4MmIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/ctrquery.py#L21-L35",
+          "version": "repo-lines-v1:sha256:67c2a3d0a8fbe1b7b487d6a38766613175bc2cd3c5d9462c2e87d16e7ad09e22:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkZmYwYTcxNDFiNDEyMDg1N2U2MDdkOGExOTQ0ODU4Mzg4NjAwNWExYWM2YjU2YWFjZmNkYWFkNjY3YTI3MjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjZTZmMzM3Y2JhMjc4MTBjZjM1ZDdkMzgwZTI2MGE4ZDIxZjkwNzFiMGUzM2QyODM0ZjNkMjAyMzAwOTQ1NDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhOGRmMmY4ZjZkYzZhYmUxYWMxOTJkZDQ5OThiZjdiYWI5NzA3Y2U2MWFlZDM2MGExYTVmNDQyNTFlZDEwNjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1Nzk1ZTVlMmNlYmY3OTY0OGNhM2UzOTgzZmFiNDBlMmUxMjE1YTNjOTg5ZmQzNzlkMDg1YmE0OWMyYTQwN2IifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L60-L105",
+          "version": "repo-lines-v1:sha256:f8fdd92a60ce7e8d719da7ffcb10c14924971bac907c054cd540e5f217f50ba3:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI1OGFmYWU3MGY2MTJjMDRkOWE5ZjJhNzM0NDhlMTllNzE5ZGI4NjVkZDk3ZmJkMmY1N2VhMjgzOGQ4MTNmYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2ZmIyYjdkNzE0OGFkOWM1NGE5ZTE0YjFkOTFlODE1YjNmN2I2YjMzMjE1ZjA0MTFhNzcxZTJmMzM4ZjQ2OTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQzNWFiMTUwM2UwY2ZiOWY5ZGVhZDc1ZmYzN2NlMDUwZjMxOGZjNjM2NTcxYWU5YjAwN2Y0YzYyYjY1MDcwOWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZhOGJkODFlNzU5MDM2YWRhMDYyYmViYmRkZWU1ZTAxMjdkMGZmYjA2YTZjZjA5ZjBkZDMzODA5YTUyZTFhYjIifQ"
+        },
+        {
+          "resource": "repo://tests/test_docker_userns.py#L355-L382",
+          "version": "repo-lines-v1:sha256:e14f742972f7d90ef4aaf6d1d55708b3388f36bbef94542598d262f138bac022:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5OGY5NWJmM2VkMDcwNzU2ZDdjNmQ4OWIzMzI2MTUwOGQ2ZmU5MDU4NDA2YzlkOTdmMTY3MDQ3NTNkNWNkMmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5MmVhZmZkNWMzMWZmZGFkM2VhYjg5Yzg2YTJhY2VkZTE5MDc0ZmM2ZDkxOGI2NTRlMGE3NDZiYTg0N2MyYWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNlYWVmYzM1MDk1MjVlYmNkYmQ2NGUwNjk0MTJhNDBhNjcwZGEwMTBjZjMzYTM3NjQzMjUxZGNlYWM4MzI4NmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ4ZDkyZGM2M2JhMzA0Zjk3Njk0MDhmYTYxOGQ4OGI3OTFiNWFhNTUzZjhlZTk2YjI3NTQ2NTdjNjc2YmUyYTgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5ba6aabb08cf4c108fc235f8bce7cf9d",
+      "statement": "paths._detect_runtime and paths._probe_docker_rootless are deliberately split from their lru_cache'd wrappers (active_runtime, docker_is_rootless) because mutmut generates no mutants for lru_cache-decorated functions — the refuse-rather-than-guess branches were unmutated while the mutation layer reported green.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/paths.py#L186-L192",
+          "version": "repo-lines-v1:sha256:a036230795ae00991f4ab5715269d7fae3b041f9008d68ff3540a0a7306d796f:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTU0NjRkNjdhOGVmMmNlNTQ4NDMwNjU4MzUzMjJhODA5ZmQ1MzczZmQ5MjYwNDNjMTFiNGUzMTc2ODQwNWE2OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTZhNzE1MjU3MmVlODRmMTA5MDZjNzRiOWYyYTkyNDM0ZGRhYjBlM2M0MjgxM2IwNGU1OTdlZmNlYzk1MWIyNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTBkYjYyNzExMDQyODMxYWJkN2M0ZDdhYmM0OTRhMmJlYzgyYTRkZTBjNTEzODNhNzZlMzM2OWNmMjYwOThjMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzI5ZmIyMTZjY2Y5ZTQyNzZlMGE0OWYwYTBkZTJkMTljNTA1MzRlNTcyZjc0YjViOWI3YzgzODUzNDYxNmJiNiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L60-L67",
+          "version": "repo-lines-v1:sha256:b7140858ddf851227a1473cf89798dd48b84c739bac756d31d27c41b03fadd45:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjU4YWZhZTcwZjYxMmMwNGQ5YTlmMmE3MzQ0OGUxOWU3MTlkYjg2NWRkOTdmYmQyZjU3ZWEyODM4ZDgxM2ZjNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTZhNzE1MjU3MmVlODRmMTA5MDZjNzRiOWYyYTkyNDM0ZGRhYjBlM2M0MjgxM2IwNGU1OTdlZmNlYzk1MWIyNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDM1YWIxNTAzZTBjZmI5ZjlkZWFkNzVmZjM3Y2UwNTBmMzE4ZmM2MzY1NzFhZTliMDA3ZjRjNjJiNjUwNzA5YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjBkMmI5MWRlYmE1ZjI1OGFlMWM0MDI5NjcyMTE5NmYxMzQ2Yzc5YTBkZjYzNjk3Y2MwNDhmMzkwNTEwYzc2ZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_16c7f6557ce8440d9ca1775f88fcbb95",
+      "statement": "Podman's mapping is paths.USERNS_ARG = --userns=keep-id:uid=1000,gid=1000 — keep-id pinned to the image's baked uid 1000 — so the container's uid-1000 process IS the invoking user whatever their host uid; bare keep-id only worked where the invoking user happened to be uid 1000 and failed on a GitHub ubuntu-latest runner with 'mkdir: cannot create directory /data/dolt: Permission denied' for six consecutive live.yml runs (bd harnessed-rv2.1).",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/paths.py#L29-L44",
+          "version": "repo-lines-v1:sha256:b6383c6e7297bd742793e4e42f551dae0e159f894628f8a78cdfe5cad846efa9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2MjMwOTZjNWI5OTI0M2Q1OGE1Njc2MzVkODkxNGVjZmQwZGU0YzQ5NDU0MGMyYTQwYjJkZGY4NmFlZmRhMTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyM2M0OTIyMWRkNmM3NDI3OTNmNjQ4N2RhYzQ2YjhiYWY2NjNmYjBjNzg1MmQ0NTU2MDk4ZjQ3NmYzNWYwZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4NGRkNzJmMWU2NWNlODA2MmIxYzExMTljZDU5ZDNiOGZjMTEzZWVmZjBiMzVmYzNkNWUyN2Q1MjE0YWJhODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJiNWE0MWNmNGRjMTk1MGRlMWQ1MjhhMDU5NjM0NjkwMzI2NjhhNWZmMmMxNDQxNTcwMDYwMzRhNTA0YzE3NzAifQ"
+        },
+        {
+          "resource": "repo://tests/test_userns_mapping.py#L1-L17",
+          "version": "repo-lines-v1:sha256:dbf68aabd6eba11e04358d5d9ffecf06b8ef4b01fc5a09f2a55201ca63e51c66:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwOTM2MWQ0N2M5M2I2M2NiMjcyMjM0Y2JhNWIzZDFmY2M2OWFjYjBlZTE1ZTdjMzRkZmZiMDQyMmJlNmNkNjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjNTg1ZTI5NzA5ZTdjY2FlNjQwYTU3YzhjYzk1YmIwYjI2MjZiM2Y4NTYxODBhYWEzZTIyNzIzMzcxZjU0YjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhYWY3NjM3Y2I2ZTdlNWRiODVkNjM0Mjc0NjAxNGRmMDQxY2NkNTU4YTkyMGIyOWViNmFjNzE5ZDdiYWY1YzIifQ"
+        },
+        {
+          "resource": "repo://tests/test_userns_mapping.py#L269-L299",
+          "version": "repo-lines-v1:sha256:9d7df64425c23616c8a693f37ba4c8b2dc82163cbe24c386d27ecb37088a8eca:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4YzNlMmYwZTJlZDM4ODAzMDE3OGJhNGRiYjJjYzY2MmUyNjgxZmU3MjU3NjRiYmM0OGQ5OWY0NzVmY2Q1MmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3ODBiZjgyZTk2NjdjYjIwZDc5NWE2YjU4Y2FkZjk4NThjMWY0NjY1YzQxZDcxMWEyYTlkZjM5MjJhMTdkMTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjMTZkN2Q0Mzg4ZWM4YjM2NzRkZDI0Nzk2NmU0NjNkMWYwM2YwYzI4MjI4NGQ5ZTdiNjk2NWE5NWVjMDkwYzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5e44c090fb14439db93b090d7a60c9d0",
+      "statement": "Docker takes paths.DOCKER_USERNS_ARG = --userns=host (#456) because it has no keep-id and exits 125 with '--userns: invalid USER mode'; host is stated explicitly rather than omitted so the container opts out of a daemon-level userns-remap that would map the image's uid into a subuid range; paths.userns_args(rt) returns the per-runtime fragment as an argv list and raises ValueError for an unrecognized runtime rather than guessing a mapping onto a real bind mount.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/paths.py#L108-L127",
+          "version": "repo-lines-v1:sha256:390fefe5795005058d8c1ff505cbcf6ece3696861a15a8d6ad44799ebc9ce7d9:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2NDBjYjMwMDcxMzE0YzgxMThkZWIzMGUwYmRmMmY4OTIzNzhjNzg5MGNmY2IzYjdjNzI1NWM3OWMwMGY0NmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1NmU0NDhjNTRkNmZjNDEyMmNlOWRmMzQxOTZlN2Q0OGQ0YmJmZDk2ZjEwZTI4NzFiZGFlOWYzOGJkZWNjZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzMTA3ZTMwZjU1NjRmZDJmZWFlMzQxOWI4MDAyMTAzNmM0ZTg5ZDVkM2IxYmY0MjVmZjkxOTk0NDg1NTg1ZTgifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L47-L52",
+          "version": "repo-lines-v1:sha256:9e1858c3907780050ece09408965c4896e5031c7bf8c5b8ab52ff7b7bf8523ef:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWFiNTE3NjBiNzc1ZDQ3NWE2NDZiZjIxMmJiNWM2NTgyNTI5M2FkNzkwZDFmYmJhNjAzZmQwZWIyMjc2OGRmYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDkxODBiOTBjZjg4OGVkN2Q1NzI5ZWE5MWFiNzhhZjI4ODc5MjUyZWNhNDVlZjk4NGY2OTZmMGQyNWViNmQ1NiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTVjYWVjNzQxZjAwMWJhZTYyZWQ4ZTU1YmJmZTJiODdkN2EzOGNmOTdkNzY4N2I1ODgyNTc2OTRkNjZmYTA3NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYThhN2RjMTU3Zjk5ODg2ZTU3ZjdhNDg1YjkxNjlmZDk3NzQ3NTMwNTk4ZWViNjlkYmI4ZjMzYTY0YTA5N2Q1MCJ9"
+        },
+        {
+          "resource": "repo://tests/test_docker_userns.py#L1067-L1084",
+          "version": "repo-lines-v1:sha256:fb09ebdb4b5691bcc485975ef0eca7f168ed24455b79dcce2a9fc1548b2779fc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5NDBjMWE3MWU2MzA1YzRhNTNjZGE2MTQ2ZWNjYzRlMmM0MThhYmVlOTY5YjNkNGFkMTQ2YzM1MTg0NWFjZjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmY2RiOGZiN2RiNjkzZmE2YmZjZjE2NjliNzE3ZWExNzU3OGI4MGViYTVjNTZlMTQyODU1M2VhYzIyNWEyZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImExMDQxZTFkNmM5YTRkYTU3MGQ1M2JhNTgzMWZmYzIxMTUyMzFjYzY1MDYwMTgwNmUxZGM2ZTRhZGQwN2E4YTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY0ZDdkZjM0Nzg5NjA1MTk2N2Y0ODEwMDA4MmZiOWNmNjc5ZWFiZmQyMGRjMjNkYjA0MDQ2NGQ2Mzc4NDBlNjYifQ"
+        },
+        {
+          "resource": "repo://tests/test_docker_userns.py#L95-L114",
+          "version": "repo-lines-v1:sha256:f63185943baff20855e7b290d6d003ca6bf743bc0e9dd0dbe34a84f06ffa6dbf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmZTc4MGY4M2FiNjUyMWE5NzAyMTBjYmI5N2M0NTdjNjMwZWM2NmJjOTRhMDUzZDFhZmMyYzdjZWY3NzM2NzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0YjE4N2EwYWIwZDk1YWRiMTAyMjFkYjliMDg4ZmUzMjdkYzI2OWU0NzI4ODYwODZmMzZjN2VhN2Q1OGViNzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVjNjcxYmE1MTgwYmNlM2E3MTFlZjQ1Y2Q1MzIxZjFiNTEyYWY0YzM2YzI1ZDYxZGFkNDg0OTI3MGNlZTYzYmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjljMjFkZTNkY2IwMjJjN2RmMjgzNDQxNTk2MzI2YzNlNDAzMWQ2OWJmOGUzNjQxYzI5MzY1YjMxNzIxY2M4MjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_35958110bc324f2d8cecd0c49677398c",
+      "statement": "On docker only, paths.container_user_args emits --user <invoking uid>:0 so the agent writes as the invoking user (#457) — podman gets no --user because keep-id already did that job and adding one would fight the mapping; the group is 0 rather than the invoker's gid because group 0 is the only group an uid the image never created is guaranteed to hold, paired with the base image giving $HOME to group 0 with group perms equal to user perms.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/paths.py#L130-L166",
+          "version": "repo-lines-v1:sha256:575d228e4ea6647f835db07f75ca8dfb40a5ddedd6426ffd088edb38ea576e2e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyNTU1MDhlNzc1M2Q2NTEzNTA3OTgzYzIwMWYyZmIxYjZlZmY4Y2NjNWM2ZGExNDMxZTYwZTRhYzkyMjVkZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyZTJiMGJhNDk0MzE3MmQ0MGE3YzljZDVmNDYxNzgzM2Y0ZTJjNzllYjE2MjkzMmY2YmY3OTRjMjY0NTFhNWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMwMDE1ODU4YzY2MjM4MTczOGE3NDBkYjYyYTAzZjhmYzcwNDNiNGY1ZmQwMDE5MmQ0ZmU4YThmNDliYTc3MGQifQ"
+        },
+        {
+          "resource": "repo://tests/test_docker_userns.py#L249-L283",
+          "version": "repo-lines-v1:sha256:0d0c95f72cddfcc9405fc0c94c964b1ee417531f1d043c643b32acb0500720ed:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5ZTI3MTg2OTgyNTAxZGVmYTg5MjU5MWQwYzY4OWZmZTc0NjQ4ZGUxZGU2OGMyMThhNTNhOGEyMTE5MWVkOWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1NzJjYTg3NDgyOTQzNGIxOGY5YmExYjZhY2M3NjMwZjRlYTRmNDJlY2MwOTRiMzgwM2I5ODI2MDU1MmJiY2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4Y2Y5NjFiNDM5OTEwYzE3ODc3YzE1NTAzNTkyYzg3OWI2ZmI1Nzc0MjU1YWM1MzY5YzJjN2NjZGZiM2IyNzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZiOWZkZDJlZjI4YTc0ZmVmNzFhOWNlOWFmNTM3YjkyYWE4MjI2MThhODIxNTczZmY0MGNmYzdkMjgyMTQyZDYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_764ced8cbb7c491cae0578d1679d13c3",
+      "statement": "paths.container_owner_ids(rt) names the (uid, gid) that must own anything the agent writes — the image uid/gid on podman, the invoking uid with group 0 on docker — and volumes._chown_volume_for_docker chowns freshly created named volumes to exactly those ids; --user and the volume chown are one contract, and changing one without the other makes every config/tools volume write fail.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/paths.py#L169-L183",
+          "version": "repo-lines-v1:sha256:3db98eb74e4e1edbe5bc9043b9eb42055e89eccf1b4689ad820993f0fe794c5c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwOWMxNTliMzAwYzgwNTQxYWM0ZWYxNjE5YWU4ZmEyNTk4MTg0YThlNjY1Mzg0Y2M1NGY1ZDhhMjM0NWNhMmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhN2ViNGYzZWVlN2NlY2M3NDllZDkxNGFlNmQ1ODE3NmNiZjc4NzdmYTI4YjkzZjQwMjNjZTliOWNiYTMxMDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNmMGUwOTg0NzA5MzlmZDkzYmM0MzBmMjQxMzUyY2IyM2FlMzk5NjEwZmZhZDBhMTc0ZTk5NTcxZTNjMWZhMjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJiN2Y4ZjEwNTY0ODlkMzY3YjRjNDk5YzQ2YzljMzQ5ZDI2NmMzMzE2ZTc5NGNhYjk5ZmU2NzYwZDYwODFlZWUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/volumes.py#L98-L160",
+          "version": "repo-lines-v1:sha256:f21306643ced0d6f4c52213108dd57193303e41d21f534a8cba27ff37c6737c3:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwNTZiMzI2MmM3YTk5MjMyNGVlNTU5NGY4MjIyZGI1OTkzNDUxMWVlNmU1NWJmODgxYTkxZDkxZWY1ZDE3OTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFhMzExYWY2MTNmNzEwZDRmNmZhMzBiNDQwMTcxM2MzMjE1NmJjMDNjZDdhOTU4NzlmZmFjYWQwYjFhNDI5OGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3M2QxODc0ODQ4MDZiNmExOGJjMzYwNTQzYjllOGU4MDQxOTViY2UzMmUxNmQ1ZjEwYWYzMTY2MGFlOGIzYTAifQ"
+        },
+        {
+          "resource": "repo://tests/test_docker_userns.py#L276-L302",
+          "version": "repo-lines-v1:sha256:6b0ea9c29783fcbbfd57a65b59c40725fa50be3031e02ba61e85ee31091527ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwMDE0ZGUxMzc3YmI2NWQ2ZWI3MjAxMjkxYTBjYzY4NmNhM2UwNzdlMTk2Mjk1MjIxYTMxNzJlOTlhYjMzYjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2ZWVkYjQ5YzcxYTQ1ZmU3Nzc5NTlkZDQ2ODFjNGNhYmQ0YTE1MzU3OThlMDFiYjNhMGUzMmMzNzJmY2VjNDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVkYTI1YWVmNzFjODUzMTIyYzVlMmY0YmIyYjcyYzA3YWZiYTcyNmM3ODc1YjZmNmRjZjMwYTc0MDZkZjgxZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc4N2Y4YjcxZGVlNmExYjcxNDRkNDZjMTFmODQ1ZWI1MDBhNGM5OGFmNGQwZDgwZjAyNmI0MGJkNzVkYTI0YTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d46a6afb5f614629a6c4fe0688b28d3f",
+      "statement": "volumes._chown_volume_for_docker is docker-only, runs a throwaway --user 0:0 chown container with the volume mounted at its real mount path, and is gated on 'volume created this run' with that state kept OUTSIDE the volume, because docker seeds a named volume from the image only while the volume is empty — a sentinel file inside the volume suppressed copy-up and left ~/.local without the image's tree; podman is a no-op since it already chowns new volumes to the container's user namespace.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/volumes.py#L98-L160",
+          "version": "repo-lines-v1:sha256:f21306643ced0d6f4c52213108dd57193303e41d21f534a8cba27ff37c6737c3:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwNTZiMzI2MmM3YTk5MjMyNGVlNTU5NGY4MjIyZGI1OTkzNDUxMWVlNmU1NWJmODgxYTkxZDkxZWY1ZDE3OTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFhMzExYWY2MTNmNzEwZDRmNmZhMzBiNDQwMTcxM2MzMjE1NmJjMDNjZDdhOTU4NzlmZmFjYWQwYjFhNDI5OGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3M2QxODc0ODQ4MDZiNmExOGJjMzYwNTQzYjllOGU4MDQxOTViY2UzMmUxNmQ1ZjEwYWYzMTY2MGFlOGIzYTAifQ"
+        },
+        {
+          "resource": "repo://tests/test_docker_userns.py#L916-L993",
+          "version": "repo-lines-v1:sha256:5f873cac7db8ec7539003f1da8c3cd4a3e05a9a5484d009340e6e07ee925b2a6:eyJzZWxlY3RlZExpbmVDb3VudCI6NzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmNDJlOTEzZmZhYmQ4MjE5MTQ5Yzc1ODQyZThmNjQ5OWJlOTBkMzNiYzE3NjJiNTNmMWRiYThlNTEyZTM0MzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwYTMyOTgxMDg4ZmI3NmYyMWU3Yjc4ZTBjNzVkNWUxOTdlMWI4NjE1ZGE3ZmE4MTljMWUxYWMwMDM0YTJmNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5ZDZlMzY3YjQ5ODVmY2VkMDUyMTI2NTE2NjNiYWZlMjEwZmRkNDI2MjBiYWFiMDUzZDc0ZDczMTA1MDNjOGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQwYTQzNGExMWM5YzY3NWEwNTgxNzYxYzkyNDgzM2M2OGQwMmU5MjU0NDUwZTAwMjg2OWJmNDBkN2ZhNGQzZmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_521add54fcb04e1ebcc5307028c1b22d",
+      "statement": "paths.pod_host_uid() returns the host uid the pod's process writes as — os.getuid() for the pinned keep-id mapping and for rootful docker (where --userns=host plus container_user_args make the agent the invoker), CONTAINER_UID for --userns=host on the parse path, and None for everything unnameable (bare keep-id, auto, nomap, a uid mapped onto somebody else, rootless or unreadable docker); None means unresolved and callers must refuse — an earlier version answered CONTAINER_UID and was fail-open (CodeRabbit), since under bare keep-id the image's uid is drawn from the subuid range so the pod's writes land as an unrelated subuid, not 1000.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/paths.py#L227-L272",
+          "version": "repo-lines-v1:sha256:59caf35ee9681899c3ff4023deb36cf319abd71ab8f9c3dca677f96b6e4da219:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwNGZhZWI1MWJjZGY2NTFkNWVkMzE0YTNjYTg5MGRiYThlN2Q3NmI1ZWFlNmFhNjNjYzBhMzczZTkwMjdmOGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTYwMGE3M2QyZTAyZjM1MmI5MGZlZjFkOGQ2MzgxMWJhNGE4ZWUwYzFiZWFhN2FlNDY1OGYzNmFhMmUxOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhhZmNhYzQ0YjkzMDM5NDA5YTFhMjYyMTE5NmFmMTA0ZGM5MmFhYjQzOTY3N2E0MTZkYjcxOGI1MjkwMTAzNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0ZTFlNjJiNjcwNzA2ZTFjZTA5MzllYmRlOWY1MjdlZDkzZTMwYmRhNmU2NzI5MzA3NDQyZjM3N2M2ZmZlNjQifQ"
+        },
+        {
+          "resource": "repo://tests/test_persist_allowlist.py#L198-L246",
+          "version": "repo-lines-v1:sha256:6394d4db5f03fb52d9a4d11fe15f525aa94a3b5fdf1fe45c1b24a4fc8c1d8303:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0YTcyODc2ZjM2NzU5Y2MwODM1MDcyYmE5ZDJmZGIyN2Q1NGM5ZGM4NDRiOGNkMTUwZDljYTQyMGMzYWMyYTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4NTkyMjgxNTM4ZTJlMzI1NWI0MjExZTcxNDhmZjhiM2YyZjQ2MjExNDBhMTU0NzRmMTdiNjU5NzRjOTIzMzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlMmUxOWNiMjk3MjVlMGUzNWY3ZDlmYTg1Nzk1MjRjNzRlZWFjZTc0NGViZGU4NGZjMGM0YTZiZjQxN2M5YTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI4ZjFlODgwZmI5OTQ2MWQwZWU5MTY4MGU3YThhYjIzN2QyMTgzNmEyZTk1Mjg5YWYwY2Y1OWY2OWZjNDQzNjcifQ"
+        },
+        {
+          "resource": "repo://tests/test_userns_properties.py#L70-L95",
+          "version": "repo-lines-v1:sha256:dfeddf1a4bfc1b226b728834ffcb11bf4fd9ca5b69b2fc6f46d65c6a44fc00f5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3MjliOGJlYTYyNjBlNjNlNDJhMWVmMjVmNDlkOGQxY2QzOWYzNDc2ZTkyMjBlM2E4YThlN2Q4NDQ1NGIzM2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyYzZjYzQ5ZmViZmYwYmZhOTg0ZGY5NzNmNzQwN2YwZmMxOWU4ZjZlMjdmOGNkMGU5MTdhZDM2NzM0MGVlNDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNlNDAzNDYyYThmN2NjNTUzZjYxZTI0ZGIyZjI3ZjU3MjViNmQ5NjI2ZWZlODRmYWJkNDA2NjZjMzI4OGQ5NjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c86289b40c604878a4dc99552157979e",
+      "statement": "paths.docker_is_rootless() probes docker info's SecurityOptions (30-second bound, lru_cache'd so it runs at most once per process) and is three-valued — True rootless, False rootful, None when the daemon could not be read (down, permission denied, timeout, binary vanished) — and callers must treat None as refuse, never as probably-rootful; classifying a userns-remap daemon (name=userns) as rootful is only sound while every creation site emits --userns=host, a coupling the tests assert explicitly.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/paths.py#L186-L224",
+          "version": "repo-lines-v1:sha256:b33730f961df5996f4ce3c179952943ddde674646061bafb0803e92e88d9fa9a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1NDY0ZDY3YThlZjJjZTU0ODQzMDY1ODM1MzIyYTgwOWZkNTM3M2ZkOTI2MDQzYzExYjRlMzE3Njg0MDVhNjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5MDE2MWVmOWY2ZDU4YjlmNGJjYzA2ZjhjZGM3MzQ3MmY4NDk4ZmYzODc3Zjk2NDc1NWZkMGEzNmEyODlkZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEwZGI2MjcxMTA0MjgzMWFiZDdjNGQ3YWJjNDk0YTJiZWM4MmE0ZGUwYzUxMzgzYTc2ZTMzNjljZjI2MDk4YzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYWY5NWJmY2U1MzNkYWU3Mzk1YmQwM2I4ZDRlZjMwNzY0ODk1NDI3NWVjNWM3ZmM5Y2IyYjFhODhkODAxOGYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L54-L57",
+          "version": "repo-lines-v1:sha256:0b6804e8f6a35cfbb109adc53d0dc3fbf08deeb7f6b6d670d5057e98751f06a3:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTcyOGNiYzZkY2I0ZDM0MTc4OGY2ODAzOTI0MTJiY2VlYmY4MjI3OTM1NGMwYWMyMjYyMjJhY2EwMzdmMjVmOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2FmZDU5NjgwOTBmNTEyNWNiYjVmOGQ2NDNlYWJhZTdjZjQ5OWNhNWQwNmU1MzgzMzQ1MTk3YWU2YTU4YWY3MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODk5NDMzMzgzYzA5YjA5Y2Y2NGMyOTU1NmU5MzM2YjY5MGY0MzAyM2Q2ZWNhZjc0MGJjNGM2MDBjZWE2YzJmYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmI4NWE4MjZmNzA4YTZmZWMyOTBjOTFkYWYzMjJjZGJkYWFlNGNiNjcyMjM2MGQxZjhhNGY2NjRhYzQ3NGVlMiJ9"
+        },
+        {
+          "resource": "repo://tests/test_docker_userns.py#L191-L204",
+          "version": "repo-lines-v1:sha256:bf4e53f2e98139f1462be13d952f6b0fe7336f1a1da3a1e2645a6db32c8fb506:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3ODdhNjQ2NGQyMzA2Njg4MTE4MGM0OGQzZDdiMjI5ODY4OGI1NzQxNTc1ODBkZGRlM2EyZWRhYTg1NDMyMTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzNjc2ZWM5YjE3YTE0YjM4OTRmODUzMTEyOGEyZDgxMTIyMDYzOGVjOWNhZTgwYmI0ZjFhYWI0ZWZiNWVhNWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYzMWM0M2IzYTUyNGNlNDU0ZjRjNWFhMmQxMDMwMjgwZjgyNmI0NjBlZDMzMzc5N2Q0N2Q2MmExMTQ1OTA4MWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjODkwZDA1ZDNhZTRmODJjM2NlMDc4MTJlOGE1YjE0MDM3OTcyYTQzNjMwM2Y1M2JkMGViNGMwNWExM2Y5M2MifQ"
+        },
+        {
+          "resource": "repo://tests/test_docker_userns.py#L475-L540",
+          "version": "repo-lines-v1:sha256:2992e1e800d3747e08aa86ac54108f1a0981c8a815408d4df7e48c778aee9601:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlMTU3YzZhMGQwMzg4ZGIwZTEyZGEwMDE1ZThmOTJmZWZiNWQ0N2FmYzkwYjQ3ZjNiY2MxNzNlNTAwZjlhNjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiMGM1MGI3MjZkY2M0YWQ1YzI5ZDZjMmYyZDNkZmFkMjE5OTczOThkOTc0NzlmMjFiMzcxZDcyN2RiYmI5MTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZlYTZiNDZiOGQyNzgyNzQ2NmM3YzFhOThmMDI1ZTljMjdmMTM0ZTA2MzczZTM4MTJlOTZjOTM2NTNkNWY1ZDQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_82295f85a58f4b7195ebac48c72a3cc3",
+      "statement": "persist.guard_ownership compares a persist target's owner against paths.pod_host_uid() rather than os.getuid() so it can catch the mapping itself being wrong — compared against os.getuid() it waved through six consecutive red CI runs (bd harnessed-rv2.1); the unresolved-mapping check runs before the absent-path early return so an unnameable mapping refuses even a dir harnessed is about to create, and docker's unresolved case gets its own message distinguishing a rootless daemon from an unreadable one.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/persist.py#L130-L190",
+          "version": "repo-lines-v1:sha256:dbbbdad152eab100d5528bfafab44d59cef887478217b75b1a5e33fd308fa497:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3NmU2NGI5ZjdlM2QyZTIwZjQ1Y2FhOWFkMTgwNDE0ZmYyNGVlMDk2ZWNkNTQ3ZjVhYzhkNmVhMGM2ZGE1NGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3M2Y3MGFkMzAwZDg3YTExOTkzNTk4ODJkOWNmNTVkNzNiYjk2OTQ5Y2RmZDM1MmE5YTZjNTdjMGIwMDc1YjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY5ZGFiNTIwZGY0YWM3OTJlYzA3YzMzYTJmNmMxMzdhMTVjYTc5YzM4OWYxYTk3NWYwMGMxMTJjODE4MTcyY2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYifQ"
+        },
+        {
+          "resource": "repo://tests/test_docker_userns.py#L162-L189",
+          "version": "repo-lines-v1:sha256:3a562ff54bc374e0098cd9035c781e64fb70471c5436d09dbf4ecd037bdf38c3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5YmYwMWU4NDMxOTQ0YzVkNGQ4YWQxNzNlMzgzOWMxMWFiNGQ5YWEyMjU2NzQ3MmYwNjA3ZDgzNmRjMTVmZWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwNzg1M2IyZDBlMzQ4ZTM2YmVjMjkyMzc1ZWFiMTlmYzUzMDhjMWY3MzhjMDRhYWFhMDg2NDliOTkyNmVlNTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI2YjhhZmM0NGFjOGYyMDkxZGQ0NTMwNjIzNzJkZDNmZjU1ZWZkNmJiMzcwZGNiNzNjNTQwOWUzZTE5NmQ3NDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhNTJiZGJjNWFjMDE5ZWQ5NTRmZmI3ZTRiNWNhZTY1ZTgzOTY1ZmU2OGUxYjEyZWUwMmRhZDBkOTkzYTFlNTUifQ"
+        },
+        {
+          "resource": "repo://tests/test_persist_allowlist.py#L178-L284",
+          "version": "repo-lines-v1:sha256:1f03480747557b02e47520d171c6a28dcf9d7a0cf97fdcd2914070bef8e92107:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2M2E4YzczMmQ5YWEzM2IwYTcyODc4NDg0MDQwZWQyZjM0NmFiM2NmYTk1N2MyMjdmNWZiNDdkNmJmOGQ0YjIxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI4ZmEyZDk5NTQzODViYzY4ZDAxMzg2YjQ4Zjg2NTg2ZjgzMzM5M2M3MDI5OTgwYTgzYWM3NmExZTUyODU1MTIyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmOThiYWVkY2JiNDkwZDc4ZDk4MDJlOWNjZWE3NDA2NGMyODk2OWI2ZTE1OGExOTc5Y2RhYzNmMzRkNGZmNGViIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_74981e74570d465487db3cc2e2a93a12",
+      "statement": "launcher._preflight_runtime(rt) refuses, before anything is created, a docker runtime whose id mapping harnessed cannot name: podman always passes, docker requires a rootful daemon (any invoking uid passes since #457 — the earlier refuse-non-1000 rule was removed with the defect it guarded), and rootless or unreadable-daemon docker exits 1 with a message naming the cause, the unmappable uid, the subuid reason, and both remediations; it is called at the top of build (_build_stack) and of launch because guard_ownership only fires where consulted and a stack with no persist entry would otherwise run into the bind-mount failure.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1268-L1301",
+          "version": "repo-lines-v1:sha256:068b9666a2ac33d38aa9dd84771063b3db79b917fd99686b787c97f20c739ecf:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwNGZhZDU3YmQyNzQwODM5MzE3MTAwYWU0MDI0YjgxYTU3NTYyNmNmMzI2NTIxMTMyY2RhZTYxNzA3NDhiNTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1NjM4NDk0YzUxMmIzNjBmZjE1Y2E1OGMxY2U4ZjdiOTQ4YzZjM2VjNTRmOGU1N2Q1ZTJmMzU2NDdjYTAxNTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEwZjdiMjM0NWU5ODU2ZmM5MWQxMTZjMTIwNzQ4NjcyY2RjYTMxMWU4MWU5ZWQ2MTkyYzMxMjRmNjhkYmRkMzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiMDYzNGFhM2FjMTIyYWRhMmY5N2ZiY2MxMWY3Yzk3MDFjNzczNjFiY2E1OGYyYzEzNmM0MDI1YzQ1NmZjNzcifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3836-L3837",
+          "version": "repo-lines-v1:sha256:886f6bf4a76a16cdc19a8dddf513573b20e7eb47f71a6051f7ae32e51b21e030:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjA5Y2FmY2IzZjQ1YjJlMGYyOTdkNjE1NjZjNWQ5OTUxMWIzNGU1OWNkMGQ0MGYzZTFhMWU1OTMyNmI5NDExYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjAwOGFjYjk0MWMzNzIzN2NhMjQwNmMyZDdjOGMyMjc3OTc4ZTRhNzdmNmQzMzZlYzYyMzBlNzFiOGVlZjZjNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTQwZWE0NTFkMGYxZjFmMmIwMGI5ZWU1ZTUxODhkNjQ1OThjM2NjODEzNTAzNTdmYmE5YTFmMzRkODNiNTQ3ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODQxNzEwZTA3NTA2MTYyNGI0ODE2NDcxY2E3MzY4ZTE4M2M1MTYzZDIwMGQyOTRmZTdiOGQ1MWNiZmY0MTM1NCJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L676-L676",
+          "version": "repo-lines-v1:sha256:b008acb941c37237ca2406c2d7c8c2277978e4a77f6d336ec6230e71b8eef6c7:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjAwOGFjYjk0MWMzNzIzN2NhMjQwNmMyZDdjOGMyMjc3OTc4ZTRhNzdmNmQzMzZlYzYyMzBlNzFiOGVlZjZjNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjAwOGFjYjk0MWMzNzIzN2NhMjQwNmMyZDdjOGMyMjc3OTc4ZTRhNzdmNmQzMzZlYzYyMzBlNzFiOGVlZjZjNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzNlODBkOGVlMmU2Yzk5ZjFkOTgxOTMyMDkzYWNkOWIwNDgxNzhkOTdkZmVlMmE2OGFjZmQ2YmFjY2NhYjRmNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjE5MDc3MGQ1ZWVhZWFlYWRkMjBmYjBiMGZiNGM5MTJjMjQ0NzVmZGQ2YWU3YzZlOGQ2NTYwM2MyMTQ4NzFlNSJ9"
+        },
+        {
+          "resource": "repo://tests/test_docker_userns.py#L416-L472",
+          "version": "repo-lines-v1:sha256:9f2f5ef90e1ab6f085e532634799e96e7199bb15aa39051585f847b0d5eb1b35:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhMzNiMjA0ZmY2Mzc4ZDExZjM5ZDBiZDc5Yjc3MjY4OGU1YWRmODdkYWY0NjU2NjYwNWI4YmM0MjQwYzBlMGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyODE4MDZiZDA4ZmEwZTI2MDMzMGQ3YTE4ZTY5NTIyNmNkYTUzMjdiMWE4NmNjZjU3NGE0NWY2MDA4NmQyZmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI1MzkzOWQ1YzU2MWFkNTUyNzBmMGEzYzQ5MzY4YTMwMmNhNDBjNmM3MWY1NWViYTA3YTM5YWM4MzNmOTkzOTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMwYWY0ZjI4OTA1OGZjMWFhNzkwNGRmMDRmNTY1ZDdiOTc2YzdhNDcxODg5MzdmYWZjNDBiZjg0MDVlMGRlOTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e1ff25ff16cc47aeb41ea7161ac5f915",
+      "statement": "On podman the userns mapping is a pod-level property: pod create carries paths.userns_args(rt) and an explicit --hostname, every member joins via --pod and inherits, podman rejects --userns on a member, and launcher._without_userns strips any --userns from inherited mount args keyed on the flag (an inline inequality against the bare keep-id literal silently stopped matching when the constant was pinned, bd harnessed-rv2.1); the strip is inert today because no mounts.py builder emits --userns, and is kept because an unconditional strip would silently swallow a mapping the moment a builder emits one.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1256-L1265",
+          "version": "repo-lines-v1:sha256:4690aac71698080f9ff9fc1df37b3b9350570516ec61db071a174a2ace351389:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxYTJlNTBlNDcyM2YxMmFiYWEzNjdjODQwYjNmOTFlMTU5NTFmZTAyMzQwOWM2YzhhNWFlYTY1YzIwNzBiMzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyMzFiNTNjNmM5MjljY2VmMzIzZTUwOGIyYzlhODRiYzc1NTg3MzdlZjUxNTViOWJiNGQ1N2U1YzQyY2Y0ZjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNiOGVmZTNjOTZjM2RjMmE5N2FiYjM2NjI0ODI0M2M0OWUxODBiMGQ2NGExMjVmYTMxMGM5ODY5NjU3MWJjNjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAzOTIwZDA0MWNlYTg0NWM3OTliMzQxYzMwZDY4M2I1NGZjMzBhYWM1MGU3M2Q0M2E1N2M1NWY5MDYxNjAwZTkifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1446-L1483",
+          "version": "repo-lines-v1:sha256:e0e9874693d02a59722c3945a7110b341b2db48418ea261df3d5ed923215e243:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3ZjU0ZWE4NjE4ZDQ3MzQ4ZDExOWMwNjFlYmQ2NjMwMmE5MGYxMWMyOTI5OTI4MmQ4NTk5YmViYTUwMGU4MTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExMGMzMWJlMDAxZDA0MzkyODc2Nzg0OWYyOTg4N2Y1ZjI5NzhhMzkxMzNhZmI5YTk2OWVmMTAxMTRhNWFlZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMwODA3YmMyNjYwZmQ2NGM0MzgyYjRmOTI2ZjFlOGY0YTdlMjFlNTNiMGZiNzMzNzM5MTg0Zjg5NzE1Mzg2MmUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3468-L3485",
+          "version": "repo-lines-v1:sha256:14f3dd94b6e800383aa57dd31ba5ed80d5c72ca8fa72c9e2587a63b5bd5f5f60:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlMzRiOTBjOTA3MmZjYzg0ZTkyZjczZjM1YzIyZWY3NTIwMDQzYjJhZWZmM2NmMDk0Y2ZiNWQ1MjkzMjQ4YjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5MmI1MjNmN2VhMmIwNGJkZGMyN2JlNTA3ODg4ZWMxNDcyYzY5NDYxYTQ5ZGI3OWNiOTI4NjMzMTIxZjcwOWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRkYTgxZDQ4NDNlZDk2NjAzZjllNzlhZWRkMDNiM2FjY2RhYmJmZTZkNWVmMTQxYzg5Y2NlYWFlZjY3ZWY1MjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE1NTZkY2ZlOGFlZWQ3OGY3YTAyMWY1YzE4YjJmMGY1ODIzZjA0ODhkNGJiZmJiN2MwODU1YzFiMTc0OTVkYTUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3552-L3598",
+          "version": "repo-lines-v1:sha256:54831d1c0e0007b7a31c42d7c813b464cedd2cf9e635e766aa0310059141e0f8:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlZjEzYTEzYjJiNDMyZDhkYWM4Zjk2YzIwNGIyYzJiMjI4MmJhMmFmNTM3ZTM3MTRhY2NlYTU4M2U2MTk0NTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxNjFjZTliMTJjOGMxZGQwOWU3MTcwMWUzNzU3Mjk3OGU1MWU3YTQ3ZDA4ZDAwYzEwM2JkODE2NmU3NTFjNzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVjZDM1YjRmYTc3NDk1M2ExNTlhYzZmYzI4MzM5OTdmYmVlZDMwODljNDgyMzdlMjVjOWE5MDIwNjJhOWIxMDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5ZTlmZmZlYzhlMGJkOWFkZTg4ODkwMmRlZmRmNzFlZjQwM2NhOWYwYWZhOTcxOTk2OWQzOWViMmQ5ZjA5N2YifQ"
+        },
+        {
+          "resource": "repo://tests/test_userns_mapping.py#L227-L266",
+          "version": "repo-lines-v1:sha256:36b03731a96e5bdbef8296c2cea7a8a47e563a050c2511ddd12813fd08bfafdb:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhZjE5YjM2NmZmYmY1NDc0NmJjNjdlOTMyOWY2NzI2NTNhYThlMmZlMjAzMzEyMzA3NmMyYmVkZGEzMTRkOWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlZjhiNjg1OGE5Y2I0ODgxZTY1ZmFmY2VjZjc3MDgyNjM4NWY5ZDMwMGUwODc5NWNhZjlkNjBkZDc4YTIwYTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdjMTU5Y2I5ZTk2YmM0ZmJjMTBhZDFhMzA0MmRlNjlmYmE2ZTYzMDk0MGMyYjIxOTAyNDJmZDdlNTM1NjMzYzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI4ZWJlZmZlNWNmMTU1NjA4NmIyMWU0YzQ0MWQyM2FhOTMzNjA5MDdmMjhiZTE1ZTEyMmE4ZTU2N2IzNjVlNGYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bb97edc82ca8430ba59dab8173a16024",
+      "statement": "On a pod-less runtime the agent container owns the network namespace: launcher._agent_placement_args emits --hostname, paths.userns_args(rt) and paths.container_user_args(rt) and no --network (#458 — the earlier --network=container:{pod} named a container nothing creates, and docker's --hostname + network-mode conflict rejected the launch first, one defect masking another), and launcher._netns_anchor(rt, pod, inst) returns the pod on podman and the agent instance on docker, replacing the 'pod or inst' idiom that always chose the never-created pod because self.pod is always set.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1446-L1496",
+          "version": "repo-lines-v1:sha256:4144c08bc503d3b76696861b4ab07a0db06d44d0d0281aad57b1df57931f034b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3ZjU0ZWE4NjE4ZDQ3MzQ4ZDExOWMwNjFlYmQ2NjMwMmE5MGYxMWMyOTI5OTI4MmQ4NTk5YmViYTUwMGU4MTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4NWMyN2UyYzY5MWJiMzk2MjcwZjAwMWRiMmE2YzYyZTBkY2MyOWU4MzE4ZmViY2QxZTNiOWU3MmZkNDg4ZmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExMGMzMWJlMDAxZDA0MzkyODc2Nzg0OWYyOTg4N2Y1ZjI5NzhhMzkxMzNhZmI5YTk2OWVmMTAxMTRhNWFlZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlYjAxYmZkYjllNWY0YmQyYjdjOWQ3NTBlM2RlNWExNWI4M2I1YzdjNDAxMzVkMmI5NjA5Yzk1MzRmNmYyNDQifQ"
+        },
+        {
+          "resource": "repo://tests/test_docker_userns.py#L207-L329",
+          "version": "repo-lines-v1:sha256:61872471f83760df9ab71c0b6c302486de3f0e54768d1d32d9b322d79e7fb0e0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3MDYxNTE4MTJhNWM3NmFhZWRjOWI2ZmUxNWNlYzI3Zjc4YjVhNDAzNzc1ZTI4Zjc1ZjM2MjAxYjMyODIzYjEzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzMGIzNDY0N2ExZTQ4ZDIzZGFkYjY5NDJkN2RhM2JiY2NhOWViNTRiM2QxYmI4ZTE4MzRmNDJmNWI0MDNjNTc4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMTRlOTRhNGNlNThiOWE1YjVmMWQzMTMyMzk5NTcxODdiYmE4YWNhMzAxMDJmNjEwOTU5ODZiZTg1NjQ5MWYwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI2YjI1ZTBkOGU2MzZmZmM3ZDFkYTI2NjhmOGY5MWIzY2UzNzc2NzUwZjA5ZWRhY2RjNDFhYWExNGNhODE4ZjJiIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_ef8888ead9244e63860f97653d0a9da5",
+      "statement": "launcher._firewall_runner_argv builds a throwaway --cap-add NET_ADMIN --user root container that shares the agent's netns — --pod on podman, --network=container:<anchor> on docker — and on docker must repeat the agent's exact userns fragment: iptables run from a different user namespace than the netns being configured returns EPERM, so a mismatch installs nothing and the confined agent runs wide open (#456); on podman the runner carries no userns because the pod owns the mapping.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1499-L1535",
+          "version": "repo-lines-v1:sha256:b673670b6e64829b79c9569f9303af52442ab864d135944f458cce5087713b39:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1YTMxNmVkMTNjMTc0NmY0YjEyZjYwMzc1NTA5NDI0ZWM3NDFmNTYzZmEwN2U5MmM0ODRjNjEyMjc5NGRhNDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkNDJiYmE3MmZkZmUzNWQ4NzhkMWZhMjI2NjM0ODNmMDEzZWRlYTQ1Y2VhYTg1NWE3YWFlNmY5Yjk0ZWZjYWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4OGM1NWUzYTU1YjQ3ODk3Njc4MTc0OWQ3MmJmYzllYmZjNTZlMzQ5YmNkNWUyNmYwMmNmN2VlNjg2ZWUwMmYifQ"
+        },
+        {
+          "resource": "repo://tests/test_docker_userns.py#L332-L352",
+          "version": "repo-lines-v1:sha256:602e1ddd5f7ef2688496981dab69556a913c3572144a7868b7af14be08a55353:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2YWQ0MDUxZjRhODJhODg2OTIxYzgxNDE0Y2QxNjk1OWY0YTExZTI3YzgzZmNhZDNmMTYzMzMyMzY5MzBiNGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhNDdlYTAwZmE5ODQ3NDk0NDc5NTg5NDYwODNiZTEyYmYzYmU1NzFhYzU1MWUyNTdmYTEwM2FkOWRhYjVmOTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNhZDlhNTQ1NWIwNmYwNTZiNmNmMTNjOTU1MWRlMDgyYmExZTM3MGFmNjExYTBhOTFhYTA4NWZkOWVkNTFjMTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjViMzBmZTg0YWE0MzYwNDhjNGViYzk3N2E1ZWZjZDRiMGM3NDc2OWVhMGFmY2NmZTNjNDA4ZjUxNTQzYjY2ZmYifQ"
+        },
+        {
+          "resource": "repo://tests/test_docker_userns.py#L564-L607",
+          "version": "repo-lines-v1:sha256:da1596572b37b4e51f33a0ee737d382b1a30d5320b5085a7fcd5c2edaaafe73c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExNjRjZDA5YzU0Y2U3NWU4OWQ3MGY4MWY1YmMwMTdlNDA5NzVjYzYxZjUzNmI2ZmZlYTM3MDc2YTlkMTAyMjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzZGZjYmYxMDczMDRhOTM5ZTY3YmNjYTZhMzEyMDZmYTk1MTQxZWNjZWFlYmZlYzUwMzZjMTNlMzYwNDBhODIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjNWU4ODY2NTI2NGRjYzNlYTMwZGIwNWRiOThhZTk4MjUwMDU5OWM0Njg1NTRlNTAwNzc0MWE0YzE2NzcyNmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhMjViOWU4YjgzMjU1NWViNjFkNmRlZTYzMDYzMWZhZGFjYTk2MmJlN2E2ZjJhM2U5NTQ2MGQ4NTVjNDY0MTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_216ada99c4254e7ab21f3181736436e9",
+      "statement": "launcher._apply_firewall is fail-closed in both directions: a nonzero firewall-script exit refuses to continue (the script installs default-DROP, so 'did not run' equals unrestricted egress), a zero exit is verified by asserting the OUTPUT policy really is DROP (the script once returned 0 while installing nothing, #429), and on either refusal the launcher tears the instance down before propagating; NO_FIREWALL=true is the supported deliberate opt-out.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1538-L1583",
+          "version": "repo-lines-v1:sha256:f65090d58800833253bd6d7bfc1f2152f51798087bf6243bfe44ac8e61414b9c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0ZWVlOGNmMmE4YTEzNGQ5MTJhMzI4OTU5YzYwZWVmMzZmYTJjMWRiNGZhNjM1YWJiMGRhMzExMTZmNTdjY2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzNmI5MjVkMTY4MTlkMWZhZDMzNTlmMTQ2YTY4MzdkZjJiMjRmMWVlNzg2ODUxNjk3ZjgzMjRiOTA3OWM3OWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhODJlYmU5ZWQ0MDdjM2E2YmE0YjAwMzQyOTJiYWE1MmMxMWNlNWFlMjg2MTA3NDAyZGU0NzkyZWVlY2FjZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ2Mjg4MTZjM2RhMjAyZjlkZDQzYTg3YWEwNDVjZDJlMjkwZTY4YzEwYTYwNGRkZGIwMWEzNWQ4MDAyYjc1NjIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3527-L3549",
+          "version": "repo-lines-v1:sha256:0150b3bc290f5690aa8ee043d743e52668af6fa1377fbe6474db3ac7582e1342:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1NzgwNWMzZmU3YWM2MzA3NGY2OWNkYjI1YjlhY2Q3YTg2NzkyZGZlNTQwODE4YWM0Zjg3NjRiNDllN2QxNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxNjFjZTliMTJjOGMxZGQwOWU3MTcwMWUzNzU3Mjk3OGU1MWU3YTQ3ZDA4ZDAwYzEwM2JkODE2NmU3NTFjNzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVmMTgwZDFmZDQzN2FiNzkzNjI5NDFhNDA1MTY3ZmVkODk2MmViZGNkZmRhNTI4YzQyOTFkNmVmZmNlMzMyZTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNkZTU4MTU4YmQ4NThiODg2OWFmZjk5NjA2MzFmMzg5N2ZiMzYyOGY4ZTQxODE3YTlkNWM0N2JkMjExOTgxNTgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9138f4d2f39e454a8c570b4c427e4b38",
+      "statement": "ctrquery._rt_uses_pods(rt) returns True only for podman, and every pod-shaped behavior branches on it: pod creation, the netns anchor, the member-mount userns strip, and teardown (pod rm -f versus container rm -f).",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/ctrquery.py#L112-L113",
+          "version": "repo-lines-v1:sha256:4d2600f4b2abe030749f27c0da0a1900891051133955f92f341ab1ba1db8700d:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTE0Yjc1YTMwMTY4MzM4ZmU4YzgzNGNiZmQ1NDQ5M2EzYmQxYjRkODgyOWZmMGI4YmExYzM1NGI4MDgxYTA0NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTA0N2RiNDI4NGUwOWJjYjUwYzZhZmFkMTcwYjVlOGFjODQ1ZjJiMmZiMWFhZmM4NDI3YmU5NzgyMzFmZmQ0MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTQ4OGYzN2U2M2U1MWFlMDMwOThmZTkyZTMxZmU2NTAwNWI1YWVhNGM3NDQ2NzIyZjA2Y2YwOWQzMThmYzA1MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1371-L1382",
+          "version": "repo-lines-v1:sha256:7c05b3738bc389af8dc88e7fb60ca3e31431da50668d4b2a4cfa2be0277f868b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkZDYyZTQ2NjVmNDhiOTJjMGZhODUyYTg3MDEwMTMxZGRkMzQzMTRkZjEzZTEwZDhkZmEzYTFlYjcyOThhMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4YmNiMDliMjQxMjk5ZWM0ZjZhYmM4ZTNlMDM5NjFjYzEyODU1MjY2MjQzYTgyODAyZDkyMjc2YTA4OWE0YWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhiNzUzYzZkMjY4MjQwZWM1Njg0ZGU0YjFjOTcwZmVhNDNiZjRlYjgxYjUzY2Y1MTNmNjBlODRjYzhiZWFhNmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a83f52dbaa6c4b7b87e9e2ee3ad6c3b8",
+      "statement": "Every volume populate/install step runs under paths.userns_args(rt) plus, on docker, paths.container_user_args(rt), matching the pod the agent inherits — a volume first populated under any other mapping is unreadable by the agent (harnessed-8px.21.1), and on a uid-1001 docker runner the compose step died with 'cp: cannot create directory' after the agent itself launched cleanly, which is why the mapping-and-user pair travels together in every container argv.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/volumes.py#L182-L186",
+          "version": "repo-lines-v1:sha256:45d3ea4f2e4d55c3345a3038b2927d4fee0690c14fea4bc96a7cbc80a019987c:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTEzOTI5YWMzNDBhOThiZjczOGUyNWI5YTIxZTEwM2FmMGNjYTFhZmJiNTk5YmJhOTY4MGUzYzU4ZjI4Y2EwZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODQ2YWNiMGRkMzJjMTA1YWNkNTY3MTljN2U1N2QwNmNjMDMxN2M2ZGFjMDFjMmMxYjE0ODJmYTg4NWNjZGYxMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTYwOGQ3ZmFjN2FiY2I1MjhhMTAwNjg2ZmI1ZDJkZDhiNmJmYjcxZWYyMmRlZGJhMjBiZDUyY2NiMGM0NGIyMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTA2OGE4ZTNhZDFhYmMxMjY0MGU4MTg3YjYwYTM3YjdmNDc1NDIwMGNlMzkyNjM2ZWJjYTNjMTE4MjlmNmZjNiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/volumes.py#L319-L354",
+          "version": "repo-lines-v1:sha256:8ce5bc2c1dd1c5f4fe550634782a8363c59cb48402143fb4b70c8375665568a4:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhYzc5MTQyZTU5ZmExZjQyMTY1ZmYzMWE3MWFmMzMzMjgxNmE1ZDBkYjU5MGRlZTliNDkzYTkxMmVkZmVjNTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZmYjFmOWU5ODhhNmQ0Mjc1YTc5NjE5ZGJiMjA1NTFmMDczNTgyYTljMjFiMmY1ZDM1ZjNiNDYzODA5MGZmMDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzNWM1YTk3NDVhMjA3N2MyNjM0MzMyNjljNmU4MDQ0MDBkOTEwODk3NGFlNDljZWQ2Nzg5NjNjODQ5MmMwOGUifQ"
+        },
+        {
+          "resource": "repo://tests/test_docker_userns.py#L385-L413",
+          "version": "repo-lines-v1:sha256:76a7ae654a01426661be3f5e1e4a66d2823a02c7c1a464d4ee0cc12ee776e9fd:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwYWY3NGI2N2YxNGMyNDViZmQ4NDk2NjU5YjA2OTM4MzBmMDVmNGRmZGUwNmFlYjc2NTBhMTdmZDM5YTY5Y2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmMTI0YmY2NDQwZWJjNjY2N2FmZTAzMjA2ZjAzZGJjNGE1ZjcwN2MxZTgzMGU4Njg0YjZmNWQwMGY0OTI1YTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZWIyOTUwNDNiZjJhMjU2ZGE2NzY5MTVlM2JmNDMzZmZhNjU0MzlkM2RlMDA4MDM2NGYwNDczZTRmYWU3ZjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjYmIxNzk0NDFlODNjZmM1MzBjNjcwMzA2ZDI1MjQzMDNhOWQxZDIzOTZjMWE1ZGE0ZjA3M2FkOTlkYmViYmUifQ"
+        },
+        {
+          "resource": "repo://tests/test_userns_mapping.py#L116-L195",
+          "version": "repo-lines-v1:sha256:58243e41e669ea8171b13f15e3c67074b3768f4f37a169e212fd4a87ae5fc79f:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkYWJmODU3OGQxMzBkZDdhYmFmYTFlOGI3M2E0NDEyZTNhOGFkYTI5MjU1NDczMjQzMTM3ZmUzYzEzZTQ3NzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwZDdmOTJlMTgwOThkOGQ0NGVlZTFmMzk4YTg0YjEzZDIxNmIxNWEzZTNkMzMxMzA5MzAxNWMzNTVhYzY0ZTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3N2JlN2ViYWU1MzEyZTEwZmJiM2Y2YjIxYWQ2MGU1MzVhMjhlYzg3NzdmZDNlMDk2MDc3ZjRmZTM3NWNjNDUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_51fc38f3161f44a9b981a4a13b8133c2",
+      "statement": "The varlock secrets broker has no docker path: its door is the pasta option --map-host-loopback,169.254.1.1 (paths.BROKER_HOST_DOOR) on pod create, docker has no pods, so a docker launch starts no broker and falls back to resolving real secret values into the container env — today announced only by a note printed at launch, with no test asserting it; ROADMAP.md tracks deciding the answer as needing an issue (none exists yet) and warns that the upcoming secrets behaviour change will give podman a property docker silently lacks.",
+      "evidence": [
+        {
+          "resource": "repo://ROADMAP.md#L30-L47",
+          "version": "repo-lines-v1:sha256:5b4574e80d3d445fe49198be73731c97f6ea509bf1bada9d336522dc5fcecbbf:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5OTdiY2M4ZGUyMWRiNDdjMTM3NmIxN2M2OTcyYmY4ZWExMTNiZjNiNDJkZjMwNmIzZjc0MmM0Y2EzM2YzYjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwNTkxZjI0NGJlODI2YmQxMzBhZjM5Y2Y3YTE4M2FhNTZlZDVmMGRkOGQyOWEzZjg3MjdhNDBmNDljNThhZDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdmZjlmYzViOWY1NDFiY2ZjNTQ5ZDI0ODdiNDkwMTE5NTlhNzcwZjlkNDZmYjkwMmNkZmY5OWY0YjRjOWJkZmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIyMjE2MzZhODEyNTdjMTliMjMzNDNmNmMxNmYxOGQ3YmRmYmJkMmUzNjVkODY4N2RjYjMzNGRhNjIzOWQ4YTIifQ"
+        },
+        {
+          "resource": "repo://ROADMAP.md#L52-L64",
+          "version": "repo-lines-v1:sha256:b6a21e2c718d0eebdbeb50330a362b130d6aed7e32bb69d4f03f86d6a9b357b5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4OTVlYzdkZmU3YTBmYjAzZTk5NzEwMmJjZWY4NWQyY2ZhN2U1M2JkOGU1NjViN2I5ZTMzMGM1ODkxNjE4NjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzZGM5MDQ2MjY2M2E5OTQwYWQxMjNlMzljOTZiODNhYjM5MGJkYTc3NTU2N2VjMWUwYjY5MTQ3NTkzNjVkNzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg4MGFlMmRiYTUwYTZmNDZhZGE2NzA0ZTgwNThiOTRjYzg5Y2Y0M2Q0ZTUzY2FkNzUxMjg3MzFlZTlhOWNjODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEyZTIyNGQ5MDBiOTk0MWZhYWE2MDAzN2JkNGNmNTk1ZWJlODYzN2YxNDg0M2RhZmU4N2I2NjA1N2RhMDRmNWQifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3552-L3563",
+          "version": "repo-lines-v1:sha256:42e7727539cb22f2cfa4ee906c9642a7ce96b44c6460bfe60e5770be1787f6b5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlZjEzYTEzYjJiNDMyZDhkYWM4Zjk2YzIwNGIyYzJiMjI4MmJhMmFmNTM3ZTM3MTRhY2NlYTU4M2U2MTk0NTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDMyZTk2NGQwOTMyMzUxZTVkMTg1MjY5MjgxYjE3MWEzYTA5YjA4YjI4NmU2NjFlYTQ3MDMyM2M4MmViNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVjZDM1YjRmYTc3NDk1M2ExNTlhYzZmYzI4MzM5OTdmYmVlZDMwODljNDgyMzdlMjVjOWE5MDIwNjJhOWIxMDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5NzRiZmEyNjgzZDhhMTZjYWRkN2M4ZjdlZDdkY2FhNGMyOTdjMTcwNzJjODNlNDk0YTNhZjFjMTdjYWE5MzkifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L278-L283",
+          "version": "repo-lines-v1:sha256:22c6ac7a748fef100ccc720018dd561b396e4b9f55ead308e2999d76a6ad70d2:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODBhNGFjNTMzNjkxZjhlYTBkM2RmN2FhMjMxZTE0ZjVjZDM2MmNmYTM3NTIzMmM3MGY0MjM4NTlkZjljM2UwNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDQwMWFjNjk1NzRiMzgyOWRmZmY2ZTUwMjRlNzI0YjczOGUxNTgxZGE4YmRhMDBhMjNkYWNkZGM4M2MzNmYwOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmEyNjYyNTdjNjkyYjI2MjA5Yjc1ZTFhOGViZGY5NDQyMDY0OGYyMjE0MGIzOGM3NDQ3YWM5M2Q1YzM1MWJkZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjRkNzM1ZjgyNWIzZjE3NzdkNWE4ZWVlNzk1MTI4OGI5OGVmMmZhODMyZTNjZDdkMmQ5Njg1ZGI3NGVjYzBlOCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_bec541c4362244ba9d7462438544711c",
+      "statement": "Live verification runs both runtimes as two separate jobs in .github/workflows/live.yml — live (podman, HARNESSED_PODMAN=1) and live-docker (CONTAINER_RUNTIME=docker plus HARNESSED_DOCKER=1) — separate rather than a matrix so the live status-check context survives becoming a required check; CONTAINER_RUNTIME is what makes the docker job meaningful since a runner has both binaries and detection prefers podman, and each job ends with a real 'harnessed test livecheck claude --json --keep' launch because the build and launch paths share almost no code past image assembly (the step that would have caught #458).",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/live.yml#L191-L214",
+          "version": "repo-lines-v1:sha256:a1edfa599189f287607cef9dba0209a93438506c24a2627739b0d5cee866253c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkMTIyMWM0NDA4MjRkZDQ5ZTc1Y2Q5MjQyY2M1OGFhYzdmNTc0NzMyOTgzMzRhZTk1ZDAwMTI3NzdkMzRjMDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5YmYxZDk2ZTkxNmQzZWY0NmFjMGRlNzFkZGEzNTE0MGQyNDEwMWY0ZjhmZGUwMjcxMjc0YjcwNzM1NWE2MWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZlNjdmNDE3NzM3NDQ0YjhkYTgwZjAzNjY3NzY3OGE0ZTI5ODZiY2MyMjQzMzEwMTY2ZmVhNWUwN2UxMjgxZDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUyYmQwMGY0NDJiYzQ2ODJlODkwOWQ1ZTczNjA5ZWU3MzA3NjI2MDE0ZTQyYzcxNDJjNzNlMGUwZDc0YTVlNGYifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/live.yml#L248-L335",
+          "version": "repo-lines-v1:sha256:227f0dc20ddabca973bbd5170940b5df4a47314bebd43b7989e3b8e0a43400c2:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4ZTM1ZmY0ZmMwOTE5ZWU2MTgyMzc2MTA0ODdhNWQ2N2U4MjczMGYzOTc2YTQzZjM5MDM1YTUzMjU3ODhmYTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5YmYxZDk2ZTkxNmQzZWY0NmFjMGRlNzFkZGEzNTE0MGQyNDEwMWY0ZjhmZGUwMjcxMjc0YjcwNzM1NWE2MWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM0NWM5YjllYWE3MjdmMDRiMzZlYzYyMDM0MjdjMDc4ZWFkM2ViOTYxMjViYjhiMWIwMDRhZGM2ZGFkNGQzMDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUyYmQwMGY0NDJiYzQ2ODJlODkwOWQ1ZTczNjA5ZWU3MzA3NjI2MDE0ZTQyYzcxNDJjNzNlMGUwZDc0YTVlNGYifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/live.yml#L44-L51",
+          "version": "repo-lines-v1:sha256:fe9f119e1399e57589fc2d7ea39c5d137fe7be3dce888b967506d4a217cb5644:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTUxNjgyNWNlNTRmNWZhYzk2MDFlOWFkN2IwM2EyOWZhYjc1YmM2ZGQyMGFkYjViZmEyMGE1NjAyNDkxNmE2ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYmY1MGY0Y2I1YTcwODI3ZDg1YzFlMTc1NThjOGFkYTMyM2EwY2Q2MWMzZjA3YWRkN2UwYzg1MDllNGM2NzExNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTQwYjgyN2U4MGRiMWFkYzM0MWQ2NGZjY2U1ZGQyOTM3NWE0MGVjYWRhMDBiYWYxZmRmNzc2YjQ3M2Y4OTM0OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODI1YWVjZTNlYWU1NmZhMmNmMTk4Y2YyYjIzM2M0MWFjZTNiMzVmNTc1NjUzYmZkMGM1YzI5NjViM2I1M2ZhNiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_b2959eefa3444d4ea12ca385aa545c01",
+      "statement": "tests/conftest.py's autouse _pin_container_runtime pins the hermetic suite to podman by replacing paths.active_runtime with a lambda, clears both lru_caches (active_runtime and docker_is_rootless), and deletes CONTAINER_RUNTIME from the environment — because suite results otherwise moved with the host's binaries (17 ownership tests changed outcome across podman/docker boxes, with one test green on both for different reasons) and the cached rootless probe created a genuine order dependency (31 unrelated failures under pytest-randomly); docker-branch tests override the pin inside the test body, and test_docker_userns.py captures the real detectors at import to restore them where it must observe detection.",
+      "evidence": [
+        {
+          "resource": "repo://tests/conftest.py#L396-L431",
+          "version": "repo-lines-v1:sha256:41417823cab96cf00dd210544524bc7cbf36d17e148af2748bade7d7fa432b7c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmMDg2NmY0MDExZTU4NWZmYzA5MDkyZWRmMDgzMmUxN2I1MmY0YzkwYzRjYTBiNDJkY2ZhMDUwZmEzNzViNWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlZTQ3N2ZiZWU1MGVlMmI2OTFiYzg2NTg1NDA3NGNjMzgyZWQ4NGI1N2JkY2Q0NzgyNDg0Yzg0NDU1ZDNkYWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkNTA3M2RhMmQ4MWE5YjVlYmZmNzNhNjZhM2ZiZmM0YWQzNGM1YjljZGViNDkxNTVhMzFjNjdiMzk2MzE5OGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlZjExYzliNzE2N2MwYWRjNDJmZWE4NTRhYjYzNDk5NzcwODE0YjBlNzE4MTAzYTllYzBmOWJlN2FmNjk5NzkifQ"
+        },
+        {
+          "resource": "repo://tests/test_docker_userns.py#L58-L92",
+          "version": "repo-lines-v1:sha256:68d8ff6885002abf4655c450c642879b29456c27c74fa9c7c9a9c5724403400c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhYmY2NDMxYTYxNGE4NTVlMjZjY2M1MzRlOWRiNWRlNzEwMDI1ZTA5MWY5NWM2YzM0NGJmMzNkMjFlZDc3YTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhMzc0YWE3M2VjMmYxOWU2NmJjNDNjYjJkMGRkOGM3NGY0ZmMwMmU0Y2FkMGVlNWUyMGM5YzQ3M2JmMjk1YTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRiYTNlNWRkN2E0Y2RhMWMxNWVlMmY1ODUzNDE3MzczYzI3YWE3NTk1ZDY4Y2U2YTVmMzBkY2ZmZTc5Yzk2ZjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3N2M5ODk0ZTc4ZmU4MjM5YzU1ODQxYTQwMWVhYWVmNGJkOGQ5MjhlNmZkMWZiY2Q5MmU3NzdlYmE5NmU1YzEifQ"
+        },
+        {
+          "resource": "repo://tests/test_persist_allowlist.py#L20-L24",
+          "version": "repo-lines-v1:sha256:e08d965b33515ab912b8f20646dc07481ac3097e720a2d40510e9e452d1cdcdc:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjMxMzQwYmY1NjE1NDE0MWZlNzQ1NjQ5OWUxNmFhNjM1MTkxNTcyMGE4YzczOTNhODI2NDczNmVjMTlhMTM0ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2ZhMmUzYzZiOWViMDY5YTc2MmQxZDJjYzIxMDE2MzFkZDg3YjU3ZDNkMjZjMjY5YmI4MmIzOTBmZTc1OWU5MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTk4YjA2M2Q5YjQ3ZTY1Mzc5NjI1NTcyY2NlMTk3NjY5ZDU3NjdlMTJjMThiZTA3NTY1MmI4Y2Q5ODFjZThkNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODFjMTQyNmJlYTdmYWJhMDVhMTJjMWUxYzg2MGRhNjdjNjE3MzhmZmNjY2NhNGY2NzZlNGI5MjZkZWE2NmUwMiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_f6fedf4ea771471bb2fa0e1c86dceb05",
+      "statement": "The mapping is verified by property assertions rather than suite statistics: test_userns_mapping.py pins that USERNS_ARG carries an explicit uid=/gid= mapping, sweeps src for quoted bare --userns=keep-id outside the exempt owner paths.py, AST-verifies the sweep cannot pass vacuously, and requires every mapped container to also state its user with the chown container as the single --user 0:0 exemption; test_userns_properties.py fuzzes that only a keep-id mapping onto the image uid resolves and every other mode is unresolved; the live layers prove behavior — a real podman must write a bind mount with the pinned mapping and fail with a deliberately-unpinned one, and a real docker must still exit 125 on keep-id and write the mount with the production argv.",
+      "evidence": [
+        {
+          "resource": "repo://tests/test_docker_userns.py#L1067-L1100",
+          "version": "repo-lines-v1:sha256:f9e3bceae93d0825a01629bb8aedca55f7e6ba3bf83d166bc0440d7b3e26bcb4:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5NDBjMWE3MWU2MzA1YzRhNTNjZGE2MTQ2ZWNjYzRlMmM0MThhYmVlOTY5YjNkNGFkMTQ2YzM1MTg0NWFjZjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImExMDQxZTFkNmM5YTRkYTU3MGQ1M2JhNTgzMWZmYzIxMTUyMzFjYzY1MDYwMTgwNmUxZGM2ZTRhZGQwN2E4YTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmYWEyZjk2MjFjNTIwM2U3ZGQ1NWViMTFlODI0MjRjNGZjMjUzMTI1OGZkZGQzOTk5NjIxZTZlYzI0MGY3YjkifQ"
+        },
+        {
+          "resource": "repo://tests/test_userns_mapping.py#L116-L195",
+          "version": "repo-lines-v1:sha256:58243e41e669ea8171b13f15e3c67074b3768f4f37a169e212fd4a87ae5fc79f:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkYWJmODU3OGQxMzBkZDdhYmFmYTFlOGI3M2E0NDEyZTNhOGFkYTI5MjU1NDczMjQzMTM3ZmUzYzEzZTQ3NzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwZDdmOTJlMTgwOThkOGQ0NGVlZTFmMzk4YTg0YjEzZDIxNmIxNWEzZTNkMzMxMzA5MzAxNWMzNTVhYzY0ZTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3N2JlN2ViYWU1MzEyZTEwZmJiM2Y2YjIxYWQ2MGU1MzVhMjhlYzg3NzdmZDNlMDk2MDc3ZjRmZTM3NWNjNDUifQ"
+        },
+        {
+          "resource": "repo://tests/test_userns_mapping.py#L269-L299",
+          "version": "repo-lines-v1:sha256:9d7df64425c23616c8a693f37ba4c8b2dc82163cbe24c386d27ecb37088a8eca:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4YzNlMmYwZTJlZDM4ODAzMDE3OGJhNGRiYjJjYzY2MmUyNjgxZmU3MjU3NjRiYmM0OGQ5OWY0NzVmY2Q1MmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3ODBiZjgyZTk2NjdjYjIwZDc5NWE2YjU4Y2FkZjk4NThjMWY0NjY1YzQxZDcxMWEyYTlkZjM5MjJhMTdkMTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjMTZkN2Q0Mzg4ZWM4YjM2NzRkZDI0Nzk2NmU0NjNkMWYwM2YwYzI4MjI4NGQ5ZTdiNjk2NWE5NWVjMDkwYzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://tests/test_userns_mapping.py#L43-L113",
+          "version": "repo-lines-v1:sha256:4c2c0b17f993e38fc85a73e7bb05210709a4a7500b5be3a24ae791b08fbf02cb:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1ZDRhZDQ3ODY0ZDM4NjNlM2MzOWQ4NjY5MTM0NGJiZGRlY2FlMDM4OWU5MzY3YTE3MzdkNzQ5ZGU1MTRjMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk1Zjc2NGRhMGEwZDM4YTQzOGU2OTBlMDFmMWQ0ZDkxZjIzZDNiODUxNDlkNDk3NDkyNjkzZTZjZjRlMDcyMWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNjNmU1NWVlMjNmMjc3ZjI1ZmRjZDc3N2U3ZDA1ODc1OGE0YTM3MGNjZTc2NTBmOTk0MmQ5OTFhMGM1ZmIxZDYifQ"
+        },
+        {
+          "resource": "repo://tests/test_userns_properties.py#L34-L95",
+          "version": "repo-lines-v1:sha256:5895a523c794d22890803d54c1210b15f5d4334549b66571a7b3766fb1d2626e:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3YzgxMDgwMGYwYTg4ZTNmZjlkY2ZiMTVjMjRkNzQzMWQyNTBiOTEyMDYxZWM2Nzk5MTRlYTQ1NTdlZDQzZTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyYzZjYzQ5ZmViZmYwYmZhOTg0ZGY5NzNmNzQwN2YwZmMxOWU4ZjZlMjdmOGNkMGU5MTdhZDM2NzM0MGVlNDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNiNDY2NjNkYmVlMDFkMDU2NjFkY2ViZTkxZmVlNzQzNTA2NTM3MWIzNjljOGM2NmQ2Nzg3Mjk2YTAxMzYzNmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-12T09:54:25.902Z"
+  }
+}

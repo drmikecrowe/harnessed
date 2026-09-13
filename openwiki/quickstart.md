@@ -1,11 +1,8 @@
 ---
 type: quickstart
 title: "Quickstart: set up, build, launch, and where to read next"
-description: "Entry point for working on harnessed: the mise/uv toolchain and the venv that deliberately lives outside the repo, the only correct ways to run the three verification entry points (tools/run-tests.sh, tools/preflight.sh, mise run openwiki-drift), the two console entrypoints and the ban on automating the interactive run verbs, a safe first end-to-end slice, and the task-routing table into every other page."
-tags: [quickstart, dev-setup, mise, uv, run-tests, preflight, openwiki-drift, cli, task-routing]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-09T09:34:57.295Z
+description: "Entry point for working on harnessed: the mise/uv toolchain and the venv that deliberately lives outside the repo, the only correct ways to run the three verification entry points (tools/run-tests.sh, tools/preflight.sh, mise run openwiki-drift), the two console entrypoints, the ban on automating the interactive run verbs, how the runtime is detected, the two-job live layer and a safe first end-to-end slice, and the task-routing table into every other page."
+tags: [quickstart, dev-setup, mise, uv, run-tests, preflight, openwiki-drift, cli, podman, docker, live-verification, task-routing]
 sources:
   - id: openwiki-source-2ab88915e37908e92fe8ef01
     resource: repo://.github/workflows/lint.yml
@@ -19,6 +16,8 @@ sources:
     resource: repo://AGENTS.md
   - id: openwiki-source-e9cc6c20ea9b111b6ff0861e
     resource: repo://catalog/stacks/default/stack.yaml
+  - id: openwiki-source-c3a8ff8327a2b1297fad6d08
+    resource: repo://catalog/stacks/livecheck/stack.yaml
   - id: openwiki-source-a2371d6362e5db4bc834ad03
     resource: repo://CLAUDE.md
   - id: openwiki-source-72b5d686f860ea86c8592080
@@ -33,6 +32,8 @@ sources:
     resource: repo://src/harnessed/ctrquery.py
   - id: openwiki-source-ecbe6256d6933ca2c8c9678f
     resource: repo://src/harnessed/launcher.py
+  - id: openwiki-source-7b2070fd28fc0a337d8c3539
+    resource: repo://src/harnessed/paths.py
   - id: openwiki-source-f0a6e7dc03522b2682f88655
     resource: repo://tests/conftest.py
   - id: openwiki-source-3f192931254be5f292f00ca4
@@ -43,7 +44,10 @@ sources:
     resource: repo://tools/preflight.sh
   - id: openwiki-source-bb9438d561f4cbb6d5d38c49
     resource: repo://tools/run-tests.sh
-generated: { by: "openwiki/0.4.3", at: "2026-09-09T09:34:57.295Z" }
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-12T09:54:25.902Z
 ---
 
 # Quickstart: set up, build, launch, and where to read next
@@ -55,6 +59,7 @@ entrypoints, the launch verbs an agent must never invoke, a safe first slice, an
 wiki page lives.
 
 Related: [what each gate proves](/openwiki/testing/verification-ladder.md),
+[the two container runtimes](/openwiki/architecture/runtimes.md),
 [the command surface](/openwiki/operations/cli.md),
 [wiki automation](/openwiki/operations/wiki-automation.md),
 [system overview](/openwiki/architecture/overview.md).
@@ -65,7 +70,7 @@ Related: [what each gate proves](/openwiki/testing/verification-ladder.md),
 | --- | --- | --- |
 | **mise** | yes | Owns the venv activation and the non-Python analysis tools. `mise.toml`'s `[tools]` declares and pins them rather than assuming them on PATH: `shellcheck` 0.11.0 and `npm:pyright` 1.1.411 (what the lint layers run), plus `npm:varlock` 1.16.1 and `npm:openwiki` 0.4.3 (what the wiki tasks run). **The lint layers cannot run without mise** — `tools/preflight.sh` reports them as skipped rather than passing silently. `tools/run-tests.sh` shells out to mise on its first line and fails with "is mise installed and on PATH?" without it. |
 | **uv** | yes | Creates the Python venv, installs harnessed editable plus the `dev` extra (pytest, ruff, hypothesis, pytest-randomly, …). |
-| **podman** or **docker** | only for live work | Needed by the live test layer behind `HARNESSED_PODMAN=1`, by `harnessed test`, and by `container-run`. The hermetic suite and `harnessed-tools`' emit-only verbs run with no runtime installed at all. `_runtime()` prefers podman, falls back to docker, and exits when neither is on PATH. |
+| **podman** or **docker** | only for live work | Needed by the live test layer behind `HARNESSED_PODMAN=1` (podman) / `HARNESSED_DOCKER=1` (docker), by `harnessed test`, and by `container-run`. The hermetic suite and `harnessed-tools`' emit-only verbs run with no runtime installed at all. Detection is `paths.active_runtime()` — the one cached detector, which honours `CONTAINER_RUNTIME` first (an unknown value is refused, never silently fallen through), prefers podman when both binaries are on PATH, and returns `None` when neither is installed; the `_runtime()` wrappers in `ctrquery` and `capability` delegate to it and turn that `None` into the caller's error. |
 
 Python versioning is a floor, not a preference: `mise.toml` pins `UV_PYTHON = "3.12"` — the floor of
 `requires-python = ">=3.12"` and what CI's default job runs — because an unpinned uv picks the newest
@@ -113,8 +118,9 @@ tools/run-tests.sh tests/test_schema.py   # one file
 tools/run-tests.sh -k install -x          # filter, stop on first failure
 ```
 
-CI is held to the same entry point: `live.yml` invokes `tools/run-tests.sh -v` with
-`HARNESSED_PODMAN=1`, and `tests/test_live_workflow.py` fails the workflow definition if it ever
+CI is held to the same entry point: both `live.yml` jobs invoke `tools/run-tests.sh -v` — the
+`live` job with `HARNESSED_PODMAN=1`, the `live-docker` job with `CONTAINER_RUNTIME=docker` and
+`HARNESSED_DOCKER=1` — and `tests/test_live_workflow.py` fails the workflow definition if it ever
 invokes a hand-composed pytest line or drops the gate — a local green and a CI green are evidence
 about the same thing **by construction**.
 
@@ -123,14 +129,19 @@ pass.**
 
 ### What a green suite does not prove
 
-The hermetic suite runs **no real podman** — no `podman build`, no `harnessed container-run`. The
-`HARNESSED_PODMAN`-gated tests skip on a podman-less machine, and `tests/conftest.py` prints a
-"live verification" section naming exactly what did not execute; **a skip is not a pass**. The
-gated layer has one home: `live.yml`, behind `HARNESSED_PODMAN=1`, on pushes to `main` and a
-nightly schedule — deliberately never on pull requests. When the gate is open, the run is
-fail-closed about it: if any `live_podman`-marked test skips anyway, the session refuses to exit
-green, and that decision keys on the marker rather than on skip wording, so a broken podman cannot
-masquerade as success.
+The hermetic suite runs **no real container runtime** — no `podman build`, no `harnessed
+container-run`. The `HARNESSED_PODMAN`-gated tests skip on a podman-less machine, and
+`tests/conftest.py` prints a "live verification" section naming exactly what did not execute; **a
+skip is not a pass**. The gated layer has one home: `live.yml`, which runs on pushes to `main`, a
+nightly cron (04:00 UTC), and manual `workflow_dispatch` — deliberately never on pull requests, and
+on demand instead via `gh workflow run live.yml --ref <branch>` (CLAUDE.md: dispatch it against your
+branch **before** asking for review, then read **both** jobs). The workflow carries two jobs:
+`live` (podman, `HARNESSED_PODMAN=1`) and its docker twin `live-docker`
+(`CONTAINER_RUNTIME=docker`, `HARNESSED_DOCKER=1`), each ending in a real launch step,
+`harnessed test livecheck claude --json --keep`. When the gate is open, the run is fail-closed
+about it: if any `live_podman`-marked test skips anyway, the session refuses to exit green, and
+that decision keys on the marker rather than on skip wording, so a broken podman cannot masquerade
+as success.
 
 The full ladder — what every gate proves and what it does not — is
 [the verification ladder](/openwiki/testing/verification-ladder.md).
@@ -267,6 +278,11 @@ first command needs no runtime; the second and third build and exercise real ima
 exactly the territory the hermetic suite does not cover. `test` auto-assembles first when the
 profile is missing or stale, so it is also the quickest "does my change still launch" probe.
 
+(CI's own launch step names `livecheck` rather than `default` — a stack name resolves through the
+user-overlay catalog too, and a test must never be able to reach a private overlay recipe or a
+secret. On your own machine `default` is fine; in CI, `livecheck` is the repo-only name nobody
+overlays.)
+
 ```mermaid
 flowchart TD
     change["a change to verify"] --> suite["tools/run-tests.sh - the suite, always through the script"]
@@ -293,6 +309,7 @@ Route by task, not by directory. The index files under each directory list the s
 | --- | --- |
 | What harnessed is; the module map; the precise vocabulary (agent, recipe, service, stack) | [architecture/overview](/openwiki/architecture/overview.md) |
 | What a backend is; the six-capability contract; what container vs host mode honors | [architecture/backends](/openwiki/architecture/backends.md) |
+| Which runtime is in force; the per-runtime userns/uid mapping, netns anchor, and the refusals that must not be simplified | [architecture/runtimes](/openwiki/architecture/runtimes.md) |
 | How catalog content is validated, resolved across roots, overlaid, and shipped in the wheel — plus the weekly pin sweep | [architecture/catalog-and-schema](/openwiki/architecture/catalog-and-schema.md) |
 | What lives where on disk; staleness detection; what each GC keys on | [architecture/state](/openwiki/architecture/state.md) |
 | How service sidecars get identity, ports, sockets, and guards | [architecture/services](/openwiki/architecture/services.md) |
@@ -308,6 +325,7 @@ Route by task, not by directory. The index files under each directory list the s
 | The credential-proxy vocabulary: four modes, the annotation gate, the readiness warning | [concepts/credential-proxy](/openwiki/concepts/credential-proxy.md) |
 | The folder-env and install-env contracts recipes may rely on | [concepts/env-contract](/openwiki/concepts/env-contract.md) |
 | What each verification gate proves and what it does not | [testing/verification-ladder](/openwiki/testing/verification-ladder.md) |
+| The mutation gauntlet: proving the tests would fail when the code is broken | [testing/mutation-gauntlet](/openwiki/testing/mutation-gauntlet.md) |
 | The full verb surface and the lifecycle each verb manages | [operations/cli](/openwiki/operations/cli.md) |
 | The image-scan layer: the CVSS severity gate, build-then-scan ordering, and the nightly online rescan | [operations/supply-chain](/openwiki/operations/supply-chain.md) |
 | How this wiki regenerates and validates itself: the mise `openwiki-*` tasks, the retry patch, and the CI update workflow that banks pages as a PR | [operations/wiki-automation](/openwiki/operations/wiki-automation.md) |

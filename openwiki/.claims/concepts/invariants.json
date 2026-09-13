@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1bb7ab748ec1c8ac494081e470d9f950b2f558d8ff0d86b4be946ff8360227a1",
+  "pageVersion": "sha256:ca5ba926a215138e38e5955b2c87c89d80b3347559bf9ce1050d3e33968109fd",
   "claims": [
     {
       "id": "claim_6ddd0ca903ef45e3bb6a4c2ae0ab3120",
@@ -11,8 +11,8 @@
           "version": "repo-lines-v1:sha256:d320594d1d1e3b6dbe32f50a79bc200392fcff2be2551bf715a98ee8165cb078:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3OGE1NGEwZTJmOTNiNzczNGMxOGQ5OWRlODkyYzBhZWExOWFmODZlOTI0NDA2NmEyYzM0MGE2OTM4YWI2YjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhOTFiMzg0Y2I3NmMwODg5MTFhZWY0NzNjNTliZTE3OWQxMTVlYzc1ZmFlYTJkMzAyYzRjNjM4N2I0OTY2MGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImViYWU1Y2I4YzBlM2IxNTcxYTQzOWQyMTFmNWY4YzNkNTA2MTgwYjQyNGMxZGNhOTQyNTM0MzcxYTdmNGE4ZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhN2MwYjdmMWM2NDEzNmVjZmEzODcxOTkzNTEyZTMwYTI2NmY2MzcwMmI3MmYyNzY1ZTM0OWVkMzBiZGVlY2QifQ"
         },
         {
-          "resource": "repo://src/harnessed/volumes.py#L87-L163",
-          "version": "repo-lines-v1:sha256:4c63e11e23148e97266638ebcae7dfda5ebd1b29a7da0146851b373353ef68fa:eyJzZWxlY3RlZExpbmVDb3VudCI6NzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3MzZiZDk1ZmM1MGM3N2Y2YzBjYWQ5YjdkNGFiN2YzZmQyYzIwMDMyYzg3MTRmMzZkMWQ2NGM5Mjg3MTRkYjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3ODg0NGRhOWMwZTM4MmZkMzM4MTQwYjkxOGQxZDQ0Y2JhNzBkMThkNWNjM2NjNjUzNDgwYTc0MWZmYTg3YmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwN2IzZTBhOWQ3ODU0M2RjNDQzZGU5ODA3ZDdiOGE4YmQ5NGUwM2ExZGNkYzczNGQxNDU1N2YwNzc0YjlhNGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc4Y2NjMWYwYjRkYWU5ZDMzYTgzMDM1NDExYmM0ZTJlMTU1YzEzY2U2MTIyMzE2NGZkNzY3ZWE3NWI2MjVjYjkifQ"
+          "resource": "repo://src/harnessed/volumes.py#L163-L245",
+          "version": "repo-lines-v1:sha256:46f409230448f34783ec5fbab20880927787105defac4e4089b1070c99d1bb36:eyJzZWxlY3RlZExpbmVDb3VudCI6ODMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3MzZiZDk1ZmM1MGM3N2Y2YzBjYWQ5YjdkNGFiN2YzZmQyYzIwMDMyYzg3MTRmMzZkMWQ2NGM5Mjg3MTRkYjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3ODg0NGRhOWMwZTM4MmZkMzM4MTQwYjkxOGQxZDQ0Y2JhNzBkMThkNWNjM2NjNjUzNDgwYTc0MWZmYTg3YmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc4Y2NjMWYwYjRkYWU5ZDMzYTgzMDM1NDExYmM0ZTJlMTU1YzEzY2U2MTIyMzE2NGZkNzY3ZWE3NWI2MjVjYjkifQ"
         }
       ]
     },
@@ -22,10 +22,10 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/hosthome.py#L36-L50",
-          "version": "repo-lines-v1:sha256:936f015b28448abb8fffec2ee7651dff3b436e6cc8bf0b808a193c8ccdde53e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2MTE5YTExM2ZhYmNhOTNjZWIxMjRhNjYyOThiMWZhNjdjNDZmYjJiNzBmMzZlNzgzNTQ5ZTRjMzFjNDlkNDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkY2EwZWZlNzc5NmI0Y2ExNDliN2Q4NzZiMWI1ZmRhZWU0MDI0MjBlYTkzNGZlYTBiYzdiOGMyNDRkNjM0MDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg1YjE1OTM5ZjljYzRiOGY0ZTgxYWRmYmZkNWY1NzU3MmZkYzhiYTMzYWFjZGM5MTM5ZjcxYmYxZWMwZmMxZTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjM2MxNzgxY2I5NWUxMzMxMWM1MWQyOGI5ZjRkNzQ1ZTlkNWM5OWJmNjg4YjVhZjVmNzVkOTg4OGE5NzY0MTEifQ"
+          "version": "repo-lines-v1:sha256:8fd1d2fd9573d82843060658e6dda7233815bc7f63d38449430927d7db3991c3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxMzMyMjFhYjExMWZmMDY2Mjk1MDIxMzI5NzdjZmY3ODNkYzg4M2YwYzk4OTJlMmQ3OWFmOTk4ZGI4NDcwNTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyMWQzNDdiZjZlZjNiYjJlZjIwMjlmODg0OWExMDdjZmY0NTdhNWVjNDJhZDMxNWRhMDAwZGZlYWNlNmIxZjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdhNGFmMzc1NDZhYjkxYTE0YmVmNTE3MWMzMjdmMjI0YTY1NDZkMzBhYzA3YzFhZWRlMGYwNzkwOTQ4MDhhZDUifQ"
         },
         {
-          "resource": "repo://src/harnessed/volumes.py#L201-L215",
+          "resource": "repo://src/harnessed/volumes.py#L283-L297",
           "version": "repo-lines-v1:sha256:ef0aa4cb8b00b1a39d7efc721f4d4c208314c89fef741c5e483a02dca1d80cf7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjZWJiN2I1YTZhOGIxODlmOTUwNWE4MDcyMzg1Y2RlMzk4Y2RmZmEyNDc4NmI5YTA4OGM3YWU4ODk1NzJlMDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4NzViOTNmZWE0YjU5OWI4YTg1ZjdhNjIwNmExM2UxYTlkZmJhYjlkODg1NWI4YmY4ZWUzZDMyZmVjMTA0MWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4YjBiNGM5OTkwY2NlY2ZmNWUyNjE2N2Y2MTc1ZDhkOWRhNWJjZTIwOWNlNWM4ZmE5NTVkMzM0NGVmZDRmNGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlOWQ5ZGZhNjllYzA0ZTUyYTM3MDg4NmExNDY5MWNjMDE0NDdhYTMzMjZiZjkzNDUxNjg2OTJmMzNkNTY2NGEifQ"
         }
       ]
@@ -35,12 +35,12 @@
       "statement": "Every podman invocation that writes the config or tools volumes must use `paths.USERNS_ARG` (the same `--userns=keep-id:uid=1000,gid=1000` mapping the pod is created with): a volume first populated under the default userns is unusable by the agent, because uid 1000 inside reads files owned by 999 and every write EACCESes (verified in both directions in the harnessed-8px.21.1 spike).",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/volumes.py#L237-L267",
-          "version": "repo-lines-v1:sha256:35b1297f37e8ced28ab3891437b5f0c78fa2868c2d96795daf3ebca7c3f9a86b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhYzc5MTQyZTU5ZmExZjQyMTY1ZmYzMWE3MWFmMzMzMjgxNmE1ZDBkYjU5MGRlZTliNDkzYTkxMmVkZmVjNTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZmYjFmOWU5ODhhNmQ0Mjc1YTc5NjE5ZGJiMjA1NTFmMDczNTgyYTljMjFiMmY1ZDM1ZjNiNDYzODA5MGZmMDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzNWM1YTk3NDVhMjA3N2MyNjM0MzMyNjljNmU4MDQ0MDBkOTEwODk3NGFlNDljZWQ2Nzg5NjNjODQ5MmMwOGUifQ"
+          "resource": "repo://src/harnessed/volumes.py#L182-L186",
+          "version": "repo-lines-v1:sha256:45d3ea4f2e4d55c3345a3038b2927d4fee0690c14fea4bc96a7cbc80a019987c:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTEzOTI5YWMzNDBhOThiZjczOGUyNWI5YTIxZTEwM2FmMGNjYTFhZmJiNTk5YmJhOTY4MGUzYzU4ZjI4Y2EwZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODQ2YWNiMGRkMzJjMTA1YWNkNTY3MTljN2U1N2QwNmNjMDMxN2M2ZGFjMDFjMmMxYjE0ODJmYTg4NWNjZGYxMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTYwOGQ3ZmFjN2FiY2I1MjhhMTAwNjg2ZmI1ZDJkZDhiNmJmYjcxZWYyMmRlZGJhMjBiZDUyY2NiMGM0NGIyMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTA2OGE4ZTNhZDFhYmMxMjY0MGU4MTg3YjYwYTM3YjdmNDc1NDIwMGNlMzkyNjM2ZWJjYTNjMTE4MjlmNmZjNiJ9"
         },
         {
-          "resource": "repo://src/harnessed/volumes.py#L96-L115",
-          "version": "repo-lines-v1:sha256:5fa5c352c7f48ad5ad4409f3a6d05f0484fc0dfb7fe25a43c2b5ce86adb5a3b7:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyYjNhZDZmMWU5NzBlZjlhNDE0MTA5ZTM1ZjAxYTZjODMzYTFiMGEzOTI1Y2Y0NzZmOWM4M2ZlODk4ODUzYTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhiYTI4N2JhZTQ1NjI5NmYyNmYwMTQxMDcxN2FkYzkwZjEzODMyMDRmNjMxMjk0YzA3YTdmZGE5M2IzNzAzM2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE3ZGE2MDYxZTQ3MzhjMWY3MTY2OTc3OTZkMGVlNzgwZTcyZTg5MDA5NDRkZWFmYzhkMTQ3YjIxZDYzZjllY2MifQ"
+          "resource": "repo://src/harnessed/volumes.py#L336-L354",
+          "version": "repo-lines-v1:sha256:040da0bf3e7b33b8f627b02d5b931c13b62fd135fc3add73b13841865702de7d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1NTRlYWQ2YjgyYTc4YTEyNGVhYjFkZGIxMzE4MjM0YzU1ZDhhZjg4Mjg2MDQ2MDJlMjhiODRmZDkxNzM4ZWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFkYTQzMzUxZjQyYWI5ZTAyOTJiMTQ1MmNmMWMxNWI5ZDhlOWZlYTk0MWI0MTllODdlYmQ4MmYwMjJiNzVlY2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzNWM1YTk3NDVhMjA3N2MyNjM0MzMyNjljNmU4MDQ0MDBkOTEwODk3NGFlNDljZWQ2Nzg5NjNjODQ5MmMwOGUifQ"
         }
       ]
     },
@@ -49,12 +49,12 @@
       "statement": "`fresh=` may destroy the config volume on fingerprint change only because composition is purely additive (the discard is what stops a dropped recipe's skills lingering forever) and because the volume holds composed content only — credentials and rw history dirs are bind-mounted OVER it at launch and live on the host. The fingerprint is read BEFORE composing, since a changed stack must start from an empty config volume. Putting host-only state inside the volume turns the `volume rm` into data loss.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/volumes.py#L118-L128",
-          "version": "repo-lines-v1:sha256:3e8687fef76bcf0ff44028c994faef7332a21eb2bcb8febf1d5cc82650e6a481:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxNjI3NDEyMGY4OWU0YTg2NTdmOTEzOTVjOGYyOWUyMTBlMGE3ZmQ2NmUxYTI0MTQwOThiMzczMGFjNjU4M2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcyYTE1OWUzZTU4YTk5ODRiOGQxZWQwZmI4MGU2ZGUwYzZiOTI5OWViMGNkMzMxMjA1YTVhZGZlMzJlZjRmMDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkN2E5NzhhOWJhYTk3Y2MyMjM0NzQ2YWMxMjI5NDk1ZGIwNDhmMzUwMTM0ZjdkYjY3YTczMDQzNWVkMjYxMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVmMjcxMGMyOWI5YzA3ZmI2ZDdkNDc5Yzg2OTgzOTkwNDNlZjFjODFjM2JmOTkyMTkxMmE2YTgzZWNjNjAwMjgifQ"
+          "resource": "repo://src/harnessed/volumes.py#L194-L204",
+          "version": "repo-lines-v1:sha256:3e8687fef76bcf0ff44028c994faef7332a21eb2bcb8febf1d5cc82650e6a481:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxNjI3NDEyMGY4OWU0YTg2NTdmOTEzOTVjOGYyOWUyMTBlMGE3ZmQ2NmUxYTI0MTQwOThiMzczMGFjNjU4M2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcyYTE1OWUzZTU4YTk5ODRiOGQxZWQwZmI4MGU2ZGUwYzZiOTI5OWViMGNkMzMxMjA1YTVhZGZlMzJlZjRmMDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkN2E5NzhhOWJhYTk3Y2MyMjM0NzQ2YWMxMjI5NDk1ZGIwNDhmMzUwMTM0ZjdkYjY3YTczMDQzNWVkMjYxMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZiMjUwNDYwYTg1MTE2MGJlYjllNzBmNjZkNGFkNDNhYmE4Y2IzNjljNjYyMzhkOGZhNTk4MTUwYTM5NWE1ZDEifQ"
         },
         {
-          "resource": "repo://src/harnessed/volumes.py#L406-L435",
-          "version": "repo-lines-v1:sha256:3888c3778efd6c505e27c5727ae6544f21ef6dd2bd7ce0a5a9005ee2b29429a7:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhMjdhZDljNGJiZGVhYTRjZWUyZDdlOTFhODM2ZWFjMmY2YzNmOWEwOWMyZGZlNzU3YWM3NTA1ZTAzNmNhNTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0ZjA1OTIzNTY5MWVmMmVhMzM3MTM4NGI5M2M1MjM2MTZkNmQyOWY2ZTczMGJmYjI4MmM0Njc5MjU1NjE2MDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM5ZDQzZmI1MDI2OGE1MmU1ZWNiYzEyNThkYmVmMzUyYWVlZjU1NDk2MDQzNjM1YjQ1MWE3ZjQwZjhmMWM5ODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1Yzc5ZGZlMzY4MjRmNDczZjUyYjU1ZjY0MWYwZTcxN2QyYzA4ZGM4YTVkMjU4MmU5MzI2MjllMmE4M2Q2NDkifQ"
+          "resource": "repo://src/harnessed/volumes.py#L517-L530",
+          "version": "repo-lines-v1:sha256:e7446786b05ebcfdbbb54019c8a078b911362a1552640e27724a6db0ebff34f7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjY2Y3NWIzMGQ1YjA3YTYyZGIzOTNjODE2ZDU2NDhkMjM3ZjkzN2ExMTM1ODMwNjc3NDc1NDFiMzY0OTYxZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwMmUyY2UzOGRhNDA2NDlhZTJlYjZiY2U2MTY3ZWZjZGU4ZWY3YzkxMWU5NGU2MTgxODI4NmU1MzQwMzRlMTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg1MzVhMzc1YTA0YTI3NjU4ZWU4MDY0OTNkMTU1ZGEyMDcwYmM4NTMzMGQ5Mzc2YmI3ZTk5MTUwOGQ0N2JlN2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhkZWY5MmEwMmMyNjE1NTU5YjYwMjE5NDA2Mzc0NDVmMmQyNmQzZmQzODk0YmZkYWFiMTc4NzVkYjk2MmQ0MjAifQ"
         }
       ]
     },
@@ -63,12 +63,12 @@
       "statement": "Agent-last image lineage: the standalone per-harness agent image is NOT the FROM parent of the derived stack images — the agent's Dockerfile body is inlined as the derived image's last layers, and the lineage anchor is the shared harnessed-base. The standalone agent image is still built once per process because container-run falls back to it for a stack with no derived image yet. Parentage on the agent image would make every agent pin bump invalidate every derived stack's cached recipe layers.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L618-L629",
+          "resource": "repo://src/harnessed/launcher.py#L621-L632",
           "version": "repo-lines-v1:sha256:45ec0323d01d7b44bf8a7ebd35d7143d299873eec71d85836ab1de2e51939b44:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzZDE1ZjIwZmE0ODE4MWNiMmQ0MzUyNTRhZDM3ZGNmMWRiYTMzNWVhNDliNDgwZGI0NzgwZDM1NDQwMGEzMWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwYTYzYjQyOTA5ZDhmMzdiMWJhMmI3MGM3NGRmODQyY2EzOGU2YTk2MWJkM2Y4Y2UwOWE1ZmUzYTBmMmEwMzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBiZTI1NGNlZmI5NDUzZjdiYWRhZTQzMzZhMzA0NTZjNzVjMWRlNjdmNDg5MmI4ZGFkYzY4ZjRkZjA2ZTVlNDIifQ"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L691-L701",
-          "version": "repo-lines-v1:sha256:c4682bed6f97b13c199e563ed5269961b480188b626dc65c097cc42fd30e446a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwYzk5YzJlNTkzY2EwYjY3MGE2Yjg1Mjc2YWJjN2YyMWY1MGE0MTFhN2Y0Mjk1NjQwOTBiM2JhNTc0NjhlNjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ODQ0YTkyOWM3ZDI4Yzg2ZDE0NTlmOTI1MjcxOTdmNjY1ODc2MWY0MmZlN2ZiNTgxNGMzZWFjOThlYjNkYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyMjQ1MGRjYTg4ODY3NGYzNTBjN2NkMzMyZDU4YjM1NWE2Mzg2NjVlYjA5M2Y2OGRjNDkwZTJlMDA2NjczYjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjYmE0NmJkNWMyOWIwZTM3NWJiMDQ4NGE1N2I2NzAzOTU3MzU5MWE1OTJkNGJhMWVlZGYzYmIzMGE4ZTI4MGUifQ"
+          "resource": "repo://src/harnessed/launcher.py#L701-L705",
+          "version": "repo-lines-v1:sha256:eb03a5de20ea1de03763fde1e3efe3539306882cc5c1284c7ba51c7e8f322144:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTkwZDVkMDZhZjk1MjNjNTA4NDVjNmM4NDE0ZDgxNjhjZGI0OTdkNmI4NDFhMjFkMDI3YmI5NjkyOWY5Yzc1ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjQ4NDRhOTI5YzdkMjhjODZkMTQ1OWY5MjUyNzE5N2Y2NjU4NzYxZjQyZmU3ZmI1ODE0YzNlYWM5OGViM2RhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmVkNDcyNzhmZDc2ZTA4MTJiY2FhZGY0ZDYxZDE1YjA3Y2U1ODk2YTczZTM2ZDAyMWUxZWZlODgxYTk4ZGY4NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmNiYTQ2YmQ1YzI5YjBlMzc1YmIwNDg0YTU3YjY3MDM5NTczNTkxYTU5MmQ0YmExZWVkZjNiYjMwYThlMjgwZSJ9"
         }
       ]
     },
@@ -81,8 +81,8 @@
           "version": "repo-lines-v1:sha256:d63baee2e2b6e736d8483010e950546eb076832f53cd49356f61ba19549f756c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzZGNhMzFjMjM0YmVmOTI4M2FmMmVkMTNhYWY2ZDM5OGVjZGNkYjdkYjU2M2UzMDY4ZDkxZTczYzZkNjkxYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJjYjI2MGM3NmU2NDFiZDIyOTk2MjkzM2U3NGQ3MjlkY2RkNmRiOWI1ODg5MDcxYzI5NmEzOWVhNzkzMDIxNzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlNjcwMWMwMDM4MzVmNGJhNzUyOWVlNWY0N2RmN2QxZWRlMTVmNTUwYWY5YTkyMzJjMWRiY2ZjYTliOGZiMjkifQ"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L691-L701",
-          "version": "repo-lines-v1:sha256:c4682bed6f97b13c199e563ed5269961b480188b626dc65c097cc42fd30e446a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwYzk5YzJlNTkzY2EwYjY3MGE2Yjg1Mjc2YWJjN2YyMWY1MGE0MTFhN2Y0Mjk1NjQwOTBiM2JhNTc0NjhlNjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ODQ0YTkyOWM3ZDI4Yzg2ZDE0NTlmOTI1MjcxOTdmNjY1ODc2MWY0MmZlN2ZiNTgxNGMzZWFjOThlYjNkYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyMjQ1MGRjYTg4ODY3NGYzNTBjN2NkMzMyZDU4YjM1NWE2Mzg2NjVlYjA5M2Y2OGRjNDkwZTJlMDA2NjczYjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjYmE0NmJkNWMyOWIwZTM3NWJiMDQ4NGE1N2I2NzAzOTU3MzU5MWE1OTJkNGJhMWVlZGYzYmIzMGE4ZTI4MGUifQ"
+          "resource": "repo://src/harnessed/launcher.py#L701-L705",
+          "version": "repo-lines-v1:sha256:eb03a5de20ea1de03763fde1e3efe3539306882cc5c1284c7ba51c7e8f322144:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTkwZDVkMDZhZjk1MjNjNTA4NDVjNmM4NDE0ZDgxNjhjZGI0OTdkNmI4NDFhMjFkMDI3YmI5NjkyOWY5Yzc1ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjQ4NDRhOTI5YzdkMjhjODZkMTQ1OWY5MjUyNzE5N2Y2NjU4NzYxZjQyZmU3ZmI1ODE0YzNlYWM5OGViM2RhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmVkNDcyNzhmZDc2ZTA4MTJiY2FhZGY0ZDYxZDE1YjA3Y2U1ODk2YTczZTM2ZDAyMWUxZWZlODgxYTk4ZGY4NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmNiYTQ2YmQ1YzI5YjBlMzc1YmIwNDg0YTU3YjY3MDM5NTczNTkxYTU5MmQ0YmExZWVkZjNiYjMwYThlMjgwZSJ9"
         }
       ]
     },
@@ -95,8 +95,8 @@
           "version": "repo-lines-v1:sha256:841423f0f31e54425ffa16333ac1995851d3dd7f3be8e77752ff9f3b9ce804a2:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2NTQ1ZWZhOTM4MGZmMGViNTRjMzYzNGU4MTVmYWEyN2E4ZDdlNzU3ZmFhZmQ2NTU4MTExOTkzNmJmYzQ3YmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzYjViNDFmNGU0MzJhNGEzZjdmNmZkOWQ5OGZkOGIyYmZlOTc5MDlmNjhhZDc5NmJlMmUyYjNlMTI5MWM5NTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFmZTIzOTY4M2NkM2E2NmNiMzMyMDdjZGRjZmE3YWJkZTg5ZjdiZTlmODE0YjYxZmQyYzEzNmJmNmQ4YzQyZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjYTUwZTc5ZWNlMzZhZmI1NzM0ZDU2NzVjY2YwOTY1NmJjZTdjODY3N2ZhZTY5MTQ4NzA2MTliN2U1Y2MwYmMifQ"
         },
         {
-          "resource": "repo://src/harnessed/volumes.py#L237-L307",
-          "version": "repo-lines-v1:sha256:18fdf4b89401f7c3b8a2b22e8f885e9ac8e4de37ee032fc9c54764577d987a5d:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhYzc5MTQyZTU5ZmExZjQyMTY1ZmYzMWE3MWFmMzMzMjgxNmE1ZDBkYjU5MGRlZTliNDkzYTkxMmVkZmVjNTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZmYjFmOWU5ODhhNmQ0Mjc1YTc5NjE5ZGJiMjA1NTFmMDczNTgyYTljMjFiMmY1ZDM1ZjNiNDYzODA5MGZmMDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ1YjEwMGY2MTM2NDBkMTljMWQ3YjY3YWEyYTFhY2YwNmIxMWI4OWY0NmY3Mjg1N2ZlNGRiM2VmOGM0ODVhNTgifQ"
+          "resource": "repo://src/harnessed/volumes.py#L319-L434",
+          "version": "repo-lines-v1:sha256:0c79f0a43026fb60a5e2cc55c7a568f0ce1cc569507e0d4317701e82a641a4ef:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyYWM3OTE0MmU1OWZhMWY0MjE2NWZmMzFhNzFhZjMzMzI4MTZhNWQwZGI1OTBkZWU5YjQ5M2E5MTJlZGZlYzU4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiZTRlMmRjN2UxOTMzM2ZlYjM3MDBjNDEzODA4MjZmNmUxY2Y3YTM5MzM4NTAxMzQzMmQ4YTU2M2E1Y2UwY2M0IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmZmIxZjllOTg4YTZkNDI3NWE3OTYxOWRiYjIwNTUxZjA3MzU4MmE5YzIxYjJmNWQzNWYzYjQ2MzgwOTBmZjA2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlNzg0NDI2YmUyZjVlN2Y3ZWJjNzNkYzM4MTE3NzliMzNkNzMzZThlOWQ4MzA0OTM1MDA5MTNhZDViYTc2ZTUwIn0"
         }
       ]
     },
@@ -106,11 +106,11 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/hosthome.py#L206-L216",
-          "version": "repo-lines-v1:sha256:fc9df5d2ace3b4b79d22bf6891c3bcb426e4ac6e668cd8fba1f81d57b5a10878:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4MTIzMTU5Y2I2NjJlYzc4YjI5YTkzMWE2YmJmYzZhY2UxZDc4MTI2NTY2M2ViYmY0YzRlMThlZTE1MThjMDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlMzk4ZjlhMzA4YzgxZjNlNWUzOTgxZGUyM2ExZWQ4YTdkN2I5YzQxYmJhYzBkZGVjZmMxNDNjZjFhMWYzYmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImExZWQ2OTBkMWEzYjM2NzJmMGJiZDkwMmYwNmQxZTRlY2JhN2UxOGUzNzVlYjM1NDdlZmMyY2JhZjhmNDI3YjMifQ"
+          "version": "repo-lines-v1:sha256:c213ad63e9a00360d24ff992a02f5c4d612337fd35305167f95174abd7196f44:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJjZjQ4ZWRiZWU5YjBhZDEwZmE2ZmZmNDkyODBlZWE5N2ViYTliMWYzZTllNWY5ZjM2OTgwMDU3YWNiODA5YWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU2OTY2MWM1MzZkNWJhMTJkZGVjNmU3YjRjZDMwYTI0NDIzMjM2YTM5MDhiOWEwMWU5OGE5N2Q0ZDkwYzk5MjcifQ"
         },
         {
-          "resource": "repo://src/harnessed/volumes.py#L406-L435",
-          "version": "repo-lines-v1:sha256:3888c3778efd6c505e27c5727ae6544f21ef6dd2bd7ce0a5a9005ee2b29429a7:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhMjdhZDljNGJiZGVhYTRjZWUyZDdlOTFhODM2ZWFjMmY2YzNmOWEwOWMyZGZlNzU3YWM3NTA1ZTAzNmNhNTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0ZjA1OTIzNTY5MWVmMmVhMzM3MTM4NGI5M2M1MjM2MTZkNmQyOWY2ZTczMGJmYjI4MmM0Njc5MjU1NjE2MDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM5ZDQzZmI1MDI2OGE1MmU1ZWNiYzEyNThkYmVmMzUyYWVlZjU1NDk2MDQzNjM1YjQ1MWE3ZjQwZjhmMWM5ODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1Yzc5ZGZlMzY4MjRmNDczZjUyYjU1ZjY0MWYwZTcxN2QyYzA4ZGM4YTVkMjU4MmU5MzI2MjllMmE4M2Q2NDkifQ"
+          "resource": "repo://src/harnessed/volumes.py#L488-L536",
+          "version": "repo-lines-v1:sha256:15d7853f0771e18a84ed244af3c2d89aca9b1e3e4d8335e1f47c0198ad3df4fe:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0ZjA1OTIzNTY5MWVmMmVhMzM3MTM4NGI5M2M1MjM2MTZkNmQyOWY2ZTczMGJmYjI4MmM0Njc5MjU1NjE2MDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiMWMzMjdiY2NiZDMzNjg3OTQ3MzdjZmNhMjBmNDVjZDllY2VkM2ZlZDUyZTYwNGY1ODJlMTAxOWYzNjNlMWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1Yzc5ZGZlMzY4MjRmNDczZjUyYjU1ZjY0MWYwZTcxN2QyYzA4ZGM4YTVkMjU4MmU5MzI2MjllMmE4M2Q2NDkifQ"
         }
       ]
     },
@@ -119,12 +119,12 @@
       "statement": "`install.cache` bind-mounts the PARENT of the host cache dir, never the leaf: a cache miss IS \"the leaf does not exist\", and podman statfs's a bind source before the script runs, so a leaf mount turns every miss into `statfs …: no such file or directory` — the first build of any new recipe or bumped pin. The parent mount also keeps the scripts' populate-a-sibling-then-rename idiom atomic instead of a cross-device rename onto a busy mountpoint.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/hostrun.py#L408-L415",
-          "version": "repo-lines-v1:sha256:2c6a13763e8580e0d7e9e74b535160c1afd540c293c09a8aba764efa89d4dd5e:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjE4ZTRjMmQzZmUyMjNkMWZmM2JmM2NkN2QxYjUxNzNiNmIyYWVlNjU4MWFkOTdkZTFjMWU4MTAyZDdiZmQ4NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzVmNjkwNjE4MjUwMDYxYTcyOWEwZWJmZDhhYmE0NzkzM2I2MTIwOWMwYWNmODMwNDZiYjY2ZDg1NDU0MGM0YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2VjYTdiMDQxZmIxYTZhODc3ZTg5MjIzODRjN2U1MTFkNjk0NWM5MzBkODliZmM3ZmI4ZWViZDg5YjIyMzU2MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjlkMTdiMmE2YmJjMzE4MDVjYWZmZjY2YjY2YjM0YmM0ZWNkZTFmNTkwMjhlOWVjZmM3NjViNDVjZjA2ZGNmOSJ9"
+          "resource": "repo://src/harnessed/hostrun.py#L642-L645",
+          "version": "repo-lines-v1:sha256:10ed7edadf0c062085a110513df7f62a47cf4fd50cb7ec6c44080e3c34173f2e:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmU3YjA3YzAwZTVhZGQ0OGY5YjY2ODI3NDAwZTM5NmQ5NWU3ODdkYjZiMGIwZTA3NGI4Y2RkYzQzMDNiZjA4NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjk4OTU4NDg4MjgwNWNkY2U5MzA3ZGI2MzY1NDYxOWRmNmFlZTlhZGI1Yjc3NTFlMzZiNjBjYzcxODRlZTRiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzIwNjZhYjc5NWI4MzdkMmI0YzIxMjlkMjg1OTk4NDBhMzA0NTliY2VhNTY4ZTA0NGVhNmYxNWRjNGY5YTIyMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTZjMGJmZGYyMjhkOGEzMzM1ZjQ2NmIxNDQ5OTg3OWRjZWU0MjI3MWVjZWU2NjUxZTQ5NzE4MzEyNzUxMmI0ZiJ9"
         },
         {
-          "resource": "repo://src/harnessed/volumes.py#L308-L347",
-          "version": "repo-lines-v1:sha256:505ae523de3a84a16822c0d152fc8ff3f5ad47ad41e8a62e091857c3b29573a2:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyNjEyZjBjYzc4YWI2ZDc0NzYxN2ZmMTBlOTJlYmY0OTVmZGMzZjUxMWI3NmYzZTk3OTExNWIwNzk0NmVlMGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlNGUyZGM3ZTE5MzMzZmViMzcwMGM0MTM4MDgyNmY2ZTFjZjdhMzkzMzg1MDEzNDMyZDhhNTYzYTVjZTBjYzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzMjlmMGRiMmRlODViMTVjMDBjYzliOTRjZjVhMWJiMTgwYjljNzU2NzM2YTM4NWZjMWEzODk1YzdhMTI0ZTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU3ODQ0MjZiZTJmNWU3ZjdlYmM3M2RjMzgxMTc3OWIzM2Q3MzNlOGU5ZDgzMDQ5MzUwMDkxM2FkNWJhNzZlNTAifQ"
+          "resource": "repo://src/harnessed/volumes.py#L417-L427",
+          "version": "repo-lines-v1:sha256:6a35d38436ddc58154e88d60b92b6be4504d7bf3550bb2d6b4a916b3fa44ff1f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0YTI3NDgyODc4NjAxZGFkOGJlZWFjMjk5ZjVhMGUzY2Y5MGVlMDNjOTBmNjg5OTEwOGNjZTM2NjIxY2VjMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVjM2QzOWMxNDRiY2YwNjljMzk1OWQ1MWI5ZDg0ZWNjMjQ4M2JmNjljMjFjMzI2N2E1MTU3NTI3MTJjODUzY2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1ZWI4NDc5ZmJiNDgxZDg3MTczYmNmMDVmMTlkZTQ4YWY0YTAxZGY5MDkzMmE0MjhlM2QwNWRlZDMwYzlkYjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU5ZWRmYzRhYTE4OTdlOGQ0MWE1OTRlNzJlZTRiN2JjMTg2ZTFiMzBkYWMyNzJkODg4YjQ0Y2U0ZmY3ZjZiYmYifQ"
         }
       ]
     },
@@ -137,8 +137,8 @@
           "version": "repo-lines-v1:sha256:74aabecd1926c8629bba00f3b8be6a978fe844ac74951611fad4512fd0bd1463:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTM4ZTY5NzY5ZGI1YzZlYzdkZWU2ZDYzMzdlZDRlY2ZhMDNlNjdkZGI4ZmQwNzk4OThlODk5NGM4NjY5YjhjNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmFlNWNkYjY3MjY0MGQ1MmUwYzNiODU5MjBiNjZmZjNhODE0MzIzOWE0NTBhOTU5Y2IxN2UwYmMwYjc3YmY0MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDNhYzJiMWYzOTBmYTllMjg3OGMwOWVlMWM4MTY2NTk4ZmQ5Zjc4ZDg4OTcxMWMzNzVmYmY1NzNhZTZlZTY4YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTIxNzEzOWUyOWQxMDQ3YzViMTJiYzYwZDFhNDYyMGU5YjkzYWQ2MGUxMjQzYjJhNDg5ZDBkN2JjNTI5YzBkMiJ9"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L713-L739",
-          "version": "repo-lines-v1:sha256:afdc788d7865021b982fb87cc4d503d21383429cfea0b8055b39f520f42e5068:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzOWY5MzYyOTUzMTZhZDE0Y2U0YThhOWM3OGNjYzIzNmRlNDBkOWNjZDhiMmRiNDY3NjdlNTI4Zjg3YmQ3ODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzYWU5NGQxODcyNWJkYWMyM2FmYjA0ZWMyZmRkZTM5ODlmMjg2Mjc5MTZlOTkwY2YyYjM5YWYzYjM4YzZiZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBiZjRjYzZlNjQ3MWJhZjVmNDM1YzQzNDIxZTI0ZTYwZjk0YjJiODFmOTdiMWE5ZDE1NmMxNGMwNzBkY2U1YzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU3YjVmZmEzZDVhOGQ3MmU5NmQ1OTg1YWFiOGE5OWQ2Y2UyOWJkZDFhZGRjNTkzODVlZTg5Y2JmNzgzN2I4ZGIifQ"
+          "resource": "repo://src/harnessed/launcher.py#L4873-L4918",
+          "version": "repo-lines-v1:sha256:6e836b41a587354a5ce5c85af608384215aafa09a2c6e44f8ceda6592497a621:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyMjI2MDc5NDhkMGQyODEwODc2MzRmYTY4YWIxYWI4NWFhODgyYzdlNWY4ZGFlNzQ5YTQ5YjI3Mjk2MzJlZWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlYWNhNGY0MTA1YTUwYmIxNDRmZjMzYzNjMWQ3YzQwM2FiNTU4MjNiMDBhMGIwM2MzMjdmMTY3MDY3MzBjNjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1NzlhZWUxYzA2NWIxMzNhNmIxYWY3OGY5MTk5N2NmM2VkNTE4N2Y4ZGQ2ODY1MjhmYTAyZmRkZDYyMTg4NGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkN2Y1ZDBiMjI2NGVlYzdjMjg2YzlhMjhmZTY2MTA2ZTYyZDU4YzdiMjRiNmJhYmEyZmEzMTQ2YWIwMzA1YmYifQ"
         }
       ]
     },
@@ -158,15 +158,19 @@
     },
     {
       "id": "claim_751070262ffe4cdc851be5a4d9cd6874",
-      "statement": "The launcher treats the firewall's zero exit as a claim and independently verifies the observable end state: `_firewall_policy_is_drop` reads the OUTPUT policy back out of the pod's netns in a throwaway `--cap-add NET_ADMIN --user root` container that joins the pod's netns (the agent container never gets NET_ADMIN, since the agent is the untrusted party), and anything unreadable counts as not confined — failing closed, exiting the launch. The broker rule's unscoped-address trade-off (#436/#437) is documented at the rule itself.",
+      "statement": "The launcher treats the firewall's zero exit as a claim and independently verifies the observable end state: `_firewall_policy_is_drop` reads the OUTPUT policy back out of the pod's netns in a throwaway `--cap-add NET_ADMIN --user root` container that joins the pod's netns (the agent container never gets NET_ADMIN, since the agent is the untrusted party), and anything unreadable counts as not confined — failing closed, exiting the launch. The runner's `--userns` must MATCH the agent's, not merely be present: iptables run from a different user namespace than the netns it configures returns EPERM, so a mismatch confines nothing (#456). The broker rule's unscoped-address trade-off (#436/#437) is documented at the rule itself.",
       "evidence": [
         {
           "resource": "repo://catalog/base/egress-firewall.sh#L71-L78",
           "version": "repo-lines-v1:sha256:0751216ccdbc45316be20712801a43517b812367284fff030c9d3a7c846af07e:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTAzNmFjODU2NzA3YmRiYzk1MjlmYzY3YTdjNTJmNTIxNGM0NTBmZGYzMDAyNjEzYmNlYWNkZDNmMWZkM2MwMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjliOGU0NjkwYmIwNzVmYzA0NWYxNTEzZGUxMTg5NGQzZWI5Mjk1MDk3ZjFhNWE3NDg5NGE4ZTg2YzI3MDA0MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjBmMjFhYTg5NWU0NmIxNzg5MmEyNWFiMDJjYTI3ZmVlNmI4MmEzZmE2MjEzMzc3MzcxNTk4NTE1YzUxNzdiZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGZiMjgxYzRmZDAwZGEzYzJmZjZjYzljNTc1ZWEzYjFmMTdhMzM1NWMwNTk2NDU4ZDgwZjBlMTczYjc3NjA1OCJ9"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L1384-L1485",
-          "version": "repo-lines-v1:sha256:3c50d79c9296b073bebc376a9b5b55492e0b62863b6e2de3ea288462ee4a83ab:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxZjllNWZiMTA3YTMzNDdiMjRjMTU1YmY2YzIwM2UwN2E3ZDdjYzE0MzUxZDBmYzc3Yzg1Y2Y5N2M3MjJlNmM5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2MzZiOTI1ZDE2ODE5ZDFmYWQzMzU5ZjE0NmE2ODM3ZGYyYjI0ZjFlZTc4Njg1MTY5N2Y4MzI0YjkwNzljNzlmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4OWQ1NmU2MjRkMzc1NzhhMmI1YmY2NDA4ZWUzNGRjN2Q1ZTQxOGY0MjJkOGI3ZjY3OTA1MDY2NDBjNGRjYzAyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkNjI4ODE2YzNkYTIwMmY5ZGQ0M2E4N2FhMDQ1Y2QyZTI5MGU2OGMxMGE2MDRkZGRiMDFhMzVkODAwMmI3NTYyIn0"
+          "resource": "repo://src/harnessed/launcher.py#L1424-L1443",
+          "version": "repo-lines-v1:sha256:2face6d4083c67c66af447574910c5f00967f15f959a4862e73004564d72853e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmOWU1ZmIxMDdhMzM0N2IyNGMxNTViZjZjMjAzZTA3YTdkN2NjMTQzNTFkMGZjNzdjODVjZjk3YzcyMmU2YzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1ZDg5NGNmYTc1MTNhZWI4Mjk0MWI3YTQ1MzJiNzVmYTA1MDZlNWU1YWU0YjA1NzY0MGRlODViNzdlNGQ5MTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg5ZDU2ZTYyNGQzNzU3OGEyYjViZjY0MDhlZTM0ZGM3ZDVlNDE4ZjQyMmQ4YjdmNjc5MDUwNjY0MGM0ZGNjMDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNiZTViNGM4OTgyYTI4YTI3YThmMzY5OWQ3ODc5OTZmZDhlYTc4ODIwYzJiZGU3NGQ5YWUyOGNkNmJkY2QwOTIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1499-L1535",
+          "version": "repo-lines-v1:sha256:b673670b6e64829b79c9569f9303af52442ab864d135944f458cce5087713b39:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1YTMxNmVkMTNjMTc0NmY0YjEyZjYwMzc1NTA5NDI0ZWM3NDFmNTYzZmEwN2U5MmM0ODRjNjEyMjc5NGRhNDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkNDJiYmE3MmZkZmUzNWQ4NzhkMWZhMjI2NjM0ODNmMDEzZWRlYTQ1Y2VhYTg1NWE3YWFlNmY5Yjk0ZWZjYWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4OGM1NWUzYTU1YjQ3ODk3Njc4MTc0OWQ3MmJmYzllYmZjNTZlMzQ5YmNkNWUyNmYwMmNmN2VlNjg2ZWUwMmYifQ"
         }
       ]
     },
@@ -175,8 +179,8 @@
       "statement": "On any failure — including any BaseException — in the EGRESS isolation phase, the already-started pod is torn down before re-raising: failing closed has to mean the thing that could not be confined does not survive, and Ctrl-C must not strand an unconfined container. NO_FIREWALL=true is the supported opt-out.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L3349-L3376",
-          "version": "repo-lines-v1:sha256:f5afb92724923eca5a8e4dff0c72c30a1734ddee168600587ee3693297f7150d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4MTAzNzk0NTQwYzE3YjQ2Yzc2OWQxMjg2MWNhMThmNWFhM2E4ZGNmN2MwYTg0YjIzOTU3ODg4ZGMyNWI4MGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlN2JjZDM2ZWY1M2I0NDUyM2U2NWU5OGQxOTQ0OTkzZTBmZjE3NDZmNTUzNmMxYTUxMTc0NmYzZTAxZTc1NmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkNjA4NmI2NTRmY2NmNTRhMzYxYTE4OTY1ZmY4YmJmZjg4NThkNjY5N2EwYTViMWRlOTM3NDA2MWY2ZGQ5N2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxOTRkMzBmMzRhNTRjZDVjNDBjOWFhNmUzMGRiYjg3YTI2NTQ1NWJhYTFhMjE4YjQyNDViMzcwMzM2ZjA5MWEifQ"
+          "resource": "repo://src/harnessed/launcher.py#L3527-L3549",
+          "version": "repo-lines-v1:sha256:0150b3bc290f5690aa8ee043d743e52668af6fa1377fbe6474db3ac7582e1342:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1NzgwNWMzZmU3YWM2MzA3NGY2OWNkYjI1YjlhY2Q3YTg2NzkyZGZlNTQwODE4YWM0Zjg3NjRiNDllN2QxNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxNjFjZTliMTJjOGMxZGQwOWU3MTcwMWUzNzU3Mjk3OGU1MWU3YTQ3ZDA4ZDAwYzEwM2JkODE2NmU3NTFjNzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVmMTgwZDFmZDQzN2FiNzkzNjI5NDFhNDA1MTY3ZmVkODk2MmViZGNkZmRhNTI4YzQyOTFkNmVmZmNlMzMyZTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNkZTU4MTU4YmQ4NThiODg2OWFmZjk5NjA2MzFmMzg5N2ZiMzYyOGY4ZTQxODE3YTlkNWM0N2JkMjExOTgxNTgifQ"
         }
       ]
     },
@@ -185,18 +189,18 @@
       "statement": "`paths.USERNS_ARG` is pinned to the image uid (`--userns=keep-id:uid=1000,gid=1000`) rather than bare `keep-id`, because bare keep-id only works when the invoking host uid happens to be 1000 — on a GitHub ubuntu-latest runner live.yml failed six consecutive runs with `mkdir: cannot create directory '/data/dolt': Permission denied` (bd harnessed-rv2.1). Pinning makes the container's uid-1000 process be the invoking user whatever their host uid is, and is a no-op on uid-1000 hosts.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/paths.py#L25-L42",
-          "version": "repo-lines-v1:sha256:4bb76166c5f8cb90573cbf7aceef13a237a3b30238f651d0fad655672a359ea2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4YmVkZmY4YTIxOGU5NDAzODVhYWFmMzc0Y2MzOTAxMTc3ZDJiNGE4YTY5MmNlMTUwZDRlMjcyYTFjY2YyYWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyM2M0OTIyMWRkNmM3NDI3OTNmNjQ4N2RhYzQ2YjhiYWY2NjNmYjBjNzg1MmQ0NTU2MDk4ZjQ3NmYzNWYwZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNlNzFkOThlNTFiODBiZmFhNzEzMWZmZmVjMDFjN2Y0MDUxOTVmMzU0ODZlNDYyYWY3MmJlYmQyYzMyZDBhMTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYWY5NWJmY2U1MzNkYWU3Mzk1YmQwM2I4ZDRlZjMwNzY0ODk1NDI3NWVjNWM3ZmM5Y2IyYjFhODhkODAxOGYifQ"
+          "resource": "repo://src/harnessed/paths.py#L32-L44",
+          "version": "repo-lines-v1:sha256:09639c554b1c8e91b787ba47e8eb50a9f7a2a4a147a5e4b0162aa85924a331e1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhY2Q0MTcxZDRmMmI0MjdjMjZmZTVhMDM4OThmZDc2MjlhYzlkNDU2ZTEyZmVjYzRkNDM3ZDY4ZTI3MDI4MWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyM2M0OTIyMWRkNmM3NDI3OTNmNjQ4N2RhYzQ2YjhiYWY2NjNmYjBjNzg1MmQ0NTU2MDk4ZjQ3NmYzNWYwZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyZjIzYTFiMTQ4ZjBhMmJiYTA5NzJhYTg5MDlkZGE0YzJkNDExOGUyYmRhYzMwYjZjZmNmMDBkN2Q4N2QzNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJiNWE0MWNmNGRjMTk1MGRlMWQ1MjhhMDU5NjM0NjkwMzI2NjhhNWZmMmMxNDQxNTcwMDYwMzRhNTA0YzE3NzAifQ"
         }
       ]
     },
     {
       "id": "claim_ff7d7178639648a6b3224805bd31aa2f",
-      "statement": "`paths.pod_host_uid()` returns None when the declared userns mapping does not determine the host uid, and None means UNRESOLVED — callers must refuse rather than guess. An earlier version answered CONTAINER_UID and was fail-open: under bare keep-id on a uid-1001 host, pod writes land as a subuid (~100999), so answering 1000 accepts a persist dir the pod cannot write — exactly the state the original bug produces.",
+      "statement": "`paths.pod_host_uid()` returns None when the declared userns mapping does not determine the host uid, and None means UNRESOLVED — callers must refuse rather than guess. An earlier version answered CONTAINER_UID and was fail-open: under bare keep-id on a uid-1001 host, pod writes land as a subuid (~100999), so answering 1000 accepts a persist dir the pod cannot write — exactly the state the original bug produces. Under docker it answers os.getuid() only for a ROOTFUL daemon — where `container_user_args` runs the agent as the invoker — and returns None for a rootless or unreadable daemon, the same refusal in the state where nothing is known.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/paths.py#L45-L79",
-          "version": "repo-lines-v1:sha256:72bab985479e61e079ce58c483a088f1104c5ad2a79247f0296db843fd179552:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwNGZhZWI1MWJjZGY2NTFkNWVkMzE0YTNjYTg5MGRiYThlN2Q3NmI1ZWFlNmFhNjNjYzBhMzczZTkwMjdmOGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTYwMGE3M2QyZTAyZjM1MmI5MGZlZjFkOGQ2MzgxMWJhNGE4ZWUwYzFiZWFhN2FlNDY1OGYzNmFhMmUxOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk1Y2FlYzc0MWYwMDFiYWU2MmVkOGU1NWJiZmUyYjg3ZDdhMzhjZjk3ZDc2ODdiNTg4MjU3Njk0ZDY2ZmEwNzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0ZTFlNjJiNjcwNzA2ZTFjZTA5MzllYmRlOWY1MjdlZDkzZTMwYmRhNmU2NzI5MzA3NDQyZjM3N2M2ZmZlNjQifQ"
+          "resource": "repo://src/harnessed/paths.py#L227-L272",
+          "version": "repo-lines-v1:sha256:59caf35ee9681899c3ff4023deb36cf319abd71ab8f9c3dca677f96b6e4da219:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwNGZhZWI1MWJjZGY2NTFkNWVkMzE0YTNjYTg5MGRiYThlN2Q3NmI1ZWFlNmFhNjNjYzBhMzczZTkwMjdmOGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTYwMGE3M2QyZTAyZjM1MmI5MGZlZjFkOGQ2MzgxMWJhNGE4ZWUwYzFiZWFhN2FlNDY1OGYzNmFhMmUxOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhhZmNhYzQ0YjkzMDM5NDA5YTFhMjYyMTE5NmFmMTA0ZGM5MmFhYjQzOTY3N2E0MTZkYjcxOGI1MjkwMTAzNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0ZTFlNjJiNjcwNzA2ZTFjZTA5MzllYmRlOWY1MjdlZDkzZTMwYmRhNmU2NzI5MzA3NDQyZjM3N2M2ZmZlNjQifQ"
         }
       ]
     },
@@ -205,8 +209,8 @@
       "statement": "`persist.guard_ownership` raises a named pre-launch error when the mapping is unresolved, checked BEFORE the absent-path early return (an unresolved mapping is a problem even for a dir harnessed is about to create), and compares against `pod_host_uid()` rather than `os.getuid()` so the guard can catch the mapping itself being wrong — compared against getuid() it waved through six consecutive red CI runs (bd harnessed-rv2.1).",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/persist.py#L130-L170",
-          "version": "repo-lines-v1:sha256:339fec3299815fcf96611025bfc2ba44fd5dd51067b2c0e0d4c7953ac593ce3f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3NmU2NGI5ZjdlM2QyZTIwZjQ1Y2FhOWFkMTgwNDE0ZmYyNGVlMDk2ZWNkNTQ3ZjVhYzhkNmVhMGM2ZGE1NGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY5ZGFiNTIwZGY0YWM3OTJlYzA3YzMzYTJmNmMxMzdhMTVjYTc5YzM4OWYxYTk3NWYwMGMxMTJjODE4MTcyY2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://src/harnessed/persist.py#L130-L191",
+          "version": "repo-lines-v1:sha256:df70a532ed08b3799ef98e2cfa9907bdb5d35546a9bcab698609ab1856bbd0dc:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3NmU2NGI5ZjdlM2QyZTIwZjQ1Y2FhOWFkMTgwNDE0ZmYyNGVlMDk2ZWNkNTQ3ZjVhYzhkNmVhMGM2ZGE1NGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY5ZGFiNTIwZGY0YWM3OTJlYzA3YzMzYTJmNmMxMzdhMTVjYTc5YzM4OWYxYTk3NWYwMGMxMTJjODE4MTcyY2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -219,7 +223,7 @@
           "version": "repo-lines-v1:sha256:7bc442cac2d8db968f23c25816400076ff99134e0167c7e8807e4f4bd38d2121:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiZmM0MGQ0OTVmMjJmYmNiNzdmMTA5NGFjMjlmMzdkZDZkYjYwMmU5YzZjNDE2ZTc0YTQ4ZmI0NTc1ZjNiMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxNDcxMTA3Nzc2ZmE3MTJiNDYxMGE1MGQyZThjNzlhZGJjZjUyMTAwYTExMGEwM2ViZDYzMzM3N2U4Nzg3YTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5YjJjY2UwODdiYmEwMjEwZTY1NDAwMDdiOGIyNzcwYmFiODlkMjNhZGFiY2U4MTBjZGU3NTA3ZmUzNzJmOTMifQ"
         },
         {
-          "resource": "repo://src/harnessed/hosthome.py#L421-L435",
+          "resource": "repo://src/harnessed/hosthome.py#L439-L453",
           "version": "repo-lines-v1:sha256:abe10cd04539874e52b4ee2608afc062693a5330217abb5341f8ab45f8d2895f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3OGViNWU2YjZmOTNmY2I3ZjcwMDRkYjA2ZDcyYTIyM2E3OWE4OTc2NzY4ODQ1NWZmYTY4ZmYxOGQ5MzUzZjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhZmIxNjYzZTJlMTJmMDg5NWZkMmQ2YjZmYWEwZmY4YmE2MmZkMjhjMmZlODRhN2M0MjA2Njk4NWQwMmFkZDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ4ODc5NWEwNDliMDA1Y2NhZDg1MDExY2Y3M2FjYjQxMGU2ODgxNDJhMjRmNjAxZjZlYWUwYzQyN2UwMzVlZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc1NjI2MWE5MWE1ZjRjMjAyZTA3MjFhYzg0NDY1MzJhODhjZDJlN2RiNDFmOTg2N2QzMDdhOTBmMTg2OTNkM2QifQ"
         },
         {
@@ -233,8 +237,8 @@
       "statement": "Host launches redirect `MISE_DATA_DIR` and `MISE_CONFIG_DIR` into the stack's tools tree but deliberately do NOT redirect `MISE_STATE_DIR`, which holds mise's trust store: redirecting it gave every stack an empty trust store, so every user-trusted project mise.toml read as untrusted (reported as a misleading `error parsing config file`), and each new stack re-broke configs the user had just repaired. The state dir is stack-independent, so sharing it costs no isolation.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/hostrun.py#L50-L95",
-          "version": "repo-lines-v1:sha256:e68b50a7c8c9bb86b0c6afed0d793a15ba9568b0a5ccf6b0c1fd1bc182c42f6e:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyYzQ4OTliYzU2YzBjMzNhN2IxYTQ4ODhmYTE0YTg0YmI3ZDI3MzA1ZDcxMDRmYzBkNGZhNzNjMTU5YzE5NGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI0YTdhNWMyMTVlYzRlNWUwYTdiOWViZTg4NTkyZTAyZjg4NzhjNzVmYTcxMDk0MzFmM2QzNzQyODA2ZWVlYmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyZjRlZWVmNDZlZjk2YzI3OTc5ZWEwMGJjYzQzNjBmMzEzZTYwYTk5YTA5OTg4M2IyN2UyZDk4ZTI3OWIyYzQifQ"
+          "resource": "repo://src/harnessed/hostrun.py#L243-L276",
+          "version": "repo-lines-v1:sha256:5dae09f1b4c907d0a46354857c1f8e4397dfbf2b70833031f6bd923983efc0d1:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3Zjc0MmNlOTc0ZDJmNmJkY2I3ZjI2OWRiNmNhN2I2ZDY4M2MxNjhjY2FkNmE2M2Q5YzRkMWVlODJmMTFkZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRmNGMyNmRlYTYwZTU2M2YyNjc3M2U4NzRiNzAzYWViMDk4YWJlNzhlY2E4N2UxMjYyYTU3MWVkZTJjMTY2OWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyZjRlZWVmNDZlZjk2YzI3OTc5ZWEwMGJjYzQzNjBmMzEzZTYwYTk5YTA5OTg4M2IyN2UyZDk4ZTI3OWIyYzQifQ"
         }
       ]
     },
@@ -243,12 +247,12 @@
       "statement": "harnessed never INVENTS mise trust: `_apply_host_mise_env` only CARRIES `trusted_config_paths` read from the user's own config (or inherited env), because naming paths in MISE_TRUSTED_CONFIG_PATHS itself would grant trust the user never gave and a mise config can carry `_.source` — i.e. code execution. Only a MISE_STATE_DIR/MISE_CONFIG_DIR value matching harnessed's own path shape is removable, recognized with both sides RESOLVED (a lexical compare let an inherited stack config dir launder that stack's trusted_config_paths — found by adversarial review), and empty is rejected before the resolve because `Path(\"\").resolve()` is the CWD.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/hostrun.py#L114-L141",
-          "version": "repo-lines-v1:sha256:64baa506f0af9ffbe5bb10e5af92052d1a2afd172770a6d9263e4342dbef1b59:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwODU1NzZhYjNlOWQ3YjliNjkzYmFkYzE5OTdlZmIxMDkzN2U2MGFlOTBmZDU5ZGU1MDYwNjg5NjRmYmQ4OGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2ZjYzNjFmMTg4ZDljMGE4M2RkODQzMmVkOWFlZGJiYTdmMDNiMWQyMGVhYzU1ODQ1YjI2MWIxNTI4MGE4NWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzNDBlY2Y2ZjlkZTBjOGIzZWNkMDljMmExZjJiYTg4ZTg0OWEwYTQwMjI5YWQ2ZDI0N2RjYmVjNGY2MWNlZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJjOGNlNTI0YjBkZDQ1ZDIzZTVlOTE0M2ZlMmJhMTEyNmEwZmQ0YmE5MWRiYmIxNjBlMTM0YTlhZTJhNzIxYjMifQ"
+          "resource": "repo://src/harnessed/hostrun.py#L295-L326",
+          "version": "repo-lines-v1:sha256:23afd979257cf31d53622aa5afec7abd0b7fc43781f7f2e012fd10700d7e2b2d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwODU1NzZhYjNlOWQ3YjliNjkzYmFkYzE5OTdlZmIxMDkzN2U2MGFlOTBmZDU5ZGU1MDYwNjg5NjRmYmQ4OGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhYWEwNWFiMzc4MGNkYzBkN2E4MmRhNDUyZjA1OGQ4MzQ5MTg2NWNlNzE3YjIzZmU2NWNlYmQyYWYzNDQzZTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzNDBlY2Y2ZjlkZTBjOGIzZWNkMDljMmExZjJiYTg4ZTg0OWEwYTQwMjI5YWQ2ZDI0N2RjYmVjNGY2MWNlZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJjOGNlNTI0YjBkZDQ1ZDIzZTVlOTE0M2ZlMmJhMTEyNmEwZmQ0YmE5MWRiYmIxNjBlMTM0YTlhZTJhNzIxYjMifQ"
         },
         {
-          "resource": "repo://src/harnessed/hostrun.py#L79-L95",
-          "version": "repo-lines-v1:sha256:8742ba9f7ae7a27be800802c1c4a34557082e218948b60bcbb5bf0a62a122459:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2NGQ4MjE3NDQyNDMwMmRlZTI4MWFjZDZiNjQ5YTM5NDZkOWEzODBkYjYzMzQxZjQ4NTZiMjI1Y2JlMzk2OTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc5MzI1ZDBhYmU0ZTMzMmVhODMxMmM2ZjA0ZGNkYzk0OTBkZjIwZWZhM2VmNGIwYjZmOGVmOTI2MTE3MWNkMTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyZjRlZWVmNDZlZjk2YzI3OTc5ZWEwMGJjYzQzNjBmMzEzZTYwYTk5YTA5OTg4M2IyN2UyZDk4ZTI3OWIyYzQifQ"
+          "resource": "repo://src/harnessed/hostrun.py#L408-L453",
+          "version": "repo-lines-v1:sha256:93b7954c81b6b692df9fa38b27dcf51a36e7c18dfaeab8c68461fc024caab8e2:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlYzRlZDM4MjcxNDlkNzg1M2E0MTNiNmYyZTA1M2UyOTdhNTM3ZmNmZDI1NTk3ZTViMjA4ZjhlMzM1Nzk0NjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5MWZlNzJhMDgwZjI3YmI2ZDJkOWU0MzAyNmVkZDUxNGI2Yjk4YTUwZWViZTcwNjAyMTQyOTUwOWJiZTBkM2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhODJlYmU5ZWQ0MDdjM2E2YmE0YjAwMzQyOTJiYWE1MmMxMWNlNWFlMjg2MTA3NDAyZGU0NzkyZWVlY2FjZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzMDQxZmIwZDIyNjdjMDkwOGY2NDY1ZjE0ODVkYzFkZWQ0ODg4Zjk5ZGU1NWYwMWE3ZGUyZGE5NGJlMTlmZjAifQ"
         }
       ]
     },
@@ -257,16 +261,16 @@
       "statement": "toollock exists because of four mise facts measured against mise 2026.8.3, each of which would otherwise have produced a mechanism that verifies nothing: (1) mise ENFORCES the lockfile (wrong checksum fails install with exit 1); (2) the file must be named `mise.lock` — config.lock and config.toml.lock are silently ignored with install exiting 0 on a corrupted checksum, which is why MISE_CONFIG_DIR is set explicitly at install time; (3) `mise lock` refuses a global config (\"No tools configured to lock\"), so the merge cannot be delegated to a subprocess; (4) each tool's tables are CONTIGUOUS, making verbatim block extraction safe for unknown future fields.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/hostrun.py#L250-L317",
-          "version": "repo-lines-v1:sha256:ba8fbc54c7b4ee4e3283792321303344394cc94832e01ee385c8ddd8eed49a73:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjZmVjMGNmN2M1YzZkNjI1ODFhMzcwMThjZWVkMzdiMmM4YjYzYjI2YjM5NGVmNzM3MDJiMWZlMDUyYjM1NDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzNmI5MjVkMTY4MTlkMWZhZDMzNTlmMTQ2YTY4MzdkZjJiMjRmMWVlNzg2ODUxNjk3ZjgzMjRiOTA3OWM3OWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzY2JmMTgwYWI3M2Q2OTU0M2E5MDg4YTM5NTRlMWU1YWUwNGIyYTYzYmY1MGIyYjcyYWYwMWQ3ZGRiNjM3ZDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhlNTAwN2ZkNTExOTk4NzA4MDVhZDViNDYwZDcxMmU2MTcxYzI2NDQxOWE2N2YxY2IxOWIzN2E4MTkyZmQ4YjMifQ"
+          "resource": "repo://src/harnessed/hostrun.py#L456-L548",
+          "version": "repo-lines-v1:sha256:38c708303193d05c454e0db1980e4da5b83ceb71db9e3dd69d3fbe05248e72be:eyJzZWxlY3RlZExpbmVDb3VudCI6OTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjZmVjMGNmN2M1YzZkNjI1ODFhMzcwMThjZWVkMzdiMmM4YjYzYjI2YjM5NGVmNzM3MDJiMWZlMDUyYjM1NDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxNGEyMjcyOTAzY2Y2ZTgyOWI5MmQ3ODNiY2Q4NDk2OTFkNzcxNjI3NTFiMGFkYmM5MzQ2MDgwZjJkZDY1NzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzY2JmMTgwYWI3M2Q2OTU0M2E5MDg4YTM5NTRlMWU1YWUwNGIyYTYzYmY1MGIyYjcyYWYwMWQ3ZGRiNjM3ZDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhlNTAwN2ZkNTExOTk4NzA4MDVhZDViNDYwZDcxMmU2MTcxYzI2NDQxOWE2N2YxY2IxOWIzN2E4MTkyZmQ4YjMifQ"
         },
         {
           "resource": "repo://src/harnessed/toollock.py#L1-L23",
           "version": "repo-lines-v1:sha256:d76541f1f4d7be5b72fe05f8e3cfd40767c6e136a072dc71b9d38bd65175f18a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjZWRiNDc2ZDNiOTRlYjMwMzhhZjU0ZDA0OGNiYzg4YWMyM2M4ZTMzMzdhNDA1M2RmNzg0ZTM0ZTNiMDdhMjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1YjZlODcwNmI0MzA0N2YyYTZkYjY3ZjEzMjYzODU5NTYwNGU2N2YzNjk2Njg3NmNlMDE1OGYwMDUzZTZiZDEifQ"
         },
         {
-          "resource": "repo://src/harnessed/volumes.py#L269-L307",
-          "version": "repo-lines-v1:sha256:1e494786e15d9884bd4335a7058ef714affcb0c1ade9d5590c29df0938874990:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhYTRiYmIzYmJjY2M4NmYzMDg3OGRiNDRkMzE5ZWI4MDNiMGVmMTU0ZmYwNTU2MmM3ZTA3MTQ4YjJhYjdkOGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxMjZlNjMwZWI4Mzg4MjgwMjcyMTlkY2Q4MDczYTc1MTM1OGNlZjczOGExMDA4Mjc0YzVjYTIxYWJhNGNkODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ1YjEwMGY2MTM2NDBkMTljMWQ3YjY3YWEyYTFhY2YwNmIxMWI4OWY0NmY3Mjg1N2ZlNGRiM2VmOGM0ODVhNTgifQ"
+          "resource": "repo://src/harnessed/volumes.py#L356-L393",
+          "version": "repo-lines-v1:sha256:de6ba552614ff180064dca3114a0a434a1f3c0e6b831bd31928f7baca9e69dbe:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhYTRiYmIzYmJjY2M4NmYzMDg3OGRiNDRkMzE5ZWI4MDNiMGVmMTU0ZmYwNTU2MmM3ZTA3MTQ4YjJhYjdkOGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzYzQ3ZTRkYmQwOGJkYjFlNmUxMzUxOWYzYWYzMWJlYzQ5YmQ1MzA1OWExNThiNGQwZDk2ZmQ2YzlhMTI5ODYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxMjZlNjMwZWI4Mzg4MjgwMjcyMTlkY2Q4MDczYTc1MTM1OGNlZjczOGExMDA4Mjc0YzVjYTIxYWJhNGNkODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4MGJiMDJjMjQ5ZWI5ZGExMmJlNWM4Zjc0NjE4YmIwZDllZDEyNjEzNGEyYjhmY2MxMTVhMTJlMTMwZTk5MTEifQ"
         }
       ]
     },
@@ -315,11 +319,11 @@
       "statement": "Podman deadlines are distinct and sized by what the command does — query 30s, state-changing write 120s, bounded exec 120s, in-loop readiness probe 10s — and deliberately generous: they mark where podman is stuck, not slow. Collapsing them into one constant breaks working teardowns (`rm -f` racing a shutting-down container is legitimately slower than an inspect); ctrquery.py and svcstate.py each keep their own copy of the query timeout to avoid a launcher import cycle, and both duplicates must be kept in step.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/ctrquery.py#L17-L19",
+          "resource": "repo://src/harnessed/ctrquery.py#L16-L18",
           "version": "repo-lines-v1:sha256:89f534a30b834d83c92843471c0bd87c95edd69b2d3faf8395d7876bca1ab7c4:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjIyNTkzOTE3MjFkNWRjMjUzYTA5ODVlOGVmNzVhNDIzZTM4Mjg5YmFiYjQ3MmEzNGY1MTNmNDM2ZTI5MjRjZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWEyN2EzMGI4NTViZDA4ODIwZjg0ODFlMmEwN2Y0ODNkODljOWRhYTljOWM3NGFiNzdmZDk4ZjgxZTk5ZTQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGNlYjUzZDM2N2EzN2I0ODgzODY3ODJjMjUwOGRhNzc1ZjI2MmNhODkyZWNlMWVjZDBlYzljZjMyMWQ1ZWRjMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjFiYTIwMThhODQ2OTEzOGE5NDVlM2FmNWNlMWQ5NmFlY2Q4ZDA4NDRjMTUzNzEyY2E1OTg0NTNlYzg0ZWE2ZSJ9"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L297-L311",
+          "resource": "repo://src/harnessed/launcher.py#L300-L314",
           "version": "repo-lines-v1:sha256:a3b57a6c769bc4084d2464c60472424ff5efcea4d59b07f6984edf611fe92ae9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2NzdmZmY3NmQzOWNhNWU1NDM2ODI5NGRhY2NmNTg3Y2RkOTVjNmFlZjA5OTE5ZDQ5ZGJhYWY3NGViNjI0YjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2ZmRiM2Y0NjY3Y2Y5MTIyZWViMTIwYTE1ZGRkMzkzNjljZjU1ZmYzODllOTYyNjM0ZWNkOTk3ZWNhYzA4ZGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIwYjE0NDk0MzY5MzRjMzU3Y2MyYzkyZjQ0YjFiZDQwZjk4YjU4NjdhMTZlNDhlYzAwZmIyN2QwOWFiMGI3NDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk5MGFiMjMyMWQ2YzBkYTE4MTEzMDhkNjYwM2ZiNGY0ZjUzY2NkNWYyMmJlNTBlNDRmNDM4ZDlkMWZmNDdiYzAifQ"
         },
         {
@@ -343,8 +347,8 @@
       "statement": "Timeout polarity is load-bearing in semantic branches: a `setup.condition` that timed out must NOT fall into the suppress branch (non-zero = already satisfied = say nothing) — `_collect_setup_notices` checks `_TIMEOUT_RC` explicitly and shows the notice on a hang, because a redundant notice is recoverable but a missing one silently drops a setup step the user still has to perform.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L2094-L2125",
-          "version": "repo-lines-v1:sha256:5fb586786596d824ee8e2c3327e64706ac4b5684f398742919a0dbef2a859b93:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxYTNhN2Y4ZTcyYjg4MzY0NDNjNDc3NTkxODZlM2NjMWM1OGEyNzMwNTA3ODZhNmFhNzhiMzkxOWRhYjgzY2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkY2E1ZmY5MDNkYWE1Y2E5ZmUxNTNmZjdiZTNmMTJjODE5MmMwOGQ1MTU4ODIwMjc3YmI0OGRkMjYxNjZmODIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZlMWIyYWU3ODQ2MjUyMWIwNmQwM2U4NmEzOTZkZGViZDA2NzY1MjgzMjY0ZTZmNmIwYjkwNDZmOTA4NDJkNzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZhN2JjYTZhYTdiODEyOTllYWI3ZGM0OTA4NTFjMjJkMmZiNWUyMmUzZjcyZWUwY2RjZDcyNjY5NzRlN2VlMGQifQ"
+          "resource": "repo://src/harnessed/launcher.py#L2182-L2241",
+          "version": "repo-lines-v1:sha256:c5b32c1c02bab3026637cd65478e78cc01fb6b6273a35ffafe28a4bc5854ae06:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwMDVjNDcyNDAzMTlkNjBkNTM2ODg3MzMxZTBmNmU0NzgxOTdiZjMyNGUxNzI1OGZjNGUzYjI1NzQ4MzNmYjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0NTI2YWZkNzhlMmJiZGM0N2QwODZmNjliOTdhZjYwZTQ5MjAzZDNjNDlhMTAwMDNmNTQxNzEyODlmOTYxZTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBmZGZmYTIxMjNmY2UxYzRjMTY3NWY4MjM2ODhkYmRmYjdjNGEwYTQxOGRiZWE0Mzg0MzIwNzJiMmI0NTMwMTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMyNzM3NGUwMDIyMWM4OWJlOTQ0MWViNWU3MjI4MTljODFiOWVhNGU4ZWMyOGQxNjVkYTZlMmM0ODJhY2YzMDkifQ"
         }
       ]
     },
@@ -423,7 +427,7 @@
           "version": "repo-lines-v1:sha256:8804dc7d64a7c7c82bc920af007258c8803fab92e4002b1b5492ee4eb115cbe3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2Njk5NmRhNGM1ZGU3ZjdjNDc2NDU2NjA2NGIwMTkxZmM0ZTBlNTUzN2RjYWNiZmQ3NGRhZjhmZGE2MDE0Y2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxMjAyODU2NDE3MGFiZjk0YTFmYzkxZDIyYzc5MGNmZDBhZGMxZmYzNWNmZTk4ZDFlNzAxNTI0ZWVlZDg5NDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU1ODU4MmRjYzQwNzY0ZGI0YTdlODE2MzM1OGQ0NTVkYzYxNDk0NWIzM2U3OGNkNzMxOGY1Zjc1NWQ4ZTkyMTYifQ"
         },
         {
-          "resource": "repo://src/harnessed/paths.py#L205-L223",
+          "resource": "repo://src/harnessed/paths.py#L398-L416",
           "version": "repo-lines-v1:sha256:eec03cdd379568ca0d82aa51ba928a7c6a57b63873944a177f9a1bc8c04ad0bc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyNjJlYTEzMTM1NzY4ZjhmNzRiMjkzOGFiODQ5MDVlMzVlN2ViZjAwNGQxNDAwZTk3OWVkYmU2OTYxNWU3YjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwNDY4YTUyNGQ5OGE4Yzc0ZDg1ODJmYmYxNmFmMDU0YzU4NjkyZGEzMDNmMzcwZjk3YjNmNjVlZTYwOTIxOGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2ZTdhNzcyMjU4NzUyYjY0YTRlN2I5Mjk1MzkzMzFmZDU2NWFmZTVhNDUxNjlkMDllYzIyN2I1YmI5NWYyMjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY5N2U2MTQwMjhjYmE2OTc4YzFhZjRkMmI1OWRiMWY5OWRkNmE4NDE1YjU3NTQ5ZGI1ZWZiNTRkMTI2ZDQxMTUifQ"
         }
       ]
@@ -443,12 +447,12 @@
       "statement": "`volumes._volume_read` distinguishes absent (`None`) from empty (`\"\"`): a failed podman run returns None, because returning \"\" for a failed read made the settings merge treat an unreadable volume as malformed JSON and keep the floor — looking identical to the bd harnessed-8px.19 regression (\"ccstatusline statusLine gone on every restart\") the merge exists to prevent. The settings merge itself (profile merged OVER the volume's installer-written settings.json) exists because composition runs every launch while installs run only on fingerprint change — a plain copy dropped install-written keys on every relaunch.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/volumes.py#L218-L234",
-          "version": "repo-lines-v1:sha256:c04047b58980b65da5749c79b3330c8a8bbfedefb8baec44814eb5868fbd3ec8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmOTdlYmZiYzM1M2MyMTE0OWNlNjgyZDJjNjQyZTI5YzJlOTU3ODczZDk1NTZkNTM0NTU0MTNmODZlODY3YjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjZTU3Mzk2NzkyNWQyZGY1NWU3YmY3M2ZiODI5MDc5YzM1NTQ0MDk4OWNlOGRiMjlmMzZjNDlmMDUxOTU5OTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImViZjZlOWFkMGE3MTdlMzAwMDU2NTgyOGQyMTBlMzhhODJjMjkzMzY4ZTNkNzcyNzE3MGViYmQ4ZmM1ZTk2ZWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkODBhYWMzMGNjMjM4MWQ1NzljOTcwYjEzZWU5NTljMWFhNDMxOGRhNDk4ZTJkMzYzZjU2YTIwNzViNzI3M2YifQ"
+          "resource": "repo://src/harnessed/volumes.py#L300-L316",
+          "version": "repo-lines-v1:sha256:1f02d94190c420391a68c2ba4c163654090246e6887b0baf956cce51888b3138:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmOTdlYmZiYzM1M2MyMTE0OWNlNjgyZDJjNjQyZTI5YzJlOTU3ODczZDk1NTZkNTM0NTU0MTNmODZlODY3YjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjZTU3Mzk2NzkyNWQyZGY1NWU3YmY3M2ZiODI5MDc5YzM1NTQ0MDk4OWNlOGRiMjlmMzZjNDlmMDUxOTU5OTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImViZjZlOWFkMGE3MTdlMzAwMDU2NTgyOGQyMTBlMzhhODJjMjkzMzY4ZTNkNzcyNzE3MGViYmQ4ZmM1ZTk2ZWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkODBhYWMzMGNjMjM4MWQ1NzljOTcwYjEzZWU5NTljMWFhNDMxOGRhNDk4ZTJkMzYzZjU2YTIwNzViNzI3M2YifQ"
         },
         {
           "resource": "repo://src/harnessed/volumes.py#L45-L84",
-          "version": "repo-lines-v1:sha256:82645f6146d2e9faa072d1ac89eca4c560e6fc20d7ebeb91d4854fab9f2331ac:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1N2E5YjQ2ZDJjZDU4NmM3ODUzYmQxNzExYWFiYTU0NTExZjBiYWMzMWQxYTE1YWMzZmY5M2YzOGUxM2NlNjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjN2VkNDFlYWQ4ZjRiNmM4NTJhNzI3OGU5NjU4N2IwMGZhZjliOGZiZWE0ZTJmZjE3ZWRjOTFlODVjZmVmZjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwOGNhMGI0YjEyZGE3YmZlZTNiN2VhNjYxYzIxZTM4NGI1ZTMxOGI5Yzc4MDgyN2I1NGFiMzY4OWVlYTQyMmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3M2QxODc0ODQ4MDZiNmExOGJjMzYwNTQzYjllOGU4MDQxOTViY2UzMmUxNmQ1ZjEwYWYzMTY2MGFlOGIzYTAifQ"
+          "version": "repo-lines-v1:sha256:82645f6146d2e9faa072d1ac89eca4c560e6fc20d7ebeb91d4854fab9f2331ac:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1N2E5YjQ2ZDJjZDU4NmM3ODUzYmQxNzExYWFiYTU0NTExZjBiYWMzMWQxYTE1YWMzZmY5M2YzOGUxM2NlNjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjN2VkNDFlYWQ4ZjRiNmM4NTJhNzI3OGU5NjU4N2IwMGZhZjliOGZiZWE0ZTJmZjE3ZWRjOTFlODVjZmVmZjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwOGNhMGI0YjEyZGE3YmZlZTNiN2VhNjYxYzIxZTM4NGI1ZTMxOGI5Yzc4MDgyN2I1NGFiMzY4OWVlYTQyMmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxZWNhYWZiM2JiMDY3NDE1OGRiODY0MzZjOGI3MTYxMWU1MTkzY2FkZjhiNTllYmM5Zjg3MWRiNjZjOGQ4NDMifQ"
         }
       ]
     },
@@ -457,12 +461,12 @@
       "statement": "Host installs pin each harness's own config-dir variables to the stack home (`_HARNESS_CONFIG_DIR_ENV`, e.g. CLAUDE_CONFIG_DIR, omp's PI_CODING_AGENT_DIR) rather than unsetting them: an inherited CLAUDE_CONFIG_DIR made gsd-core's install write 69 skills into an UNRELATED stack's home (bd harnessed-8px.26), and unsetting would send such an installer to $HOME/.claude — the user's real config dir, a worse landing spot. Applied LAST so the inherited value cannot survive into the script.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/hostrun.py#L320-L364",
-          "version": "repo-lines-v1:sha256:81f44e79cb1fde17a4eccaff0323601b1a0306b657538f87b5d3c435564050b7:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmNDMxMGExMGFjOWJlM2Q5ZTM5OGI0N2Y4NTY2NjkxYjI0MjM3MGY3NTU5ZmQ5YzliYTZlZThkMzE2YTNjNjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4ODczMGFmMzQ5ZTY2NmVhNWFiYzlhZThkOGIzZGM4ZDFjZmZiYzM1OWM0NjZkNzdhYTIwM2ExMGFiOGI2Y2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUzZTU2YjRhMjJhZDRlN2VkZjk0YjFmNWMwZjYxMTAxOGU0YTZkYzA4Zjg0Mzg2ZjY4YmFmNzdkYzZmMzVhYTYifQ"
+          "resource": "repo://src/harnessed/hostrun.py#L551-L595",
+          "version": "repo-lines-v1:sha256:81f44e79cb1fde17a4eccaff0323601b1a0306b657538f87b5d3c435564050b7:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmNDMxMGExMGFjOWJlM2Q5ZTM5OGI0N2Y4NTY2NjkxYjI0MjM3MGY3NTU5ZmQ5YzliYTZlZThkMzE2YTNjNjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFhMDNjODNmZGE4YTFhZDJkOGNiN2Q4YjY4OWQ2NDgzZTlmNGRlZjQ3Mjc4ZGNjZWY3NWVmODk1MzRkOTliNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUzZTU2YjRhMjJhZDRlN2VkZjk0YjFmNWMwZjYxMTAxOGU0YTZkYzA4Zjg0Mzg2ZjY4YmFmNzdkYzZmMzVhYTYifQ"
         },
         {
-          "resource": "repo://src/harnessed/hostrun.py#L366-L439",
-          "version": "repo-lines-v1:sha256:f76f80c9eba0ab74fc1920cb633d9f38a5ec8f5ba9d78912fabf6ccce0f424bc:eyJzZWxlY3RlZExpbmVDb3VudCI6NzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlODdjNzhlMGU4ZWJiZTZiZTc5MzE2MWQzNzc1NDc2NjA0MzRjMTIyYmNjNWRiNDU5NWNiNzE3MWYwNTZlOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVkYjBkM2JjODNkNTUyNzFiNGVlNTc1ZDlkZjU2OTdkYmU2NjljOGRlN2U1ZDExNzVhYjljMTMzZmFjNGM0OGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMyNmJhNzY2ZDI5NTY5M2FiZWU3ODEyYmJlMWQwNjMxOGQ0ODFjMjMzMGYzOGQxYjdjMjczMjU0ODY3ZDBmNWUifQ"
+          "resource": "repo://src/harnessed/hostrun.py#L648-L664",
+          "version": "repo-lines-v1:sha256:fef03330392c43ce7ccd242dbcd1138ef9b16956c54b4b227c6fa314829c32ab:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlNjRlNGE0YTFiOTMzNDQ4OGU3ZWQ1Mjk4YzQ5OTlhZjYxNWRhNzJlMmY2MmY3ODNjOWQ4NzU3YjNiNjVmZjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhNzhkMTMzM2U1MjI1ZTNhZjU4YTgzYzljMTNmNTQ2NWJiMGZhM2NkZjc1MjBlZmI1YzMwN2MwODBlYmNlNTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyODA0M2ZiY2IwOWFkOTNiNmVkMjkyMGE4NTU1MjNlMzhhNDU0ZmNmOTI2MGE1MTExN2NiNzZlN2FkZGVjOTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyNjYyOTlkYjAyNjNiMmU4ODZiOGFkNjY0Y2ZjNmQ3NDg1ZmQ0NjhmMTBlNzhkNjg5ZjljODUyYzc3ZjZmODYifQ"
         }
       ]
     },
@@ -475,8 +479,8 @@
           "version": "repo-lines-v1:sha256:f0d5883b13e066f14df9698d5a45d06f719651b63120279e87fee82ea24bf78b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2MDBhN2VmMjhhNmE5MTg4YmQ3ZDAxZWQ0ZjM1MTRiYjZmN2U2YzU4ZDczN2U1YjY2YzJlOTY0NGRmODFjNjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1YzBhMDM0ODcwMmM4MDdlOTg4YzNjZjViYTc3NDdiNTExMjg3NTViZDFkMjc5MThlNDZkMjg5N2VhYTQ5NjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBmZjYxYzUxYTM1MzNkYWMxZjU4ZWQ0OTk5NWExMzBmZGM4YTdmOWMzYzMwZjMwMGNjOTAxZjViYzQ4MTE3NzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlY2U3ZjEzYjdiNmEzNTE2ZmNkNGI1NDMyZDg1OGU1ZjVhMjUyMDRlNjY3OGQ5MzEwZjA1MzNlOTU0NzlmNDUifQ"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L3093-L3104",
-          "version": "repo-lines-v1:sha256:e7e629628f462af2dc25dc21ffbff6d8c24fbd29e816ae9719a597bbbf438699:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxYjZkNGExM2M0MjljNDQ5NDNkNWYzMGUyY2ZjYzlkZDZkNjk0OWQ3Njg3NDM1YWZjNDdiZTk2NWQ5YWY5YTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5ZWZkOWUxNzJlNTE2NDhjYzY1N2RiZWEwNDYxM2ZiNzc5M2Q2ZjZjYmViOTIyZjE2YWVkYTZmZDRhMTlmNTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg1ZDIwYzJhYzg3MjEzMmIwZWQyNzZhMjZiMjBiZWFjMGNkNWE0MDZhNTExOWU0NzE2Y2FiNjg3N2JhNzM3ZGUifQ"
+          "resource": "repo://src/harnessed/launcher.py#L3290-L3305",
+          "version": "repo-lines-v1:sha256:2dc46de934baa721e57236abc69a2d012251279d06b58ebdb6894f48904184c1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxNDVhZDliYTMxNzY2MWFiMzRjYmJmZmM2YWMyMzMzOGNhYTNkMjJmNTAxM2UxMWE0YTM5NWY4NjQxNWVlOWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjZjJkMzg2MWQ3OTA0NjFjNTEwN2Q0OGE4NTQ4YTdlMDUwY2YzNjU5MDAzMGVlN2M0OGY5N2IyNDMzYWVlNmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU5Nzc5NDlmMjUxMjY5ZTM1ODMxNTZmNmVhMDY4ZjJlZGE3MGNhMWViODA5MTFhMTQ1MDM1MTZlMGJiNTJiY2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxYTQ2NzZkMjc4ZDJlNTc2YjE2M2Q0ODhjYjJjODllNjAzZWExMjg2ZWJkY2I1NzRlNzYyMzZlMGM5ZDJmZTkifQ"
         }
       ]
     },
@@ -529,11 +533,11 @@
       "statement": "The 169.254.1.1 door never appears in `pod create` argv without a live broker: the launcher starts the broker BEFORE `pod create` and passes `broker=self.broker is not None`, and the test's converse asserts no door for any server set without it — an unconditional door would hand every stack a route to the host's loopback when nothing is listening (a silent widening of the pod's reach). If `pod create` then fails, the just-started broker is killed before the exception propagates, since a broker outliving its launch holds live secrets nothing will reap by name. An explicit `HARNESSED_NET` wins over both the door and the callback but prints a warning naming the address and no secret or value; a runtime that does not use pods starts no broker at all, because the door is a pasta option only `pod create` can carry.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L3381-L3389",
+          "resource": "repo://src/harnessed/launcher.py#L3555-L3563",
           "version": "repo-lines-v1:sha256:0e49924d3be74bca4e70171c68f473cf4f7411d19e0471be9a09e954c4f3ee37:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzVjNjU1ZmU1NGZjZDU5MzVhMGY5ZGEyOGY5NDEzOTJhMTMyYTkwMTc0MDkzMjA1YWMwZTRkNmIyMjAzYjMyNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTUwMzJlOTY0ZDA5MzIzNTFlNWQxODUyNjkyODFiMTcxYTNhMDliMDhiMjg2ZTY2MWVhNDcwMzIzYzgyZWI0ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmFjOGZiM2RhZTFlOGY0Y2EwMTVjNzQzZjQ1ZjJiOWE0YWRiN2E3MzI4MTU3ODdkODBmZGRkMzNmYmQxODNiZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTk3NGJmYTI2ODNkOGExNmNhZGQ3YzhmN2VkN2RjYWE0YzI5N2MxNzA3MmM4M2U0OTRhM2FmMWMxN2NhYTkzOSJ9"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L3411-L3424",
+          "resource": "repo://src/harnessed/launcher.py#L3585-L3598",
           "version": "repo-lines-v1:sha256:b908e186da2a361185648fa302e969d435b8505260ee6f56d8c0cdcc61416f74:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkMzk1NjYxNmQyOTkwOTlhN2QzNzZhZTY5ZDBlZTVhMDgzNWRmNWNhNWQyYzAxYmNlYWEyN2VhN2MyNjI3YzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxNjFjZTliMTJjOGMxZGQwOWU3MTcwMWUzNzU3Mjk3OGU1MWU3YTQ3ZDA4ZDAwYzEwM2JkODE2NmU3NTFjNzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4YzZlZWRjOWQzOGFkOTg5YTY5ODk1NmY0NGRkNzhlMjg4MDMxMDI2YTA3OWY0MTQ2MzQ2YjNlMDhiMWU2MTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5ZTlmZmZlYzhlMGJkOWFkZTg4ODkwMmRlZmRmNzFlZjQwM2NhOWYwYWZhOTcxOTk2OWQzOWViMmQ5ZjA5N2YifQ"
         },
         {
@@ -559,7 +563,7 @@
           "version": "repo-lines-v1:sha256:ba4c1a2b20de7095120eaf7fa0e0dd0c743a69059195f75b7e1d6724c72fdcab:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTllMjlhZGQ2ZjkwZWE2ODQ0NjVmZjQ0ZDJhMGY3MGIyZmNhYTEyNzQ5MmQyYWU2YTc4ZmMzNGVlNjA2ODc2OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzFhM2EzNDk0ZDNhYTQxMmVkZTMyMzMxNDc5YzhkOTMwNzE4Mjc5NjQ3NDUxNWQxMDgwMWFlNDNhZGFjMzFjOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGIyZTdlYzQ2YjY5Y2EyYTM1NGRiNjA5ZDI1NDdkODQxNjMyYTY3ZDI0ZWViYjBhMDIyZmNjNmZhNWUzNDVlNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmNlZjE3MjFhN2VkNWI2NTU3ODBlMTJjZTA5MGI1NzAzMjQ2MDk1MTAzYTljODBjYmEyMmI5YzUyNjIyMDZmNSJ9"
         },
         {
-          "resource": "repo://src/harnessed/paths.py#L85-L90",
+          "resource": "repo://src/harnessed/paths.py#L278-L283",
           "version": "repo-lines-v1:sha256:22c6ac7a748fef100ccc720018dd561b396e4b9f55ead308e2999d76a6ad70d2:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODBhNGFjNTMzNjkxZjhlYTBkM2RmN2FhMjMxZTE0ZjVjZDM2MmNmYTM3NTIzMmM3MGY0MjM4NTlkZjljM2UwNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDQwMWFjNjk1NzRiMzgyOWRmZmY2ZTUwMjRlNzI0YjczOGUxNTgxZGE4YmRhMDBhMjNkYWNkZGM4M2MzNmYwOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmEyNjYyNTdjNjkyYjI2MjA5Yjc1ZTFhOGViZGY5NDQyMDY0OGYyMjE0MGIzOGM3NDQ3YWM5M2Q1YzM1MWJkZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjRkNzM1ZjgyNWIzZjE3NzdkNWE4ZWVlNzk1MTI4OGI5OGVmMmZhODMyZTNjZDdkMmQ5Njg1ZGI3NGVjYzBlOCJ9"
         }
       ]
@@ -573,7 +577,7 @@
           "version": "repo-lines-v1:sha256:1c49972dd9cdad29d150731d66ecba7f62edd6e0b07232632a22576ce763dae2:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3NTU3MWUyOTkxMGE4OTg3YThjMzI4YTRlOThmNjY5MmY4MDIzNGE4MDJiMTg2YzA1MGU2OWY3YTJmZmUxMzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViODBiN2NjMDlmZTgwNzAwYzNkZTdhMzBjZGE3NzRmM2RlMDAyMjRiNWMzZTU0OTIwNmE4NDIxMjAxODJmODYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmMTE2YzdhYWUxM2JiODkxMDU1ODc3ZGQzZWFlZDcwOWY3YWVkNzYzMDFmNTQ0M2ZiODI0ZWM1OWE2YTYxYTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJhM2E0M2ZmOTRmZmNhMGQyMmNiMWRkM2IxZjdjMmIzYmU3ZjZkYTgzZTQ3ODhhZDJhMzQ2OTU4MWMyZWNkZjAifQ"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L4154-L4173",
+          "resource": "repo://src/harnessed/launcher.py#L4384-L4403",
           "version": "repo-lines-v1:sha256:fffa3eb6e8b4f953df666c47a60431434fee95e5e880f1344bff43ba0611a8b8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliZDdkYWZjODJhZTlhOTUwODFlODczMGFiZTQ4ZTg2NGQzZWIyMzU5MjU2MmY5NmU0N2IwN2QzOGQ2NDU5ZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllZTNmNmIxZjkwNzkxYjc4YTEyNmUwYmNlZmQ5MDcyMjg2OGNjMmM5OGUxYWQyZGEzYjNiZmE1N2MxZDI2YTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzNDQ1ZGMzMDYyOTNmMzAxMWU0YmRkN2UxNzIyN2ExMzI3NjRkMzkwMWYwN2ZjNGNiN2E2N2QyMTMzNjJhNTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2M2E4OGU1NmZiZGQwYjRmZjIwOGIxYzZhM2JmZjc1MjRhYjYyODE4Zjk3Nzk0MDQ0NzMwYjlmZmFjNGJhZTMifQ"
         }
       ]
@@ -625,8 +629,8 @@
           "version": "repo-lines-v1:sha256:f7bc3afe30fb1e2fbe4413c74c0a46363d2cbc98d0241f86cf960ff188b0e72e:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjZDk0NTBkMDMzYjIzMWYxNmZhOGRiYjA4Mjk1NDRjNDJhZGQzMjQwZDZhZTZjOGMyMDBlYWUwNDgzOTg3MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmNGE0ZGFmOTMyNzMwNDYyOTFlZDc1NDQyOTVkODQ4NmFhYWRlNzZiMmM4MzMyZTA2MTMyNGY5N2M1NmFjZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L4199-L4210",
-          "version": "repo-lines-v1:sha256:775de28a09ebe092416d22b6c0a36288ee910b809c36d3bb274ee4939e97c359:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiNTMyM2VkOTU5ODMzYzZjMGVlZGViNDMzY2EzMmMyMjJkNDg4YzUwZjhiOTMyMTIwOGM5MzgxMDQ5ZGRkODUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiZGVjNDUxMDcwNDg1YTJkZjBmMzA0MTYwOGJiNDE5YTcwZmE0M2RjOWU1ZTNhNjVmMmFhYzYxMWE4MmZiNjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwNGM2N2M2NGJmMzc3M2RlYzJiMTUyMmFmOTMzOWY2MWUwMjhhMDg3ZmE0NmMxNTJiNzllZDJhNDk3OGVlMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQzYmU3MGRhNTg0NzVjMTcwNTYxOWQ0MTVhMGE4MDliY2JhY2UxNTFmMGRkNzdhY2Q0YjFiZTI0MDE4MmRmZGUifQ"
+          "resource": "repo://src/harnessed/launcher.py#L4384-L4440",
+          "version": "repo-lines-v1:sha256:b822af6a72195587912b5125a059967300c6c5a7c583bb02bbe08608d390acf0:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliZDdkYWZjODJhZTlhOTUwODFlODczMGFiZTQ4ZTg2NGQzZWIyMzU5MjU2MmY5NmU0N2IwN2QzOGQ2NDU5ZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiZGVjNDUxMDcwNDg1YTJkZjBmMzA0MTYwOGJiNDE5YTcwZmE0M2RjOWU1ZTNhNjVmMmFhYzYxMWE4MmZiNjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzNDQ1ZGMzMDYyOTNmMzAxMWU0YmRkN2UxNzIyN2ExMzI3NjRkMzkwMWYwN2ZjNGNiN2E2N2QyMTMzNjJhNTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQzYmU3MGRhNTg0NzVjMTcwNTYxOWQ0MTVhMGE4MDliY2JhY2UxNTFmMGRkNzdhY2Q0YjFiZTI0MDE4MmRmZGUifQ"
         }
       ]
     },
@@ -635,18 +639,154 @@
       "statement": "A secrets broker is started only when the composed schema carries a `@proxy` annotation and `--no-secrets` was not passed — `launchenv.proxy_schema_dirs` is a two-file-read text test so `varlock proxy rules` (which resolves values and can sit on a 1Password unlock prompt) never runs for a launch that opted into nothing — and a FAILED start is fatal (#437 SPEC decision 2) with a fixed error message that never echoes the exception, because a pod wired half-way to an absent proxy is the silent half-wiring epic #388 exists to remove. Teardown order is broker first, never fatally, then `pod rm`: the broker is a host process holding live secrets and must not outlive the pod, but the pod must come down even if the stop fails, and `reconcile` reaps whatever this misses.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launchenv.py#L427-L449",
+          "resource": "repo://src/harnessed/launchenv.py#L430-L452",
           "version": "repo-lines-v1:sha256:e6bd139d38c620ea27f4ba45a94ff140457b63652df1286bd5e9a351f5b97031:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiNjhhZjQ4M2Q4MjEwOTc0ZGNkZWI4NmU5ZTg0NzM4NmYyYTIwNDZiYjc0MGVlMDZhYzc3ZDQxYzZmZTU1YjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmNjk5NzdkMDA3ZjAzMTUwZWNjNzJiNDZlY2YwNzJjMmNjMmQ5ZTQwYmQ0MDlhZmQ0MjlkNDJiZTcwNzYzNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiMWU3YmRlNGEzNTIwMDMwZWZlNzM0NjU1ZDJiYjY3MDMzZWU0NzgxZDEwN2RmYTEwMzFkZGVlNDg2NmMxMjcifQ"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L1274-L1342",
-          "version": "repo-lines-v1:sha256:ba5a331d7f5c8b4d5d1702b1cf04286371f24398e0a777072d707b8575f2f915:eyJzZWxlY3RlZExpbmVDb3VudCI6NjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0MjEyNmFiZWRlN2UyNThjODc1NTEzZThiOTAyZTQ2Mzc5NzhkZDUxNWJjOGY5NTRjZWQ1ZGE2NDVlMTNiMmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4YmNiMDliMjQxMjk5ZWM0ZjZhYmM4ZTNlMDM5NjFjYzEyODU1MjY2MjQzYTgyODAyZDkyMjc2YTA4OWE0YWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIwY2MwZjAxNmQzYjVhN2JmYmY5NDc5NDJlNjkxNzI1OGYwYzI5NzQwNGI1ZWMwNTI1NjA4MTVhOGZjNTMzNjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhiNzUzYzZkMjY4MjQwZWM1Njg0ZGU0YjFjOTcwZmVhNDNiZjRlYjgxYjUzY2Y1MTNmNjBlODRjYzhiZWFhNmMifQ"
+          "resource": "repo://src/harnessed/launcher.py#L1304-L1347",
+          "version": "repo-lines-v1:sha256:dac42bc8a3f8c0a51f9ae82fb44152ea283a65240d3060f23c1a59aa108342dc:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3MzE0Yjk0MTI0N2I4ZjYyN2IyYTViZWMyMGFkMDRkOTg0YzcwNGNmNmY3MjY0NDYwNTk4NjRkODJmMWVmYjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiMGYyZDM4MzY3MzU3ZjE2OWRmMGIzODFiODliZjE4YzJhMDliZmZhNTIyOGIzZjIxNWU4M2I0YmQzZGMyYzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMxYWM3YThlZTBhNzcyMDc2YmYzMjYyOTkyMmZjYWQ4OTkyNTEzNjYxY2NhMDc1NDVkMmNmZjE1Y2UxNjcyZGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxMTY4NTVmZjQ5MTQ0NzI4NDJlMmU4MTQ0YzZmZDA3NGMzNzczMDY4ODUwNGJiNGY5Y2NlZTJmYTg4NmMyOTQifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1371-L1382",
+          "version": "repo-lines-v1:sha256:7c05b3738bc389af8dc88e7fb60ca3e31431da50668d4b2a4cfa2be0277f868b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkZDYyZTQ2NjVmNDhiOTJjMGZhODUyYTg3MDEwMTMxZGRkMzQzMTRkZjEzZTEwZDhkZmEzYTFlYjcyOThhMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4YmNiMDliMjQxMjk5ZWM0ZjZhYmM4ZTNlMDM5NjFjYzEyODU1MjY2MjQzYTgyODAyZDkyMjc2YTA4OWE0YWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhiNzUzYzZkMjY4MjQwZWM1Njg0ZGU0YjFjOTcwZmVhNDNiZjRlYjgxYjUzY2Y1MTNmNjBlODRjYzhiZWFhNmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2e851cb7951645a79798316bfb49cfac",
+      "statement": "`launcher._without_userns` strips `--userns` from pod-member args by matching the FLAG (`a.startswith(\"--userns\")`), never an inequality against one literal spelling: the original inline filter compared against bare `keep-id` and silently stopped matching the day `paths.USERNS_ARG` was pinned to `keep-id:uid=1000,gid=1000` (bd harnessed-rv2.1) — a filter keyed to a literal is a filter that breaks when the literal moves. `--userns` is a POD-level property podman rejects on a member, so the strip is podman-only; it is inert today (no mounts.py builder emits the flag) and is kept anyway, because an unconditional strip would silently swallow a mapping the moment any builder starts emitting one.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1256-L1265",
+          "version": "repo-lines-v1:sha256:4690aac71698080f9ff9fc1df37b3b9350570516ec61db071a174a2ace351389:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxYTJlNTBlNDcyM2YxMmFiYWEzNjdjODQwYjNmOTFlMTU5NTFmZTAyMzQwOWM2YzhhNWFlYTY1YzIwNzBiMzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyMzFiNTNjNmM5MjljY2VmMzIzZTUwOGIyYzlhODRiYzc1NTg3MzdlZjUxNTViOWJiNGQ1N2U1YzQyY2Y0ZjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNiOGVmZTNjOTZjM2RjMmE5N2FiYjM2NjI0ODI0M2M0OWUxODBiMGQ2NGExMjVmYTMxMGM5ODY5NjU3MWJjNjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAzOTIwZDA0MWNlYTg0NWM3OTliMzQxYzMwZDY4M2I1NGZjMzBhYWM1MGU3M2Q0M2E1N2M1NWY5MDYxNjAwZTkifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3468-L3484",
+          "version": "repo-lines-v1:sha256:3b1986f8c0fc000c722f299efe907df34a20ee11dba38d8e5288270453198246:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlMzRiOTBjOTA3MmZjYzg0ZTkyZjczZjM1YzIyZWY3NTIwMDQzYjJhZWZmM2NmMDk0Y2ZiNWQ1MjkzMjQ4YjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzY2Q3MjIzNGFmMWMzMTIwMTNiN2QyNGQ0OTkzM2VhN2Y0NGNhYTdiMmMwNDIyMTI4NDM3MmVjMTM0NDgxNzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRkYTgxZDQ4NDNlZDk2NjAzZjllNzlhZWRkMDNiM2FjY2RhYmJmZTZkNWVmMTQxYzg5Y2NlYWFlZjY3ZWY1MjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhYzc3Y2NkZmZmODQ0NzBhNmFiOTgwMWM4ZjYyOTYxZmMyZDY5YmEyOTJiNWVhZDFjN2RjMDRmOGE2Mzk2ZGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c64ec2a04a0e4b2bb0da3af1e22a2efd",
+      "statement": "Docker has no `keep-id`, so harnessed states the owner explicitly in ONE place: `paths.container_user_args(rt)` runs the agent as `<invoking-uid>:0` (gid 0 because it is the only group a uid the image never created is guaranteed to hold) under `DOCKER_USERNS_ARG = --userns=host` — `host` rather than an omitted flag so a `userns-remap` daemon cannot map the image's uid into a subuid range and reproduce bd harnessed-rv2.1 under a new name — and `paths.container_owner_ids(rt)` returns that same (uid, gid) as the volume-chown target, so the `--user` derivation and the chown target cannot drift. The base image pairs with this by giving $HOME to group 0 with group perms equal to user perms and setgid; without that half a uid-1001 agent could not enter /home/harnessed and died on `cp: cannot stat '/home/harnessed/.claude/'` with the volumes correctly owned (#457).",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/Dockerfile.harnessed-base#L313-L331",
+          "version": "repo-lines-v1:sha256:70b342eab40bfe5af827dcd7da9c17962b3a6601e466ca8beb772c5a8981d55c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwNDE1ODM3MDU0ZjE2YzJkMDIwZjMzMmQxMTdiYTVlNDYzMTkyNjVhNTg2YzEzZWYwOWNhNTU4NTY4YzRhZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5NGQyNWJlMjE3NDgxYTJlNGExNzVlNjBmODIxNTQ5ZjM1NWI0M2MzNzBiNDExMDA3ZDVmNjhlZDZmMjAwNTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ4MzIyOGNhMjhmZDZkM2QxYjEwYjhkMDQzYTUxY2JjMTA3MGQzN2VlMmNlY2Q4NzRiZmUzZTlmYmI1MzI0MWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhMDlkNmE5Zjg0YTFmN2NlNTQwNjA0YTJiY2UzYmE3NGUzMGQ2NzNhYmI4M2UyNjBmNmJhMGUzNTJhMWRhMzAifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L130-L183",
+          "version": "repo-lines-v1:sha256:7fe240ce3335f39388644360c55f7763a7aa462ed88c91d06b6e82fdd9639259:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyNTU1MDhlNzc1M2Q2NTEzNTA3OTgzYzIwMWYyZmIxYjZlZmY4Y2NjNWM2ZGExNDMxZTYwZTRhYzkyMjVkZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhN2ViNGYzZWVlN2NlY2M3NDllZDkxNGFlNmQ1ODE3NmNiZjc4NzdmYTI4YjkzZjQwMjNjZTliOWNiYTMxMDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJiN2Y4ZjEwNTY0ODlkMzY3YjRjNDk5YzQ2YzljMzQ5ZDI2NmMzMzE2ZTc5NGNhYjk5ZmU2NzYwZDYwODFlZWUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0321b46b1724471d9effad970a8f9827",
+      "statement": "`volumes._chown_volume_for_docker` chowns each freshly created named volume under three deliberate orderings: (1) only a volume the run CREATED is chowned — existence is asked BEFORE the idempotent `volume create`, because afterwards the two are indistinguishable, and that distinction keeps an unbounded `chown -R` off the shared download cache on every launch (PR #461 review); (2) NO sentinel is ever written inside the volume — docker seeds a volume from the image ONLY WHILE THE VOLUME IS EMPTY, so a sentinel marker suppressed copy-up, ~/.local came up without the image's tree, and the agent died with `nohup: failed to run command 'hatago': No such file or directory`; the have-we-done-this state lives outside the volume in the was_new answer; (3) the chown container mounts the volume AT ITS REAL PATH, so docker's copy-up at container START happens before the chown entrypoint — a chown at a scratch path was overwritten by copy-up at the real mount point, leaving `cp -a` failing with `preserving times … Operation not permitted` (utimes needs ownership, which group 0 does not confer). Running the populate steps as root and chowning after is rejected because it would let recipe install scripts run as root and diverge from the podman path.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/volumes.py#L498-L515",
+          "version": "repo-lines-v1:sha256:a63afccf12c6d4c3a3c28781003afd54f656c48c2c904d008d571bbd64f23d3b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1NTRhYzY4NDI4ODQ4ZDE4NDczYzdlZTVlYTY4NDVmZmU5M2Y5Mzk5ODIzYjI5NjY1OWE0NmU4MDFkYWU5NWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRlZjdjNmQzNWQ5MjY4ZDc0ZDkyM2NjMjM4ODlmZWE3MzEwMThkNjE2NThkOWE0ODkzM2E3MGY5NmE2YTM2YWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwOGYwYzBkNzdmNjgxNzQ5ZDMzNDI1Y2ZjNjAyZDllZTExZTM2MzUwNDdjNjFhMDhiYWNjYjBhOWVmZTMxNzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg5NGUzOTY1MDMyODNmNWE3N2E2ODQyZjdlYTI4NTI4ZDZmNTNjZWIzNTc4OWFlYzcxMGQ4NzI0YjY4ODE5ZWUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/volumes.py#L98-L160",
+          "version": "repo-lines-v1:sha256:f21306643ced0d6f4c52213108dd57193303e41d21f534a8cba27ff37c6737c3:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwNTZiMzI2MmM3YTk5MjMyNGVlNTU5NGY4MjIyZGI1OTkzNDUxMWVlNmU1NWJmODgxYTkxZDkxZWY1ZDE3OTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFhMzExYWY2MTNmNzEwZDRmNmZhMzBiNDQwMTcxM2MzMjE1NmJjMDNjZDdhOTU4NzlmZmFjYWQwYjFhNDI5OGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3M2QxODc0ODQ4MDZiNmExOGJjMzYwNTQzYjllOGU4MDQxOTViY2UzMmUxNmQ1ZjEwYWYzMTY2MGFlOGIzYTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2c86f4badb9e4315902a952345bab067",
+      "statement": "The base image proves its arbitrary-uid contract AT BUILD TIME with `USER 4242:0` — a stand-in for \"whoever launched harnessed\", chosen because the image's own uid 1000 is the one uid for which the group-bits bug is invisible, which is exactly how the docker defect reached a CI runner — and deliberately does NOT create or chown `~/.claude` in the image: docker's copy-up re-applies the image directory's ownership on every mount while the volume is still empty, so an image-owned `~/.claude` would re-own the config volume to uid 1000 permanently and the runtime chown could never stick (creating it in the image was a real regression, measured on one volume). Only $HOME and ~/.cache are probed/chowned in the image; the agent-writable dirs are runtime volumes `_chown_volume_for_docker` owns.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/Dockerfile.harnessed-base#L344-L352",
+          "version": "repo-lines-v1:sha256:ff7a20eb50352be7bd7035bfcdb59c2da37ddf43e8ded4f01375fa747b7140eb:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2Q1NzdiN2E0NGFmMjZmZDU5MTM2YjU4MmYwMWU0ZGM0ZTY0N2I4YTc5NzQ3ZGQyMWZlNTZmYzkwZDRiOWE2NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTc5OWQ5NmVjYWVjYzMzZmUzYmRhNTZhNDg2NmUxNTE1ZTQ5YTk4ZDQzOTdlMGI2ZjY1YTI1NTkwODMxMjhjMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDVjYjQxZTA3ZGZmMzE3NzA4ZWU2ODQ4NjI1ZDZiMTg4NTBiMjFhOTQ3NzBkZDIxZjVkOTY4NTY5NGY0MzI0OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTY5NjI0NGI1NDJkNDEzNmE0ZjJmYzg2NzcxYjg4MzRjMDQ5ZGU0MDliMTUwYTIxNWY5NWRkY2YzZmZhZmNkNyJ9"
+        },
+        {
+          "resource": "repo://catalog/base/Dockerfile.harnessed-base#L376-L418",
+          "version": "repo-lines-v1:sha256:5052735045478700ffe93dbee52dc7e6ed059b9451bc214f6d04ac29b7ad0173:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhYjA2YWEyYzY1MGJhZjNhYjc3NDEzNGVhOGIwMmJkYWNhNDBmMjJkOTVjODdmMmViMmRkMjkwNGM5OTA2OWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3YzA3ZDViNjk2NWFiNWNlOTMxMjI5ZGVjNDA0ZmExMmMwZDljMDQxN2Y3NmNmZmEzZmIxOTc0MDVlOTc5MjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI0Y2UxODJkOTQzYmNjMjk4MTIzNTY1ZGRhODlhY2I5YTRkNTVmZDBlYjM3NzYxYTI5NGNjZThmOGI0MGUzZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU1Y2U1YWM4ZDUyNDY0NmNlYmZmYzYyNTE5ZmI1NGM1ZjQ2ZTU2ZmU1MDJiOWIxNzk0N2E5Y2RjOTI0N2IyOGEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e114bc878b544ac7b98de3596e8825f7",
+      "statement": "`launcher._preflight_runtime` repeats the refuse-rather-than-guess id-mapping check at the TOP of every launch (#456), because `persist.guard_ownership` only guards where it is consulted: a stack that declares no persist entry never reached it and ran all the way into the bind-mount failure. Podman is unconditionally fine because `USERNS_ARG` names the mapping outright; docker requires a rootful daemon (`paths.docker_is_rootless`), since under a rootless one the image's uid 1000 is drawn from the subuid range and every bind-mount write lands owned by an id nobody can name.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1268-L1301",
+          "version": "repo-lines-v1:sha256:068b9666a2ac33d38aa9dd84771063b3db79b917fd99686b787c97f20c739ecf:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwNGZhZDU3YmQyNzQwODM5MzE3MTAwYWU0MDI0YjgxYTU3NTYyNmNmMzI2NTIxMTMyY2RhZTYxNzA3NDhiNTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1NjM4NDk0YzUxMmIzNjBmZjE1Y2E1OGMxY2U4ZjdiOTQ4YzZjM2VjNTRmOGU1N2Q1ZTJmMzU2NDdjYTAxNTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEwZjdiMjM0NWU5ODU2ZmM5MWQxMTZjMTIwNzQ4NjcyY2RjYTMxMWU4MWU5ZWQ2MTkyYzMxMjRmNjhkYmRkMzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiMDYzNGFhM2FjMTIyYWRhMmY5N2ZiY2MxMWY3Yzk3MDFjNzczNjFiY2E1OGYyYzEzNmM0MDI1YzQ1NmZjNzcifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L205-L224",
+          "version": "repo-lines-v1:sha256:c54e6daee313dccf3e0d331c42d9987b107d09d00f9e13c412a970168d92ac6c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5MjA1Y2NhN2FiYzY3OTQ3ZjE1NzNjZjdlZjkwYTkzOGRiNjBjMjBlNTAxOGIxZGQ3MjQyNTI5ZDg4MzVmYTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5MDE2MWVmOWY2ZDU4YjlmNGJjYzA2ZjhjZGM3MzQ3MmY4NDk4ZmYzODc3Zjk2NDc1NWZkMGEzNmEyODlkZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZkYTVhNDdlYThkYWNiNjE1NTM5NjI4MGIyYTRhMzYzMTUxNTNkOWFkNTUwN2Q3NDJkZTJmNWViY2NhM2Q4YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYWY5NWJmY2U1MzNkYWU3Mzk1YmQwM2I4ZDRlZjMwNzY0ODk1NDI3NWVjNWM3ZmM5Y2IyYjFhODhkODAxOGYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6d9e669f4ffc4a99bf77f05e4ad065cd",
+      "statement": "`paths._detect_runtime` and `paths._probe_docker_rootless` are deliberately split from the `lru_cache`-decorated `active_runtime`/`docker_is_rootless` wrappers: mutmut generates NO mutants for a cached function, so the combined versions produced zero mutants and a clean report while the mutation layer was silently blind to the detection logic, including every refuse-rather-than-guess branch in it. Separating them makes the behaviour mutable and testable without `cache_clear` gymnastics; merging the body back into the cached function is the cleanup this invariant forbids.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/paths.py#L186-L202",
+          "version": "repo-lines-v1:sha256:c7b26158aaac63788691877d66af443bb20bdce0563695843fcae1c5d469bf46:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1NDY0ZDY3YThlZjJjZTU0ODQzMDY1ODM1MzIyYTgwOWZkNTM3M2ZkOTI2MDQzYzExYjRlMzE3Njg0MDVhNjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzOTczMjE3ZTgyYmI2NGNhYjMzYzM4NWJlMzFhNmE5MTdlZjc3NGNkODJhY2NmYzEyNDZiMjk3ODdjYTA3N2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEwZGI2MjcxMTA0MjgzMWFiZDdjNGQ3YWJjNDk0YTJiZWM4MmE0ZGUwYzUxMzgzYTc2ZTMzNjljZjI2MDk4YzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkYWY5OTRkMjU5NjcyYWEzZTllOWRkNzViNTBiY2ZiNjk2NTNiYTBiMzQxMWVhZmUxZGRiNDBmMTMyMjY4NDEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L60-L67",
+          "version": "repo-lines-v1:sha256:b7140858ddf851227a1473cf89798dd48b84c739bac756d31d27c41b03fadd45:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjU4YWZhZTcwZjYxMmMwNGQ5YTlmMmE3MzQ0OGUxOWU3MTlkYjg2NWRkOTdmYmQyZjU3ZWEyODM4ZDgxM2ZjNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTZhNzE1MjU3MmVlODRmMTA5MDZjNzRiOWYyYTkyNDM0ZGRhYjBlM2M0MjgxM2IwNGU1OTdlZmNlYzk1MWIyNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDM1YWIxNTAzZTBjZmI5ZjlkZWFkNzVmZjM3Y2UwNTBmMzE4ZmM2MzY1NzFhZTliMDA3ZjRjNjJiNjUwNzA5YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjBkMmI5MWRlYmE1ZjI1OGFlMWM0MDI5NjcyMTE5NmYxMzQ2Yzc5YTBkZjYzNjk3Y2MwNDhmMzkwNTEwYzc2ZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_8bfbac9c9f6e46fda6c04f817375d3ef",
+      "statement": "The `mutants/` tree is deleted before every mutmut run (tools/gauntlet-456.sh): mutmut caches its test→function mapping there and does not re-collect stats for tests that did not exist when the tree was built, so a stale tree reports newly-covered functions as `🫥 no tests` — measured at 30 mutants across `_detect_runtime` and `_probe_docker_rootless` sitting at no-tests through two full runs with passing tests calling them directly, attributed only by a fresh tree. A cache that reports \"nothing tests this\" when something does is a fail-open in the layer that exists to catch fail-opens; the gauntlet also reads `mutmut results` unconditionally because a filter matching nothing exits 0 with every mutant `not checked`, which reads exactly like a clean run.",
+      "evidence": [
+        {
+          "resource": "repo://tools/gauntlet-456.sh#L125-L145",
+          "version": "repo-lines-v1:sha256:0123764ffb3687b3c1e6f2f91ce4b7dc9a80fd00207805bf7dbdf7b80938f579:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUyZThjMmE1ZTJhOTg5M2ZiYWIzODQyMzI4Zjc3YjllZGI4NzE5MGEwODI4NGViM2I0YjA2YmU0ZTM1N2NkZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkYzNlMzE5ZDkwNzRhZjUwZmQwODI2N2I3NmU5YzVlMjQ0YzcyMTI0YTViOTc0YWJhMzVlMGEyYWYzZTNmOWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIwZTJlOGFhMjU0N2U4ZTQ1MDNkOWYyMzUzMWJmYWYzMDUyOWM0NTc3MzcyYTJhYmY4ZTZkMjJiNWU3ODAxZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5YTg4MGFiZmVmYmZmODFkNTcyN2U0NjlhZTE3NjY3MmU4MTc4ZDBmNGE0YWEzOTdkMmY0NDViN2UxNzliMTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9a071dc98bc343e2b10c8abb880f1313",
+      "statement": "A host launch puts the stack's `tools:` on PATH via `mise bin-paths` — the tools' real install dirs — never mise's shims dir (#449): a shims dir is not scoped to the declared tool set (measured on stack `default`: 96 shims for 6 declared tools, the user's whole global set left by a release that redirected MISE_DATA_DIR without MISE_CONFIG_DIR), a shim whose tool has no version in the stack config dies (`mise ERROR No version is set for shim` — omp's shim shadowed the agent binary itself), and a resolving shim shadows the user's pinned version with the stack's. `cwd=<mise root>` is load-bearing because mise merges every config from the cwd upward (resolving in the project put the PROJECT's tools on PATH — 8 measured against the 6 declared), and `_stack_tool_path_prefix` puts the stack bin dir FIRST, composed in ONE place, because an install.sh may deliver a binary the `tools:` also declare and the recipe's copy must win (two separate prepends silently inverted that).",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L40-L110",
+          "version": "repo-lines-v1:sha256:047bbfdcf526b895ca3bc73b63b298dcfba598bdd2122a03c4824756a55552ef:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmOGNlZDg5NDI5YjJjOTEwZjM1MTc4NTkwZmI2NDQ3MmQ1YWFlNzk5YzlmODlhMDQwNTAzNTMyY2NlYzYwNjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxNTk2MWU1OWMxOGYwMWFmMGE5NDM5YTQ1ZDBhMWMxZjhjYjEwOTg4NTQ2MTM2OGNlY2U2YTExMjM0ZWNiMjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQyN2YwMjAyOGE2NDEyMmI0MWI5YmE5NDc0ODhiZmRiM2FhYTVmYTVhMzQ0OWNhZGVkYjMxNDExZDc5MzY1NzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUyYjYzMTczZDAyOWRmZmMxY2U1YTY5ZmJjZjM1MmI0MGZmNzg5YWM1ZTYyZDQxZTgwYjYyMGExNTZhMmU1ZDMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c41125a7fb7c445bbb748814a4a62676",
+      "statement": "The mise redirect (`MISE_DATA_DIR`/`MISE_CONFIG_DIR` into the stack's tree) is scoped to PROVISIONING since #449: the agent session gets the user's own mise env back via `_restore_user_mise_env`, because a shim re-resolves its tool by argv[0] against MISE_DATA_DIR every time it runs and a redirected session broke every shim on the USER's PATH, the agent binary included (`mise ERROR omp is not a valid shim` on a nested launch). Restores go to the SNAPSHOT rather than deleting, except a value matching harnessed's own path shape (resolved on both sides, empty rejected before the resolve), because launching a stack from inside another stack's host session is routine and the snapshot frequently holds the outer stack's redirect; `MISE_TRUSTED_CONFIG_PATHS` is deliberately absent from the removable set because harnessed only ever CARRIES entries read from the user's own config.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L189-L225",
+          "version": "repo-lines-v1:sha256:278e0c53067741cab555adf6dbbf19cd778fb6a22ae31b3e3d5ab630b311b34f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkNTRhZDFjNTc3Nzc3ODUyNTk1NDZmMmZjMDMwNzhjMjMyMmI5ZDM4YmJkZmY4Zjg5MTdhNTE4NGUwYmZhOTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlZjJlZGI3MWEzMWJiNTY4MmU2MWZjYTE2YWExYTJhY2FhYjlhZjA5ZjM0NTVkZjlkOGZmZDk3Njg0MTljMjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE4YjNlM2UyMjA4NzRkYzY0ZTA5MzhjNDE5ZDllY2EzYjI1N2MyMGQ4NmVhMGJiY2Y3YWZkNjY2MDE3YTNlYWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZiNGUwN2ZkNzJlMTM0M2Q2NzkxNTk4ZjM5MTRjZGIyZDQ4ZDFlNzVlNDJjNzdjMjhlZDMyYmZlNTBlMTE0ZTYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L228-L241",
+          "version": "repo-lines-v1:sha256:bd646149b0d1fdb1e49cbe093053bea6d9a2ac3663d3f6820a7b1fa6aadd1f07:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyYzQ4OTliYzU2YzBjMzNhN2IxYTQ4ODhmYTE0YTg0YmI3ZDI3MzA1ZDcxMDRmYzBkNGZhNzNjMTU5YzE5NGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5Mzk3NzM3MTllMWI4NTc1NDQ5NWQ4NzZlYzNhYjI0N2VjMmU1N2I5ODYyMzk5MWYzNmJiMDliMDY0ZDA0NjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0NDhjYmUyZTkyNzJjOTBiMTcxZDFhN2I5ZTA4YjBlZTU2NzQ3NDQzNjcxNjM4ZWJjOGEyNTRkOWI1MTkyNWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEyZWRkZDM3MzNiOTc1NmEwYTQ2MGRmN2UwZDEyYTYxZmNhMjlkOWU1NGI1NTM2ZjZmZmQyMWU3MDA5MmIxZDQifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L356-L364",
+          "version": "repo-lines-v1:sha256:7bbb0a4870d87753e99bfa71fb82e0c511ceb3be2593d56b7dd0701379f41628:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGQxNmNiYjg1ZjBjMzg5OTIxMzJjZDVmZjQ4NmRkMWQ0MTk2NGJjNDhhOGM2YjBmODJjYWUwYWE5YmU0ZTcyMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDVjYmJlNTM4NTEyMmQyNjVkZDM2OWMwMDRjYzM5YjkyOTk1OTkyMWU1MTMwYmQyMTZhMDIyMTNiYWNlODQ1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzM0MWZlNDhmMGQ0MDY5ZGQ1ZDFlN2E3MDNmMjg1NzFiZWI3Y2M5MjQ4ZjhhZjI1M2VkNzM4MjExMzVlOWJjNiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_901eb2a12e4f42e1950fc42d4e76927f",
+      "statement": "`_apply_host_tool_path` removes EVERY harnessed tools PATH entry — any stack's, not just this launch's — before prepending its prefix: launching a stack from inside another stack's host session inherits the outer stack's PATH, and filtering only against this stack's own prefix let a tool the inner stack never declared still resolve out of the outer tree. The removal matches the whole `<xdg>/harnessed/tools` root (resolved on both sides, empty rejected before the resolve) because nothing else writes there; a user's own toolchain entries are untouched. Provisioning state belongs to the launch that created it and must not ride into the next one.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L113-L170",
+          "version": "repo-lines-v1:sha256:f472f6a003bd94f3ad9e7075dfbca09eab2e97e9f53e8daa9fc040ad5cea7f88:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkOWUxOTY3NTQwMmMzY2FlZDNjMmI5Yzg2OTdjOTAzN2ZhZDExOGQzZGExNjhmM2Y5ZmI1MGMwMTNjOTEzMWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlNmNjN2IyZDk4NTZiMjY5ZGEyZjNhZmQ1OGQ3NDE0YmNhMzNlMjdiZjc3MzgzZmJhYTAyMjljZTBkNjhjZTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI1ODUzMWQ0MjFhNjA3YWVmMDc5NGY4MGE0ODViMjYxMDAyZWJhOTQ4MTg0ZjllYjZkY2ZiYzRhNjQ4MzMwMjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZmMzQ2YTcwNTRjYjM2NTY3OWM2NGZlZTZiM2ZkYzVjMzVlMmM2OGZjNWQ5OWQ0ODE1YjUzMjhiYzhlMTkwZDEifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.4.3",
-    "at": "2026-09-08T23:17:55.419Z"
+    "at": "2026-09-12T09:54:25.902Z"
   }
 }

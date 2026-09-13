@@ -1,8 +1,8 @@
 ---
 type: workflow
 title: "Container launch: container-run end to end"
-description: "The podman backend's launch sequence — stack resolution and freshness gates, idempotent service revival, the ordered mount set, the secrets broker inside the BOUNDARY phase, the composed pasta network value, ordered env delivery, fail-closed egress, and the execvp attach — with the invariant each step upholds."
-tags: [container-run, containerbackend, launcher, podman, egress-firewall, userns, copy-up, mount-set, seed-auth, secrets-broker, pasta, attach]
+description: "The container backend's launch sequence — placement across podman pods and docker flat containers, idempotent service revival, the ordered mount set, the secrets broker inside the BOUNDARY phase, the composed pasta network value, ordered env delivery, the recipe-egress-plus-API-endpoint firewall allowlist, fail-closed egress, and the execvp attach — with the invariant each step upholds."
+tags: [container-run, containerbackend, launcher, podman, docker, egress-firewall, userns, copy-up, mount-set, seed-auth, secrets-broker, pasta, attach]
 sources:
   - id: openwiki-source-f82224b7b5b27300d9ecc2dc
     resource: repo://catalog/base/egress-firewall.sh
@@ -18,6 +18,8 @@ sources:
     resource: repo://src/harnessed/broker.py
   - id: openwiki-source-0f0f277c40d34909acb07908
     resource: repo://src/harnessed/capability.py
+  - id: openwiki-source-6645354f3fef484959520bc4
+    resource: repo://src/harnessed/console.py
   - id: openwiki-source-f4d814d300a98515115546bb
     resource: repo://src/harnessed/credmounts.py
   - id: openwiki-source-6f84913afc580e4d73fac66a
@@ -46,19 +48,24 @@ sources:
     resource: repo://tests/test_broker_lifecycle.py
   - id: openwiki-source-4d3b84558965c7b5921b9989
     resource: repo://tests/test_broker_pod_args.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+  - id: openwiki-source-80aa176b0256ebdcec6816de
+    resource: repo://tests/test_docker_userns.py
+generated: { by: "openwiki/0.4.3", at: "2026-09-12T09:54:25.902Z" }
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
+    at: 2026-09-12T09:54:25.902Z
 ---
 
 # Container launch: `container-run` end to end
 
-`harnessed container-run <harness> [path]` runs a composed stack in a rootless podman **pod**. The
-verb is a **sequencer**: it validates the stack, constructs one `ContainerBackend` (registered under
-the name `container`, declaring isolation `container`), and calls that backend's capabilities in the
-order podman requires. The sequence ends in `os.execvp`, which hands the terminal to the agent inside
-the container — by the time the harness starts, harnessed is gone.
+`harnessed container-run <harness> [path]` runs a composed stack in an isolated container — a rootless
+podman **pod** where podman is the runtime, a flat docker container where it is not. The verb is a
+**sequencer**: it validates the stack, constructs one `ContainerBackend` (registered under the name
+`container`, declaring isolation `container`), and calls that backend's capabilities in the order the
+container path requires. Everything runtime-shaped is derived from an `rt` parameter and branched by
+`_rt_uses_pods(rt)` — true only for podman — so the page reads "the pod" below, and the docker
+spelling is given where it differs. The sequence ends in `os.execvp`, which hands the terminal to the
+agent inside the container — by the time the harness starts, harnessed is gone.
 
 The contract is [`architecture/backends.md`](/openwiki/architecture/backends.md): **six capabilities**,
 each one a row of BACKENDS.md §3 — `materialize config` / `provision tools` / `wire MCP` / `seed auth` /
@@ -87,10 +94,11 @@ sequenceDiagram
     participant VOL as volumes.py
     participant MNT as mounts and launchenv
     participant EMIT as emit.py
-    participant RT as podman
+    participant RT as podman or docker
     participant EP as harnessed-start
 
     RUN->>RUN: _resolve_stack and _build_stack
+    RUN->>RUN: _preflight_runtime (refuses a runtime whose id mapping cannot be named)
     RUN->>RUN: is_built + staleness.check_profile_fresh (last validation gate)
     RUN->>RUN: launchscript.write then _aoe_register
     RUN->>RUN: _validate_direct_servers
@@ -99,7 +107,7 @@ sequenceDiagram
     RUN->>RUN: re-attach branch or stopped-leftover teardown
     RUN->>RUN: _merge_host_claude_settings into the profile
     RUN->>BE: provision_tools spec FIRST_START
-    BE->>VOL: _ensure_stack_volumes
+    BE->>VOL: _ensure_stack_volumes (same mapping as the agent)
     VOL->>RT: volume create then throwaway run for copy-up
     RUN->>BE: materialize_config spec
     BE->>MNT: _build_mount_args plus the ordered mount block
@@ -108,12 +116,17 @@ sequenceDiagram
     RUN->>BE: wire_mcp spec
     BE->>EMIT: write_hatago_config per instance
     RUN->>BE: apply_isolation spec BOUNDARY
+    BE->>BE: _agent_placement_args and _netns_anchor (pod member vs self-owned netns)
     BE->>BE: _broker_start_for — gate on proxy_schema_dirs and --no-secrets
     opt opt-in: a composed schema declares @proxy and NO_SECRETS unset
         BE->>BRK: broker.start — spawn varlock proxy, poll proxy status
         BRK-->>BE: five-field record (a broker that never comes up FAILS the launch)
     end
-    BE->>RT: pod create with --userns and one composed pasta network
+    alt runtime uses pods (podman)
+        BE->>RT: pod create — --hostname, --userns, one composed pasta network
+    else pod-less runtime (docker)
+        BE->>RT: flat run -d with placement args (owns its netns)
+    end
     Note over BE,BRK: pod create failed → the just-started broker is stopped before the error re-raises
     BE->>RT: run -d with --env-file then -e then -v
     RT->>EP: exec harnessed-start
@@ -123,6 +136,7 @@ sequenceDiagram
     RUN->>BE: provision_tools spec ATTACH
     BE->>RT: podman exec each setup script
     RUN->>BE: apply_isolation spec EGRESS
+    Note over BE,MNT: allowlist = recipe egress union api_endpoint_egress_hosts
     BE->>RT: run --rm --cap-add NET_ADMIN egress-firewall
     BE->>RT: iptables -S OUTPUT must show DROP
     RUN->>RT: _authorize_mcp_remote_servers
@@ -132,9 +146,10 @@ sequenceDiagram
 
 *One interactive create-path launch. `wire_services` runs before the re-attach branch, so every
 branch of the sequence passes through it; the broker step sits inside BOUNDARY, after env resolution
-(`seed_auth` resolved the env-files), immediately before `pod create` — its outcome decides the pod's
-`--network` — and on the no-opt-in majority path it runs nothing at all: not even a varlock
-subprocess.*
+(`seed_auth` resolved the env-files), immediately before the pod is created — its outcome decides the
+pod's `--network` — and on the no-opt-in majority path it runs nothing at all: not even a varlock
+subprocess. On a pod-less runtime the pod branch is replaced by the agent owning its netns (below),
+and the broker is never started because there is no pasta door to deliver.*
 
 ### The asymmetry with `host-run`
 
@@ -145,7 +160,10 @@ The two paths are **not symmetric**, and the divergence is the design:
 | order | `wire_services` → `provision_tools(FIRST_START)` → `materialize_config` → `seed_auth` → `wire_mcp` → `apply_isolation(BOUNDARY)` → `provision_tools(ATTACH)` → `apply_isolation(EGRESS)` | `wire_services` → `materialize_config` → `seed_auth` → `provision_tools(FIRST_START)` [under the home lock] → `provision_tools(ATTACH)` → `wire_mcp` → `apply_isolation(both)` |
 | why that order | provisions **before** materializing, because podman copy-up is what lifts the image's `~/.claude` into the volume the mount set then references | materializes **before** provisioning, because `_materialize_host_home` rmtree's the very dir installs write into |
 | where env is assembled | inside `apply_isolation(BOUNDARY)` — the one `podman run` is the only way env crosses | onto `os.environ` — the host has no box, so the process *is* the box |
-| isolation | a pod boundary plus a default-DROP firewall | `none` by declaration; both `apply_isolation` phases are called and do nothing |
+| isolation | a pod boundary (podman) or the container's own netns (docker) plus a default-DROP firewall | `none` by declaration; both `apply_isolation` phases are called and do nothing |
+
+Every row in the container column holds on both podman and docker — the runtime changes *where*
+placement, the mapping, and the firewall runner attach, never *whether*.
 
 What **must** hold in both, and does: credentials are delivered **by reference, never replicated**
 (mount the live store or forward a token — never a snapshot); the env **winners** are the same
@@ -191,7 +209,13 @@ After resolution, before any podman write:
    broker, read through the same env mechanism and truthy for `1`/`true`/`yes`. Parallel to
    `--no-firewall` by design: the launch keeps working, with secrets resolved into the container env
    as they always were.
-3. `anchor_path` (`path` or cwd) must exist. Then `_resolve_start_dir` runs **first** (launcher →
+3. `_preflight_runtime(rt)` — refuses a runtime whose id mapping harnessed cannot name **before
+   anything is created**. Podman is unconditionally fine (`paths.USERNS_ARG` names the mapping
+   outright). Docker passes only with a ROOTFUL daemon: under a rootless daemon the container's
+   uid 1000 is drawn from the subuid range, so every bind-mount write would land owned by an id
+   nothing can predict, and an unreadable `docker info` is refused too, not read as "probably
+   rootful" — a fail-open guess in the one state where nothing is known.
+4. `anchor_path` (`path` or cwd) must exist. Then `_resolve_start_dir` runs **first** (launcher →
    `attachcmd._resolve_start_dir`): the "project" is wherever the agent *starts*, and everything
    downstream — instance identity, persist keys, `container -w` — keys on the resolved `start_dir`.
    `launch main --agent-start-folder sub` and `(cd main/sub && launch main)` are therefore the same
@@ -199,29 +223,29 @@ After resolution, before any podman write:
    `--agent-start-folder` never shrinks the mount; `--mount-folder` widens it (and must contain the
    project). In a bare-repo + linked-worktree checkout the mount auto-widens to the bare repo's
    directory so sibling worktrees are visible.
-4. `paths.find_in_catalog("stacks", stack)` resolves **overlay-first** (user catalog wins).
+5. `paths.find_in_catalog("stacks", stack)` resolves **overlay-first** (user catalog wins).
    `stack_from_overlay` is computed here and is the trust gate for private-key forwarding.
-5. `is_built` (profile presence) then `staleness.check_profile_fresh`. `is_built` only checks
+6. `is_built` (profile presence) then `staleness.check_profile_fresh`. `is_built` only checks
    presence, so the freshness guard is what stops a launch from silently running an orphaned or
    outdated image. A `SchemaError` (recipe renamed/removed — unfixable by rebuild) exits 1. A
    `StaleProfileError` (sources merely edited) offers `harnessed build` inline; declining aborts,
    because launching a stale profile is the exact silent-outdated-image failure the guard exists to
    prevent. Skipped outside a tty.
-6. `_prune_unlaunchable_omp_blocks(harness)` — omp only. `container_run` **never re-assembles**
+7. `_prune_unlaunchable_omp_blocks(harness)` — omp only. `container_run` **never re-assembles**
    (its profile was assembled back at `harnessed build`), so this is the only point on the container
    path that can notice a delimiter block in the shared `~/.omp/agent` whose stack no longer
    resolves. A block is dropped only when its stack fails the same `staleness.stack_resolves` check
    the launch just applied to itself; a stale-but-resolvable stack keeps its block.
-7. Image selection: `_derived_image(stack, harness)` when it exists, else `_agent_image(harness)`.
+8. Image selection: `_derived_image(stack, harness)` when it exists, else `_agent_image(harness)`.
    Then `_ensure_harness_image` lazy-builds the agent image if missing. There is no separate hatago
    image to check — hatago is baked into `harnessed-base` (hatago-consolidation).
-8. `_warn_capability_gaps(ContainerBackend.name, launch_recipes)` names any declaration this
+9. `_warn_capability_gaps(ContainerBackend.name, launch_recipes)` names any declaration this
    backend will not honour (`capmatrix.MATRIX`; every container cell is SUPPORTED today, and the
    call is there so a future DEGRADED cell reaches the user). **Before** `_prompt_setup_notices`,
    which can block — a user should not answer a prompt without having seen the gap.
-9. `_prompt_setup_notices` — the `[O]k / [T]erminal / [D]ismiss / [Q]uit` prompt over user-facing
-   `setup:` notices. `[T]erminal` ORs `--shell` on.
-10. `_validate_direct_servers(launch_servers, harness)` — **the rule the container path enforces at
+10. `_prompt_setup_notices` — the `[O]k / [T]erminal / [D]ismiss / [Q]uit` prompt over user-facing
+    `setup:` notices. `[T]erminal` ORs `--shell` on.
+11. `_validate_direct_servers(launch_servers, harness)` — **the rule the container path enforces at
     launch because it never assembles.** `assemble`'s guard against a `direct:` server on a harness
     that cannot honour one runs on the build path and the host path, both of which assemble. An
     image built *before* a recipe gained `direct:` reaches launch with servers the harness will
@@ -277,10 +301,23 @@ only, every subsequent launch took the attach branch and never looked at service
 that died stayed dead for the life of the container. Reviving it is exactly what "idempotent"
 already promised.
 
-Global services are host-published and reached from the pod via
-`host.containers.internal:<port>`; project-scoped ones are git-common-dir keyed (one container per
-checkout, shared across worktrees), bind-mount this project's persist dir as `/data` and are reached
-through a unix socket inside it, which is why `wire_services` needs the project and mount context.
+Global services are host-published: a host client dials `127.0.0.1:<port>` on the same published
+port a containerized agent reaches at `host.containers.internal:<port>` — podman's host gateway is
+the address the sidecar publishes to, and the firewall's second gateway rule opens exactly it.
+Project-scoped services are git-common-dir keyed (one container per checkout, shared across
+worktrees), bind-mount this project's persist dir as `/data` and are reached through a unix socket
+inside it, which is why `wire_services` needs the project and mount context.
+
+What is re-derived per launch versus persisted is a deliberate split. The client env a service
+declares (`client_env` templates like `{host}`, `{port}`, `{password}`) is resolved **per launch**:
+`{host}` differs by mode — `127.0.0.1` for a host agent, `host.containers.internal` for this one —
+and that is the entire reason it is never baked. An `ephemeral` publish is re-read from
+`<rt> port` every launch and deliberately never written down, so nothing outside a harnessed launch
+can be configured with it. The two exceptions are allocate-once registries: a `publish: stable` port
+is drawn once into a machine-wide registry and reused forever (so the project's own env file is
+still correct after a reboot or `--fresh`), and the sidecar password is created once under XDG state,
+never in the service's data dir — for `location: in_repo` that dir is the user's repo, and a secret
+written there is one `git add -A` from the remote.
 
 ## Lifecycle: `--fresh`, re-attach, stopped leftovers
 
@@ -300,8 +337,8 @@ through a unix socket inside it, which is why `wire_services` needs the project 
   image id than current `image:latest` — offers a recreate; declining attaches to the older build
   with a pointer to `--fresh`.
 - `_stopped_leftover` — a prior non-ephemeral session exited without tearing its pod down (only
-  `--rm` cleans up). A same-name `pod create` would fail "name already in use", so the stopped
-  instance is removed and recreated. A *running* instance is never torn down here.
+  `--rm` cleans up). A same-name recreate would fail "name already in use" on either runtime, so the
+  stopped instance is removed and recreated. A *running* instance is never torn down here.
 - `HARNESSED_HEADLESS=true` disables the re-attach branch entirely and, at the end, makes a dead
   hub a hard `typer.Exit(1)` rather than a green SUCCESS line.
 
@@ -339,6 +376,29 @@ Volumes are identified by **label** (`harnessed.role` / `harnessed.stack` / `har
 never by parsing the name — a stack name may contain the same hyphens the name format uses, so
 `harnessed-cfg-claude-a-b` is ambiguous about where the harness ends.
 
+Every populate step runs under the **same mapping the agent will get**, whatever the runtime:
+`paths.userns_args(rt)` plus `paths.container_user_args(rt)` are spliced into the compose step, the
+per-step installs, and the fingerprint stamp alike. On docker the volumes need more than a matching
+run-user: a freshly created named volume is an empty dir owned by `root:root`, so
+`_chown_volume_for_docker` chowns it to `paths.container_owner_ids(rt)` — the invoking uid with
+group 0, exactly what `container_user_args` runs the agent as; change one without the other and
+every write into the volume fails. The chown runs only for a volume *this run created* (existence is
+asked before `volume create`, which is idempotent and so cannot answer afterwards), and it writes
+**nothing inside the volume** — an earlier sentinel-file gate broke the launch outright, because
+docker seeds a volume from the image's copy of the mount point only while the volume is empty, and
+one file in `~/.local` suppressed the copy-up that carries the image's pnpm tree. The throwaway
+chown container also mounts the volume **at its real path, not at `/mnt`**: docker performs copy-up
+when the container *starts*, so seeding happens before the `chown` entrypoint runs and the chown
+lands on the seeded tree — at `/mnt` the two fought, copy-up reset the root to the image dir's owner
+the moment the volume was mounted where it belongs, and `cp -a` in the next step died with
+`cp: preserving times ... Operation not permitted` (`utimes()` needs *ownership*, not write
+permission, on the destination directory itself). The chown is `check=False` like every other
+runtime call here — no caller handles `CalledProcessError`, so a failed chown surfaced as a bare
+traceback instead of the populate step's one-line error, which reports the failure in the user's
+terms. Podman needs none
+of this: its user namespace chowns the volume implicitly, and a second chown would state a rule in
+two places that could then disagree.
+
 ### The volume-composition invariant
 
 > **Copy-up lifts the image's `~/.claude` into the volume; profile content is then layered on top.
@@ -347,10 +407,11 @@ never by parsing the name — a stack name may contain the same hyphens the name
 `_ensure_config_volume` runs one throwaway container:
 
 ```bash
-podman run --rm --userns=keep-id:uid=1000,gid=1000 \
+<rt> run --rm *paths.userns_args(rt) *paths.container_user_args(rt) \
   -v <vol>:/home/harnessed/.claude \
   -v <profile>:/tmp/harnessed-profile:ro \
-  [--entrypoint sh] <image> -c '
+  [-e HARNESSED_SETTINGS_JSON=<merged>] \
+  --entrypoint sh <image> -c '
      set -e;
      if [ -d /tmp/harnessed-profile/.claude ]; then
        cp -a /tmp/harnessed-profile/.claude/. /home/harnessed/.claude/;
@@ -364,10 +425,12 @@ Two podman behaviours make this correct, both verified against 6.0.1:
    content into the volume. It happens **exactly once** — thereafter volume content wins and image
    updates are invisible, which is why the fingerprint gate must key on image identity and not only
    the recipe hash.
-2. **USERNS.** The pod is created with `paths.USERNS_ARG` and the agent inherits it as a pod member,
-   so this populate step **must** use the same mapping. A volume first populated under the default
-   userns is unusable by the agent: uid 1000 inside reads the files as owner 999 and every write
-   EACCESes.
+2. **USERNS.** The agent gets its mapping from the pod (podman) or states it itself (docker:
+   `--userns=host` plus `--user <invoking-uid>:0`), and this populate step **must** use the same
+   one. A volume first populated under any other mapping is unusable by the agent: on podman, uid
+   1000 inside reads files written under the default mapping as owner 999 and every write EACCESes.
+   Verified in both directions. The podman mapping is pinned to the image uid rather than left as
+   bare `keep-id` — see `paths.USERNS_ARG` and bd harnessed-rv2.1.
 
 The `cp -a src/. dst/` **merges** into the copy-up'd tree rather than replacing it — that is the
 whole point. This design exists because of a real bug: the previous shape mounted
@@ -562,13 +625,21 @@ config is project-agnostic (built before any project is known; path mirroring ma
 project path per-launch), so serena/repowise would otherwise resolve the container home instead of
 the project root. Per-instance so two projects on the same stack never race on one shared cwd.
 
-`self.member_mounts` is then derived: `_without_userns(self.mount_args)` (a filter on the
-`--userns` *flag*, not a literal value — an inline inequality against the bare `keep-id` spelling
-silently stopped matching once the mapping was pinned), plus the hatago config `:ro`, plus
-`_setup_script_mounts`. Since the hatago-consolidation, hatago runs **in** this container rather
-than as a separate pod member, so the hub and the stdio children it spawns share the container's
-home and see the project bind-mount. Waiting for the hub is a readiness gate, not wiring — the
-sequencer does it after the container starts.
+`self.member_mounts` is then derived: `_without_userns(self.mount_args)` **on podman only** (gated on
+`_rt_uses_pods` — a docker member carries its own mapping from `_agent_placement_args`, so a strip
+there would drop it), plus the hatago config `:ro`, plus `_setup_script_mounts`. The filter keys on
+the `--userns` *flag*, not a literal value — an inline inequality against the bare `keep-id` spelling
+silently stopped matching once the mapping was pinned. The source carries an **honest note** that
+goes further: the conditional is *inert today*, because no `mounts.py` builder emits `--userns` on
+either runtime (`rg 'userns' src/harnessed/mounts.py` is empty) and the docker mapping is delivered
+by `_agent_placement_args`, never through `mount_args` — so the strip has nothing to remove. It is
+kept anyway, deliberately: the strip is only ever correct for a pod member, and an unconditional
+strip would silently swallow a mapping the moment any builder starts emitting one. An earlier
+version of that comment claimed stripping would drop the mapping entirely; the note is the
+correction of its own claim. Since the hatago-consolidation, hatago runs **in** this container
+rather than as a separate pod member, so the hub and the stdio children it spawns share the
+container's home and see the project bind-mount. Waiting for the hub is a readiness gate, not
+wiring — the sequencer does it after the container starts.
 
 `_setup_script_mounts` places each recipe's `setup.script` — and the recipe dir it came from —
 inside the container at `/opt/harnessed/setup/<name>.sh` and `/opt/harnessed/recipes/<name>`. A
@@ -656,7 +727,52 @@ kernel-reported-free ephemeral candidates and bind-probes them — inherently ra
 locked, because varlock failing loudly beats a lock held for the life of the pod. `--port` is still
 passed explicitly, because the guest's `HTTPS_PROXY` must name the port before the process exists.
 
-## `pod create`
+## Where the agent lives — `_agent_placement_args`, `_netns_anchor`, `pod create`
+
+`_agent_placement_args(rt, pod, inst)` decides where the agent container lives: its netns, its
+hostname, its user namespace. It is a pure argv-returning function for one reason — the userns half
+was wrong on docker and no test could see it. The argv used to be assembled inline, and the test
+that covered it hand-assigned a `--userns` into `mount_args` and asserted it survived, which is a
+state production never produces (no mount builder emits that flag); the fabricated input measured
+the fabrication while coverage, mutation and the whole suite all reported green, and the docker
+agent was created with **no mapping at all**. Asserting a real function's real output is the
+difference between a covered property and a covered line (#456).
+
+| runtime | returns | why |
+| --- | --- | --- |
+| podman | `["--pod", pod]` — nothing else | the mapping and the hostname are **pod properties**: `pod create` sets both and every member inherits them. Podman *rejects* `--userns` on a member, so the member argv must not carry one. |
+| docker | `--hostname <bounded>`, `--userns=host`, `--user <invoking-uid>:0` | there is no infra container to inherit from, so the agent states all three itself. |
+
+The docker half carries two defect stories in miniature:
+
+- **`--userns=host`, not `keep-id`** — docker exits 125 on `keep-id` ("invalid USER mode"). `host`
+  maps *nothing*, so the image's uid 1000 *is* host uid 1000 — correct only when the invoking user
+  happens to be uid 1000, and wrong on a uid-1001 GitHub runner, which is precisely what kept docker
+  out of CI (#457). `--user` therefore states the invoking uid explicitly, and the group is **0**,
+  deliberately not the invoker's gid: group 0 is the only group an uid the image never created is
+  guaranteed to hold, and the base image gives `$HOME` to group 0 with group perms equal to user
+  perms. With the invoker's own gid the agent could not traverse `/home/harnessed` at all — measured
+  as `cp: cannot stat '/home/harnessed/.claude/'` with the volume ownership *correct*. The uid half
+  and the chown half (`container_user_args` / `container_owner_ids` / `volumes._chown_volume_for_docker`)
+  are one coupled pair that only works together, and a test asserts the two sites name the same ids.
+- **No `--network=container:<pod>`.** The earlier shape pointed the agent at the pod's netns, but
+  nothing ever creates a container by the pod's name when there is no pod — `pod create` runs only
+  under `_rt_uses_pods` — so the anchor dangled; docker rejected the `--hostname` +
+  join-someone-else's-UTS conflict before the broken anchor was even reached, one defect masking
+  another (#458). On a pod-less runtime the agent **owns** the netns — it plays the role podman's
+  infra container plays — and everything else joins *it*. Owning it is also what makes `--hostname`
+  legal again.
+
+`_netns_anchor(rt, pod, inst)` names the container-or-pod whose network namespace everything else
+joins: the **pod** on podman (members share the infra container's netns by construction), the
+**agent container itself** on docker. It is a function rather than `pod or inst` at each call site
+because that idiom reads as a fallback for a missing pod name — but `self.pod` is always set, so on
+docker it always chose the pod: a container that does not exist. The question is which **runtime**,
+never which value is truthy. The firewall runner and the policy verification both take their target
+from it, and `_agent_placement_args` carries its own guard-the-guard test: the two runtimes must
+never return the same placement, because if they ever did, one of the two would be wrong.
+
+### `pod create` (podman)
 
 ```text
 podman pod create --name <inst> --hostname <bounded> --userns=keep-id:uid=1000,gid=1000
@@ -721,10 +837,28 @@ The `--network` value is composed by `mounts._mcp_remote_pod_args`; the possible
   about both. The callback may be unreachable and the pod has no route to the broker, but neither
   failure is invented by harnessed — both are consequences of the operator's explicit value.
 
-### `podman run -d` and the env precedence
+### The flat `run -d` (docker)
+
+On a pod-less runtime the whole pod step is skipped: no `pod create`, no pasta composition, no
+publish list. The agent is created directly by the `run -d` below, carrying its placement args from
+`_agent_placement_args`, and it **is** the netns anchor the firewall runner later joins. Two
+consequences fall out of the shape, both honest limitations rather than hidden rewrites:
+
+- **No broker.** The `169.254.1.1` door is a pasta option on `pod create`; with no pod there is no
+  way to deliver it, so the broker gate prints its note and starts nothing — secrets resolve into
+  the container env as they always did. Starting a broker that the container cannot reach would be
+  exactly the half-wired state `--no-secrets` exists to avoid.
+- **No callback publish.** `-p` ports are a pod-level property and the publish helper is only called
+  from the pod branch, so a pod-less launch publishes nothing: an OAuth flow that needs the pinned
+  callback redirect has no listener on the host's loopback and will time out there. The firewall
+  runner's netns anchor and the mapping split are the parts docker *does* get, because the rest of
+  the sequence depends on them.
+
+### `run -d` — the agent container, and env precedence
 
 ```bash
-podman run -d [--pod <inst> | --network=container:<inst> --hostname <bounded>]
+<rt> run -d [ --pod <inst>                                          # podman: a pod member
+            | --hostname <bounded> --userns=host --user <uid>:0 ]   # docker: owns its netns
   --name <inst>
   --env-file <global> --env-file <project>       # resolved, layered global → project
   -e <recipe env ...>                            # FIRST — catalog-authored, must not clobber
@@ -738,7 +872,8 @@ podman run -d [--pod <inst> | --network=container:<inst> --hostname <bounded>]
   <harness_image> bash -c 'exec /usr/local/bin/harnessed-start 2>/dev/null || exec sleep infinity'
 ```
 
-**ORDER IS PRECEDENCE.** Podman applies `-e` left-to-right, so the **last** wins. Recipe `env:` goes
+**ORDER IS PRECEDENCE.** The runtime applies `-e` left-to-right — podman and docker alike — so the
+**last** wins. Recipe `env:` goes
 first because it is catalog-authored and must not be able to clobber harnessed-owned values; that
 matches host mode, where `_launch_host` applies `_recipe_env` to `os.environ` and *then* overwrites
 with `harnessed_env`. Reversing the two silently inverts precedence between modes (caught merging
@@ -813,10 +948,27 @@ the unconfined side of the boundary.
 
 ## `apply_isolation(EGRESS)` — fail-closed twice over
 
-`egress-firewall.sh` installs a **default-DROP** OUTPUT policy in the pod's netns, so "it did not
-run" is not a degraded firewall — it is *no* firewall. Recipe-declared `egress:` domains are unioned
-across the stack's recipes and passed as positional args, so the allowlist opens them only when a
-recipe that needs them is present.
+`egress-firewall.sh` installs a **default-DROP** OUTPUT policy in the agent's netns — the pod's on
+podman, the container's own on docker — so "it did not run" is not a degraded firewall, it is *no*
+firewall. The allowlist the launcher passes is **recipe `egress:` ∪ `api_endpoint_egress_hosts`**:
+the recipe-declared domains are unioned across the stack's recipes and passed as positional args, so
+they open only when a recipe that needs them is present.
+
+The second operand exists because the default allowlist covers what *recipes* know about, and misses
+the one host the agent cannot work without when the user has **repointed** it:
+`ANTHROPIC_BASE_URL` (and `ANTHROPIC_BEDROCK_BASE_URL` / `ANTHROPIC_VERTEX_BASE_URL`) is set from
+the user's `.env.schema`, not by any recipe, so nothing tells the firewall about it — while
+`api.anthropic.com` *is* in the baked allowlist, which is exactly why the defect is invisible on a
+default setup and total on a gateway setup. Measured: with
+`ANTHROPIC_BASE_URL=https://api.z.ai`, every request from inside the container timed out at the DROP
+policy while `api.anthropic.com` answered, and the agent reported an **authentication failure** —
+the request never arrived to be authenticated, which sends the reader looking at tokens instead of
+at routing. `api_endpoint_egress_hosts` takes the already-resolved launch env as a mapping rather
+than re-reading the env-files (`_resolve_launch_env` and `_resolve_launch_secrets` already resolve
+the same sources with the same precedence; a third reader would be a third place for that precedence
+to drift), extracts bare hostnames (falling back to scheme/port-stripping the raw value, because a
+bare host parses as a path, not a netloc), and returns hostnames only — the script resolves each to
+its current IPs.
 
 **Fail-closed layer 1 — the script refuses to report success on a failed call.**
 
@@ -848,7 +1000,7 @@ fi
 **Fail-closed layer 2 — the launcher does not take the script's word for it.**
 
 `_apply_firewall` checks the return code, then calls `_firewall_policy_is_drop`, which reads
-`iptables -S OUTPUT` back out of the pod's netns and returns True **only for an explicit
+`iptables -S OUTPUT` back out of the agent's netns and returns True **only for an explicit
 `-P OUTPUT DROP`**. Anything unreadable — exec failed, iptables missing, output in an unrecognised
 shape — is False: *"cannot prove it is confined" and "is not confined" must reach the same
 fail-closed branch.* A guard that trusts the thing it is guarding is not a guard; the launcher's
@@ -856,8 +1008,9 @@ own verification covers every future cause of the same silence, not just the one
 
 Both failures print the remedy (`NO_FIREWALL=true` to launch without one deliberately) and exit 1.
 
-**The pod is torn down, including on Ctrl-C.** By the EGRESS phase BOUNDARY has already started the
-pod, so simply propagating would hand the user their shell back and leave a container running with
+**The instance is torn down, including on Ctrl-C.** By the EGRESS phase BOUNDARY has already started
+the pod (or the flat container), so simply propagating would hand the user their shell back and
+leave a container running with
 **unrestricted** egress — quieter than the old unbounded hang, and no safer. So:
 
 ```python
@@ -876,17 +1029,31 @@ broker first (never fatally), so the host process holding secrets never outlives
 
 ### Why a throwaway container, not `podman exec`
 
-`_firewall_runner_argv` builds a `podman run --rm --cap-add NET_ADMIN --user root` container joined
-to the pod's netns (`--pod` on podman, `--network=container:` on a pod-less runtime). Installing
-iptables rules needs `CAP_NET_ADMIN`, and **the agent container must never have it** — the agent is
+`_firewall_runner_argv` builds a `<rt> run --rm --cap-add NET_ADMIN --user root` container joined to
+the netns `_netns_anchor` names (`--pod <pod>` on podman, `--network=container:<inst>` — the *agent*
+— on a pod-less runtime). Installing iptables rules needs `CAP_NET_ADMIN`, and **the agent container
+must never have it** — the agent is
 the untrusted party the firewall exists to confine, so handing its namespace-mates the capability to
 flush those rules would hand the confined process the key. Measured on this design: the agent member
 keeps `CapEff: 0` and NET_ADMIN stays out of its bounding set, so it cannot install or remove a rule
 even if it reached root inside the container. `--user root` because NET_ADMIN in the bounding set is
 not enough — the image's default user is unprivileged and iptables carries no file capabilities, so
 an effective set of 0 makes every call fail with "Permission denied (you must be root)", which is
-exactly how the 43-run silence stayed hidden. The runner shares the pod's netns, so its rules apply
-to every member; it exits immediately, and the capability does not outlive the call.
+exactly how the 43-run silence stayed hidden. The runner shares the agent's netns (the pod's on
+podman, the container's own on docker), so its rules apply to everything in it; it exits
+immediately, and the capability does not outlive the call.
+
+**The runner's user namespace must *match* the agent's, not merely be present.** This is the #456
+sequel to the placement fix above: iptables run from a *different* user namespace than the netns
+they are configuring return `EPERM`, so a runner whose mapping differs from the agent's installs
+nothing, the script (pre-fix) still reported success, and the agent it was meant to confine ran wide
+open. So `_firewall_runner_argv` repeats the placement split exactly: on podman it carries no
+`--userns` (inherited from the pod, and rejected on any container that names one), and on a pod-less
+runtime it splices `*paths.userns_args(rt)` — the same `--userns=host` the agent states. A test
+asserts runner and agent emit the *identical* mapping fragment on docker, and that the podman runner
+carries none because the pod owns it. The firewall script runs against the harness image (nothing is
+pulled), and the same argv shape serves the launcher's own `_firewall_policy_is_drop` check, which
+also needs NET_ADMIN to read the ruleset back.
 
 ## OAuth consent and hub readiness
 
@@ -912,7 +1079,12 @@ bracket stops the pattern matching the shell running it) and restarted afterward
 alone, never `harnessed-start`, which ends in `exec sleep infinity`.
 
 `_wait_hatago` polls the in-container port with a deadline-driven loop (the message names the
-timeout, so a per-probe deadline on its own would multiply the real wait). It is **skipped** under
+timeout, so a per-probe deadline on its own would multiply the real wait). The budget is **90 s, not
+30** — measured, not guessed: on docker, container start to hub listening was 33.5 s, and the floor
+is not the hub's own startup but the hub *plus every stdio child it connects before it binds*, plus
+the retry budget of any unreachable server. The old bound failed deterministically while looking
+like a slow start, and the resulting "MCP tools will be unavailable" sent two investigations after
+tokens and secrets before anyone timed the hub. The wait is **skipped** under
 `stdio` (the harness spawns the hub at attach) and when every server is direct — probing for a hub
 that was deliberately never started would wait out the full timeout and then report a degraded hub,
 turning correct configuration into a red herring, and in headless mode into a hard exit.
@@ -926,7 +1098,8 @@ terminal to notice.
 `launcher._attach` execs into the running instance:
 
 ```bash
-podman exec -it -e TERM=xterm-256color -w <start_dir> <inst> bash -l -c <shell_cmd>
+<rt> exec -i [-t] -e TERM=xterm-256color -w <start_dir> <inst> bash -l -c <shell_cmd>
+#     ^ the -t is dropped under container-exec: no pty, or the harness fullscreen-renders
 ```
 
 `shell_cmd` is `mise_init && init_prologue && [keyring_init] && tail`, where `tail` is the harness
@@ -967,10 +1140,28 @@ replaced and the TTY is handed to the container natively; no post-exit hook. The
 `finally` tears the pod down (bounded) and removes the attach marker, so the process survives to
 reap the pod once the interactive session exits.
 
+### The headless twin — `container-exec`
+
+The same launch exists under a second name for callers with nobody at the keyboard
+(`harnessed container-exec <harness> <path> -- -p "summarize the diff"`). It is the **same function
+under a second registration, never a wrapper** — `host_run`/`container_run` carry twenty-odd options
+between them, and a second signature would be a second place for one to drift. The body reads
+`ctx.info_name` to know which verb was typed, and `set_exec_mode(True)` (in `console.py`, so
+`setupenv` can read it without importing `launcher`) makes `_can_prompt()` False **even on a real
+TTY** — `-exec` verbs run from a terminal and still have nobody at them, and a `typer.prompt` there
+is not a question, it is a hang. So every interactive gate (setup notices, stale-profile rebuild,
+older-build recreate) takes the non-interactive branch a piped launch already takes, `--shell` is
+rejected outright (exit 2: it starts no harness, and `-i` with no pty would hand back a shell the
+caller cannot drive), and the exec drops **`-t`**: the harness sees no pty, so it stays on its plain
+renderer instead of drawing its answer on the alternate screen buffer where it vanishes at exit —
+while `-i` stays, so a piped prompt on stdin still reaches the agent. Output streams to the calling
+terminal, the exit code is the agent's, and backgrounding is the caller's job.
+
 ## Operational knobs
 
 | knob | effect |
 | --- | --- |
+| `container-exec` | the same verb registered headless (see above): no prompts even on a TTY, no pty, exit code is the agent's |
 | `--fresh` | tear down the existing pod/instance (broker stopped first); also wipe the agy keyring and the isolated-auth login |
 | `--rm` | ephemeral — supervise the attach and tear the pod down on session exit; no effect headless |
 | `--no-firewall` / `NO_FIREWALL=true` | the opt-out from the egress firewall |
@@ -1000,8 +1191,8 @@ consent are deliberately unbounded; the teardown beside them is bounded.
 
 ## What the tests actually pin down
 
-The pytest suite runs **no real podman** (see `CLAUDE.md`), so the container path's guarantees are
-pinned by unit tests over the pure derivations, and by the podman-gated live layer behind
+The pytest suite runs **no real container runtime** (see `CLAUDE.md`), so the container path's
+guarantees are pinned by unit tests over the pure derivations, and by the live layer gated behind
 `HARNESSED_PODMAN=1`:
 
 - the mount block's *order* (the omp `mcp.json` shadow immediately after the dir mount it shadows;
@@ -1016,6 +1207,15 @@ pinned by unit tests over the pure derivations, and by the podman-gated live lay
 - the firewall runner argv (`--cap-add NET_ADMIN`, `--user root`, netns join) and
   `_firewall_policy_is_drop`'s strict line match;
 - the volume name/label scheme and the fingerprint's image-id component;
+- the whole docker mapping chain as pure derivations (`tests/test_docker_userns.py`): the podman
+  member carries no `--userns` while the docker agent states `--userns=host` plus `--user
+  <invoking-uid>:0`; the docker agent owns its netns and carries no `--network=` at all;
+  `_netns_anchor` answers per runtime, and a non-empty pod name must still yield the instance on
+  docker; the firewall runner joins the agent and emits the *identical* mapping fragment the agent
+  does; `container_user_args` and `container_owner_ids` name the same `(uid, 0)` pair and the volume
+  chown uses it; every volume install step carries exactly its runtime's mapping. A separate
+  source-level sweep (`tests/test_userns_mapping.py`) fails on any bare `--userns=keep-id` emitted
+  anywhere outside `paths.py`, so the unpinned mapping cannot quietly come back;
 - the broker pins, without any real broker: `tests/test_broker_launch_gate` asserts that **no
   varlock subprocess runs at all** without the opt-in — the capability absent, not merely empty —
   and that a failed broker start fails the launch with exit 1, naming `--no-secrets` and printing no
@@ -1036,38 +1236,45 @@ reader must not "clean up". The capability test (`capability.launch_headless`) d
 1. **Never mount a profile directory over a config subtree.** Copy-up lifts the image's
    `~/.claude` into the volume, then profile content layers on top. Shadowing is the bug the
    composed volume replaced — 70 of 75 skills went invisible once.
-2. **The volume-populate step must use the same `--userns` as the pod.** A volume written under any
-   other mapping is unreadable by the agent.
-3. **The fingerprint includes the image id.** Copy-up runs exactly once per volume; after that
+2. **One id mapping per runtime, stated once and reused everywhere.** The agent's mapping comes from
+   the pod (podman) or is stated by the container itself (docker: `--userns=host` plus
+   `--user <invoking-uid>:0`); the volume-populate steps, the per-step installs, and the firewall
+   runner must all carry exactly that mapping. A volume written under any other mapping is unreadable
+   by the agent, and iptables run from a foreign user namespace EPERM and confine nothing.
+3. **`_netns_anchor` names whose netns everything else joins: the pod on podman, the agent itself on
+   docker.** The agent never joins a foreign netns on a pod-less runtime — the old
+   `--network=container:<pod>` anchor named a container nothing ever creates there (#458) — and the
+   question is which *runtime*, never which value is truthy.
+4. **The fingerprint includes the image id.** Copy-up runs exactly once per volume; after that
    volume content wins and image updates are invisible, so the gate must detect a new image.
-4. **The egress firewall fails closed twice over** — the script's `require` and self-verification,
+5. **The egress firewall fails closed twice over** — the script's `require` and self-verification,
    and the launcher's independent `iptables -S OUTPUT` read-back — and on any failure the pod is
    torn down, `BaseException` included. An unconfined container must not survive a failed launch,
    an interrupted one, or a missing runtime.
-5. **The agent container never holds `CAP_NET_ADMIN`.** Only a throwaway, netns-sharing, root user
+6. **The agent container never holds `CAP_NET_ADMIN`.** Only a throwaway, netns-sharing, root user
    container installs or reads the rules.
-6. **Credentials are referenced, never replicated.** The live store is mounted or a token is
+7. **Credentials are referenced, never replicated.** The live store is mounted or a token is
    forwarded; nothing is baked into an image layer, and resolved secrets are unlinked as soon as
    podman has ingested them.
-7. **`-e` order is precedence, and `-e` beats `--env-file`.** Recipe env first, harnessed-owned
+8. **`-e` order is precedence, and `-e` beats `--env-file`.** Recipe env first, harnessed-owned
    last; the token forward is withheld when an env-file declares the variable, empty included — and
    withheld outright from an `isolated_auth` claude stack.
-8. **The broker is a host process holding live secrets, so it is tied to the pod's lifetime.** It
+9. **The broker is a host process holding live secrets, so it is tied to the pod's lifetime.** It
    starts only on opt-in and only where the pod can reach it; it dies with the pod (teardown first,
    the `pod create` abort handler, Ctrl-C included); when a stop fails, the code asks `proxy status`
    whether the session is really gone rather than guessing — a live broker keeps its record so
    `harnessed list` still names it, a dead one is dropped; a broker that outlives its pod is reaped,
    never tolerated; and its state record holds five fields and no secret.
-9. **`pod create` takes one `--network`, so the pasta features compose into one value.** The broker
-   door and the callback option cannot be split across two flags or two helpers — the composition
-   lives inside `_mcp_remote_pod_args`, and no door is emitted without a broker.
-10. **The config volume is safe to destroy**; credentials and rw history are bind-mounted over it
+10. **`pod create` takes one `--network`, so the pasta features compose into one value.** The broker
+    door and the callback option cannot be split across two flags or two helpers — the composition
+    lives inside `_mcp_remote_pod_args`, and no door is emitted without a broker.
+11. **The config volume is safe to destroy**; credentials and rw history are bind-mounted over it
     and live on the host. The isolated-auth login store relies on exactly that invariant.
-11. **The container path never assembles**, so anything `assemble()` guards must be re-checked here
+12. **The container path never assembles**, so anything `assemble()` guards must be re-checked here
     — today that is `_validate_direct_servers`.
-12. **The two backends are not symmetric, and the three things that are not allowed to differ** are
+13. **The two backends are not symmetric, and the three things that are not allowed to differ** are
     credential delivery by reference, the env winners, and the host-preferences fold into the
     profile.
-13. **A row or a script is never left behind for a launch that died.** The aoe row registers only
+14. **A row or a script is never left behind for a launch that died.** The aoe row registers only
     after the last validation gate, the launcher script is written before the row it names, and the
     script is written only over a file carrying harnessed's own sentinel that git does not track.
