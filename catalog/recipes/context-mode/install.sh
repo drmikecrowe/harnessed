@@ -47,15 +47,22 @@ fi
 # The layout UNDER that root is the package manager's, not mise's, and this recipe cannot pin either:
 # the base image installs mise unpinned (`curl https://mise.run`), and the npm backend shells out to
 # whichever manager `npm.package_manager` names — pnpm in a harnessed build, the default elsewhere.
-# Measured against mise 2026.9.1 with the default backend: <root>/node_modules/<pkg>. The two other
-# globs cover the shapes the same backend has used — `npm install -g --prefix` (lib/node_modules) and
-# pnpm's versioned global dir (<root>/<n>/node_modules). Probed in order, and the failure below names
-# all three rather than reporting a bare "not found".
+# Measured against mise 2026.9.1 with the default backend: <root>/node_modules/<pkg>. The other
+# globs cover the shapes the same backend has used — `npm install -g --prefix` (lib/node_modules),
+# pnpm's versioned global dir (<root>/<n>/node_modules), and pnpm's CONTENT-ADDRESSED one, which
+# nests a second level: <root>/v11/<hash>/node_modules. That fourth shape is what mise 2026.9.1
+# actually writes today on both linux and macOS, so the three-candidate ladder matched nothing and
+# aborted every launch of this recipe. Probed in order, and the failure below names all four rather
+# than reporting a bare "not found".
+#
+# `[ -d ]` and not `find -type d`: pnpm links the package into node_modules as a SYMLINK into its
+# store, so a type test that does not follow links rejects the very directory being looked for.
 SKILLS_SRC=""
 for candidate in \
     "${CM_HOME}"/node_modules/context-mode/skills \
     "${CM_HOME}"/lib/node_modules/context-mode/skills \
-    "${CM_HOME}"/*/node_modules/context-mode/skills; do
+    "${CM_HOME}"/*/node_modules/context-mode/skills \
+    "${CM_HOME}"/*/*/node_modules/context-mode/skills; do
     if [ -d "${candidate}" ]; then
         SKILLS_SRC="${candidate}"
         break
@@ -63,8 +70,8 @@ for candidate in \
 done
 if [ -z "${SKILLS_SRC}" ]; then
     echo "error: install (context-mode): the pinned package has no skills/ dir under ${CM_HOME}." \
-         "Looked in node_modules/, lib/node_modules/ and */node_modules/ for context-mode/skills." \
-         "Upstream moved it, or the npm backend changed layout again." >&2
+         "Looked in node_modules/, lib/node_modules/, */node_modules/ and */*/node_modules/ for" \
+         "context-mode/skills. Upstream moved it, or the npm backend changed layout again." >&2
     exit 1
 fi
 
