@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# install.sh — context-mode CLI (host) + omp plugin (container+omp only).
+# install.sh — context-mode upstream skills (every harness) + omp plugin (container+omp only).
 #
-# Two deliverables, both formerly separate channels:
-#   1. context-mode CLI/MCP binary — container: `tools:` (mise npm backend); host: this script.
-#   2. omp extension — container+omp only: `omp plugin install` (see omp section below).
+# Three deliverables:
+#   1. context-mode CLI/MCP binary — `tools:` in recipe.yaml, both modes. Not this script.
+#   2. upstream's own skill suite — copied out of that pinned package, both modes, every harness.
+#   3. omp extension — container+omp only: `omp plugin install` (see omp section below).
 #
 # Env this file may rely on (emit.install_env — same keys host and container):
 #   HARNESS, HARNESSED_MODE, HARNESSED_RECIPE_DIR, HARNESSED_CONFIG_DIR, HARNESSED_INSTALL_CACHE
@@ -19,6 +20,75 @@ set -euo pipefail
 # `tools: [npm:context-mode@…]` delivers the CLI in BOTH modes now (bd harnessed-1t4.3). It used to
 # cover the container only, so this script carried a host-mode `pnpm add -g` branch; a host launch
 # applies the same pinned tool spec, so that branch is gone rather than duplicated.
+
+# --- Skill layer: install upstream's suite, do not vendor it ---------------------------------------
+# A marketplace install of context-mode carries a `skills/` tree (its plugin.json points at it). The
+# recipe wires the MCP server and the hooks directly, so that tree never arrived. This section
+# delivers it, for every harness and both modes.
+#
+# INSTALLED, never vendored. The pin in `tools:` already puts the exact package on disk, so copying
+# its skills into the repo would fork upstream prose at a version nothing re-checks — the drift shape
+# #323 describes. Copying them out of the pinned package here means the skills and the binary can
+# never disagree about the version, and `harnessed update` still has one place to bump.
+#
+# No `cache:` for the same reason: there is nothing to fetch. `tools:` is the fetch.
+: "${HARNESSED_CONFIG_DIR:?install.sh requires HARNESSED_CONFIG_DIR}"
+
+# mise owns the package root. Ask it rather than composing a path from the version — the version
+# lives in recipe.yaml alone (AC-1) and must not be restated here.
+CM_HOME="$(mise where npm:context-mode 2>/dev/null || true)"
+if [ -z "${CM_HOME}" ] || [ ! -d "${CM_HOME}" ]; then
+    echo "error: install (context-mode): mise reports no install root for npm:context-mode." \
+         "The 'tools:' entry in recipe.yaml is what installs it — the skills ship inside that same" \
+         "package and cannot be copied without it." >&2
+    exit 1
+fi
+
+# The layout UNDER that root is the package manager's, not mise's, and this recipe cannot pin either:
+# the base image installs mise unpinned (`curl https://mise.run`), and the npm backend shells out to
+# whichever manager `npm.package_manager` names — pnpm in a harnessed build, the default elsewhere.
+# Measured against mise 2026.9.1 with the default backend: <root>/node_modules/<pkg>. The two other
+# globs cover the shapes the same backend has used — `npm install -g --prefix` (lib/node_modules) and
+# pnpm's versioned global dir (<root>/<n>/node_modules). Probed in order, and the failure below names
+# all three rather than reporting a bare "not found".
+SKILLS_SRC=""
+for candidate in \
+    "${CM_HOME}"/node_modules/context-mode/skills \
+    "${CM_HOME}"/lib/node_modules/context-mode/skills \
+    "${CM_HOME}"/*/node_modules/context-mode/skills; do
+    if [ -d "${candidate}" ]; then
+        SKILLS_SRC="${candidate}"
+        break
+    fi
+done
+if [ -z "${SKILLS_SRC}" ]; then
+    echo "error: install (context-mode): the pinned package has no skills/ dir under ${CM_HOME}." \
+         "Looked in node_modules/, lib/node_modules/ and */node_modules/ for context-mode/skills." \
+         "Upstream moved it, or the npm backend changed layout again." >&2
+    exit 1
+fi
+
+mkdir -p "${HARNESSED_CONFIG_DIR}/skills"
+# Named, not globbed. `ctx-upgrade` is upstream's own skill and is DELIBERATELY not installed: it
+# pulls latest from GitHub, rebuilds, and updates the npm global. That unpins the binary `tools:`
+# pinned, mid-session, inside a stack whose whole build contract is that downloads are pinned. The
+# user upgrades by bumping `tools:` in recipe.yaml and rebuilding.
+#
+# Two upstream strings assume a marketplace plugin install, and both are wrong in a stack, so each
+# copied SKILL.md is rewritten in place:
+#   1. `/context-mode:ctx-foo` — a plugin-namespaced slash command. Here each skill is fanned
+#      standalone into .claude/skills/, so the name is `/ctx-foo`.
+#   2. `mcp__context-mode__ctx_foo` — the tool name a direct plugin install produces. Here the
+#      server sits behind the hatago hub, so that literal names nothing. The rest of the same
+#      corpus already uses the bare `ctx_foo` form, which resolves either way.
+# The rewrite is scoped to the dir just copied. Never to the whole skills tree — other recipes fan
+# their own skills in there and this recipe does not own their bytes.
+for skill in context-mode ctx-doctor ctx-index ctx-insight ctx-purge ctx-search ctx-stats; do
+    dest="${HARNESSED_CONFIG_DIR}/skills/${skill}"
+    rm -rf "${dest}"
+    cp -r "${SKILLS_SRC}/${skill}" "${dest}"
+    sed -i 's#/context-mode:ctx-#/ctx-#g; s#mcp__context-mode__ctx_#ctx_#g' "${dest}/SKILL.md"
+done
 
 # --- omp only -------------------------------------------------------------------------------------
 # Under omp the bridged Claude hooks are inert for THIS recipe's purposes. As of bridge 0.4.0 the

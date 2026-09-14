@@ -74,10 +74,24 @@ rules:
     only_harnesses: [omp]
 
 # --- Install layer ---
-# What used to be this recipe's whole Dockerfile: the omp plugin install, as one bash file run by
-# BOTH executors (bd harnessed-8px.5). `HARNESS` is in the install env in both modes, so the
+# Two jobs in one bash file run by BOTH executors (bd harnessed-8px.5): upstream's skill suite for
+# every harness, and the omp plugin install. `HARNESS` is in the install env in both modes, so the
 # `${HARNESS} = omp` branch that lived in the `RUN` now lives in the script and the recipe stays
 # harness-independent.
+#
+# SKILLS (GAP 3). A marketplace install of context-mode carries a `skills/` tree — its plugin.json
+# declares `"skills": "./skills/"` — and this recipe, which wires the MCP server and the hooks
+# directly, never delivered it. install.sh now copies it out of the package `tools:` already pinned.
+#
+# INSTALLED, NOT VENDORED, and that is the whole reason there is no `skills:` key below. Copying
+# upstream prose into catalog/ would fork it at a version nothing re-checks; the pin and the skills
+# would then drift apart exactly the way #323 describes. Sourcing them from the pinned package means
+# one version number governs the binary, the MCP server and the skills together. `expect.skills:`
+# is how they become observable — the assembler cannot infer a skill an install script writes.
+#
+# `ctx-upgrade` is upstream's eighth skill and is deliberately NOT installed: it pulls latest from
+# GitHub, rebuilds, and updates the npm global, which unpins the binary mid-session inside a stack
+# whose build contract is that every download is pinned. Bump `tools:` and rebuild instead.
 #
 # No `cache:` — `omp plugin install` fetches and installs in one step with nowhere to point a
 # populate-if-empty content cache, and the whole step runs container-side only (see below), where
@@ -185,7 +199,21 @@ persist:
 env:
   CONTEXT_MODE_DIR: "{persist:.context-mode}"
 
-# Capability test: the context-mode MCP server connected through the hatago hub. (The hooks are
-# merged into settings.json by the assembler; the oracle only probes the MCP connection.)
+# Capability test: the context-mode MCP server connected through the hatago hub, plus the seven
+# upstream skills install.sh copies out of the pinned package. (The hooks are merged into
+# settings.json by the assembler; the oracle does not probe those.)
+#
+# The skills are listed here BECAUSE an install script writes them. A `skills:` entry is fanned by
+# the assembler, which can therefore see it; these land in ~/.claude/skills at install time, so this
+# list is the only thing that catches a silent no-op — an upstream rename, or a mise layout change
+# that makes the copy find nothing.
 expect:
   mcp: [context-mode]
+  skills:
+    - context-mode
+    - ctx-doctor
+    - ctx-index
+    - ctx-insight
+    - ctx-purge
+    - ctx-search
+    - ctx-stats

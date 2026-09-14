@@ -13,6 +13,35 @@ but are what actually give continuity across a compaction, so both are wired her
 The session store (`~/.context-mode`) is declared as workspace-scoped `persist:`, so it survives a
 `--fresh` launch and one project's session log never surfaces in another's.
 
+## Skills
+
+A marketplace install of context-mode also ships a skill suite. `install.sh` delivers it, in both
+modes and on every harness, by copying it out of the package `tools:` already pinned:
+
+| Skill | What it does |
+| --- | --- |
+| `context-mode` | routing: when to reach for a `ctx_*` tool instead of raw Bash/Read, plus language pattern references |
+| `ctx-search` | query the FTS5 knowledge base |
+| `ctx-index` | index a path into that knowledge base |
+| `ctx-stats` | context savings for the session |
+| `ctx-doctor` | diagnostics |
+| `ctx-purge` | wipe the knowledge base (destructive) |
+| `ctx-insight` | open the hosted Insight dashboard |
+
+**Installed, not vendored.** The skills come out of the pinned package rather than a copy in
+`catalog/`, so the skills and the binary cannot drift apart and `harnessed update` keeps one place
+to bump. `expect.skills:` declares them, because the assembler cannot infer what an install script
+writes.
+
+**`ctx-upgrade` is not installed.** Upstream's eighth skill pulls latest from GitHub, rebuilds, and
+updates the npm global — it unpins the binary mid-session. Bump `tools:` in `recipe.yaml` and
+rebuild instead.
+
+Two upstream strings assume a plugin install and are rewritten in place on copy: the
+`/context-mode:ctx-foo` slash-command namespace becomes `/ctx-foo` (each skill is fanned standalone
+here), and the `mcp__context-mode__ctx_foo` tool name becomes bare `ctx_foo` (the server sits behind
+the hatago hub, so the plugin-form literal names nothing).
+
 ## omp: the native extension (container only)
 
 Under `omp` the bridged Claude hooks are inert, so the recipe suppresses them
