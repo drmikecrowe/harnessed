@@ -306,6 +306,49 @@ class TestHostClaudeSource:
         assert (home / "projects" / "p.jsonl").read_text() == "the session to resume"
 
 
+    def test_launching_a_stack_from_inside_itself_does_not_copy_its_account_over_itself(
+        self, monkeypatch, tmp_path
+    ):
+        """Regression: `SameFileError` killed the launch outright.
+
+        `.claude.json` is resolved by a SECOND `CLAUDE_CONFIG_DIR` read, so guarding
+        `_host_claude_source` alone left src == dst here. It was unreachable until that guard
+        stopped the identity check returning early — the first fix is what exposed this half.
+        """
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("HOME", str(tmp_path / "userhome"))
+        (tmp_path / "userhome" / ".claude").mkdir(parents=True)
+        (tmp_path / "userhome" / ".claude.json").write_text('{"account":"mine"}')
+        home = paths.host_home("same-stack", "claude")
+        home.mkdir(parents=True)
+        (home / ".claude.json").write_text('{"account":"the stack\'s stale copy"}')
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(home))
+
+        launcher._share_host_claude_state(home)
+
+        assert (home / ".claude.json").read_text() == '{"account":"mine"}'
+
+    def test_a_nested_launch_snapshots_the_users_account_not_the_parent_stacks(
+        self, monkeypatch, tmp_path
+    ):
+        """The parent-stack shape of the same second read: the child must onboard from the USER's
+        account snapshot, never from whatever the parent stack happens to hold."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("HOME", str(tmp_path / "userhome"))
+        (tmp_path / "userhome" / ".claude").mkdir(parents=True)
+        (tmp_path / "userhome" / ".claude.json").write_text('{"account":"mine"}')
+        parent_home = paths.host_home("parent-stack", "claude")
+        parent_home.mkdir(parents=True)
+        (parent_home / ".claude.json").write_text('{"account":"the parent stack"}')
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(parent_home))
+        child_home = paths.host_home("child-stack", "claude")
+        child_home.mkdir(parents=True)
+
+        launcher._share_host_claude_state(child_home)
+
+        assert (child_home / ".claude.json").read_text() == '{"account":"mine"}'
+
+
 class TestShareClaudeState:
     def test_symlinks_session_state_and_live_auth(self, monkeypatch, tmp_path):
         real = tmp_path / "host-claude"

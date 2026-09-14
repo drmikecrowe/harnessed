@@ -261,10 +261,20 @@ def _host_claude_source() -> Path:
     This is the guard `_host_omp_source` has carried since #307, whose docstring names this function
     as having the same shape and no such guard.
     """
+    return _host_claude_config_override() or (Path.home() / ".claude")
+
+
+def _host_claude_config_override() -> Path | None:
+    """The CLAUDE_CONFIG_DIR the USER genuinely runs under, or None when there is no such thing.
+
+    One reader for one variable. `CLAUDE_CONFIG_DIR` addresses TWO things that do not live together
+    — the config dir itself, and `.claude.json` BESIDE it — so the value is consumed in two places,
+    and a guard on only one of them is the bug it was meant to fix wearing a different hat.
+    """
     override = os.environ.get("CLAUDE_CONFIG_DIR")
     if override and not _is_harnessed_owned(Path(override)):
         return Path(override)
-    return Path.home() / ".claude"
+    return None
 
 
 # Session-state subdirs SHARED with the real ~/.claude — the host analog of the container's
@@ -457,8 +467,13 @@ def _share_host_claude_state(home: Path) -> None:
         _relink(stack_cred, cred)  # live token, shared
     # .claude.json (account/onboarding) lives NEXT TO the config dir, not inside it: at
     # $CLAUDE_CONFIG_DIR/.claude.json when that's set, else $HOME/.claude.json — NOT ~/.claude/.claude.json.
-    env_ccd = os.environ.get("CLAUDE_CONFIG_DIR")
-    acct = (Path(env_ccd) if env_ccd else Path.home()) / ".claude.json"
+    #
+    # Through `_host_claude_config_override`, so a nested launch reads the USER's account snapshot
+    # and not the parent stack's. Launch a stack from inside ITSELF and the unguarded read made
+    # src and dst the same path — `shutil.copy2` raises `SameFileError` and the launch dies. That
+    # was unreachable until the guard above stopped `_share_host_claude_state` returning early on
+    # the identity check, so the first fix for the nesting bug is what exposed this half of it.
+    acct = (_host_claude_config_override() or Path.home()) / ".claude.json"
     if acct.is_file():
         shutil.copy2(acct, home / ".claude.json")  # snapshot account → skips onboarding, isolated writes
 
