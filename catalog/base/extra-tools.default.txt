@@ -13,21 +13,21 @@
 bat@0.26.1         # cat replacement
 eza@0.23.5         # ls replacement
 sd@1.1.0           # sed replacement
-dua@2.41.1         # du replacement
+dua@2.44.0         # du replacement
 gping@1.20.4       # ping with graph
 
 # Data viewing/processing
 jq@1.8.2           # JSON processor
 jless@0.9.0        # JSON viewer
-glow@2.1.2         # markdown viewer
+glow@3.0.0         # markdown viewer
 hexyl@0.17.0       # hex viewer
-yq@4.53.3          # YAML/JSON processor
+yq@4.53.6          # YAML/JSON processor
 
 # Git tools
-lazygit@0.64.0     # git TUI
+lazygit@0.65.0     # git TUI
 
 # Dev/code tools
-ast-grep@0.45.1    # AST-based code search
-ruff@0.16.2        # Python linter/formatter
+ast-grep@0.45.3    # AST-based code search
+ruff@0.16.6        # Python linter/formatter
 stylua@2.5.2       # Lua formatter
 markdownlint-cli2@0.23.2  # markdown linter

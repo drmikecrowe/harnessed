@@ -47,7 +47,7 @@ install:
   refs:
     caveman:
       repo: JuliusBrussee/caveman
-      ref: v1.10.0
+      ref: v2.6.0
 
 # What the capability test must find in the running container after a successful build. caveman
 # lands 7 skills into ~/.claude/skills and 4 slash-commands into ~/.claude/commands; declare a
