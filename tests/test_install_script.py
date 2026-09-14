@@ -1467,3 +1467,76 @@ class TestRawDownloadsAreIntegrityAnchored:
             f"content-addressed (commit-SHA) URL: {unanchored}. A version pin is not integrity."
         )
 
+
+class TestContextModeFindsItsSkillsInPnpmsContentAddressedLayout:
+    """context-mode copies its skills OUT of the package `tools:` installed, so it has to locate
+    that package on disk — and the layout under mise's install root belongs to whichever package
+    manager mise shelled out to, not to mise.
+
+    The ladder covered three shapes and mise 2026.9.1 writes a fourth: pnpm's content-addressed
+    `<root>/v11/<hash>/node_modules/<pkg>`, which nests ONE LEVEL DEEPER than the `*/node_modules`
+    candidate. So the probe matched nothing and every launch of the recipe aborted with "the pinned
+    package has no skills/ dir" — on linux as well as macOS, which is where it was first seen.
+
+    The fixture reproduces that layout exactly, symlink included: pnpm links the package into
+    node_modules as a symlink into its store, so a probe using `find -type d` (which does not
+    follow links) would reject the very directory it is looking for.
+    """
+
+    SKILLS: ClassVar[tuple[str, ...]] = (
+        "context-mode", "ctx-doctor", "ctx-index", "ctx-insight",
+        "ctx-purge", "ctx-search", "ctx-stats",
+    )
+
+    def _package_on_disk(self, tmp_path: Path) -> Path:
+        """mise's install root for the package, laid out the way pnpm actually writes it."""
+        store = tmp_path / "store" / "context-mode"
+        for skill in self.SKILLS:
+            (store / "skills" / skill).mkdir(parents=True)
+            (store / "skills" / skill / "SKILL.md").write_text(
+                f"run /context-mode:ctx-x and call mcp__context-mode__ctx_x for {skill}\n",
+                encoding="utf-8",
+            )
+        root = tmp_path / "installs" / "npm-context-mode" / "1.0.169"
+        nm = root / "v11" / "8c352624ed863c65" / "node_modules"
+        nm.mkdir(parents=True)
+        (nm / "context-mode").symlink_to(store, target_is_directory=True)
+        return root
+
+    def _run(self, tmp_path: Path, worktree_root: Path) -> subprocess.CompletedProcess:
+        root = self._package_on_disk(tmp_path)
+        stub = tmp_path / "bin"
+        stub.mkdir()
+        # `mise where npm:context-mode` is the ONLY thing install.sh asks mise for.
+        (stub / "mise").write_text(
+            f'#!/bin/sh\n[ "$1" = "where" ] && echo "{root}" && exit 0\nexit 1\n',
+            encoding="utf-8",
+        )
+        (stub / "mise").chmod(0o755)
+        script = worktree_root / "catalog" / "recipes" / "context-mode" / "install.sh"
+        return subprocess.run(
+            ["bash", str(script)],
+            env={
+                "PATH": f"{stub}{os.pathsep}{os.environ['PATH']}",
+                "HOME": str(tmp_path),
+                "HARNESSED_CONFIG_DIR": str(tmp_path / "config"),
+                "HARNESS": "claude",
+            },
+            capture_output=True, text=True, timeout=60,
+        )
+
+    def test_the_skills_are_delivered_from_a_two_level_pnpm_tree(self, tmp_path):
+        proc = self._run(tmp_path, CATALOG.parent)
+        assert proc.returncode == 0, proc.stderr
+        installed = sorted(p.name for p in (tmp_path / "config" / "skills").iterdir())
+        assert installed == sorted(self.SKILLS)
+
+    def test_the_plugin_namespaced_strings_are_rewritten_in_the_copies(self, tmp_path):
+        """Delivering the files is half the job — a copy still naming `/context-mode:ctx-x` or
+        `mcp__context-mode__ctx_x` points the agent at a slash command and a tool that do not
+        exist in a stack. Asserted here because this is the only test that runs the real copy."""
+        self._run(tmp_path, CATALOG.parent)
+        body = (tmp_path / "config" / "skills" / "ctx-search" / "SKILL.md").read_text()
+        assert "/ctx-x" in body and "/context-mode:ctx-" not in body
+        assert "ctx_x" in body and "mcp__context-mode__ctx_" not in body
+
