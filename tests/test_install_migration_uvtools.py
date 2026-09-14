@@ -53,6 +53,20 @@ def _code(path: Path) -> str:
     )
 
 
+def _pinned_tool(tools: list[str], prefix: str) -> str:
+    """The single `tools:` entry named by `prefix`, asserted to carry a concrete version.
+
+    Version-AGNOSTIC on purpose. A pin upgrade is routine maintenance and must never turn these
+    gates red; what is load-bearing is that the entry still exists, appears exactly once, and is
+    pinned at all. Asserting the literal version made `mise run upgrade-pr` fail on its own output.
+    """
+    matches = [t for t in tools if t.startswith(prefix + "@")]
+    assert len(matches) == 1, f"expected exactly one '{prefix}' pin in tools:, got {matches}"
+    version = matches[0].split("@", 1)[1]
+    assert version and version != "latest", f"'{matches[0]}' is not pinned to a concrete version"
+    return matches[0]
+
+
 @pytest.mark.parametrize("name", MIGRATED)
 class TestEveryMigratedRecipe:
     def test_declares_install_and_ships_the_script(self, name):
@@ -124,7 +138,7 @@ class TestPinsStayInSyncWithTheRecipe:
         # source cannot drift, which is a stronger guarantee than two that match today.
         r = _recipe("serena")
         assert "SERENA_VERSION" not in _code(r.root / "install.sh")
-        assert "pipx:serena-agent@1.6.1" in r.tools
+        _pinned_tool(r.tools, "pipx:serena-agent")
 
 
 class TestSerenaInstallSetupSplit:
@@ -136,7 +150,7 @@ class TestSerenaInstallSetupSplit:
         # CONFIGURATION. `serena init -b LSP` is the configuration half and stays.
         r = _recipe("serena")
         body = _code(r.root / "install.sh")
-        assert "pipx:serena-agent@1.6.1" in r.tools
+        _pinned_tool(r.tools, "pipx:serena-agent")
         assert "uv tool install" not in body
         assert "serena init -b LSP" in body
 

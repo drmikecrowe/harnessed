@@ -279,16 +279,21 @@ class TestShippedDefaultIsPinned:
         assert entries, "the template must still list tools"
         assert all("@" in e for e in entries)
 
-    def test_dua_is_pinned_to_the_version_that_broke_under_at_latest(self):
-        """Asserts the LITERAL pin only — that this version installs is not checkable here.
+    def test_dua_is_still_listed_and_still_pinned(self):
+        """The gate is dua's PRESENCE and its pinned-ness, never its version number.
 
-        Deliberately narrow after adversarial review: the earlier name promised "a version whose
-        asset exists", which no assertion in this process can establish. That a cold registry
-        cache installs dua@2.41.1 was verified by a real container build; it belongs in the
-        evidence report, not in a docstring over a text-membership check.
+        Was an assertion on the literal `dua@2.41.1` — the version whose `@latest` predecessor
+        broke a cold-cache build. That made routine pin maintenance fail its own test: the
+        2026-09-14 upgrade moved dua to 2.44.0 and turned this red with nothing actually wrong.
+
+        The "is it pinned" half is enforced twice over, and deliberately: `parse_extra_tools`
+        raises on any floating or version-less entry, so reaching the assertions below already
+        proves the whole file is pinned. What only this test proves is that dua is still IN it.
         """
         entries = parse_extra_tools(DEFAULT_LIST.read_text())
-        assert "dua@2.41.1" in entries
+        dua = [e for e in entries if e.startswith("dua@")]
+        assert len(dua) == 1, f"expected exactly one dua entry, got {dua}"
+        assert dua[0].split("@", 1)[1], f"'{dua[0]}' carries no version"
 
 
 class TestStagedBuildContextRejectsUnpinned:

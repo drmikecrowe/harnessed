@@ -229,6 +229,83 @@ class TestMaterialize:
         assert not (home / "stale-skill.md").exists()
 
 
+class TestHostClaudeSource:
+    """The claude twin of `TestHostOmpSource`'s guard. bd harnessed-8px.26: `_launch_host` exports
+    `CLAUDE_CONFIG_DIR`, so a stack launched from inside a host claude session inherits the PARENT
+    stack's config dir and shares its session state there instead of at the user's ~/.claude."""
+
+    def test_the_env_override_wins(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "elsewhere"))
+        assert hosthome._host_claude_source() == tmp_path / "elsewhere"
+
+    def test_defaults_to_dot_claude(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        assert hosthome._host_claude_source() == tmp_path / ".claude"
+
+    def test_a_nested_launch_does_not_treat_the_parent_stack_as_the_user_store(
+        self, monkeypatch, tmp_path
+    ):
+        """Observed 2026-09-14: a stack launched from inside another stack's session symlinked its
+        `projects` at the PARENT stack's home, so 43 transcripts of real session history were
+        invisible to the new session and to the user's own claude."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("HOME", str(tmp_path / "userhome"))
+        parent_home = paths.host_home("parent-stack", "claude")
+        parent_home.mkdir(parents=True)
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(parent_home))
+
+        assert hosthome._host_claude_source() == tmp_path / "userhome" / ".claude"
+
+    def test_a_user_override_outside_the_homes_root_is_still_honored(self, monkeypatch, tmp_path):
+        """The guard suppresses another STACK's dir, never a dir the user genuinely runs under."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "my-own-claude"))
+        assert hosthome._host_claude_source() == tmp_path / "my-own-claude"
+
+    def test_the_nested_child_shares_with_the_real_store_not_the_parent(
+        self, monkeypatch, tmp_path
+    ):
+        """The end-to-end consequence: a nested launch still resumes the user's own sessions."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("HOME", str(tmp_path / "userhome"))
+        real = tmp_path / "userhome" / ".claude"
+        (real / "projects").mkdir(parents=True)
+        (real / "projects" / "p.jsonl").write_text("the session to resume")
+        parent_home = paths.host_home("parent-stack", "claude")
+        parent_home.mkdir(parents=True)
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(parent_home))
+        child_home = paths.host_home("child-stack", "claude")
+        child_home.mkdir(parents=True)
+
+        launcher._share_host_claude_state(child_home)
+
+        assert (child_home / "projects" / "p.jsonl").read_text() == "the session to resume"
+        assert not (parent_home / "projects").exists()
+
+    def test_launching_a_stack_from_inside_itself_still_shares(self, monkeypatch, tmp_path):
+        """The second, quieter half. With the inherited value, `home` and the resolved source were
+        the SAME path, so `_share_host_claude_state` hit its identity guard and returned before
+        linking anything — leaving `projects`/`tasks` as real directories and `todos`,
+        `file-history` and `shell-snapshots` absent. A home that looks materialized and shares
+        nothing, which is exactly how the stranded transcripts accumulated."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("HOME", str(tmp_path / "userhome"))
+        real = tmp_path / "userhome" / ".claude"
+        (real / "projects").mkdir(parents=True)
+        (real / "projects" / "p.jsonl").write_text("the session to resume")
+        home = paths.host_home("same-stack", "claude")
+        home.mkdir(parents=True)
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(home))
+
+        launcher._share_host_claude_state(home)
+
+        for name in ("projects", "file-history", "todos", "tasks", "session-env", "shell-snapshots"):
+            assert (home / name).is_symlink(), f"{name} was not shared"
+        assert (home / "projects" / "p.jsonl").read_text() == "the session to resume"
+
+
 class TestShareClaudeState:
     def test_symlinks_session_state_and_live_auth(self, monkeypatch, tmp_path):
         real = tmp_path / "host-claude"

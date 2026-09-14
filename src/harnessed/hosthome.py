@@ -236,8 +236,35 @@ def _host_fresh_wipe(stack: str, harness: str) -> None:
 
 def _host_claude_source() -> Path:
     """The host's live claude config dir — source for auth seeding. Honors a CLAUDE_CONFIG_DIR the
-    host may already run under; else the ~/.claude default."""
-    return Path(os.environ.get("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude"))
+    host may already run under; else the ~/.claude default.
+
+    An override pointing INSIDE `paths.host_homes_root()` is ignored, because it is not the user's
+    store — it is another stack's. `_launch_host` exports `CLAUDE_CONFIG_DIR` to the agent
+    (bd harnessed-8px.26), so a stack launched from inside a host claude session inherits the PARENT
+    stack's config dir, and both outcomes are silent:
+
+    * parent != child, so `_share_host_claude_state` proceeds and symlinks the child's session state
+      at the PARENT stack's home. Transcripts, todos and resumable sessions land where the user's own
+      claude never looks, and they break outright when the parent's fingerprint changes and
+      `_materialize_host_home` wipes the target out from under them;
+    * launch the SAME stack from inside itself and `real.resolve() == home.resolve()` returns before
+      linking anything, leaving `projects`/`tasks` as real directories and `todos`/`file-history`/
+      `shell-snapshots` absent — a home that looks materialized and shares nothing.
+
+    Observed 2026-09-14: two nested launches left `default/claude/projects` a real directory holding
+    43 transcripts' worth of sessions the user could not resume, and
+    `default.codebase-memory-mcp.gh-issue-tracker/claude/projects` symlinked at that stack rather
+    than at ~/.claude.
+
+    Containment, not the `.harnessed-stack` stamp: `_invalidate_host_home` deletes that stamp by
+    design, so a real stack home reads as unstamped between invalidation and the next materialize.
+    This is the guard `_host_omp_source` has carried since #307, whose docstring names this function
+    as having the same shape and no such guard.
+    """
+    override = os.environ.get("CLAUDE_CONFIG_DIR")
+    if override and not _is_harnessed_owned(Path(override)):
+        return Path(override)
+    return Path.home() / ".claude"
 
 
 # Session-state subdirs SHARED with the real ~/.claude — the host analog of the container's
@@ -551,8 +578,8 @@ def _host_omp_source() -> Path:
     database at the parent's path: a stack silently off the shared login, writing its auth into
     another stack's home.
 
-    NOTE: `_host_claude_source` has the same shape and no such guard. That is pre-existing and left
-    alone here deliberately (this change must not alter the claude path); it is worth its own issue.
+    `_host_claude_source` carries the same guard for the same reason. It did not when this note was
+    first written — it said so, and left the fix to its own issue.
     """
     override = os.environ.get(_OMP_AGENT_DIR_VAR)
     if override and not _is_harnessed_owned(Path(override)):
