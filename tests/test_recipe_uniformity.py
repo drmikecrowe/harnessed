@@ -118,6 +118,32 @@ class TestNoContainerAbsolutePathSurvivesIntoHostMode:
         )
 
 
+class TestNoInstallScriptUsesAGnuOnlySedInPlace:
+    """The same install.sh runs in the container (GNU coreutils) and on the HOST, which on macOS is
+    BSD. `sed -i` is the one idiom where those two disagree irreconcilably: GNU takes the suffix as
+    an optional attached argument (`-i`), BSD as a mandatory separate one (`-i ''`). Written either
+    way, the other platform misreads the next token — BSD takes the sed script as the backup suffix
+    and then fails on the filename.
+
+    Caught in context-mode, whose rewrite loop was unreachable on every platform until the skills
+    probe was fixed, so the container had never run it either. Write `sed … > tmp && mv tmp file`.
+    """
+
+    def test_no_install_script_calls_sed_dash_i(self):
+        offenders = []
+        for d in _recipe_dirs():
+            script = d / "install.sh"
+            if not script.is_file():
+                continue
+            for n, line in _uncommented(script):
+                if re.search(r"\bsed\b[^|;&]*\s-i\b", line):
+                    offenders.append(f"{d.name}:{n}: {line.strip()[:70]}")
+        assert offenders == [], (
+            f"install.sh uses `sed -i`: {offenders}. GNU and BSD sed disagree about its argument, "
+            "and this script runs on both. Use `sed '...' f > f.tmp && mv f.tmp f`."
+        )
+
+
 class TestEveryLockfileMatchesThePinBesideIt:
     """A recipe's `mise.lock` records the bytes of the version its `tools:` names. When the two
     disagree, mise must MIGRATE the lock at install time — and that migration re-resolves every

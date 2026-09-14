@@ -90,11 +90,18 @@ mkdir -p "${HARNESSED_CONFIG_DIR}/skills"
 #      corpus already uses the bare `ctx_foo` form, which resolves either way.
 # The rewrite is scoped to the dir just copied. Never to the whole skills tree — other recipes fan
 # their own skills in there and this recipe does not own their bytes.
+#
+# `sed` to a temp file and `mv`, never `sed -i`. This script runs on the HOST too, and BSD sed —
+# macOS — requires an argument to `-i`, so `sed -i 's#…#…#'` takes the script as the backup suffix
+# and then fails on the filename. GNU's `-i` and BSD's `-i ''` cannot both be written as one
+# portable invocation, so neither is used.
 for skill in context-mode ctx-doctor ctx-index ctx-insight ctx-purge ctx-search ctx-stats; do
     dest="${HARNESSED_CONFIG_DIR}/skills/${skill}"
     rm -rf "${dest}"
     cp -r "${SKILLS_SRC}/${skill}" "${dest}"
-    sed -i 's#/context-mode:ctx-#/ctx-#g; s#mcp__context-mode__ctx_#ctx_#g' "${dest}/SKILL.md"
+    sed 's#/context-mode:ctx-#/ctx-#g; s#mcp__context-mode__ctx_#ctx_#g' \
+        "${dest}/SKILL.md" > "${dest}/SKILL.md.tmp"
+    mv "${dest}/SKILL.md.tmp" "${dest}/SKILL.md"
 done
 
 # --- omp only -------------------------------------------------------------------------------------
