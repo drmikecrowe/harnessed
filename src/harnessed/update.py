@@ -35,7 +35,9 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,7 +45,7 @@ from typing import Callable
 
 from ruamel.yaml import YAML
 
-from . import paths
+from . import paths, toollock
 from .schema import SchemaError, load_agent, load_recipe, load_stack, valid_extra_tools
 
 __all__ = [
@@ -900,8 +902,67 @@ def _rewrite_extra_tools_entry(path: Path, old_spec: str, new_spec: str) -> bool
     return True
 
 
+def _mise_config(specs: list[str]) -> str:
+    """The minimal mise config naming exactly a recipe's `tools:` pins.
+
+    A pinned spec is `<tool>@<version>` and the tool half may itself contain `@`
+    (`npm:@agentmemory/mcp@1.2.3`), so the split is from the RIGHT. Both halves are JSON-quoted:
+    a backend-prefixed tool (`github:owner/repo`) is not a bare TOML key.
+    """
+    lines = ["[tools]"]
+    for spec in specs:
+        name, _, version = spec.rpartition("@")
+        lines.append(f"{json.dumps(name)} = {json.dumps(version)}")
+    return "\n".join(lines) + "\n"
+
+
+def _relock_recipe(manifest: Path) -> bool:
+    """Refresh a recipe's `mise.lock` to the versions its `tools:` now pin. True when rewritten.
+
+    A `tools:` bump moves the version inside recipe.yaml and NOTHING ELSE. The sibling lockfile
+    still names the old one, so mise has to migrate the lock at install time — and that migration
+    re-resolves EVERY platform, not just the one installing. A platform whose attestation the
+    running mise cannot see then trips mise's provenance-downgrade guard: "has no provenance
+    verification on macos-arm64, but <old version> had github-attestations. This could indicate a
+    supply chain attack", and the whole `tools:` install fails.
+
+    That is a launch failing on a machine that bumped nothing, reported as a supply-chain alarm,
+    for a release that is in fact attested. Regenerating the lock in the same breath as the pin is
+    what keeps any launch from performing the migration at all.
+
+    `mise lock` writes into its config root, so this runs against a COPY in a temp dir rather than
+    beside recipe.yaml: a crash mid-run must not leave a stray `mise.toml` in `catalog/`, which
+    ships inside the wheel.
+    """
+    lock = toollock.recipe_lock_path(manifest.parent)
+    if lock is None:
+        return False
+    try:
+        recipe = load_recipe(manifest.parent)
+    except (SchemaError, OSError):
+        return False
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        shutil.copyfile(lock, root / "mise.lock")
+        (root / "mise.toml").write_text(_mise_config(recipe.tools), encoding="utf-8")
+        # Not `_run_mise`: that is the registry-lookup seam, on a 60s budget. `mise lock` DOWNLOADS
+        # each platform's artifact to verify its provenance, so it needs a far longer one.
+        proc = subprocess.run(
+            ["mise", "lock", "--cd", str(root)],
+            capture_output=True, text=True, timeout=900,
+        )
+        if proc.returncode != 0:
+            return False
+        shutil.copyfile(root / "mise.lock", lock)
+    return True
+
+
 def apply(findings) -> list[Finding]:
     """Write the accepted bumps. Returns the findings actually rewritten.
+
+    A recipe that ships a `mise.lock` is relocked as part of the same write. The pin and the
+    checksums beside it are ONE fact, and leaving them out of step hands the migration to whatever
+    mise runs at launch — see `_relock_recipe`.
 
     An opaque pin is skipped: there is no safe automated rewrite for a ref buried in shell, and
     guessing at one risks corrupting a build script. Refusing, visibly, is the correct answer.
@@ -909,6 +970,8 @@ def apply(findings) -> list[Finding]:
     A cooling pin is skipped too, so the cooldown holds even if a caller passes the wrong bucket.
     """
     done: list[Finding] = []
+    # Recipe manifests whose `tools:` changed, so their sibling `mise.lock` is now stale.
+    relock: set[Path] = set()
     for f in findings:
         if not f.pin.resolvable or not f.latest or f.cooling:
             continue
@@ -947,4 +1010,10 @@ def apply(findings) -> list[Finding]:
             continue
         if rewrite(f.pin.file, f.pin.spec, new_spec):
             done.append(f)
+            relock.add(f.pin.file)
+    # AFTER the loop, and on a SET: a recipe with three bumped `tools:` entries must regenerate its
+    # lockfile once, from the finished manifest. Regenerating inside the loop would relock against
+    # a half-bumped recipe.yaml and then throw that work away on the next entry.
+    for manifest in sorted(relock):
+        _relock_recipe(manifest)
     return done

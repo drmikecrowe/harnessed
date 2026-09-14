@@ -328,6 +328,37 @@ class TestRewrite:
         assert "npm:x@1.2.0" in after and "frozen" in after
         assert update.discover_pins(d)[0].hold == "frozen"
 
+    def test_a_recipe_with_a_lockfile_is_relocked_after_the_pin_is_written(self, tmp_path, monkeypatch):
+        """The bug this exists to prevent: `apply` bumped the pin and left `mise.lock` naming the
+        OLD version, so every later `mise install` had to migrate the lock — re-resolving every
+        platform in it and tripping mise's provenance-downgrade guard on machines that bumped
+        nothing. The relock must see the FINISHED manifest, so the assertion is on what the
+        recipe.yaml said at the moment it was called, not merely that it was called."""
+        d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.0.0\n")
+        (d / "mise.lock").write_text('[[tools."npm:x"]]\nversion = "1.0.0"\n')
+        seen = []
+        monkeypatch.setattr(
+            update, "_relock_recipe", lambda m: bool(seen.append((m, m.read_text()))) or True
+        )
+        update.apply(update.build_report([d], resolve=_fake_resolver({("npm", "x"): "1.2.0"})).stale)
+        assert [m for m, _ in seen] == [d / "recipe.yaml"]
+        assert "npm:x@1.2.0" in seen[0][1], "relocked against a half-written recipe.yaml"
+
+    def test_a_recipe_shipping_no_lockfile_relocks_nothing(self, tmp_path):
+        """Most recipes ship no `mise.lock`. Relocking one into existence would invent a
+        supply-chain claim nobody authored, so absent must stay absent."""
+        d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.0.0\n")
+        update.apply(update.build_report([d], resolve=_fake_resolver({("npm", "x"): "1.2.0"})).stale)
+        assert not (d / "mise.lock").exists()
+
+    def test_the_generated_mise_config_splits_a_scoped_spec_at_the_last_at(self):
+        """`npm:@agentmemory/mcp@1.2.3` carries an `@` in the tool half too. Splitting from the
+        left would name the tool `npm:` and lock the wrong thing."""
+        cfg = update._mise_config(["npm:@scope/pkg@1.2.3", "github:owner/repo@0.4.0", "pulumi@3.1.0"])
+        assert '"npm:@scope/pkg" = "1.2.3"' in cfg
+        assert '"github:owner/repo" = "0.4.0"' in cfg
+        assert '"pulumi" = "3.1.0"' in cfg
+
     def test_apply_never_touches_an_opaque_pin(self, tmp_path):
         """A best-effort text pin has no safe automated rewrite — refusing is the correct answer."""
         before = "name: r\ninstall:\n  script: install.sh\n  cache: 'abc123'\n"

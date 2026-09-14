@@ -116,3 +116,33 @@ class TestNoContainerAbsolutePathSurvivesIntoHostMode:
             "Use $HARNESSED_CONFIG_DIR / $HARNESSED_INSTALL_CACHE / $HOME so the same script "
             "works on a host launch."
         )
+
+
+class TestEveryLockfileMatchesThePinBesideIt:
+    """A recipe's `mise.lock` records the bytes of the version its `tools:` names. When the two
+    disagree, mise must MIGRATE the lock at install time — and that migration re-resolves every
+    platform in the file, not only the one installing.
+
+    That is how a stale lock becomes a launch failure on a machine that bumped nothing: an older
+    mise that cannot see the new version's attestation for some OTHER platform trips its
+    provenance-downgrade guard and refuses the whole `tools:` install as a possible supply-chain
+    attack. Caught after `chore(catalog): upgrade pins 2026-09-14` bumped two recipes' pins and
+    neither lockfile, which broke every macos-arm64 launch of both.
+    """
+
+    def test_no_recipe_lockfile_names_a_version_its_tools_pin_does_not(self):
+        offenders = []
+        for d in _recipe_dirs():
+            lock = d / "mise.lock"
+            if not lock.is_file():
+                continue
+            r = load_recipe(d, strict=True)
+            pinned = {spec.rpartition("@")[2] for spec in r.tools}
+            locked = set(re.findall(r'^version = "([^"]+)"', lock.read_text(), re.M))
+            if locked - pinned:
+                offenders.append(f"{r.name}: lock has {sorted(locked)}, tools: pin {sorted(pinned)}")
+        assert offenders == [], (
+            f"mise.lock has drifted from the `tools:` pin beside it: {offenders}. "
+            "Regenerate the lockfile in the same commit as the bump — `harnessed update` does "
+            "this itself; a hand-edited pin must do it too."
+        )
