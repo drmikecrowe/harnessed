@@ -3,9 +3,6 @@ type: concept
 title: "State: what lives where on disk, staleness, and GC"
 description: "The complete host-side state model: XDG-rooted profiles, per-stack host homes, named podman volumes, persist entries, the generated catalog, the secrets-broker records, and instance identity — plus how staleness is detected (existence, .build-stamp, the harnessed.recipe-hash image label, host/volume fingerprints) and what each garbage collector keys on."
 tags: [state, disk-layout, paths, staleness, fingerprint, garbage-collection, persist, volumes, instance-identity, secrets-broker]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
 sources:
   - id: openwiki-source-ea70eb6c045047448e446296
     resource: repo://.gitignore
@@ -49,7 +46,10 @@ sources:
     resource: repo://src/harnessed/volumes.py
   - id: openwiki-source-7b7c2d242869fee851828868
     resource: repo://tests/test_stable_port.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 ---
 
 # State: what lives where on disk, staleness, and GC
@@ -294,8 +294,15 @@ in a row with `mkdir: cannot create directory '/data/dolt': Permission denied`, 
 `persist.guard_ownership` therefore compares a target dir's owner against `paths.pod_host_uid()` —
 read off the declared mapping, never assumed to be `os.getuid()`:
 
-- pinned `keep-id:uid=1000` → the invoking user, via `os.getuid()`;
-- `--userns=host` → `CONTAINER_UID` (1000);
+- pinned `keep-id:uid=1000` (podman) → the invoking user, via `os.getuid()`;
+- docker under a **rootful** daemon → also `os.getuid()`: harnessed passes `--userns=host`
+  *plus* `container_user_args` (`--user <invoking-uid>:0`), so the container's process is the
+  invoker by a different mechanism than podman's mapping. A **rootless** daemon (or an
+  unreadable `docker info` — `paths.docker_is_rootless()` returns `None`, which is a refusal,
+  never "probably rootful") draws the image's uid 1000 from the host's subuid range, the same
+  unpredictable-owner situation bare `keep-id` produces, and gets its own refusal message
+  naming the remedy (run against a rootful daemon or podman);
+- podman `--userns=host` → `CONTAINER_UID` (1000);
 - **anything else → `None`, and `None` means refuse** (`PersistOwnershipError`) — and the
   unresolved check runs *before* the absent-path early return, deliberately: an unresolved mapping
   is a problem even for a dir harnessed is about to create, because the pod will write to it as a
@@ -360,9 +367,15 @@ from diverging. The gate:
   one-shot container with that recipe's `tests/*.sh` immediately after it. Only **after** every
   step succeeds is the new fingerprint written into the volume — a failed install never certifies a
   half-populated volume, so the next launch retries instead of trusting a stamp. Every populate
-  step carries `paths.USERNS_ARG`, matching the pod the agent inherits: a volume first populated
-  under the default userns is unusable by the agent (uid 1000 inside reads the files as owner 999
-  and every write EACCESes).
+  step carries `paths.userns_args(rt)` — and, since the docker agent runs as the invoker
+  (`container_user_args`), the matching `--user <uid>:0` — matching the pod the agent inherits:
+  a volume first populated under the default userns is unusable by the agent (uid 1000 inside
+  reads the files as owner 999 and every write EACCESes), and a populate step left at the
+  image's default uid on docker writes to a tree it does not own. Docker adds one wrinkle the
+  compose path handles: `_chown_volume_for_docker` chowns only a volume *this run created* (the
+  existence question is asked before the idempotent `volume create`) to `container_owner_ids`,
+  mounted at its real path — a sentinel file inside the volume would have suppressed docker's
+  seed-from-image copy-up and left `~/.local` empty.
 
 One state subtlety keeps install output alive across relaunches: the profile's `settings.json` is
 **merged** with the volume's rather than copied over it (`_merged_settings_text`), because the

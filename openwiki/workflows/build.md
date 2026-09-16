@@ -40,10 +40,14 @@ sources:
     resource: repo://src/harnessed/synclinks.py
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
     resource: repo://src/harnessed/volumes.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+  - id: openwiki-source-63b27bc57364deeb68a67336
+    resource: repo://tests/test_build_cache_mounts.py
+  - id: openwiki-source-f725ea11f1806a58b06d7f3e
+    resource: repo://tests/test_launch_parity.py
+generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 ---
 
 # Build pipeline: from stack and harness to profile, images, and populated volumes
@@ -112,7 +116,10 @@ and `synclinks.py` both say so in their module docstrings. Everything podman-tou
 This is why `harnessed-tools` is a separate console script (`cli:main`, distinct from `harnessed` →
 `launcher:main`): its `assemble` subcommand produces a committed profile on a machine with no
 container runtime, and the host runs `podman build` on the emitted artifacts itself. Inside
-`harnessed build`, the same `assemble()` is called in-process.
+`harnessed build`, the same `assemble()` is called in-process. (`launcher.py` is being split into
+modules — `mounts.py` holds the launch-time `-v`/`-e` mount builders, `backend.py` the
+`ExecutionBackend`/`LaunchSpec` seam — but the split has not moved any podman call into the
+emit-only set.)
 
 Two consequences for a change plan:
 
@@ -456,11 +463,36 @@ operation, not a proxy — `test -w` checks only the write bit, and creating an 
 search, so a `d-w-------` home passes `test -w` and still fails the `mkdir ~/.claude` the claude
 image opens with. `~/.cache` is probed too because it is the directory that actually shipped broken
 once, while `$HOME` alone passed. Failing in the base is the point: the fault is in the base, and
-the alternative is a child-image error that names the wrong image.
+the alternative is a child-image error that names the wrong image. The base additionally proves
+the **arbitrary-uid contract** as `USER 4242:0` — creating a directory in `$HOME` as a uid the
+image never created — because docker maps nothing and the agent runs as `<invoker>:0`; a probe
+run as `${USERNAME}` (uid 1000, the owner) is structurally blind to that class. The final
+ownership block sets `$HOME`, `~/.ssh`, `~/.cache`, `~/.local` to `${USERNAME}:0` mode 2775
+(setgid + group-write), `~/.cache` recursively (it is 56K; `~/.local` is 1.6G of toolchains and
+is deliberately skipped), and `~/.claude` is deliberately **absent** from the image — docker's
+copy-up would re-apply an empty image dir's ownership on every mount and the runtime chown could
+never stick.
 
 At runtime the torch passes to the shared `harnessed-dl-cache` volume at `~/.cache`
 ([below](#stage-7--volume-population-volumespy)) — the direct successor to these mounts, so a
 fingerprint-gated reinstall is a re-link rather than a re-download.
+
+### What the tests pin, and what only a live build can
+
+`tests/test_build_cache_mounts.py` holds the hermetic half of this contract. Its decisive
+assertions are artifact-shaped, not text-shaped: `test_no_emitted_layer_mounts_the_store` asserts
+`"/home/harnessed/.local/share/pnpm/store" not in CACHE_MOUNTS` — the one-line pin that keeps the
+pnpm-store trap from coming back; `test_cache_mounts_are_writable_by_the_user_the_layer_runs_as`
+requires `uid=1000` **and** `gid=1000` on every `--mount=type=cache` mount in every shipped
+Dockerfile; `TestContainerExecutorCachesDownloads.test_the_download_cache_is_shared_across_stacks`
+compares the runtime `~/.cache` mount across two different stack names and requires them equal;
+and `TestEveryCacheMountRestoresWhatItTook` requires every cache-mounted `RUN` to be followed
+immediately by the `USER root` + `chown … $HOME $HOME/.cache` restore, naming `~/.cache`
+explicitly. The podman-gated `TestTheShippedImageDoesNotHandOverARootOwnedHome` asserts the
+property in the shipped image: `$HOME` is uid 1000 **group 0, mode 2775** — the docker-userns
+ownership layer (#456/#457), where docker maps nothing and the agent runs as `<invoker>:0`, so
+group 0 is the one group any invoker uid holds; `~/.cache` is only held to the uid guard because
+the runtime chowns it (`volumes._chown_volume_for_docker`).
 
 ## Stage 6 — `compute_recipe_hash` and the `harnessed.recipe-hash` label
 
@@ -531,9 +563,15 @@ nothing left for a mount to shadow. This replaced the per-subdir `:ro` bind-moun
 mount whose gate was mere existence. The rule to keep: **never mount a profile directory over a
 config subtree**.
 
-The populate step must use the **same userns mapping** as the pod (`paths.USERNS_ARG`,
-`--userns=keep-id:uid=1000,gid=1000`): a volume first populated under the default userns is unusable
-by the agent — uid 1000 inside reads the files as owner 999 and every write EACCESes.
+The populate step must use the **same userns mapping as the pod** (`paths.userns_args(rt)` —
+`--userns=keep-id:uid=1000,gid=1000` on podman, runtime-appropriate on docker): a volume first
+populated under the default userns is unusable by the agent — uid 1000 inside reads the files as
+owner 999 and every write EACCESes. On **docker**, where a newly created named volume is born
+`root:root`, `volumes._chown_volume_for_docker` chowns a freshly created volume to
+`paths.container_owner_ids(rt)` via a `--user 0:0` throwaway container, mounted at the volume's
+**real path** (not `/mnt` — docker's copy-up at container start would overwrite a chown done
+elsewhere). The "was this volume created this run?" state lives **outside** the volume: a
+sentinel file inside it would suppress docker's copy-up and ship an empty `~/.local`.
 
 `settings.json` is the one file **merged** rather than copied during composition
 (`volumes._merged_settings_text` → `jsonmerge._deep_merge_json(installed, profile_obj)`), because
@@ -713,6 +751,22 @@ established in measured spikes and live builds, not in pytest. What the hermetic
   thread, `_build_shared_once` holding its lock across the build, and the
   normalize-then-validate-then-stage contract for `extra-tools.txt` (CRLF, BOM, unpinned entries,
   the error naming the user's file).
+- the **cache-mount** contract in `tests/test_build_cache_mounts.py` (see
+  [above](#what-the-tests-pin-and-what-only-a-live-build-can)): every downloading layer mounts its
+  cache, `uid=1000,gid=1000`, targets pre-created before first mount, no cache mount hides a
+  must-ship path, the pnpm store never cached, every restore present, and the container executor
+  mounts a stack-independent `~/.cache`.
+- the **build/launch parity** ledger in `tests/test_launch_parity.py`. It is an AST lint, not a
+  semantic guarantee: it collects every harnessed helper called by `container_run` plus its
+  `ContainerBackend`, subtracts what `_launch_host` plus `HostBackend` call, and fails unless
+  every container-only name appears in the hand-written `CONTAINER_ONLY` ledger **with a written
+  reason** (and fails if the ledger grows stale entries). `_build_stack` itself is in that ledger
+  ("builds the container image; the host assembles in-process every launch"), as is
+  `_ensure_stack_volumes` — the container half whose host mirror is
+  `_materialize_host_home` + `_host_run_installs`. The lint deliberately resolves helpers
+  **package-wide**, not `launcher`-only, so it keeps seeing each helper as launcher.py is split
+  into modules; it skips `ExecutionBackend` subclasses because the two backends naming themselves
+  is the seam working, not an asymmetry.
 
 See [the verification ladder](/openwiki/testing/verification-ladder.md) for what each rung proves
 and what it does not.

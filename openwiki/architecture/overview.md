@@ -82,10 +82,10 @@ sources:
     resource: repo://tests/test_launch_parity.py
   - id: openwiki-source-bbf9cc1f144f5efff8ae1505
     resource: repo://tests/test_module_boundaries.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 ---
 
 # System overview: what harnessed is and the stage owners
@@ -160,12 +160,19 @@ product. Two conforming backends exist today:
 The verb picks the backend; a flag picks the stack. Both verbs share one stack-selection grammar
 (`--stack/-s`, `--recipe/-r`, `--extends`, `--no-extends`, `--service` — literally the same shared
 Typer option objects) and one stack resolution path (`_resolve_stack`), and beyond that they share
-**no flags except `--rm`** — `--fresh`, `--no-firewall`, `--no-secrets`, `--reauth`, `--shell`,
-`--mount-folder` and `--agent-start-folder` all describe a pod, so a combined verb could only
-accept them and do nothing. `host-run`'s own docstring states that as the reason it is a separate
-verb rather than a mode of `container-run`. Both verbs end by *replacing* the launcher process so
-the agent owns the terminal — which is also why launch-time warnings are counted by the console
-and re-printed just before the handoff.
+only `--rm` and `--fresh` — `--fresh` is a **shared spelling, not shared behaviour** (#452): on
+`container-run` it tears down any existing pod/instance (and wipes the antigravity keyring and any
+`isolated_auth` login store so a fresh start is also a logged-out one), while on `host-run` it
+discards the stack's fingerprint stamp and host tool tree — the host backend's own staleness cache,
+which had no escape hatch at all before. The remaining container-only flags — `--no-firewall`,
+`--no-secrets`, `--reauth`, `--shell`, `--mount-folder` and `--agent-start-folder` — all describe a
+pod that does not exist on a host launch, so a combined verb could only accept them and do nothing.
+`host-run`'s own docstring states that as the reason it is a separate verb rather than a mode of
+`container-run`. Both verbs also exist as exec aliases — `container-exec` and `host-exec` (#450),
+the same launch with nobody at the keyboard (the attach drops `-t` so nothing draws on the
+alternate screen). Both verbs end by *replacing* the launcher process so the agent owns the
+terminal — which is also why launch-time warnings are counted by the console and re-printed just
+before the handoff.
 
 Pod launching belongs to the container backend alone: `pod create`, the member `podman run`, the
 attach, and every mount helper are container-backend stages, while the host backend declares

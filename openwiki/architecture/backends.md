@@ -4,8 +4,8 @@ title: "Execution backends: the six-capability contract and backend-owned sequen
 description: "The backend.ExecutionBackend seam — six capabilities (materialize config, provision tools, wire MCP, seed auth, wire services, apply isolation), backend-owned sequencing with no shared driver, the two-phase capabilities FIRST_START/ATTACH and BOUNDARY/EGRESS (with the secrets broker started inside the container BOUNDARY), LaunchSpec versus backend-instance state, the registry, and the module-boundary rule that keeps backend.py free of launcher imports."
 tags: [execution-backends, backend-contract, capability-set, sequencing, launchspec, provision-tools, apply-isolation, seed-auth, secrets-broker, capmatrix, module-boundaries, hostbackend, containerbackend]
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 sources:
   - id: openwiki-source-f2bd22307a3451ac2519580c
     resource: repo://BACKENDS.md
@@ -29,7 +29,7 @@ sources:
     resource: repo://tests/test_launch_parity.py
   - id: openwiki-source-bbf9cc1f144f5efff8ae1505
     resource: repo://tests/test_module_boundaries.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
 ---
 
 # Execution backends: the six-capability contract and backend-owned sequencing
@@ -62,7 +62,7 @@ Related: [architecture overview](overview.md),
 | **provision tools** | `provision_tools(spec, phase)` | Make tools resolvable to the harness. `FIRST_START` is the fingerprint-gated `install:`/`tools:` work; `ATTACH` runs each recipe's `setup.script`. |
 | **wire MCP** | `wire_mcp(spec)` | Present the stack's MCP servers to the harness — native `.mcp.json`, or the hatago hub. Wiring only; waiting for a hub to become healthy is a **readiness gate, not part of the contract** (the same way a service sidecar's health check is not part of `wire_services`). |
 | **seed auth** | `seed_auth(spec)` | Give the harness the host's credentials **by reference** — mount or symlink the live store, never a copy or snapshot. A backend that cannot reference a live store **must fail rather than snapshot one**. |
-| **wire services** | `wire_services(spec)` | Stand up the stack's service sidecars and route the harness to them. A `services:` entry is a property of the **stack**, not of the backend: a host-native agent still needs the service its stack declares. |
+| **wire services** | `wire_services(spec)` | Stand up the stack's service sidecars and route the harness to them. A `services:` entry is a property of the **stack**, not of the backend: a host-native agent still needs the service its stack declares. Both sequencers call it **before** the re-attach branch, so a long-lived instance outliving a dead sidecar gets the sidecar revived rather than running without it for the rest of its life. |
 | **apply isolation** | `apply_isolation(spec, phase)` | Enforce this backend's isolation level (BACKENDS.md §2's spectrum). `BOUNDARY` stands the boundary up; `EGRESS` closes the network once first-run provisioning has had it. |
 
 Two ClassVars sit alongside the methods: `name` (the user-facing backend name, also the registry key)
@@ -90,7 +90,8 @@ changing behavior**:
 flowchart TB
     subgraph HOST["host backend - sequenced by _launch_host"]
         H1["wire_services"] --> HL["home lock taken"]
-        HL --> H2["materialize_config"]
+        HL --> HFW["--fresh wipe - optional"]
+        HFW --> H2["materialize_config"]
         H2 --> H3["seed_auth"]
         H3 --> H4["provision_tools FIRST_START"]
         H4 --> HU["lock released"]
@@ -133,17 +134,31 @@ The two conforming implementations live in `launcher.py`:
 | backend #2 | `harnessed host-run` | `launcher.HostBackend` (`isolation = ISOLATION_NONE`) | `launcher._launch_host` |
 
 The host backend has its **own verb**, and that is deliberate (bd harnessed-ltj): the two verbs share
-**no flags but `--rm`** — `--fresh`, `--no-firewall`, `--mount-folder`, `--agent-start-folder` and
-`--shell` all describe a pod that does not exist on the host path, so a combined verb could only
-accept them and do nothing. What host mode isolates is **CONFIGURATION, not the filesystem**: the
-stack's assembled profile is materialized into a per-stack `CLAUDE_CONFIG_DIR` and the harness is
-exec'd against your real machine, in your real project, with your real credentials. `container-run`
-is what adds the container boundary too.
+only `--rm` and `--fresh` — and `--fresh` is a **shared spelling, not shared behaviour** (#452): on
+`container-run` it tears down the pod; on `host-run` it discards the fingerprint stamp and the
+stack's host tool tree (`_host_fresh_wipe`, inside the home lock so a concurrent launch cannot
+observe a half-wiped tree). `--no-firewall`, `--mount-folder`, `--agent-start-folder` and `--shell`
+still describe a pod that does not exist on the host path, so a combined verb could only accept them
+and do nothing. What host mode isolates is **CONFIGURATION, not the filesystem**: the stack's
+assembled profile is materialized into a per-stack `CLAUDE_CONFIG_DIR` and the harness is exec'd
+against your real machine, in your real project, with your real credentials. `container-run` is what
+adds the container boundary too. (`host-run` is also registered as `host-exec`, the same launch with
+nobody at the keyboard — #450; the mode is declared on the sequencer, not in the Typer command, so
+the verb and the sequencer own their own `exec_mode` at the same layer.)
 
 **Pod launching is the container backend's, not the host backend's.** `pod create` and the member
 `podman run` both live inside `ContainerBackend.apply_isolation(BOUNDARY)`, and `HostBackend`
 creates neither a pod nor a container — the launch-parity ledger records even `instance_name` as
 container-only for exactly that reason ("names the container/pod; a host launch creates neither").
+
+But **host-run is container-free for the AGENT only**. A stack declaring `services:` may still build
+or revive sidecars: `HostBackend.wire_services` calls `_ensure_services(_runtime(), …)` for exactly
+those stacks, so the host launch *does* need a container runtime and can leave sidecars running
+after the session — the agent process is what escapes the container, not the stack's declared
+services. The method is guarded on `_service_refs(spec.stack)`, so a host launch of a service-less
+stack still needs no runtime at all. It also passes the same `_resolve_mount_path`-derived mount path
+the container path uses, so the sidecar's `svc-config-hash` label does not differ by entry point and
+alternating the two verbs does not recreate the sidecar every launch.
 
 The verb picks the backend and nothing else; both share one grammar and one stack-resolution path
 (`launcher._resolve_stack` — they "differ in backend, never in how a stack is chosen", bd
@@ -218,7 +233,11 @@ interaction with it, and the host backend's none at all:
   a broker exists: without one, the pod must not be handed a route to the host's loopback it has no
   use for. If `pod create` then fails, the started broker is stopped before re-raising — a broker
   that outlives the launch it was started for is a host process holding live secrets that nothing
-  will ever reap by name.
+  will ever reap by name. A **pod-less runtime** (a `docker` reached through `HARNESSED_NET`) gets
+  no broker at all: the broker door is a pasta option on `pod create`, so starting one there would
+  produce exactly the half-wired state `--no-secrets` exists to avoid, and the launch says so
+  instead. After the member `podman run` ingests them, the temp `--env-file`s holding resolved
+  secret values are unlinked immediately (success or failure) so they do not linger on disk.
 - The **host backend never starts one**: a host-native launch runs the harness in the user's own
   session with their own credentials, so there is no boundary for the broker to sit on and varlock
   resolves natively there already. The launch-parity ledger records `_broker_start_for`,
@@ -239,8 +258,11 @@ reaches — so there is nothing for either helper to do on the host path.
 The broker's own lifecycle — how it starts, serves `169.254.1.1`, and is reaped — is the
 [secrets broker](/openwiki/architecture/secrets-broker.md) page's subject, not this one's.
 
-`EGRESS` runs `_apply_firewall` with the union of the recipes' `egress:` domains (default-DROP
-otherwise). Its failure semantics are **fail-closed twice over**: a non-zero exit from the firewall
+`EGRESS` runs `_apply_firewall` with the union of the recipes' `egress:` domains **plus the agent's
+own model API endpoint when the user has repointed it** (`ANTHROPIC_BASE_URL` and friends live in
+the user's `.env.schema`, which no recipe can see; without this the firewall drops every request the
+agent makes to its own API and the client reports an auth failure) — default-DROP otherwise. Its
+failure semantics are **fail-closed twice over**: a non-zero exit from the firewall
 runner refuses to continue (`NO_FIREWALL=true` is the supported way to say "I do not want one"), a
 zero exit is then *verified* by asserting the observable OUTPUT policy really is DROP (#429 — the
 script once returned 0 while installing nothing, 43 runs running "Egress active" with no firewall),

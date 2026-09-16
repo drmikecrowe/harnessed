@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b1cd5d9abb97d7716d493acf410ef64b44617a86dcfe39813640f3db0abbd453",
+  "pageVersion": "sha256:ab522d913958d607bf64cfb1c3d7f995b85c3debc27c6b972b2a70d7d7e6e2b2",
   "claims": [
     {
       "id": "claim_16f91e01a46d46c696c7c62db5057ced",
@@ -611,10 +611,82 @@
           "version": "repo-lines-v1:sha256:321192b305190c96e3d77df14e0d167532b69e766869e93c1730509c74ebd92e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4NTIwZTQyMWQ3NWRkZGFhM2IwOTc1M2MxY2IyYWMxMGM2MGQxNzI5ZjY4MGRkMjc2MDdkMzRkZDRmOWY3YTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2MTFhMTJiY2EwNWVmNmIzMmMwOTVkYjYxNzA1ODI5YmVkNTY2MDc5MmMxZTkxNWYwZmMwZWE2ODNiNjA4NzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyZWJhYjdkNTNkZTAwNWE4MGZjMzU1YTZlYmQwMjg1NmZkMGI5NDkzYmQ1Mzc2YmNhMTQyYThlNDk4YThhMjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1NjBiMzk0ODhiYmZmYzhkMWNjZDMxMTg4M2JlNDdlMTgxYWU5YWMyMjQ5ZTI3OGE3ZmM0ZjE3M2U0NDdkYWUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_f2d1ecb6ebf34cc2a1b2f9dae647471b",
+      "statement": "The live CI jobs launch a dedicated `livecheck` stack (with the `time` tracer recipe) instead of `default` precisely because stack names resolve through the user overlay with overlay winning: `harnessed test default claude` would mean whatever a developer's private overlay defines on their machine, and a test must not depend on private recipes or reach secrets.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/stacks/livecheck/stack.yaml",
+          "version": "repo-file-v1:sha256:3bcd6e2519767a28e5f13facd448146a2f3a6ec196dbf8d414cf5b6fd8a7c8f2"
+        }
+      ]
+    },
+    {
+      "id": "claim_f33a801fec864f14b9917846fbf9c5fd",
+      "statement": "`install.refs` entries may each carry a `hold:` reason and `install.hold` is a recipe-wide manual-upgrade-only floor; holds are non-empty reason strings shown to whoever decides to lift them, and `harnessed update` lists held pins but never offers them for bumping and never fails `--check` on them. The motivating case is skill content (a skill runs with the agent's full tool permissions, so a compromised upgrade is prompt injection).",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/schema.py#L786-L827",
+          "version": "repo-lines-v1:sha256:91a619af813644cd77d02ddbe8a758066a1dde21d1a0683f54e670e3d692cfcb:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0NTI2YWZkNzhlMmJiZGM0N2QwODZmNjliOTdhZjYwZTQ5MjAzZDNjNDlhMTAwMDNmNTQxNzEyODlmOTYxZTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlkYTFjZGUyMjE3ZjgzYWE0NmQxNTM0MDM1MDk4ODBlNmFlMzU4NjJmMTFkMWU4YzdhYTE4MzQzYTNlMGYxOGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjMWYwMmZkN2VjMWQ0NjJjMGNiODE4Yjk0OGZmZTRmNzE1YjJjMmM0MzI2MzBjMjMyZGZlMzRkNDI3NDNmYTkifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py#L830-L885",
+          "version": "repo-lines-v1:sha256:29120a0af9677b99ff1cc1d7bf1d7bc581463bdef602db4cdb6d455e4acfed9b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2ZmJhZTBiOTFkNDRmYzBkNDlmNWRlNjkxZGE2ZmM0MzFmMjYwMTM0YmY3MzFlMGUyMWY3NjQ4MDk0MzM0Y2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5Y2YxNzU1MzNkOTAzMTg0OWQyYTgzY2Q1OWQ1N2Q2MWY1ZmZhZTk5NjBiOTA2ZWU3MTMzNjZiODA3M2QwNzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBiNDY4YWQwYWJkNWRmODYyMGJiOTRiZGZmZTg1ZjQyMTEwZWNkYThhZjc2NGE0ZDVjM2JhMDZiYWE1Zjc3M2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM1NDljMzc3MGE3ZWM4YjlkYjI2ZmRhOTYxZGFhMGRmZjg0ODMxYzBlN2RhNDE2MzJmMmRhOGRhMDhhYzQ1Y2QifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L330-L345",
+          "version": "repo-lines-v1:sha256:5ce9c5b9d5005fae95704bb19c3d4aa04164ef4cc5abaff8aa3442f7a6dcc348:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4MzA3OTI5YzRkOGJjOWIxZTM3NzZlZDIwNzMwMzM2MmY0ZGJmMWVmODdmMTBkNTI3YmQ4YTFiNmVkMzljY2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4NGU3NjViN2FkZmZiNTViZDVjNzU4ZTE5ODQ5ZDhjYWExZWM4YzY3NTFhNGM0YjljOTUzNDNlZTEwOWNkYjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3ZjA4MDhlOTFjYzU2YTM3MGY1OTExMjlhNTRkZDEwYWUwZmY4YzU1M2QzYTEyMjMzOGMxOWVhMzUyOWI4MGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkZWM1MDBiODEwYTA1YzFhYTNkNTU2ZDc4N2MyNGEwNDkzN2E0MjQ2ODI5NjE5NTUwYTg4NmMyNTliNTFkOTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5873feae6acd4c41a811e6c03616d96c",
+      "statement": "A hand-written `install.cache` value is also checked against `_FLOATING_CACHE_KEYS` (latest, main, master, head, trunk, dev, edge) because `_FLOATING_REF_RE` only catches decorated forms and a bare moving name would otherwise pass.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/schema.py#L883-L925",
+          "version": "repo-lines-v1:sha256:86e37abecd78223bc940efda1ee73275894b32bfdc0d37381de8d6e8edc92f87:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyMzdhYWMxMjhjZDk2ZWMyZGRmNmMzOWQzNmQ3MmI0OTRhMGI5OTQ1ZTU4OTkxMDVjNGQ4MDYwNmMzOWJjOGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmYWQ2OWQyODExMGZmNWUzNjdiOTVlYmRkODQ1NjAyODI0YmIzYzUyMmFhOGZiZDhhYzY4NWQ5YjBkY2QxZmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdhM2ViODAwZjFhNjA2NmUyMzQ2YjEzOTVmOTFlNmJhMjg0OGRmMWRjZDU4MmUyMDhmMmY1OGZhZDAwZjFjZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjExYjRiMTk1OThmYmZiNjI2OTZlMTcwMDY5ODM2MTQyYmNkNmYzMGUzN2Q2NmY4MjJkODdiNzBhYTZjMjI4ZDgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6952ef9493f542109cfb8ddc3506e7a2",
+      "statement": "A recipe's `env:` mapping declares agent-environment values as mode-resolved templates over three placeholders (`{persist:<name>}`, `{project_dir}`, `{host_home}`); `_validate_env_templates` rejects unknown placeholders and dangling `{persist:<name>}` refs at load time, and build-time resolution omits project-dependent vars rather than half-substituting them.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/schema.py#L1689-L1763",
+          "version": "repo-lines-v1:sha256:a3f2adef6a19191a7df7d67d717da2dcf9c3f13b8cdf2970e8f4c2edf256bb1d:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2MWJmNDNjMTFkNTY5ZTM4NzU0NDllYzY2YWUxNTA2ZWNjNTI1MjczNzY0NTQxNWVlNmRmNWUzMzUzZjdkOGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBiNDY4YWQwYWJkNWRmODYyMGJiOTRiZGZmZTg1ZjQyMTEwZWNkYThhZjc2NGE0ZDVjM2JhMDZiYWE1Zjc3M2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVmYzJhOWQ0ZmUwZjE1MDc5OWE1OWUwNmJlOTMxMjJmYzU1OWIzNDQxOTE1YmU4YTFiNWUwMTM5YmZjNDhmNTcifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py#L1785-L1800",
+          "version": "repo-lines-v1:sha256:6bcc7b082cb513b593959a59529a5855b89815888f3a8b4e88c01a0203b80538:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4YWNiYzlkMjc5YzY1MWU2MzM3MThmYTYwNzRkMDg1MzdiMDgxMTI1YWFhNTQ0YzZhNGYzOTRmY2I4MTgxN2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyYjU3YTE2NGZhY2RlNGNkNWQ1NmI3ZThkNDIzNDgxN2Q1YTVlMjFkODI4ZDY4NGJiYTQ4YTg2ZjE1YmExYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRmNWYwNTBlOTVlZWUyMzRlOTFmZDQwZjEyMWZlZjhkYmUzZjNlZGI0ZWIyZjAzNzFlYjVmMjM0YzdhNmFmNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIwMDA1Yzc0Yjk1ZmQxODY2Mzc3ZTgwNjFiMjBhNmM4MDIyZmU4OTY2YjRjNDA2ZTdiODc0NTJlMGQyOTMzMjUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b93e4b7dd01f4853942ba85de757fa40",
+      "statement": "`tests/test_recipe_uniformity.py` asserts the catalog-wide recipe contract by discovery (`rglob` over `catalog/recipes`, naming no recipe): declared install scripts must exist and pass `validate_install_script`, no `install.sh` may fetch its own binary via a package manager (the pin belongs in `tools:`), and no script may hardcode the container `/home/harnessed`.",
+      "evidence": [
+        {
+          "resource": "repo://tests/test_recipe_uniformity.py",
+          "version": "repo-file-v1:sha256:7d4e4813aebc49f9264e06442023c4c11fea988867f51a124ceb3816d55fd2fb"
+        }
+      ]
+    },
+    {
+      "id": "claim_6ebd536aceee47bfaee4c57794192e94",
+      "statement": "`tests/test_tools_field_parity.py` pins that `tools:` is honoured by both executors using synthetic recipes: a host launch installs declared tools via stack-scoped mise env (MISE_DATA_DIR/MISE_CONFIG_DIR under the stack root, never MISE_STATE_DIR), announces a missing mise, puts the tool bin dir on PATH, and installs tools before install scripts (asserted by source order in `HostBackend.provision_tools`); without this parity a recipe migrated into `tools:` silently lost its binary on `launch --host`.",
+      "evidence": [
+        {
+          "resource": "repo://tests/test_tools_field_parity.py#L47-L130",
+          "version": "repo-lines-v1:sha256:164de77172ed15bc1fdb1c1d00e23a3efcefc65413624d2ffd33ed000fd921e5:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwNmNmOTliZTJkYzRlMWVkYTBlZTQwZmQyMGQyOWYyZTgyYzdjYTBlNGMxYzMyOGExMmIxYTkzMGI3NzhkZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzZWE0MjQ2ZTBiZmNhMzEwZjY4OTllNmE2NjQzNjU2YjFiZDY4YzhjOTIzZGNiY2U2NGUxZjY4MDQ3NjI1ZDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFmMzZlMjU1NWQzZDFkODFkOWMwNDc5NDgxODU5ZDI1MjM1NzgzYzNjN2Q0ODc1ZTYxZTJmMmEzZjM0MmY1YWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2MTUzYTkxNTQ4ZTI4YTgwNDQxYjk5OGI2YmQyNTdjYWEwYjgxYzE5YzA1MGEzOWIxZjVhODcxYzRkZGFmMjUifQ"
+        }
+      ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-01T11:08:21.365Z"
+    "by": "openwiki/0.5.1",
+    "at": "2026-09-16T21:10:52.541Z"
   }
 }

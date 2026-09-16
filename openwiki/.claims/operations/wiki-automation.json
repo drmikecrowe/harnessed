@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c86ea58795992a044f2435f7cc7d967d0a87d976507cf4584c7074fbe550466d",
+  "pageVersion": "sha256:5b56500716a7662d4b48bf8770999190473517c49e7096b2c26251a6bdb2c797",
   "claims": [
     {
       "id": "claim_b90a0ef34e7e4e1d815bf6dd523d7df3",
@@ -26,7 +26,7 @@
       "evidence": [
         {
           "resource": "repo://mise.toml#L112-L125",
-          "version": "repo-lines-v1:sha256:21197124ccc9e9aae881b04bd684d2ca45abe06c49e3481da1b7ec2b87c16a39:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ODk3MmRlYWQ4MTY1YjQ5MTU0NTlkMGIyOTdhZWE5ZTI2NTRkZDUyMmUyYzkwMDYwNjEzNWZkYWFlZTlkZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwMTFjOTQ1MTM0NWI2ZmE2OTBiODAzNWRhZTRlNTU5ZmUzMjc0NzgyOWQyM2ZhYjkzNzRkYzQxYWYxNzVhNmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzOTZmMmJkMmMzZDA3ZTYwNDQ2Njk2YjkwYmI2MzlkZjc4NDQ5NjNhZjliNWUxZWVlYTQ5NTNlMDlkZDczMmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzZTA2MmIxOTM0YzlmYWRlODdiMzM5MDdiOGM5YjAzNzZiOGUwNWE5ZTA1OTM3M2M5MTQyNzMwOTkwMGZlMmIifQ"
+          "version": "repo-lines-v1:sha256:6fe9ed2809b82f8a11f4e0d11b1f734ad0f3f2373e6e8c7c320eb6e4042255dd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ODk3MmRlYWQ4MTY1YjQ5MTU0NTlkMGIyOTdhZWE5ZTI2NTRkZDUyMmUyYzkwMDYwNjEzNWZkYWFlZTlkZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwMTFjOTQ1MTM0NWI2ZmE2OTBiODAzNWRhZTRlNTU5ZmUzMjc0NzgyOWQyM2ZhYjkzNzRkYzQxYWYxNzVhNmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzOTZmMmJkMmMzZDA3ZTYwNDQ2Njk2YjkwYmI2MzlkZjc4NDQ5NjNhZjliNWUxZWVlYTQ5NTNlMDlkZDczMmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzZTA2MmIxOTM0YzlmYWRlODdiMzM5MDdiOGM5YjAzNzZiOGUwNWE5ZTA1OTM3M2M5MTQyNzMwOTkwMGZlMmIifQ"
         }
       ]
     },
@@ -134,44 +134,44 @@
     },
     {
       "id": "claim_b872f77d4103480db3576b0e1affb473",
-      "statement": "The mise pin for openwiki is 0.4.3, the version verified against this tree (2026-08-29); `latest` would make the provider env-var contract an unpinned assumption.",
+      "statement": "The mise pin for openwiki is 0.5.1, the version verified against this tree (2026-09-16); `latest` would make the provider env-var contract an unpinned assumption.",
       "evidence": [
         {
-          "resource": "repo://mise.toml#L11-L13",
-          "version": "repo-lines-v1:sha256:9a6933c1a024ea4f527cfb3b8d55ba425793994b6532a7c1013ac59df625c4fb:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTJkMDJlYjI4MjdhZTVmMGRkMjJhMmY2YWVmZjhkOWY2ZGVmMGZkZmFlODUwY2I5Mjg2ZjFiYzFiYjNlNzk2MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzlkYjI5YjE5OTZhN2Q3MTQzMzg2MjI1OWQ5ZTlhNWJkZThhOGU4N2IzZWEyYjg4NDUxMDY0M2UyZGQ4NGMwMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODc0NjNjNjM1YTU2M2E5MTFiMzI5MDRlNjljMTI0YWEwZmFhZjM5MzJiNTk0NTgwN2M1YzYwZWRiMjI2Zjc0MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGNjMjBiNGJkZjhjMzBkZTI2ZDY2MGEwY2EyYjBjYWU0ZjRmMDExNDA1ODAzYzAyM2NkZGE5MGQ2YTlhZGVhZCJ9"
+          "resource": "repo://mise.toml#L12-L13",
+          "version": "repo-lines-v1:sha256:8784830fe580af874cd103ef2c3756b875aa8e6cc67b0e60fda2cc6051a09024:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjE4MzJkZjllZWViMzYyMTBmM2FiMTRhZTQ4NDAyOWI1NjdhMjhkY2Q2YTg5NTlhN2I5N2E4NTYzNTZiNTIxNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzlkYjI5YjE5OTZhN2Q3MTQzMzg2MjI1OWQ5ZTlhNWJkZThhOGU4N2IzZWEyYjg4NDUxMDY0M2UyZGQ4NGMwMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTFlMDc2OTY1YTNhMTdlZWZiNzQ1ZGY1YjI1MGJiZGI1MTM2N2JjODNhNGUyM2FhY2I4MjlkNWZhODFmMTMzMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTU0NzVlZWNmODk2ZjZmNTA4YjFlNmQ5ZGRkM2NhMGU5NDQ5MWM5ZWY2N2Q1MGNhMjAxYjY4MjBlNjY5ZWYyMyJ9"
         }
       ]
     },
     {
       "id": "claim_85501c5af80546acab76024806a6ab85",
-      "statement": "The openwiki tool entry in mise.toml carries two required options: `allow_builds = [\"better-sqlite3\"]` because mise installs through aube, which denies dependency lifecycle scripts by default — denied, the install still reports success and every openwiki run dies at \"Could not locate the bindings file\" (better-sqlite3 reaches openwiki transitively through @langchain/langgraph-checkpoint-sqlite) — and `trust_policy_excludes = [\"fastq@1.20.2\"]` because fastq ships no provenance attestation at 1.20.2, so aube's no-downgrade trust policy refuses the whole install.",
+      "statement": "The openwiki tool entry in mise.toml carries `allow_builds = [\"better-sqlite3\"]` because mise installs through aube, which denies dependency lifecycle scripts by default — denied, the install still reports success and every openwiki run dies at \"Could not locate the bindings file\" (better-sqlite3 reaches openwiki transitively through @langchain/langgraph-checkpoint-sqlite, still in 0.5.1). trust_policy_excludes is GONE: it covered fastq@1.20.2, which shipped no provenance attestation, but fastq 1.20.3 is attested again and every `^` range in the 0.5.1 tree resolves there; if a later unattested fastq lands, the install fails loudly at resolve time and the exclude should be re-added with that exact version.",
       "evidence": [
         {
-          "resource": "repo://mise.toml#L14-L24",
-          "version": "repo-lines-v1:sha256:dd0288c5e1b17dd1ea7d069c0855ea92a2f3cd104aca59296dd13dad120266ae:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyYzQ4NThlMjJjYzJjOTY3YjQyMTUwZmE1NTA1NjJhMmM4MzljMmNlYmNhYWI5MWNhYmRmNmY0ZGEwMjAwMjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyZGZhZjNmNTlmYzRiNmUyYWE0NTc3ZjJjNzEyN2Y3YmRkOWMzNWM5OWQ5NjQ5NzZkZDY5ZmIxNWNkYzI5NzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhNjkzM2MxYTAyNGVhNGY1MjdjZmIzYjhkNTViYTQyNTc5Mzk5NGI2NTMyYTdjMTAxM2FjNTlkZjYyNWM0ZmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliMDlmODFhYmU0ZGNkMDY3NmRlZjM3NDlmMzEwMTFjYzFmYjk1NDBmZjJhZDM4M2Q1NWQ4YzQzOWEwYTdlYzQifQ"
+          "resource": "repo://mise.toml#L14-L27",
+          "version": "repo-lines-v1:sha256:ee957e6880b779157c5d350bc63592f16c00ecf2f27793bf993e2cd29bc9c66e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyYzQ4NThlMjJjYzJjOTY3YjQyMTUwZmE1NTA1NjJhMmM4MzljMmNlYmNhYWI5MWNhYmRmNmY0ZGEwMjAwMjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0M2JhM2NkZjQzNmRkNGU5ODczOWJlN2U4NThkNjc0OGE4NmQzYjA5NmU2NjU3ODJkM2ZiMmNhYWE4NTA2NWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0MzUyMGNmMGFlY2E5YTJiNDIzNjk2YmVlMDcxMTYwYTNmZTA1NjRiYTQ3NGRiYTBkNmFiM2Y4ZmU3MDMwM2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliMDlmODFhYmU0ZGNkMDY3NmRlZjM3NDlmMzEwMTFjYzFmYjk1NDBmZjJhZDM4M2Q1NWQ4YzQzOWEwYTdlYzQifQ"
         }
       ]
     },
     {
       "id": "claim_9a2ce4e89e5e4447a5c32753d3bf8b05",
-      "statement": "A page worker whose stream ends without calling submit_page is marked skipped by openwiki, the page snapshot is restored, and the run finalizes \"interrupted\" without advancing the diff base — one quit costs the next run a full regeneration of the whole changeset. Observed with glm-5.3-flash: 94 LLM calls, a clean exit, no tool call, no error (PR #445 run 6). Neither upstream 0.4.3 nor 0.5.0 retries a skipped page (verified against the 0.5.0 tarball, 2026-09-08).",
+      "statement": "A page worker whose stream ends without calling submit_page is marked skipped by openwiki, the page snapshot is restored, and the run finalizes \"interrupted\" without advancing the diff base. Observed with glm-5.3-flash: 94 LLM calls, a clean exit, no tool call, no error (PR #445 run 6). No release through 0.5.1 retries a skipped page — 0.5.1's runPageAgent carries the same try/skip block byte-for-byte as 0.4.3. 0.5.0's durable page manifest (openwiki/.page-manifest.json) softens the cost — a completed page is no longer regenerated — but a skip still leaves the run interrupted.",
       "evidence": [
         {
-          "resource": "repo://tools/openwiki-retry-patch.py#L1-L17",
-          "version": "repo-lines-v1:sha256:f30f54f9884b06a3712ec848be984d17a7c8e27aa2b446f7b8a78be024fe5154:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ODJjYmRiNGM4YjA3NTE4YmY0ODZjNTg5OTBmYzM5MTc4M2FhMjBhOTE2YmZiMjdhZDIxMWViMWQ1YzM2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2NzM5NmQ3ZGJjNzJjMjgxMGRlZjIxYWE0OGEwNWUzNzJiM2VjNmUwZTk0Yjc5YWI2NmRhZTE3N2YzNzAyYjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUwMTY3OWU2YmIyYWU2YzA5N2RmNDBlODgxMjJlODI1YzI0N2ViMTcxODAwNTcwMzk2MDRiZTc2YTIyMzM1NmEifQ"
+          "resource": "repo://tools/openwiki-retry-patch.py#L1-L29",
+          "version": "repo-lines-v1:sha256:f4a18dfa617123f89b13f48508977737dfe509f31b97ceefad7d2e1187936f9c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ODJjYmRiNGM4YjA3NTE4YmY0ODZjNTg5OTBmYzM5MTc4M2FhMjBhOTE2YmZiMjdhZDIxMWViMWQ1YzM2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1YjZlODcwNmI0MzA0N2YyYTZkYjY3ZjEzMjYzODU5NTYwNGU2N2YzNjk2Njg3NmNlMDE1OGYwMDUzZTZiZDEifQ"
         }
       ]
     },
     {
       "id": "claim_1836ac2dcb3a4dd1a9b783dd7e029454",
-      "statement": "tools/openwiki-retry-patch.py gives each page worker one fresh second attempt before the page is skipped: it rewrites runPageAgent in the mise-installed dist/agent/repository-runner.js, converting the single `const agent = createDeepAgent({...})` into a `createWorkerAgent` factory wrapped in a two-attempt loop; the retry shares the worker's virtual backend so attempt 2 sees the page markdown attempt 1 already wrote, a first miss emits a named retry event, and only a second miss falls through to skipRepositoryPage plus the deferred warning exactly as stock code does.",
+      "statement": "tools/openwiki-retry-patch.py gives each page worker one fresh second attempt before the page is skipped: it rewrites runPageAgent in the installed dist/agent/repository-runner.js (version-gated to exactly 0.5.1), converting the single `const agent = createDeepAgent({...})` into a `createWorkerAgent` factory wrapped in a two-attempt loop; the retry shares the worker's virtual backend so attempt 2 sees the page markdown attempt 1 already wrote, a first miss emits a named retry event, and only a second miss falls through to skipRepositoryPage plus the deferred warning exactly as stock code does.",
       "evidence": [
         {
-          "resource": "repo://tools/openwiki-retry-patch.py#L34-L39",
-          "version": "repo-lines-v1:sha256:9eddeca3dfbe94c54844c43833f250bcbfd6f78d7e3ccc02920de3f4c00afbe5:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2Q3NWM1YmI0ZDYwMmFiMGU2ZTk0ZWVkNmRhOGYwOWE0NzY3YjJkZTRiYjhhODdmZjgwNjRkOWZjODcwYjg0ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjk3YTNkMDhjMmI2MzYzMmY3ZjE1ZTE4NmQ1ZTA3MzU1MmE2N2U1YWUyNDNiODM0ZmM4ZjQ0MTAwYjU5NmNlNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjE0NGI0MDc5NTVkY2RlMjRjMjJlMWRlNTYxOWJkZmUzOWQ3MWU2MWE1N2U0OWEwNGUwNDQ1ZDEyNWE1Mjg3MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGZmNmQzNTg5ZWFiYzZkZTBmYzliOTcyMzNhMTRmMTVkYTI1ZjYyNWMyYTA1ZGM2YWI4MTcyMDZlODg4NzZlYiJ9"
+          "resource": "repo://tools/openwiki-retry-patch.py#L56-L57",
+          "version": "repo-lines-v1:sha256:5d4655f2a101de1e58dfc90719bf6072038d2c7b6a1d220f34c8aff26f451e89:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmMzNzZkNzEwODFhYmU0MDAzODNhYjE5YzM2ODZkMTUzZDgzYTg2MzIyZDk5YWMyZDc0NzY5ZjUyNTk5ZTMxMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjk3YTNkMDhjMmI2MzYzMmY3ZjE1ZTE4NmQ1ZTA3MzU1MmE2N2U1YWUyNDNiODM0ZmM4ZjQ0MTAwYjU5NmNlNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODhjNmQ3MmRjYjhkMTkyMTJhNjZlM2Q2NmU5ZGVlMDczMjljMTkwM2U1ZGFlZTA2NDBhZDU1YTBhMmZlYWRjYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGZmNmQzNTg5ZWFiYzZkZTBmYzliOTcyMzNhMTRmMTVkYTI1ZjYyNWMyYTA1ZGM2YWI4MTcyMDZlODg4NzZlYiJ9"
         },
         {
-          "resource": "repo://tools/openwiki-retry-patch.py#L67-L104",
+          "resource": "repo://tools/openwiki-retry-patch.py#L85-L122",
           "version": "repo-lines-v1:sha256:4f94394fc5c9dfa3e0400398eca5536dde5dd30a5a96beb7115fe345944d73fd:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwY2RhNDhiMTk1ZWVmYTI4ZTRhY2RlZDc4ZmMwYjljMTM5YTYyNGFkNjcyMjAwNjUwZTI4NmJiZGMzODIwMDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU2OGE3ZThmZmU3OTc5OTFlOTViODJmMmZjZTk0YjU4NTA4NjExYTdjYjk4YjdkNDQ0NTdlYzJiMjdiOWFmMmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlNDgwYWE5MDI0ZjkzZjNkMWViMDg5NTVhYjEzNzBiN2ZiNzJiYTllOTYyZjUwMjY1YzViMDg1NjRmYjcwZmEifQ"
         }
       ]
@@ -209,24 +209,6 @@
       ]
     },
     {
-      "id": "claim_d3a916deb4554fef8b08106554586fe0",
-      "statement": "The retry patch is wired into the local task only: its default target glob is the mise install layout (~/.local/share/mise/installs/npm-openwiki/0.4.3/...), and openwiki-update.yml runs the stock npm-installed runner with no patch step, so a skipped page in CI still finalizes the run interrupted — survivable there because the durable page-job queue plus the PR banking step make finished pages the next run's baseline.",
-      "evidence": [
-        {
-          "resource": "repo://.github/workflows/openwiki-update.yml#L62-L70",
-          "version": "repo-lines-v1:sha256:c4e6b15101820e0ad09bc9f2c82f5f1ab0d5436d73ee9b5e3683da5dda2e0a59:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzBlOGY5ZmE0MGU3YmQwNDk5ZDFjMGQ4M2ZkNzU4YWE4NWIzMDg0MmRiZDYxZjBlYTZiN2FlMTBlZmVjNzZkMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTQxYzYwZDgzNTk3Yzc2Y2NhNjk2YWFjNzRkZmI3YWM1ZGMzMzYyZmU2NTFmOGNhYjVhMzA0OTk2MzAxN2Q0MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDlmYjM0OWYxMzlmZWU3YWM1YWU0MmIzZWIyM2Y3NzAwNGY0ZGQzMDFiYWFlNzVmMTgzMjBiMGMzMWQ4OWJhNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmY3ZTQ2ODM3NDgxNGViZTgxZmFjOTBlMDY2NWNhOTBkMzg3MTliNTE0ZmMyZjFlYTEzOWM2MjkwZjA1N2M4NCJ9"
-        },
-        {
-          "resource": "repo://.github/workflows/openwiki-update.yml#L85-L96",
-          "version": "repo-lines-v1:sha256:5e931f8b4bba9d1a9d20dabb1c0ff7e64a7bba5c641b73814e94dfc8bfd9f1aa:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxY2ZmNGFkMzNiYTkxYjE0OGUxYjFiODI5MGI4ZmZmMjdiMjAzZmFiZmVlNTg3MDI4MmRlMzY3MzgzYjFiZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViYmQ0MWQ5MWI3YzdlZWUzMTI4MDM5OGE3MTI1OTk2MDEzODQ2MTk2MDI4OTUzMWU5YWQxNWQ4NDIyZGRmNTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0MTRhZTc3N2Q2ZGIzNjY1MjVkNTFhNjdiZWJmNmY5OWM3ZDUwYTE0ZTNlOGU3YmIwOGI5YWZjYjU1MmFiNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhkNTlmZWJlZDUzYjg4ZWQxZmQ3MTIzN2VlMWQ5MjY1ZjBkYjg2YmM1OGMwMjUyYzExNTJlMjFmNzdhNTU3OGIifQ"
-        },
-        {
-          "resource": "repo://tools/openwiki-retry-patch.py#L34-L36",
-          "version": "repo-lines-v1:sha256:ba84ba3797598f9d8898b350df00c67a2efb2f12aaf5eff4036d30dfac4ace40:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2Q3NWM1YmI0ZDYwMmFiMGU2ZTk0ZWVkNmRhOGYwOWE0NzY3YjJkZTRiYjhhODdmZjgwNjRkOWZjODcwYjg0ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDkyZGQ3MmFkYTkzYjNlMjNhYThhZDQwZWFlOTJjODRlMWY3ZTYzMjY5YjRhNzFkNjFkOTM2ZjMxNGZmYWMzMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjE0NGI0MDc5NTVkY2RlMjRjMjJlMWRlNTYxOWJkZmUzOWQ3MWU2MWE1N2U0OWEwNGUwNDQ1ZDEyNWE1Mjg3MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGU2YTMwN2JlYzk5ZTdhMzgxMTg4MTQxNDU5NmUxNTI0NjU0MmVkMjMyNjEyZGE0NmE5ZGFiYjFhMjcxZjdmYSJ9"
-        }
-      ]
-    },
-    {
       "id": "claim_7b6d16692eea4bee9b0b63270520709d",
       "statement": "The workflow checks out with `fetch-depth: 0` because `openwiki code --update` diffs HEAD against the commit it last documented — a shallow clone hides that commit and the update runs against an empty change summary — and with `persist-credentials: false` because the openwiki step runs third-party code over the whole repository: persisted git credentials would sit in the job's git config for it to find, and create-pull-request takes its own token input and does not read them.",
       "evidence": [
@@ -238,11 +220,11 @@
     },
     {
       "id": "claim_8f19c473eb8d4ffcbbee07f90dc0de71",
-      "statement": "CI installs openwiki with `npm install --global` (plus mermaid and jsdom for high-fidelity Mermaid validation), deliberately not the recipe's project-scoped pnpm install: the runner has no strictDepBuilds policy, and npm 10/11 still runs dependency lifecycle scripts by default, so better-sqlite3 builds with no allowlist at all.",
+      "statement": "CI installs openwiki@0.5.1 with `npm install --global` (plus mermaid and jsdom for high-fidelity Mermaid validation), deliberately not the recipe's project-scoped pnpm install: the runner has no strictDepBuilds policy, and npm 10/11 still runs dependency lifecycle scripts by default, so better-sqlite3 builds with no allowlist at all.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/openwiki-update.yml#L33-L47",
-          "version": "repo-lines-v1:sha256:2f1b328a0e4cc125b767d9760cb5cba4de6bc4e95667e804acad6ae012934ad9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2Y2UwYjBkM2IzODEyMmJjMjc1MTVhOGQ5Njk2MTVkOWUxMGUyODA2NDRmNzYxMjIxZDA0NDc5YWQyNTM5M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1NjQ2ZTRmMjc0OTQ1NmNmNWZlNWQ3MzIwNjgxMGVkYjFiYzgxMmU5ODUwNjY5ZGMwOTI0NjAxYTg3OTA4YzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzZjNiODgwMmIzMTBmZjJhZGQwMDI2YjgyZWUyZTllNTcxNTkxMmVhZjA4MWFmODZjZTExMGRkNjQyZmMxYTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkOTM0ZGIwMzcyZDIyNzI3MmQ4Zjk2ZDMzMDZjY2Q1Mjc2ZmFhYTcyMzg3ODFkODlmZWZlNjgzYjYxMmU0MjkifQ"
+          "resource": "repo://.github/workflows/openwiki-update.yml#L37-L51",
+          "version": "repo-lines-v1:sha256:6352bde5991cf8534cf9f446bac0b66f896285887123eeee5872d65fcbb7333c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2Y2UwYjBkM2IzODEyMmJjMjc1MTVhOGQ5Njk2MTVkOWUxMGUyODA2NDRmNzYxMjIxZDA0NDc5YWQyNTM5M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwMGJlMzA4YzVjMWRkNWQwNmU4ZTJiZDU1M2YzYmM5OTAwNWNhYmU2ODQxOTg3ZjVmMDIxMjlkNDcyMjNkODciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzZjNiODgwMmIzMTBmZjJhZGQwMDI2YjgyZWUyZTllNTcxNTkxMmVhZjA4MWFmODZjZTExMGRkNjQyZmMxYTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkOTM0ZGIwMzcyZDIyNzI3MmQ4Zjk2ZDMzMDZjY2Q1Mjc2ZmFhYTcyMzg3ODFkODlmZWZlNjgzYjYxMmU0MjkifQ"
         }
       ]
     },
@@ -251,12 +233,12 @@
       "statement": "A dedicated verify step searches the global node_modules for better_sqlite3.node and fails with the fix in the error message (npm 12 blocks dependency lifecycle scripts by default; add --allow-scripts=better-sqlite3, or install via pnpm with an allowBuilds entry as the recipe does), because openwiki imports SqliteSaver at module load, so a missing native addon breaks every subcommand — surfacing as \"Could not locate the bindings file\" mid-generation rather than as a failed install.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/openwiki-update.yml#L49-L60",
-          "version": "repo-lines-v1:sha256:f6e18a9b0a675d1db3e29d09e3c4791feb6c5dab81e8b4066e4502988fe21258:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzYmNhNmQ5MTEwODEwNjJjMjc5MTUyN2ZhZjI4OGEyYzA4MmM2NzZiYjllMDQ1OTllYzcwMzVhNzU2NTBiYzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2OTYyODIzNmY2ODc1MTVkZDRlMGJiOTZhNGZmNjM1M2Q3MjYxNzdkYTczNTI0NzFjMDFlZDRjODIxMmNhN2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI0YzlmMDJlZWJjZDM3YTEzOTQ0YWJmYTE1NGM3OWViNTFmMWVjOTAxMjkyZWVlOTNiZDYzNzgzYzdmNTNiN2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkzNzY5ZDI5MmFhYTAwYzJkM2QwMjcwZGZjOTIyMzg2YTBkZTRkYTM4YzkwNzAwNTU4ZWIyMzJiOGRiMmI3YjcifQ"
+          "resource": "repo://.github/workflows/openwiki-update.yml#L53-L64",
+          "version": "repo-lines-v1:sha256:f6e18a9b0a675d1db3e29d09e3c4791feb6c5dab81e8b4066e4502988fe21258:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzYmNhNmQ5MTEwODEwNjJjMjc5MTUyN2ZhZjI4OGEyYzA4MmM2NzZiYjllMDQ1OTllYzcwMzVhNzU2NTBiYzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2OTYyODIzNmY2ODc1MTVkZDRlMGJiOTZhNGZmNjM1M2Q3MjYxNzdkYTczNTI0NzFjMDFlZDRjODIxMmNhN2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE3NTYxMzZkZTYxNWQ5NzUxYTIyOTZiOWNkYWQzOWExODI2OThiNmFjNjMxM2E5YTVmYTI3ZDYxYzhhNjEyOGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI2OWRhNjE3NDliN2U1ZGZiZjhhZjlmMTU1NDIwMTNkM2FiMWIxYTI0MDRlY2U4YmJkMGVkNWI1ZWMzMDE2M2MifQ"
         },
         {
-          "resource": "repo://mise.toml#L18-L23",
-          "version": "repo-lines-v1:sha256:ecd9b6b7ee4e73f0a9c303eb13d571241d2309986bb3a570f5cdd6ac701ab777:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjQyYjk0MzAxYzM0ZmFhZDY3OTAwNmUyYmY3YmJkNjMzZmI3YzIxYWVkNDJmN2U5ODg1MmRjYjUzZTc1NjMwNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmIxNjhjNzUzOWE2M2Q5NTI1YjA4NDQ0MWE1Yjg0NTU1YzdlZjg5ZGU1MGMxNmIyOWI0ZGFiZDkyOGEzZTE4MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDVkYjhkOGFmMTc0ZDgyYzJkZjg5M2ZjY2U5NDEzZTBjNDY2NjEzMWNiM2QwMDQ2OWU2MmIxNzA2MzFjMGM3NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWEzNjNhMTY2YTFhZjExNDZlOTZhNTRiZTQ4MjNiMWY1NjEyOTQ0ODczMGUzMmUyZGEyMmVhNDgzYWZjZWVkYSJ9"
+          "resource": "repo://mise.toml#L15-L20",
+          "version": "repo-lines-v1:sha256:58c6e5182545e63a6ae9bbc6fa949b8af7c2656de699fff8d232a7165098b5e3:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2I0NzA3YzFjZTBhNDgyZjM3ZDNjN2RmNDQ3MTdlNWQ4OTM1NjNhYWEyYTc2ZDdhMjhiMTJhOTBkNjdjODk2MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2M1OWE1ODUxNGI2MmViYjRhY2JjNmYyOTE1NzQyNWRhNTc0MGEyNzE3MjY1ZmZmMzFiZTQ4MGU0NzFiYzhiZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGJkOTEwYWExZjJkMWFiNWJjYmMyNGE4YTNlMGVkY2I5YjczODljNmYwNGEzYjAyYTY0ODE0MDBhODI1MjU5OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjMyZmFjNWQ2MzZkNjRiZTE4MDI0MGJkZDNiM2U5ODVjYmE0ZmMyODNiYjUzYTBmMGUzZDc3Y2QwYzNjY2VkNCJ9"
         }
       ]
     },
@@ -276,21 +258,25 @@
     },
     {
       "id": "claim_92a9f9407e1d409093558fbce9343382",
-      "statement": "The create-pull-request step runs `if: ${{ !cancelled() }}` so it opens even after a failed generation; `add-paths` limits the PR to openwiki/, AGENTS.md, CLAUDE.md and the workflow itself (the wiki plus the two pointer blocks the run keeps current), the branch is `openwiki/update`, and the PR body tells reviewers to check claims with `mise run openwiki-drift` before merging because a failure PR intentionally preserves only the pages completed before the failure.",
+      "statement": "The create-pull-request step runs `if: ${{ always() }}` — not `!cancelled()` — so it opens even after a failed generation or a 90-minute timeout kill (timeout-minutes: 90 cancels wedged runs; skipping the PR on a timeout would discard every page the durable queue wrote). `add-paths` limits the PR to openwiki/, AGENTS.md, CLAUDE.md and the workflow itself, the branch is `openwiki/update`, the body tells reviewers to check claims with `mise run openwiki-drift` before merging, and a final step re-raises exit 1 when steps.openwiki.outcome == 'failure' so the job still reports red.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/openwiki-update.yml#L85-L112",
-          "version": "repo-lines-v1:sha256:25d259b860c3e73eb304f957e246c66cfccebbd8947210c6a3a57c69487d3176:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxY2ZmNGFkMzNiYTkxYjE0OGUxYjFiODI5MGI4ZmZmMjdiMjAzZmFiZmVlNTg3MDI4MmRlMzY3MzgzYjFiZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5OTVkZTUxODA0M2Y5OTUwOTJmYWY0MDk0M2YxYTg1ZmVlNThmNDU5ODNkYmU2YmYyNjU0ODYxODQyMGVkZTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0MTRhZTc3N2Q2ZGIzNjY1MjVkNTFhNjdiZWJmNmY5OWM3ZDUwYTE0ZTNlOGU3YmIwOGI5YWZjYjU1MmFiNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ4MzIzNzkyMDJjNzAxNTIxNGJmOGQxZTg5YTE4ODBkYTJjZWY4YTI4MDMyZGRlNmZmMDNhOTJkNjU0MjFmMmEifQ"
+          "resource": "repo://.github/workflows/openwiki-update.yml#L119-L153",
+          "version": "repo-lines-v1:sha256:7f5f493d42eca33971b6d65e09c49ec75f9fa2287483e286cb6bf3568762d7ed:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxY2ZmNGFkMzNiYTkxYjE0OGUxYjFiODI5MGI4ZmZmMjdiMjAzZmFiZmVlNTg3MDI4MmRlMzY3MzgzYjFiZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2NzE4ZjA2N2I1ZTVjMWYwOTkxYTZlNzQ3MjZmZTJhMjNkMjY0MzQ1ZTA4ZTRlYWQwNGZhZjczYzI3ZWQ0NDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0MTRhZTc3N2Q2ZGIzNjY1MjVkNTFhNjdiZWJmNmY5OWM3ZDUwYTE0ZTNlOGU3YmIwOGI5YWZjYjU1MmFiNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L15-L18",
+          "version": "repo-lines-v1:sha256:d849765c5463a27af0a9a0ecdaed3c27c0fde5b3547df8b94640c172e95eafcd:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTk4M2NlYzNkYjcyODM3MzFkNTYzYzY0Yjc3OTRkNzNiNDFiNmI3ZTlkYzQ3YjM0MGZjN2I5ODhhZmNjODk4YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWIzM2EzMDdiODMxNDNhOWE1ZDBjMmE2MzdhZmM2OWQxODE2YzA1M2U0MjYwZWQwZGIzZWRkYzFiMDM1MGFiNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjBiNjZjNTlkZjhhMDQzNDQ5NGFlNGYyNmYwYmNiZDY2YTM2ZjlkMDlhNTEwYTVkYTA2MTM0ZDljOTIxMDYxNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTAyNjA0NWMxNzkzOTAzMDU1YjNhZDVjZGFiNGE0ZjVmMDQ3OWExNjBlNzc1Y2JhZmY2ODlhNDc1YjVlZGY1NCJ9"
         }
       ]
     },
     {
       "id": "claim_4722a0ff3a3f46b6a0449c4296f35ec0",
-      "statement": "CI deliberately leaves OPENWIKI_MAX_OUTPUT_TOKENS unset for glm-5.3: it is a reasoning model, reasoning tokens are drawn from the completion budget, so a tight output cap returns HTTP 200 with empty content and no error — a silently blank page; the model's own ceiling is left in force, and the variable must not be added without re-measuring against this model.",
+      "statement": "The CI generation step runs OPENWIKI_PROVIDER=anthropic against z.ai's Anthropic-compatible face (ANTHROPIC_BASE_URL https://api.z.ai/api/anthropic, model glm-5.2) — not the OpenAI-compatible face, whose non-streaming HTTP dies at undici's 300s headersTimeout and whose streaming flag was broken through 0.5.0; the Anthropic client streams SSE by default so long glm turns survive (verified in PR #445 run 8). OPENWIKI_MAX_OUTPUT_TOKENS is now explicitly set to \"20000\" and is required: the @anthropic-ai/sdk non-streaming timeout guard refuses the planner's call above 21,333, while too low a cap returns HTTP 200 with empty content — a silently blank page — because glm draws reasoning tokens from the completion budget.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/openwiki-update.yml#L71-L79",
-          "version": "repo-lines-v1:sha256:b93c6452811f42acb32ef80db02fdf5825c05def179951c092a004e696406a33:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2IwNzg0OGE0MzY2NjU2YjJiYTYxOTdiZTAyYjkyMDgxNDU0NmY5ZDlhZDBiNTMzOWU0YzI2YTJjOTQ2NTExNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjQ5NDgyOGM4OTIwZTU2ZDUyZDRkYWNmOGQwNzViMDI4MDI3ZTY5MTkyYzI5MDk2ZDE4NWQ5NWNiMzI3MjdjNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmQ2Y2QyYzAwODFhNzM1Yzk1YzAyMzhjYTI2OTJiZTdiZDg1N2NjMzEzMzJkZTI4ZmM3OTZmZTFiNWU5NDEwYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzRhZTY0YmE2NzEwM2RlZmI4OTQxMzgwYTQ3NGYxODY0ZGI4OTFiZmI0MWM4YWUyZmQ2YTk2MzdmMWE1YjBhZCJ9"
+          "resource": "repo://.github/workflows/openwiki-update.yml#L88-L113",
+          "version": "repo-lines-v1:sha256:5e307399ad9a72bc6986ab3766f4a9d2e9cbf347b55394903bbf03cd6b3e5a3a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiMDc4NDhhNDM2NjY1NmIyYmE2MTk3YmUwMmI5MjA4MTQ1NDZmOWQ5YWQwYjUzMzllNGMyNmEyYzk0NjUxMTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE5YzdkMDhiNjQ0M2UyM2I4ZDllODgwYWIzMWE4YjY0MjI1MDA0OGE0OTFmMjA0YjFkMDM3MWQwMWYyMjk4YjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJkNmNkMmMwMDgxYTczNWM5NWMwMjM4Y2EyNjkyYmU3YmQ4NTdjYzMxMzMyZGUyOGZjNzk2ZmUxYjVlOTQxMGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM0YWU2NGJhNjcxMDNkZWZiODk0MTM4MGE0NzRmMTg2NGRiODkxYmZiNDFjOGFlMmZkNmE5NjM3ZjFhNWIwYWQifQ"
         }
       ]
     },
@@ -310,7 +296,7 @@
       "evidence": [
         {
           "resource": "repo://.github/workflows/openwiki-update.yml#L85-L89",
-          "version": "repo-lines-v1:sha256:5ad12f1e5ab3e3378917042b2727f54c019a0800811ea6f4b7c4fdeb51fc02f6:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDFjZmY0YWQzM2JhOTFiMTQ4ZTFiMWI4MjkwYjhmZmYyN2IyMDNmYWJmZWU1ODcwMjgyZGUzNjczODNiMWJlMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjA3MjQwZWE4Y2RhMjI4MDJkMGY2ZGFkZTZmNjExNTRhYzMwZjY3ZWNlZGFkMjllZWIwZDU5ODUwZDU4YWIwNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQxNGFlNzc3ZDZkYjM2NjUyNWQ1MWE2N2JlYmY2Zjk5YzdkNTBhMTRlM2U4ZTdiYjA4YjlhZmNiNTUyYWI2ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWU1ZDY0NmQ1OWFkZmVkYmI0ZmYxZjAxNDc4MzFiMjliN2UyM2U5MDhmNzhkODNmMDEzMmNlNzVmZmE4YzlhMyJ9"
+          "version": "repo-lines-v1:sha256:a18e1368490fab12f6b4c9f24f61f6c4cf147ac42da597ffa61b13be07a6c4e6:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDFjZmY0YWQzM2JhOTFiMTQ4ZTFiMWI4MjkwYjhmZmYyN2IyMDNmYWJmZWU1ODcwMjgyZGUzNjczODNiMWJlMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTJlMmMxNTZlZDg0MzFjNmRhYjljMmNlYmFiN2YzMzYxNzU0YjMwNWE1NTRiY2MwYjNiNWY4YjhkMGVhYjAyNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQxNGFlNzc3ZDZkYjM2NjUyNWQ1MWE2N2JlYmY2Zjk5YzdkNTBhMTRlM2U4ZTdiYjA4YjlhZmNiNTUyYWI2ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWU1ZDY0NmQ1OWFkZmVkYmI0ZmYxZjAxNDc4MzFiMjliN2UyM2U5MDhmNzhkODNmMDEzMmNlNzVmZmE4YzlhMyJ9"
         },
         {
           "resource": "repo://.gitignore#L70-L73",
@@ -361,10 +347,34 @@
           "version": "repo-lines-v1:sha256:e7d669e4adf993109165b0a8c4eb1820af97c179d6e61816d4e70c59c0437222:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmMjNjZDI1NWIxYThkYjA4N2VjOTQyODUxZTM1OTI0ZmVlYzlhNjg4OWEwZDQ0OGI2NjYwMGE2ODM5M2M4MDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0OWM4OGQ1OTE5YjhiMzRhNDZjMWU3M2NhMTc2MTc4MzI4YmY5Y2U0ODFiNjEzYTNmYTQ3MjA4YTQ5YjkyMTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyN2Y0YWRhOGEyOTVmNjNmN2NhN2E3NjAwOWI2NWExYTBiMWM0NDA3MzNmYTllNmZhYjIwMjI3ODY0NWQxNWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_1ebacd3cc4574ee9af281b83ea397949",
+      "statement": "The retry patch locates the runner over two mise-install globs because pnpm 11 symlinks node_modules/openwiki into the content-addressable store under ~/.pnpm-store/v11/links/ and emits sibling hash directories that all realpath to the same store path — matches are realpath-de-duplicated and ambiguity is an error. On the pnpm 11 layout the patched file lives in the shared store, so any other project resolving openwiki@0.5.1 to the same hash sees the patch too; there is no project-local copy to patch instead.",
+      "evidence": [
+        {
+          "resource": "repo://tools/openwiki-retry-patch.py#L125-L137",
+          "version": "repo-lines-v1:sha256:06884cb51ea5e741ebf0efc826dd2f37ee627bee27ac87f0073b445d6d822b9b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxZWY2YTZhZGJlYzBmNDI2ODIwOWY5N2ZjYzRhMzBlMjExNzVhZmRlZTUxMWYwNjQ2YWExZWQ0MTFmYjI1ZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwMzFjZjUzMWM4MDMxZjU4ZjNkMTU2NGE5N2NkMTQ3OWZlMDVjZWU3ZWYwOTkzZDllMGI1NDE5NjEyMTE1NjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5OGIwNjNkOWI0N2U2NTM3OTYyNTU3MmNjZTE5NzY2OWQ1NzY3ZTEyYzE4YmUwNzU2NTJiOGNkOTgxY2U4ZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzNjE5OWRjZDA5M2NlYjJkOTg0ZjIyN2Y2ZGNkMDlhYzA0OGU3NjQyMTZjYTQ2NDE2MjE1ZDNjMTIzZTU5MjEifQ"
+        },
+        {
+          "resource": "repo://tools/openwiki-retry-patch.py#L41-L54",
+          "version": "repo-lines-v1:sha256:dca0e0c4cb5faa02e1af9f0bd66dc56f87ef4b1a9f7af82338b4dc5265b1658c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYyYzdhMmQ1ZGQxZTBmZTBlYzc5OTAwNDMxNGU3MjE4MDY2MjY4OWMwYjRlMTQ3YTlhNzdkMTQ4YzBkM2NiMzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgwM2E0MDI1NGJiNTA2MTE2ODU3ODZiYWEzZjdlMmEyM2Y2Yzg4MzA1Y2IyOTU0Y2FhMGM0OTk4MWEwNzIzN2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRlNmEzMDdiZWM5OWU3YTM4MTE4ODE0MTQ1OTZlMTUyNDY1NDJlZDIzMjYxMmRhNDZhOWRhYmIxYTI3MWY3ZmEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_163b9b182b5847a5968d826d29587e66",
+      "statement": "The retry patch runs in CI too, not only locally: the workflow applies tools/openwiki-retry-patch.py to the npm-global install with an explicit path (`$(npm root -g)/openwiki/dist/agent/repository-runner.js`), and the patch is idempotent plus version-gated so it refuses anything but 0.5.1; verified 2026-09-16 that the npm-global patched runner is byte-identical to the locally patched one.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L66-L77",
+          "version": "repo-lines-v1:sha256:8879a178da85ba34f87a1b7ed2e1896780643c6eff2a6f2b224c0021edfa1be1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwYjliNmZiZjQ1ZGU1OTliOGJjYjAwNWViNTA5MTE4ODYwNmM1NzJkNWE4ZjM5MzBjN2IyZTI4ODdhZTM3MzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmYTQ3NTAyZmQ2OGRiODZkMzQwNzAwMDBjZGM4NTY3YWJmOWI1NjEyYTI3N2I0MmQwYzY4NWYwMjgzNGQ4OGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5ZmIzNDlmMTM5ZmVlN2FjNWFlNDJiM2ViMjNmNzcwMDRmNGRkMzAxYmFhZTc1ZjE4MzIwYjBjMzFkODliYTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkzNzY5ZDI5MmFhYTAwYzJkM2QwMjcwZGZjOTIyMzg2YTBkZTRkYTM4YzkwNzAwNTU4ZWIyMzJiOGRiMmI3YjcifQ"
+        }
+      ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-09T09:34:57.295Z"
+    "by": "openwiki/0.5.1",
+    "at": "2026-09-16T21:10:52.541Z"
   }
 }

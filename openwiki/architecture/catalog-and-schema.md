@@ -4,8 +4,8 @@ title: "Catalog: schema, roots, resolution, and packaging"
 description: "How authored catalog content (agents, recipes, services, stacks) is parsed and validated by schema.py, resolved across the three catalog roots with user-overlay precedence, composed via stack extends and recipe families, and shipped inside the wheel through the src/harnessed/catalog symlink."
 tags: [catalog, schema, catalog-roots, resolution, overlay, extends, recipe-families, pin-validation, packaging, wheel, dynstack]
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 sources:
   - id: openwiki-source-4e2e2b93eeb15847052a26fb
     resource: repo://.github/workflows/pin-check.yml
@@ -17,6 +17,8 @@ sources:
     resource: repo://catalog/recipes/time/recipe.yaml
   - id: openwiki-source-e9cc6c20ea9b111b6ff0861e
     resource: repo://catalog/stacks/default/stack.yaml
+  - id: openwiki-source-c3a8ff8327a2b1297fad6d08
+    resource: repo://catalog/stacks/livecheck/stack.yaml
   - id: openwiki-source-05ccef8d4cf1698187f20464
     resource: repo://pyproject.toml
   - id: openwiki-source-4e65293369fa0165455844b0
@@ -43,7 +45,13 @@ sources:
     resource: repo://src/harnessed/paths.py
   - id: openwiki-source-7536da5c015fc2813c7693c5
     resource: repo://src/harnessed/schema.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+  - id: openwiki-source-dedbae614432467fbfc419d9
+    resource: repo://src/harnessed/update.py
+  - id: openwiki-source-dc98d7316841add740ef47c9
+    resource: repo://tests/test_recipe_uniformity.py
+  - id: openwiki-source-a488585d132d26b93d838e43
+    resource: repo://tests/test_tools_field_parity.py
+generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
 ---
 
 # Catalog: schema, roots, resolution, and packaging
@@ -133,7 +141,12 @@ stack can never shadow one you authored.*
 The ordering encodes three deliberate decisions:
 
 1. **The user overlay wins on a name clash.** `~/.config/harnessed/catalog` overrides the shipped
-   catalog for any same-named agent/recipe/service/stack and adds names the repo does not have.
+   catalog for any same-named agent/recipe/service/stack and adds names the repo does not have. The
+   live CI jobs pin this consequence into the design: they launch a dedicated `livecheck` stack —
+   not `default` — precisely because `harnessed test default claude` means the repo's stack on a
+   runner but whatever a developer's private overlay defines on their own machine, and a test must
+   never depend on private recipes or be able to reach a secret (see
+   `catalog/stacks/livecheck/stack.yaml`).
 2. **The shipped catalog is the baseline.** It resolves to `harnessed_home() / "catalog"`, which in
    a source checkout is the repo-root `catalog/` (the authoring surface) and in an installed wheel
    is the catalog materialized inside `site-packages/harnessed/catalog`.
@@ -301,7 +314,13 @@ Where the rule applies:
 - **`install.refs` / `install.cache`** — `_parse_install_refs` validates each declared ref against
   `_IMMUTABLE_REF_RE` at schema time; `_parse_install` rejects a hand-written `cache:` alongside
   `refs:` (the cache key is *derived* from them — keeping both leaves one silently dead), a floating
-  `cache:` value, and `refs:` without a script.
+  `cache:` value (`_FLOATING_CACHE_KEYS` also catches the bare moving names `main`/`latest`/`head`
+  that `_FLOATING_REF_RE` misses because they carry no decorator), and `refs:` without a script.
+  Each ref may carry its own `hold:` reason and `install.hold` is a recipe-wide manual-upgrade-only
+  floor — both are reason strings (never bare flags) shown to whoever decides whether to lift them,
+  and `harnessed update` lists held pins but never auto-bumps or fails `--check` on them. The
+  motivating hold case is *skill content*: a skill is agent instructions running with the agent's
+  full tool permissions, so a compromised upgrade is prompt injection, not a CVE.
 - **Agent images** — `validate_agent_pin` (reached from `assemble.validate_agent_image`). Agents are
   linted for **absent** versions as well as floating ones, because FLOATING has a token to match on
   and ABSENT does not — the defect *is* the missing token. An unversioned acquisition
@@ -342,6 +361,19 @@ value under the recipe dir. The error names the pnpm equivalent (`npx` → `pnpm
 - **`validate_init_no_exit`** — `init.run` is *sourced* into the attach shell that then execs the
   harness (Model A), so a bash `exit` terminates that shell and kills the session before the harness
   starts, silently. The lint steers authors to `return`.
+
+### Recipe `env:` — the deliverable that cannot be a script
+
+`env:` is a recipe's declared environment for the *running* agent — declarative precisely because a
+script's `export` dies with the script's process, while this env must stay live for the agent and
+its children. Values are **templates over the launcher's path contract**, resolved per mode so one
+declaration is correct in both: `{persist:<name>}` (the dir that recipe's `persist:` entry actually
+resolves to — container `$CONTAINER_HOME/<name>`, host the real `persist/` dir keyed by the entry's
+scope), `{project_dir}`, and `{host_home}` (the *real* host `$HOME`, which in the pod is not
+`$HOME`). `_validate_env_templates` rejects unknown placeholders and dangling `{persist:<name>}`
+refs **at load time**, not launch — otherwise a typo surfaces as a literal `{persist:.bead}` in the
+agent's env, silently. Vars whose value needs the project are *omitted* at build time rather than
+half-substituted, and reach the agent at launch where the project is known.
 
 ### Conflicts and family/variety mutual exclusion
 
@@ -469,6 +501,27 @@ the real name where the `exists()` guard would treat it as complete forever. It 
 needs the shipped baseline to exist.
 
 Focused verification a change here should keep green:
+
+- **`tests/test_recipe_uniformity.py` asserts the catalog-wide contract by DISCOVERY, not roster.**
+  It `rglob`s every `recipe.yaml` under `catalog/recipes` and asserts properties of *all* recipes:
+  a declared `install.script` exists on disk and passes `validate_install_script`; no `install.sh`
+  fetches its own binary via a package manager (`pnpm add -g`, `npm i -g`, `uv tool install`,
+  `pipx install`, `cargo install`, `mise use -g`) — the pin belongs in `tools:` and nowhere else,
+  because a fetch in the script is a second pin that drifts invisibly against the one `harnessed
+  update` reads; and no script hardcodes the container `/home/harnessed` (host-mode scripts must use
+  `$HARNESSED_CONFIG_DIR` / `$HARNESSED_INSTALL_CACHE` / `$HOME`). Nothing in the file names a
+  recipe: a rule that applies to one recipe is either a rule that applies to all or is not
+  harnessed's rule. These replaced per-recipe migration tests whose hand-maintained roster went
+  stale on every pin bump.
+- **`tests/test_tools_field_parity.py` pins that `tools:` is honoured by BOTH executors.** `tools:`
+  owns *what binary*; `install.sh` owns configuration and content. The tests run against synthetic
+  recipes (the subject is the executor, not any catalog entry): a host launch must install declared
+  tools via a stack-scoped mise (`MISE_DATA_DIR`/`MISE_CONFIG_DIR` under the stack root — not
+  `MISE_STATE_DIR`, which holds the user's trust store), announce a missing mise rather than skip
+  silently, put the tool bin dir on the launch PATH, and install tools **before** install scripts
+  run (asserted by source order in `HostBackend.provision_tools`); the container executor has the
+  matching ordering test. Before this parity, `tools:` was read in exactly one place (the derived
+  Dockerfile), so a recipe migrated into `tools:` silently lost its binary on `launch --host`.
 
 - **`catalog/recipes/floating-recipe/`** is a committed fixture whose Dockerfile carries a floating
   ref; assembling any stack that uses it must fail before any image layer is written. It exists only

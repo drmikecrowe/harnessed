@@ -3,9 +3,6 @@ type: quickstart
 title: "Quickstart: set up, build, launch, and where to read next"
 description: "Entry point for working on harnessed: the mise/uv toolchain and the venv that deliberately lives outside the repo, the only correct ways to run the three verification entry points (tools/run-tests.sh, tools/preflight.sh, mise run openwiki-drift), the two console entrypoints and the ban on automating the interactive run verbs, a safe first end-to-end slice, and the task-routing table into every other page."
 tags: [quickstart, dev-setup, mise, uv, run-tests, preflight, openwiki-drift, cli, task-routing]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-09T09:34:57.295Z
 sources:
   - id: openwiki-source-2ab88915e37908e92fe8ef01
     resource: repo://.github/workflows/lint.yml
@@ -43,7 +40,10 @@ sources:
     resource: repo://tools/preflight.sh
   - id: openwiki-source-bb9438d561f4cbb6d5d38c49
     resource: repo://tools/run-tests.sh
-generated: { by: "openwiki/0.4.3", at: "2026-09-09T09:34:57.295Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 ---
 
 # Quickstart: set up, build, launch, and where to read next
@@ -196,13 +196,15 @@ scheduled CI workflow that banks regenerated pages as a PR actually work is
 Two placement rules for the family, both easy to trip over:
 
 - The tools it runs through are mise-pinned, not PATH assumptions: `[tools]` pins `npm:varlock`
-  1.16.1 (the resolver behind the `varlock run` wrapper) and `npm:openwiki` 0.4.3 itself — and the
-  openwiki entry carries **two required escape hatches** without which `mise install` fails in ways
-  that do not look like packaging problems: `trust_policy_excludes` (fastq ships no provenance
-  attestation, so the no-downgrade trust policy refuses the whole install) and `allow_builds` (the
-  install backend denies dependency lifecycle scripts, and better-sqlite3's `install` script is
+  1.16.1 (the resolver behind the `varlock run` wrapper) and `npm:openwiki` 0.5.1 itself — and the
+  openwiki entry carries one **required** escape hatch, `allow_builds = ["better-sqlite3"]`, without
+  which `mise install` fails in a way that does not look like a packaging problem: the install
+  backend denies dependency lifecycle scripts by default, and better-sqlite3's `install` script is
   what produces its native binding — denied, the install still reports success and every openwiki
-  run dies at "Could not locate the bindings file").
+  run dies at "Could not locate the bindings file". (The old second hatch,
+  `trust_policy_excludes` for an unattested fastq, is gone: fastq 1.20.3 is attested again and every
+  `^` range in the 0.5.1 tree resolves there — if a later unattested fastq lands, the install now
+  fails loudly at resolve time and the exclude is re-added with that exact version.)
 - Run the family from `main/`, not a task worktree: `docs/` is a gitignored live clone of the
   GitHub wiki, so a worktree checkout does not have it, and a wiki run from there would be written
   from an incomplete view of the project's own documentation.

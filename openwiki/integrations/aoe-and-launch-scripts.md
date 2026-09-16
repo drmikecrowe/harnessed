@@ -3,9 +3,6 @@ type: Integration
 title: "Agent of Empires mirror and per-project launch scripts"
 description: "The optional register-only aoe tmux bridge and the per-project launcher scripts a launch writes into the repo: identity and the two-key drift hazard, detached writes, the flags aoe add accepts, the sentinel licence, and the trailing `--` that routes human flags to harnessed and aoe resume flags to the agent."
 tags: [aoe, agent-of-empires, launch-script, register-only, drift-repair, tmux, git-exclude, launcher-script]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
 sources:
   - id: openwiki-source-3b6f61ac560f049f559456d0
     resource: repo://.github/workflows/live.yml
@@ -13,6 +10,8 @@ sources:
     resource: repo://ARCHITECTURE.md
   - id: openwiki-source-78685e9ff43c4c0b3dd78667
     resource: repo://src/harnessed/aoe.py
+  - id: openwiki-source-0852603a38d760a77db2bc8a
+    resource: repo://src/harnessed/cli.py
   - id: openwiki-source-ecbe6256d6933ca2c8c9678f
     resource: repo://src/harnessed/launcher.py
   - id: openwiki-source-7fc060691d30bff2ff4f6979
@@ -29,7 +28,12 @@ sources:
     resource: repo://tests/test_aoe.py
   - id: openwiki-source-243e17ac0ee3e9beb4dfdaf9
     resource: repo://tests/test_host_run_recipes.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+  - id: openwiki-source-6f7f4425dbef3a1cec350922
+    resource: repo://tools/gauntlet-456.sh
+generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 ---
 
 # Agent of Empires mirror and per-project launch scripts
@@ -494,6 +498,14 @@ stale one, because `rm` is destructive and unattended.
 - **Manual drift fix:** when a foreign row holds a (title, path) key,
   `aoe session rename <id> -t '<any other title>' -p harnessed` frees it; the drift warning prints
   exactly this.
+- **The repo's verification gauntlets are separate tooling, not part of the bridge.** Evidence
+  gauntlets such as `tools/gauntlet-456.sh` rerun every layer a report cites — the merge-gate
+  lint/pyright/shellcheck checks transcribed verbatim from the workflows, the pytest suite, changed-line
+  coverage, two fixed random seeds, and mutation testing — fail-closed (no `|| true`, failures recorded
+  and the script exits non-zero at the end). One caution when reasoning about "emit-only" tooling in this
+  repo: `harnessed-tools` (src/harnessed/cli.py) is emit-only for its assembly and inspection verbs, but
+  its `test` verb launches a headless `<stack> --fresh` instance and therefore needs podman/docker — do
+  not generalize the emit-only property to the whole CLI.
 - **Test posture:** the aoe behaviour the bridge depends on is not in any contract harnessed
   controls, so it was verified against live aoe (1.13.2 and 1.14.1 — trash visibility, trimmed
   title dedupe, `--cmd` substitution, exit-code drift between versions). Three layers keep that

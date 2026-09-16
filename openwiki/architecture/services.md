@@ -38,8 +38,8 @@ sources:
     resource: repo://tests/test_stable_port.py
 generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 ---
 
 # Service sidecars: scopes, ports, sockets, and what persists

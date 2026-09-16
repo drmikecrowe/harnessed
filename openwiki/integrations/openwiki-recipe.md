@@ -3,9 +3,6 @@ type: concept
 title: "The openwiki recipe: this wiki generator as catalog content"
 description: "What a launch of the openwiki stack delivers — the host-driven integration of langchain-ai/openwiki — and why the install is a project-scoped pnpm install with a one-entry build allowlist instead of a tools: pin, why it needs no credential and no egress, and what the authored stack records by listing default explicitly."
 tags: [openwiki, recipe, stack, catalog, mcp, hatago, pnpm, strict-dep-builds, persist, host-driven, install-script]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
 sources:
   - id: openwiki-source-f82224b7b5b27300d9ecc2dc
     resource: repo://catalog/base/egress-firewall.sh
@@ -44,6 +41,9 @@ sources:
   - id: openwiki-source-fbc6a5a8a732add3df9e162f
     resource: repo://tests/test_prose_lint.py
 generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 ---
 
 # The openwiki recipe: this wiki generator as catalog content
