@@ -289,7 +289,7 @@ class TestEveryCreationSiteEnumerated:
         literal "volume" one element earlier than "create" so this cannot also swallow `pod create`.
         """
         tree = ast.parse(path.read_text(encoding="utf-8"))
-        func_of: dict[int, ast.AST] = {}
+        func_of: dict[int, ast.FunctionDef | ast.AsyncFunctionDef] = {}
         for fn in ast.walk(tree):
             if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 for child in ast.walk(fn):
