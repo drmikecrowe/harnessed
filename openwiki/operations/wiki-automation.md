@@ -3,9 +3,6 @@ type: mechanism
 title: "Wiki automation: mise tasks, the retry patch, and the CI update workflow"
 description: "How this repository regenerates and validates its own wiki: the mise openwiki-* tasks and the openwiki_env guard that strips provider exports before varlock, tools/openwiki-retry-patch.py and the skipped-page failure it fixes, the scheduled GitHub workflow that banks finished pages as a PR even when the run fails, and the .openwikiignore read boundary the generator honors."
 tags: [openwiki, wiki, mise, github-actions, ci, retry-patch, varlock, drift, cron, automation, openwikiignore]
-verified:
-  - by: openwiki/0.5.1
-    at: 2026-09-16T21:10:52.541Z
 sources:
   - id: openwiki-source-6d4b4e707b8d60b6ccfa3425
     resource: repo://.github/workflows/openwiki-update.yml
@@ -15,9 +12,14 @@ sources:
     resource: repo://.openwikiignore
   - id: openwiki-source-72b5d686f860ea86c8592080
     resource: repo://mise.toml
+  - id: openwiki-source-6b70da595cfd5823cd7cabe6
+    resource: repo://tools/openwiki-drift.py
   - id: openwiki-source-d1f45dd4433e3f1723ccd204
     resource: repo://tools/openwiki-retry-patch.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-17T13:01:59.112Z" }
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-17T13:01:59.112Z
 ---
 
 # Wiki automation: mise tasks, the retry patch, and the CI update workflow
@@ -270,8 +272,31 @@ failure, and merging makes that progress the baseline for the next run. It also 
 what to do before merging: `mise run openwiki-drift` reports which pages cite code that has
 changed.
 
+`sign-commits: true` is required by the branch ruleset, which demands a GitHub-verified signature
+on every commit in a PR. Without it the action commits over plain git with no signing key and the
+PR is unmergeable — #482 sat blocked until the commit was rewritten by hand. This does not need a
+signing key in Actions secrets: the action switches to creating the commit through the GitHub API,
+which signs it server-side with GitHub's own key, so there is no private key here to store or
+rotate. The trade is attribution — an API commit is authored by `github-actions[bot]`, where the
+plain-git path attributed it to the repository owner.
+
 `openwiki/.run.json` is gitignored in this repository, so unlike upstream's scheduled-workflow
 example there is no transient run-state file to delete before this step.
+
+### The gate the PR body points at
+
+`mise run openwiki-drift` (the PR body's pre-merge instruction) is `tools/openwiki-drift.py`: it
+recomputes each Claim's `repo-lines-v1` digest — sha256 over the selected lines joined by `\n`
+plus a trailing newline — against the working tree, with no model call and no network. Its
+coverage is deliberately precise. It verifies only **line-ranged evidence anchors**
+(`repo://path#Lx-Ly`); whole-file evidence (no `#L`) carries no line range to hash against and is
+counted separately rather than guessed at, and Claims whose version uses an unknown scheme (a
+future `repo-lines-v2`) are reported as unverifiable instead of silently checked with v1 rules —
+either shortcut would let the gate go quietly green. When a block moved but is byte-identical,
+the tool scans the file for any window of the recorded length whose digest matches and reports
+`moved`, not `changed`; only a genuinely changed digest (or a file that is gone) exits 1. Exit 2
+means the wiki or its Claims are unreadable. Full gate semantics live in the
+[verification ladder](/openwiki/testing/verification-ladder.md).
 
 ---
 

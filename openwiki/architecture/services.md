@@ -2,7 +2,7 @@
 type: concept
 title: "Service sidecars: scopes, ports, sockets, and what persists"
 description: "How shared services work: container name, project key, data dir, client env and drift are computed from the manifest plus the project path at every launch, while stable ports (a machine-wide registry under XDG data) and service passwords (0600 files under XDG state) are allocated once and persist; global scope is one host-published container that containerized agents reach at host.containers.internal and host-run clients at 127.0.0.1, project scope is one container per git common dir reached through a unix socket in a recipe-declared persist dir, and svcguards refuses destructive starts before the container exists."
-tags: [services, sidecars, derived-identity, stable-port, persistence, project-scope, unix-socket, svcguards, drift, client-env, wire-services]
+tags: [services, sidecars, derived-identity, stable-port, persistence, project-scope, unix-socket, svcguards, drift, client-env, wire-services, userns-mapping, hatago-wait]
 sources:
   - id: openwiki-source-5ad131422ad3ec350915f307
     resource: repo://catalog/recipes/ping/recipe.yaml
@@ -36,10 +36,12 @@ sources:
     resource: repo://src/harnessed/svcstate.py
   - id: openwiki-source-7b7c2d242869fee851828868
     resource: repo://tests/test_stable_port.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+  - id: openwiki-source-36d973bee5061a3d881fcef9
+    resource: repo://tests/test_userns_mapping.py
+generated: { by: "openwiki/0.5.1", at: "2026-09-17T13:01:59.112Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-16T21:10:52.541Z
+    at: 2026-09-17T13:01:59.112Z
 ---
 
 # Service sidecars: scopes, ports, sockets, and what persists
@@ -313,6 +315,20 @@ allocate-once values arrive as arguments rather than being resolved inside: `sta
 fixes at create time — mounts, published ports, env, userns — is in the argv, which is what makes
 hashing it a faithful fingerprint of the running container's configuration.
 
+The first thing the argv emits, before any branch on scope, is the userns mapping
+(`paths.userns_args(rt)`). **Every** service container gets it, not just project-scope ones
+(#459): a `scope: global` service under rootful docker with `--userns-remap` is remapped just the
+same, and `paths.pod_host_uid()` is only accurate while every creation site emits this flag. The
+mapping is pinned to the **image's** uid — `--userns=keep-id:uid=1000,gid=1000` against the
+`USER harnessed` every harnessed image bakes — not to the host's: the unpinned `--userns=keep-id`
+maps the invoking uid to the *same number* inside, so bind-mounted bytes stayed host-owned only on
+hosts whose user happens to be uid 1000, and everywhere else the entrypoint's
+`mkdir -p /data/dolt` died with EACCES — the loudest symptom of bd harnessed-rv2.1. The
+project-scope `/data` mount relies on this mapping (the service writes as the invoking user, so
+bind-mounted bytes stay host-owned), and `tests/test_userns_mapping.py` both pins the explicit
+`uid=` mapping in `paths.USERNS_ARG` and source-sweeps that no module outside `paths.py` emits the
+unpinned form.
+
 ### Drift: recreate, never restart
 
 `podman restart` re-runs the *existing* container, so mounts, published ports and env stay frozen
@@ -357,6 +373,21 @@ the cause. There is no `required:` flag — a stack does not attach a sidecar wh
 indifferent to. On timeout the **last healthcheck's own output** is surfaced, not the container
 log: for an auth failure the log shows a server running contentedly while the healthcheck holds
 the actual reason.
+
+The same "started does not mean listening" discipline applies to the **hatago hub itself**, which
+is not a service sidecar but is the surface every `service:` ref is proxied through.
+`launcher._wait_hatago` polls the in-container hub port after launch, and its 90 s bound is
+**measured, not guessed** (#456): on docker, container start 11:52:38.6 → hub listening 11:53:12.2,
+i.e. **33.5 s** — the old 30 s bound failed deterministically while looking like a slow start, and
+the resulting "MCP tools will be unavailable" sent two investigations after tokens and secrets
+before anyone timed the hub. The floor is not the hub's own startup: hatago binds only *after*
+connecting its configured MCP servers, so it is the hub plus every stdio child plus the retry
+budget of any unreachable server (~33 s on its own) — 90 covers the measured case with headroom
+for one unreachable server. The loop is **deadline-driven**, not count-based: the in-container
+`timeout 1` bounds the shell, not the `podman exec` wrapping it (a wedged podman used to park the
+probe forever), and giving the probe its own deadline would make an N-iteration loop take up to
+N*(probe+1) seconds while the message still said N — so loop, probe and sleep all measure against
+one `time.monotonic()` deadline and the promise stays true.
 
 ## The pre-start guards: assertions about host state, raised not acted
 
@@ -435,7 +466,8 @@ writes as the invoking host uid — a pre-existing dir owned by a different uid 
 EACCES inside the container. The guard reads the writer off the declared mapping
 (`paths.pod_host_uid()`), not `os.getuid()`, precisely so it can catch the mapping itself being
 wrong — compared against `os.getuid()` it waved through six consecutive red CI runs while the pod
-owned nothing and the entrypoint died on `mkdir -p /data/dolt`.
+owned nothing and the entrypoint died on `mkdir -p /data/dolt` (bd harnessed-rv2.1, the same
+incident that pinned the userns mapping above).
 
 ## How service client env reaches recipes
 
@@ -510,6 +542,11 @@ services, matching what a launch computes. Only a project-scoped service mirrors
 all, so the widening is skipped (and its `[INFO]` line suppressed) for global sidecars.
 
 That "both entry points start the same sidecars" is also what `capmatrix` records: the `services`
+primitive is SUPPORTED on both backends (`HostBackend.wire_services` → `_ensure_services`,
+bd harnessed-2sm) — the table exists because BACKENDS.md's prose version went stale claiming host
+did not support sidecars, and the conformance tests over `MATRIX` and `PRIMITIVES` are the
+anti-rot mechanism.
+ecords: the `services`
 primitive is SUPPORTED on both backends (`HostBackend.wire_services` → `_ensure_services`,
 bd harnessed-2sm) — the table exists because BACKENDS.md's prose version went stale claiming host
 did not support sidecars, and the conformance tests over `MATRIX` and `PRIMITIVES` are the

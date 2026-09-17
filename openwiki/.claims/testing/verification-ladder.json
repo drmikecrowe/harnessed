@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3be976d043aafd68cef65d41cb62611c09e1de960527d95e36ae6fba795ce845",
+  "pageVersion": "sha256:35a1400270d3cb12cedb3c11fed78abac316254464c9b3b803e87b06ecf22c2c",
   "claims": [
     {
       "id": "claim_53d617e673d544d78bcddfca751dbff6",
@@ -274,11 +274,11 @@
     },
     {
       "id": "claim_c186382988a344c9bbf7345befbeefd5",
-      "statement": "openwiki-update.yml (nightly 08:00 UTC plus dispatch, timeout-minutes 90 so a wedged run is cancelled) checks out full git history so the diff against the last-documented commit is nonempty, sets persist-credentials: false, and is deliberately not fail-fast: openwiki's page-job queue is durable, the PR step runs under if: always() — not !cancelled(), because a timeout kill arrives with cancelled() == true and skipping then would discard every page the durable queue wrote — banking every completed page as the next run's baseline, and the final step re-raises the failure so the job still reports red.",
+      "statement": "openwiki-update.yml (nightly 08:00 UTC plus dispatch, timeout-minutes 90 so a wedged run is cancelled) checks out full git history so the diff against the last-documented commit is nonempty, sets persist-credentials: false, and is deliberately not fail-fast: openwiki's page-job queue is durable, the PR step runs under if: always() — not !cancelled(), because a timeout kill arrives with cancelled() == true and skipping then would discard every page the durable queue wrote — banking every completed page (add-paths limited to openwiki/, AGENTS.md, CLAUDE.md and the workflow file) as the next run's baseline, and the final step re-raises the failure so the job still reports red. The PR commits are created with sign-commits: true because the branch ruleset requires GitHub-verified signatures on every PR commit; the action achieves this through the GitHub API's server-side signing with no key in Actions secrets, at the cost of github-actions[bot] attribution.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/openwiki-update.yml#L119-L153",
-          "version": "repo-lines-v1:sha256:7f5f493d42eca33971b6d65e09c49ec75f9fa2287483e286cb6bf3568762d7ed:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxY2ZmNGFkMzNiYTkxYjE0OGUxYjFiODI5MGI4ZmZmMjdiMjAzZmFiZmVlNTg3MDI4MmRlMzY3MzgzYjFiZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2NzE4ZjA2N2I1ZTVjMWYwOTkxYTZlNzQ3MjZmZTJhMjNkMjY0MzQ1ZTA4ZTRlYWQwNGZhZjczYzI3ZWQ0NDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0MTRhZTc3N2Q2ZGIzNjY1MjVkNTFhNjdiZWJmNmY5OWM3ZDUwYTE0ZTNlOGU3YmIwOGI5YWZjYjU1MmFiNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://.github/workflows/openwiki-update.yml#L119-L163",
+          "version": "repo-lines-v1:sha256:a52cca2ddd985260367075117d96631a0017e812e361dcb300aa94ef13cf22a2:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxY2ZmNGFkMzNiYTkxYjE0OGUxYjFiODI5MGI4ZmZmMjdiMjAzZmFiZmVlNTg3MDI4MmRlMzY3MzgzYjFiZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2NzE4ZjA2N2I1ZTVjMWYwOTkxYTZlNzQ3MjZmZTJhMjNkMjY0MzQ1ZTA4ZTRlYWQwNGZhZjczYzI3ZWQ0NDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0MTRhZTc3N2Q2ZGIzNjY1MjVkNTFhNjdiZWJmNmY5OWM3ZDUwYTE0ZTNlOGU3YmIwOGI5YWZjYjU1MmFiNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
           "resource": "repo://.github/workflows/openwiki-update.yml#L12-L30",
@@ -509,6 +509,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-17T09:44:27.184Z"
+    "at": "2026-09-17T13:01:59.112Z"
   }
 }

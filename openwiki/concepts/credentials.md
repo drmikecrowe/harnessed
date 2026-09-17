@@ -41,10 +41,12 @@ sources:
     resource: repo://tests/test_launch_parity.py
   - id: openwiki-source-532053bb2aafc90002feac13
     resource: repo://tests/test_launcher_timeouts.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-09T09:34:57.295Z" }
+  - id: openwiki-source-5186c279ca95998d7d77dd87
+    resource: repo://tests/test_mcp_remote_launch_auth.py
+generated: { by: "openwiki/0.5.1", at: "2026-09-17T13:01:59.112Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-16T21:10:52.541Z
+    at: 2026-09-17T13:01:59.112Z
 ---
 
 
@@ -206,6 +208,17 @@ flowchart TD
 The host backend applies the same ladder (`ARCHITECTURE.md`: "host-run applies the same order"). With no token, the per-stack `.credentials.json` is **symlinked** at the host `CLAUDE_CONFIG_DIR`'s copy, so a refresh propagates and one login serves everywhere — mechanism 1, subject to the replace-on-refresh hazard. Because Claude Code's refresh *replaces* the link with a regular file (the refreshed token lands in the stack dir and the shared copy never sees it), `_rescue_host_credentials` runs **before** every materialize wipe: it scans every host home for the newest *usable* credentials file and copies it back to the shared `~/.claude` copy if the shared copy is not already at least as fresh. `_launch_host` ends in `os.execvpe` and never regains control, so there is no exit hook — the rescue must be anticipatory. With a token configured, neither link nor rescue happens, and a per-stack copy left behind by an earlier token-free launch is removed so the stale file cannot outlive the switch; the shared `~/.claude` copy itself is never deleted, because it is the user's own login outside any stack.
 
 Two refinements keep the rescue honest. `_credentials_are_usable` rejects **gutted** credentials — envelope intact but empty access/refresh tokens and a zeroed expiry — because freshness alone let one emptied file overwrite a working shared token and log out every stack sourcing from it (the poisoning observed 2026-07-21). An expired *access* token is deliberately still "usable": that is the healthy state a refresh token exists to serve. And when a per-stack home is deleted outright, `_scrub_host_home` overwrites `.credentials.json` with null bytes and fsyncs before the unlink — including the legacy per-project dirs from the pre-keying layout, which a bare `rmtree` would leave recoverable on disk.
+
+### mcp-remote OAuth: consent, token store, and the hub restart
+
+OAuth MCP servers carry credentials too — mcp-remote's per-server token files — and they enter through a dedicated flow:
+
+- **The token store is host-side.** `_mcp_auth_store_dir` pins it to `~/.mcp-auth` for host-identity stacks and to a per-instance directory beside the isolated-auth store for isolated ones, bind-mounted rw at the container's `~/.mcp-auth` so a consent outlives the pod. One function defines the path for **both** the mount and the "is this server authorized yet?" check, because a launch that mounted one directory and inspected another would re-prompt forever while a good token sat next door. The check itself is exact, not a directory sniff: the token file is `<store>/mcp-remote-<version>/<sha256(server_url)>_tokens.json`, with the version read out of the pinned `mcp-remote@VERSION` recipe argument — bumping the pin changes where tokens are read back from, with no second copy to forget.
+- **Ordering is the point.** `_authorize_mcp_remote_servers` runs after the pod is up (the callback port and the store mount both come from the pod) and **before the harness attaches**, so hatago's first connection attempt finds a token instead of opening a browser nobody can see. `_run_mcp_remote_consent` runs the server's exact argv interactively **in the container**, not on the host: the pod already publishes the callback port and bind-mounts the store, so the redirect resolves and the token lands where the harness will look — and host-side would need node on the host, a dependency this CLI deliberately does not have.
+- **The completion signal is the token file, not process exit** (mcp-remote does not exit on success; it becomes the proxy). And the file must be *parseable, non-empty JSON*: mcp-remote persists with a plain `writeFile` and no atomic rename, so the path exists empty and fills in afterwards. Treating existence as success would not just risk reading a truncated token — the teardown would terminate mcp-remote mid-write and leave a **corrupt token permanently** (raised by CodeRabbit on PR #375).
+- **Hub contention, http transport only.** There the entrypoint already started hatago, whose own mcp-remote for this server holds the lockfile and the callback port the interactive run needs; a second one cannot bind, so the consent would never appear. So `restart_hub = hub_transport != stdio`: the hub is stopped with `pkill -f '[h]atago-mcp-hub'` — the bracket is deliberate, because `pkill -f` matches full command lines *including the `bash -lc` wrapper running it*, and the plain spelling makes the shell match and kill itself (observed in development: an exec exiting 143 with the hub still running). Under stdio there is no hub yet — the harness spawns it at attach — so nothing is stopped and nothing restarted.
+- **The restart is in a `finally`** — a cancelled or failed consent must not leave the instance hubless; one server short is strictly better than no MCP at all — and it re-issues **the hub command only** (`nohup hatago serve --http …`), never `harnessed-start`, whose `exec sleep infinity` would fork a second PID-1 stand-in. That makes the restart a second copy of the entrypoint's line, and `test_the_hub_restart_matches_the_entrypoint` pins the two together so a drift cannot restart a differently-configured hub.
+- **Headless refuses, it does not block.** A browser prompt in CI would hang to the job timeout and report nothing useful, so a headless launch with pending servers is a hard error naming the servers and the interactive remedy — deliberately not offering `--reauth`, which fails in exactly the same way. `--reauth` re-prompts for **every** mcp-remote server, not only unauthorized ones, because the reason to pass it is that an existing token is wrong (revoked, wrong account, too few scopes) — exactly the tokens the pending check reports as fine. The re-attach branch asks too.
 
 ### omp: the live store, whole
 
