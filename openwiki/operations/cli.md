@@ -3,9 +3,6 @@ type: reference
 title: "Operations: the command surface and lifecycle verbs"
 description: "The full harnessed verb surface across both entrypoints (harnessed and harnessed-tools), each verb mapped to its owning module and the lifecycle stage it manages — the launch-verb grammar (the verb picks the backend, a flag picks the stack), build and reconciliation, instance teardown and secret-broker reporting, sidecars, capability tests, pin updates, the garbage collectors, the nightly rescan — plus the per-project launcher scripts a launch leaves behind."
 tags: [cli, commands, verbs, lifecycle, build, reconcile, svc, rescan, update, test, persist-prune, launch-script, garbage-collection]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
 sources:
   - id: openwiki-source-23775c3de52f3ab95a13cb8b
     resource: repo://README.md
@@ -44,6 +41,9 @@ sources:
   - id: openwiki-source-7af162bd104477b196c3dcdd
     resource: repo://systemd/harnessed-rescan.timer
 generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 ---
 
 # Operations: the command surface and lifecycle verbs

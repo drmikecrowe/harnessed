@@ -4,9 +4,6 @@ title: "Credential handling: where secrets enter, what resolves them, what never
 description: "The credential pipeline end to end: launch-time env resolution (global → project, varlock vs plain .env), the temp env-file discipline, the host secrets broker's data flow and lifecycle, per-harness auth ladders, and the corporate-proxy-CA trust path — the one credential-shaped artifact handled as a build secret so it is never baked into an image layer."
 tags: [credentials, secrets, varlock, secrets-broker, topology-b, ssh-agent, isolated-auth, corp-proxy-ca, build-secret, sop]
 openwiki_generated: true
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-09T09:34:57.295Z
 sources:
   - id: openwiki-source-e7286046ccb85d63b8a07621
     resource: repo://.env.schema.example
@@ -45,6 +42,9 @@ sources:
   - id: openwiki-source-532053bb2aafc90002feac13
     resource: repo://tests/test_launcher_timeouts.py
 generated: { by: "openwiki/0.4.3", at: "2026-09-09T09:34:57.295Z" }
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 ---
 
 

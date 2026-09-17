@@ -9,19 +9,22 @@ shellcheck = "0.11.0"
 # Version 1.16.1 is verified against this tree (2026-08-18). The binary name is `varlock`.
 "npm:varlock" = "1.16.1"
 # openwiki generates and maintains the agent-facing wiki under openwiki/ (see the openwiki-* tasks
-# below). 0.4.3 is the version verified against this tree (2026-08-29); `latest` would make the
+# below). 0.5.1 is the version verified against this tree (2026-09-16); `latest` would make the
 # provider env-var contract in tools/openwiki.sh an unpinned assumption.
 #
-# The two escape hatches are both REQUIRED, and both fail in a way that does not look like a
-# packaging problem:
-#   * trust_policy_excludes — fastq ships no provenance attestation at 1.20.2, so aube's
-#     no-downgrade trust policy refuses the whole install.
-#   * allow_builds — mise installs through aube, which DENIES dependency lifecycle scripts by
-#     default. better-sqlite3 is a native addon whose `install` script is what produces
-#     better_sqlite3.node; denied, the install still reports success and every openwiki run dies
-#     at "Could not locate the bindings file" with a 14-line list of paths it tried. It reaches
-#     openwiki transitively, through @langchain/langgraph-checkpoint-sqlite.
-"npm:openwiki" = { version = "0.4.3", trust_policy_excludes = ["fastq@1.20.2"], allow_builds = ["better-sqlite3"] }
+# allow_builds is REQUIRED, and fails in a way that does not look like a packaging problem: mise
+# installs through aube, which DENIES dependency lifecycle scripts by default. better-sqlite3 is a
+# native addon whose `install` script is what produces better_sqlite3.node; denied, the install
+# still reports success and every openwiki run dies at "Could not locate the bindings file" with a
+# 14-line list of paths it tried. It reaches openwiki transitively, through
+# @langchain/langgraph-checkpoint-sqlite, which 0.5.1 still depends on.
+#
+# trust_policy_excludes is GONE, and that is a resolution change, not a policy change. The exclude
+# covered fastq@1.20.2, which shipped no provenance attestation and so made aube's no-downgrade
+# trust policy refuse the whole install. fastq 1.20.3 is attested again, and every `^` range in the
+# 0.5.1 tree resolves there. If a later unattested fastq lands, the install fails loudly at resolve
+# time — re-add the exclude with that exact version rather than pre-emptively widening it.
+"npm:openwiki" = { version = "0.5.1", allow_builds = ["better-sqlite3"] }
 
 [env]
 # Keep the venv outside the repo: `uv` running inside a podman container that
@@ -116,9 +119,11 @@ run = "tools/openwiki-drift.py"
 # The retry patch runs FIRST and re-applies itself after any `mise install` that
 # restores the stock runner: a page worker that ends without calling submit_page
 # (seen with glm-5.3-flash, PR #445 run 6) is marked skipped and the run
-# finalizes "interrupted" without advancing the diff base, costing the next run
-# a full regeneration. Upstream 0.4.3/0.5.0 have no retry; the patch fails
-# loudly on version drift rather than patching blind.
+# finalizes "interrupted" without advancing the diff base. No upstream release
+# through 0.5.1 retries a skipped page; the patch fails loudly on version drift
+# rather than patching blind. 0.5.0's durable page manifest
+# (openwiki/.page-manifest.json) means a skip no longer costs a full
+# regeneration, only a clean finalize.
 [tasks.openwiki-update]
 description = "Generate or refresh openwiki/ with no prompts (handles the first run too)"
 interactive = true

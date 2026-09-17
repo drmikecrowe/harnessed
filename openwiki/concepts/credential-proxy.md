@@ -3,9 +3,6 @@ type: Reference
 title: "The credential proxy model: four modes, the cheap annotation gate, and the readiness warning"
 description: "The reference for the credential-proxy migration vocabulary in launchenv.py: the four per-item classification modes (proxied, passthrough, placeholder, omit), _schema_declares_proxy's cheap annotation gate and its entry-schema-only limitation, the value-blind launch-time readiness warning, and the broker launch gate (proxy_schema_dirs, fail-fatal broker startup, the pod's 169.254.1.1 door) that the same annotation gate now feeds."
 tags: [credential-proxy, varlock, secrets-broker, env-schema, proxy-modes, readiness-warning, launch-gate]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
 sources:
   - id: openwiki-source-e7286046ccb85d63b8a07621
     resource: repo://.env.schema.example
@@ -29,7 +26,10 @@ sources:
     resource: repo://tests/test_broker_launch_gate.py
   - id: openwiki-source-f725ea11f1806a58b06d7f3e
     resource: repo://tests/test_launch_parity.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-07T12:53:44.965Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 ---
 
 # The credential proxy model: four modes, the cheap annotation gate, and the readiness warning
@@ -62,6 +62,10 @@ Two facts keep the rest of this page true after that landing:
 - The readiness warning therefore still **states both tenses** (below), and the shipped
   `.env.schema.example` still carries no `@proxy` annotation: a schema with no `@proxy` is every
   schema shipped today.
+- The broker is **podman-only for now**: its door is a pasta option on `pod create`, and docker has
+  no pods, so a docker launch starts no broker and falls back to real values in env, with a note at
+  launch and no test asserting it. ROADMAP tracks this as **#468**, which blocks **#439** for docker
+  — once the behaviour change lands, podman gains the property and docker silently does not.
 
 One version note, carried unnormalized because the two halves were measured against different
 releases: launchenv.py's annotation shapes (`@proxy(domain=…)`, `@proxy=passthrough`,
@@ -237,9 +241,10 @@ The pod's route to the broker is the address `paths.BROKER_HOST_DOOR = "169.254.
 binds the host's `127.0.0.1` only, the pod is created with pasta's `--map-host-loopback,169.254.1.1`
 on `pod create`, and the egress firewall `require`s an ACCEPT for the same address. The broker starts
 **before** `pod create` — the pod's network args depend on whether one exists — and the door never
-appears without a broker. A runtime that does not use pods gets a *note* instead of a half-wired
-broker: with no `pod create` there is no way to deliver `169.254.1.1` into the container, so secrets
-resolve into the env as before. The broker is container-only **by nature** (the launch-parity ledger
+appears without a broker. A runtime that does not use pods (docker today) gets a *note* instead of a
+half-wired broker: with no `pod create` there is no way to deliver `169.254.1.1` into the container,
+so secrets resolve into the env as before — a gap ROADMAP tracks as #468 and one reason #439 is
+blocked for docker. The broker is container-only **by nature** (the launch-parity ledger
 records `_broker_start_for`, `proxy_schema_dirs` and `_broker_stop_for` in `CONTAINER_ONLY`): a
 host-native launch runs the harness in the user's own session with their own credentials, and varlock
 resolves natively there already.

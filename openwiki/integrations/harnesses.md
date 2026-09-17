@@ -1,12 +1,13 @@
 ---
 type: integration
 title: "Harness integrations: one canonical profile, five readers"
-description: "How the same Claude-canonical .claude/ profile is consumed by claude, omp, opencode, antigravity and codex: each harness's MCP route to the hatago hub (emitted .mcp.json vs image-baked configs vs omp's seeded mcp.json), the direct-server guard the container path re-validates at launch, the host backend's two-harness record (CLAUDE_CONFIG_DIR / PI_CODING_AGENT_DIR), omp's host asymmetries, and the per-harness attach commands."
-tags: [harnesses, claude, omp, opencode, antigravity, codex, hatago, mcp, HARNESS_CONFIG_DIR, attach-command, host-run, container-run]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
+description: "How the same Claude-canonical .claude/ profile is consumed by claude, omp, opencode, antigravity and codex: each harness's MCP route to the hatago hub, the agent.yaml manifest contract that defines each harness's image, the host backend's two-harness record (CLAUDE_CONFIG_DIR / PI_CODING_AGENT_DIR), omp's host asymmetries, and the per-harness attach commands."
+tags: [harnesses, claude, omp, opencode, antigravity, codex, hatago, mcp, agent-yaml, HARNESS_CONFIG_DIR, attach-command, host-run, container-run]
 sources:
+  - id: openwiki-source-485d0e59d600803dc64867c3
+    resource: repo://catalog/agents/antigravity/agent.yaml
+  - id: openwiki-source-f33dd129340a2a04d06bf5d7
+    resource: repo://catalog/agents/codex/agent.yaml
   - id: openwiki-source-e97e467aad41adb4abb9095b
     resource: repo://catalog/base/Dockerfile.harnessed-antigravity
   - id: openwiki-source-847694293edccc1d5cba4d95
@@ -31,11 +32,18 @@ sources:
     resource: repo://src/harnessed/hostrun.py
   - id: openwiki-source-ecbe6256d6933ca2c8c9678f
     resource: repo://src/harnessed/launcher.py
+  - id: openwiki-source-543fcb721a3a990cb4f9dbbb
+    resource: repo://src/harnessed/layout.py
   - id: openwiki-source-9e1601e7fac817552c717cd7
     resource: repo://src/harnessed/mounts.py
   - id: openwiki-source-7536da5c015fc2813c7693c5
     resource: repo://src/harnessed/schema.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+  - id: openwiki-source-dedbae614432467fbfc419d9
+    resource: repo://src/harnessed/update.py
+generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 ---
 
 # Harness integrations: one canonical profile, five readers
@@ -128,6 +136,51 @@ differs even though the content tree does not (`assemble.py`):
   this file, so it is written whole, unlike claude's settings floor).
 - **opencode** — wired *post-build* by the launcher, because opencode reads its config from the
   image-baked `opencode.json`, not from the profile (below).
+
+## The agent manifest: `catalog/agents/<harness>/agent.yaml`
+
+Each harness also has an **agent manifest** — `catalog/agents/<name>/agent.yaml` — that declares how
+its agent image is built. It is *not* a recipe (recipes compose onto an agent; the agent declares the
+image), and `schema.Agent`/`schema.load_agent` are its parser: `harness` and `image` are required
+fields; `dockerfile` (home-relative, defaulting to
+`catalog/base/Dockerfile.harnessed-<harness>`) and `description` are optional; `layout._agent_image`
+resolves the manifest's `image` (appending `:latest` when untagged) as the harness's container image.
+
+`build_args` is the single source of truth for pinned tool versions passed as `--build-arg`. Each key
+is a Dockerfile ARG name, and its value may be a scalar or a mapping:
+
+```yaml
+build_args:
+  CODEX_VERSION: {value: "0.153.4", spec: "npm:@openai/codex"}   # resolvable — update can offer a bump
+  BUN_VERSION: {value: "1.3.14", hold: "unqueryable: …"}          # pinnable but not resolvable — held
+  OMP_VERSION: "18.1.13"                                          # scalar — stringified, same validation
+```
+
+`load_agent` flattens both shapes to plain `NAME -> value` strings, so every downstream reader sees
+one shape; a mapping without `value` (a bare `hold:` or `spec:`) is a schema error, as is a null or
+boolean scalar — `str(None)` must never ship as `--build-arg NAME=None`. `spec` is a resolver hint
+for `harnessed update` (never a second installer — the Dockerfile performs the install); `hold` is a
+freeze with a mandatory stated reason. `unpinnable:` is the top-level concession mapping
+(`NAME -> reason`, same ARG-name namespace as `build_args`, so "declared in both" is a reachable
+error, not a vacuous one): an entry there never reaches `--build-arg`, because it names an ARG the
+Dockerfile does not declare. antigravity is the worked example — no `build_args` at all, everything
+under `unpinnable:` with the reason naming the integrity mechanism that blocks pinning.
+
+Consumption sites:
+
+- `launcher._agent_build_arg_flags` turns `Agent.build_args` into the `--build-arg` list; the
+  agent Dockerfile's ARGs carry **no defaults**, so a pin change here cache-busts exactly the version
+  layer. `_build_agent_image` builds the image at most once per process (N stacks sharing a harness
+  share one agent image), and even bare `harnessed build` passes claude's manifest args, because the
+  claude image is itself an agent image.
+- `assemble.validate_agent_image` lints the agent's Dockerfile the way `validate_pin` lints a
+  recipe's, at **both** build sites plus `assemble()` — a gate with a documented way around it gets
+  walked around. It fails closed: an unreadable Dockerfile is not an agent that passes.
+- `update._rewrite_agent_build_arg` bumps `build_args.<KEY>.value` (or the scalar) **in place** via a
+  round-tripping YAML writer, so `spec`, `hold` and the long comment blocks explaining each pin
+  survive a bump. It exists as a third rewriter precisely because an agent's version is a separate
+  field, not a substring of its spec — before it existed, `harnessed update` offered an agent bump,
+  accepted it, reported success, and changed no file.
 
 ## The MCP layer: one hub, one emitted config
 

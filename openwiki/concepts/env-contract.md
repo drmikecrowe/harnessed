@@ -3,9 +3,6 @@ type: concept
 title: "The env contracts: folder env and install env across both modes"
 description: "The two harnessed-owned environment contracts catalog-authored content may rely on — the folder-env contract (setupenv.harnessed_env, one key set on every surface a recipe runs on) and the install-env contract (emit.install_env, the deliberate project-free subset), each delivered by one mechanism per mode so the same winner holds in both — plus the host-only extras that belong to neither."
 tags: [env-contract, folder-env, install-env, environment-variables, setupenv, hostrun, emit, install-scripts, precedence]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
 sources:
   - id: openwiki-source-362e06c30ccfdafd87339cb0
     resource: repo://ARCHITECTURE.md
@@ -42,6 +39,9 @@ sources:
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
     resource: repo://src/harnessed/volumes.py
 generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 ---
 
 # The env contracts: folder env and install env across both modes

@@ -4,8 +4,8 @@ title: "Dynamic stacks: minting, the derived name, and the generated root"
 description: "How --recipe/--extends/--service composition becomes a real stack at launch time: dynstack's content-derived name (sanitize, lossy-detection digest, OCI tag grammar), mint's idempotence and authored-collision refusal, the mint lock and the preexisting-stack shortcut, and why a manifest is minted rather than teaching five subsystems a new kind of thing."
 tags: [dynamic-stacks, dynstack, minting, derived-name, generated-catalog, extends, oci-tag, collisions, locking, launch]
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 sources:
   - id: openwiki-source-e9cc6c20ea9b111b6ff0861e
     resource: repo://catalog/stacks/default/stack.yaml

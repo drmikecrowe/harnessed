@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ac36857bd16dabc93cd32af6dc602d257fca19d1e797367112ddded9922fdcae",
+  "pageVersion": "sha256:c16c2ac06746ab23997fa1139e3e684a6adec5bb20c6f43928bc5fef5219d538",
   "claims": [
     {
       "id": "claim_70b25d784d2e49d29875cccf2e8dedc9",
@@ -179,12 +179,12 @@
       "statement": "_svc_run_cmd builds the exact `<rt> run` argv for a sidecar as a PURE function (reads the filesystem, writes nothing) because it is called twice: once on the create path and once against an already-running container to compute what the current code would create; hence the allocate-once stable_port and password arrive as arguments resolved by _ensure_service, and everything fixed at container create time (mounts, published ports, env, userns) is in the argv, making its hash a faithful config fingerprint.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L1735-L1838",
-          "version": "repo-lines-v1:sha256:c81c7b095a7e04a032f0a005659848f784dae59167d93fd895b971d3a777ac3c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3ZDY5ZWMxYzVmZDYxNDQyZThjZDQxMmU4YTgyM2Y4MjM3YjE1NDQzYmUzMDc4NTE0NTI2YzAwMjQxMTYyY2ZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJkOTJkZWM4MjY1MDY1N2FiYTcwNWNjZjM1MjdhOWE5MTkzYmQyMmZkNzczY2MxYTIyM2VmZGY3NjZlMDJiODcyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjYTYzY2Q2MDE1MTdlYTEyMzBiMTdjZjE4MGI3MDkwNTc4ZmZiN2MyYzE0MWMxZTBiZjJjZjI5NmY3NDc0MjM4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiMTI2NzhjMjAwZDYzYmMwMzAzMTkxOWNiYjYwNTFiMTRkYzM4ODU1OTI1MGJlNTQxMjY4NmUwMmJlZmY4YzNiIn0"
+          "resource": "repo://src/harnessed/launcher.py#L1844-L1947",
+          "version": "repo-lines-v1:sha256:1cd5bfa6ed6bdc61c2650c729a65aa8666e933494a5cefc9b712c448addcf60b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3ZDY5ZWMxYzVmZDYxNDQyZThjZDQxMmU4YTgyM2Y4MjM3YjE1NDQzYmUzMDc4NTE0NTI2YzAwMjQxMTYyY2ZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJkOTJkZWM4MjY1MDY1N2FiYTcwNWNjZjM1MjdhOWE5MTkzYmQyMmZkNzczY2MxYTIyM2VmZGY3NjZlMDJiODcyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjYTYzY2Q2MDE1MTdlYTEyMzBiMTdjZjE4MGI3MDkwNTc4ZmZiN2MyYzE0MWMxZTBiZjJjZjI5NmY3NDc0MjM4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiMTI2NzhjMjAwZDYzYmMwMzAzMTkxOWNiYjYwNTFiMTRkYzM4ODU1OTI1MGJlNTQxMjY4NmUwMmJlZmY4YzNiIn0"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L1879-L1895",
-          "version": "repo-lines-v1:sha256:e87f8be456c6bb45cc27b4150554c8b8c644862a57ecf112b6cfb4e2f6e29acb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmMTAwODBkNmI4MTQyMzc5Y2M2NzU1MjUzMWZiOWMzYjY4ZjljZDkxMTVjOTY3NjMyOWQxOTMwZmM1M2Y0MDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2OTk0ZGQzNTFhMjI4NTQ2NzY2YmQxZDY2NGJhZWUxODMwMWIyNDI0OGJiNjYyYzQ2Yzc3YTU4NTFiYTkyNzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2OTBkNTFlNTA4MTZmMzVjZGZmYmNjNTAwNzRiZTk1NjA4NWQzYWNhM2RmNjMwZjIxZWY0ODQzMGFjZmM4NDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4NjM0NDU2MGQ2MGFiZWI5MmU3NGJhN2Q1Y2JjOTZjZWM5NmYxMjI5MmQxYmFkOTJiMTE1NDhkMzRkNTNlZDUifQ"
+          "resource": "repo://src/harnessed/launcher.py#L1988-L2003",
+          "version": "repo-lines-v1:sha256:23db9d30947b6cf9dcdd961f747068023979c884973b9150c9ae699e46073cbd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmMTAwODBkNmI4MTQyMzc5Y2M2NzU1MjUzMWZiOWMzYjY4ZjljZDkxMTVjOTY3NjMyOWQxOTMwZmM1M2Y0MDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2OTBkNTFlNTA4MTZmMzVjZGZmYmNjNTAwNzRiZTk1NjA4NWQzYWNhM2RmNjMwZjIxZWY0ODQzMGFjZmM4NDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkzM2E4OTJlZTE0OTk5YjVjYjBkMjEwNmNiNjk3Njc0NDkwOTExOTAxYWM1ZWEzODVmNjdmMzk5Y2M5OGE0M2UifQ"
         }
       ]
     },
@@ -207,12 +207,12 @@
       "statement": "On drift, _ensure_service prompts to `podman rm -f` and recreate the sidecar (automatic under HARNESSED_HEADLESS), always preserving data (named volume or bind mount); recreation rather than restart is the only way a running sidecar picks up changes to mounts/ports/env because a container's configuration is fixed at create time — which is also why `svc recreate` exists as a verb and `restart` deliberately does not.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L1896-L1913",
-          "version": "repo-lines-v1:sha256:1fb5f271df431a3ee7a0c58b122a2330a5c74cc0d06683d0a6aa4ec4de42b46f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwMjk0MWZjMDM1ZmVlODFhODczZWEyZGY2MzM4ZTFiZTk5N2Y1MDJiYWY2NzA0YTk4OTRjMDZmMmU3ZTk3M2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiN2Q3YTU2MmYxOTdkNjAwODgwZTA4NTFhZTU5MGJhMzljYmFmNWFiZWJiZDdjNTg1OGNkMjY5NDdiMTNlZjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZmNGQ3MGU4YTY2NmUxYTdkODk5MDE4ZDJmZjg1ZGM1YTUyZjI1NDM0ZWRhOWQ5YjE4MTkwNTQ5ZTEwZjE5YTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3ZjNiYTFlYzJiYWVhNzc0MGU0M2IzODk1ZWE1MDIxOTczYWNhN2I0MzAxOGYxOTFjNjllMjExN2RiMGNjNzMifQ"
+          "resource": "repo://src/harnessed/launcher.py#L1841-L1842",
+          "version": "repo-lines-v1:sha256:2417d01ef04ccad3677018fe53c0ee447fd37846bd438f82fa2ab1c8cad2c314:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZThiZTc0MzNjZWM2Yzk5NTMyNTFhOGFhMzZlYTFhNjdhZDA5ODdkYTRhZmQ3ZWRmNTllODdkMjc0OGM2OTdmOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzYwMDI0NzBiYjE5Mjk0YjFlM2FjMzMwMjU4OTE3MTU2M2E4YzUzZmMyMWE4OWM0MTdkZTljNzI0MDI4MDRiZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTM1YzE4MzA4YThlNDNlMDU4MDY2NTAxODdkNjg2NzliZGUxZGQwOGVkMzQ0MDc4MGQwZjYxZGU1MGFhYWMzNCJ9"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L5082-L5086",
-          "version": "repo-lines-v1:sha256:7b27bcfeec30f43c166e68a7aba57c5d0797053ab6d9b525efc263a1fc06fde1:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTRkNjE4MTk3MjllYWIzZTY5MWY0ZmY3YzIyMGM4ZTdhNGU3MjU0NzRhNWZjNzg4YThkNjc1YmU2NjEwN2ZjZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWY5YTMwZDdjMDM2NzJiNDg0YTgyNjVjOThlNTFlMzkwMGQ5NzNmODkwYWE5ZmQ1OTc5ZTZlMThiNzNlOWVmNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjQ5YjQ2ODM3ZWQ0MWQ0ZWVmOWUxNDU1Yzk5MGU4MWY1N2IyZmMzMjhmNDY4ZWNjM2M1NmYxNTA4ZDQ0ZWM4MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDI5MGI1NjVhODZlMjIwZjY5MjBjMzYyMDdhNDNlMjA5NmYxMmFkNzQ4Njg4YmEzMjU2MGI5YWY1MTViMjk3MiJ9"
+          "resource": "repo://src/harnessed/launcher.py#L2005-L2025",
+          "version": "repo-lines-v1:sha256:b9e94317a4923ab692575ca2da3751633e49b5bb63d512b5c33b0f55d66b9444:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwMjk0MWZjMDM1ZmVlODFhODczZWEyZGY2MzM4ZTFiZTk5N2Y1MDJiYWY2NzA0YTk4OTRjMDZmMmU3ZTk3M2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiN2Q3YTU2MmYxOTdkNjAwODgwZTA4NTFhZTU5MGJhMzljYmFmNWFiZWJiZDdjNTg1OGNkMjY5NDdiMTNlZjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZmNGQ3MGU4YTY2NmUxYTdkODk5MDE4ZDJmZjg1ZGM1YTUyZjI1NDM0ZWRhOWQ5YjE4MTkwNTQ5ZTEwZjE5YTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3ZjNiYTFlYzJiYWVhNzc0MGU0M2IzODk1ZWE1MDIxOTczYWNhN2I0MzAxOGYxOTFjNjllMjExN2RiMGNjNzMifQ"
         }
       ]
     },
@@ -498,15 +498,15 @@
     },
     {
       "id": "claim_24a49efef34c4da9b10e409b2529e2fc",
-      "statement": "Project services' persist dirs are ownership-guarded (persist.guard_ownership) and created before the container starts — under paths.USERNS_ARG the pod writes as the invoking host uid, so a pre-existing dir owned by a different uid would silently EACCES inside the container; the guard reads the writer off the declared mapping rather than os.getuid() so it can catch the mapping itself being wrong.",
+      "statement": "Project services' persist dirs are ownership-guarded (persist.guard_ownership) and created before the container starts — under paths.USERNS_ARG the pod writes as the invoking host uid, so a pre-existing dir owned by a different uid would silently EACCES inside the container; the guard reads the writer off the declared mapping (paths.pod_host_uid) rather than os.getuid() so it can catch the mapping itself being wrong, and a docker-specific unresolvable-mapping branch explains rootless vs rootful daemon causes.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L1923-L1931",
+          "resource": "repo://src/harnessed/launcher.py#L2035-L2043",
           "version": "repo-lines-v1:sha256:5f41825f0325c6e46f91c981e1748e8eb2aa6ffb7db1d3d08702fc258b6bf07e:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmU5YmJhYjRjYjA0ZmVhNjg4NTQyNjJlOTMwZjNiM2IyNGI5ZjViMTFjMmIzYTViMDhlYjI3MWQxZGI1N2YzOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWE3YjdkN2I0Yzk1ZmFmNjBhY2YzZTdiMDlhNTI3ZDBiZjRkM2E3YzQzMTlkOWZkMjgwODk5YmRlMTgzZmU5YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2U3ZWRjMzk1NjcxOWNiN2Y1NWYwYWM1MWZlYjM4NDNlNGFkNGZkMjgzZWExODhmYzBjY2UxYTViZTYzNWE3ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjgxNWMxNzE4OGE1NzYxZGY3YmViOWM2ODFmNDM0OTZhMWNiMzg0ZTk4YWM5NmJlZDc2OGRlMTI2YmZkMTdlYiJ9"
         },
         {
-          "resource": "repo://src/harnessed/persist.py#L130-L170",
-          "version": "repo-lines-v1:sha256:339fec3299815fcf96611025bfc2ba44fd5dd51067b2c0e0d4c7953ac593ce3f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3NmU2NGI5ZjdlM2QyZTIwZjQ1Y2FhOWFkMTgwNDE0ZmYyNGVlMDk2ZWNkNTQ3ZjVhYzhkNmVhMGM2ZGE1NGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY5ZGFiNTIwZGY0YWM3OTJlYzA3YzMzYTJmNmMxMzdhMTVjYTc5YzM4OWYxYTk3NWYwMGMxMTJjODE4MTcyY2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://src/harnessed/persist.py#L130-L190",
+          "version": "repo-lines-v1:sha256:dbbbdad152eab100d5528bfafab44d59cef887478217b75b1a5e33fd308fa497:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3NmU2NGI5ZjdlM2QyZTIwZjQ1Y2FhOWFkMTgwNDE0ZmYyNGVlMDk2ZWNkNTQ3ZjVhYzhkNmVhMGM2ZGE1NGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3M2Y3MGFkMzAwZDg3YTExOTkzNTk4ODJkOWNmNTVkNzNiYjk2OTQ5Y2RmZDM1MmE5YTZjNTdjMGIwMDc1YjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY5ZGFiNTIwZGY0YWM3OTJlYzA3YzMzYTJmNmMxMzdhMTVjYTc5YzM4OWYxYTk3NWYwMGMxMTJjODE4MTcyY2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYifQ"
         }
       ]
     },
@@ -594,7 +594,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-08T23:17:55.419Z"
+    "by": "openwiki/0.5.1",
+    "at": "2026-09-16T21:10:52.541Z"
   }
 }

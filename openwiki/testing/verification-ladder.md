@@ -57,10 +57,10 @@ sources:
     resource: repo://tools/openwiki-retry-patch.py
   - id: openwiki-source-42360cb3e257ef7023d23d39
     resource: repo://tools/preflight.sh
-generated: { by: "openwiki/0.4.3", at: "2026-09-09T09:34:57.295Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-09T09:34:57.295Z
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 ---
 
 
@@ -93,7 +93,7 @@ flowchart TD
     pytest --> merge["merge to main"]
     lint --> merge
     merge --> live["live.yml - push to main plus nightly 04:00 UTC"]
-    live --> gate["HARNESSED_PODMAN=1 suite via tools/run-tests.sh"]
+    live --> gate["HARNESSED_PODMAN=1 / HARNESSED_DOCKER=1 suite via tools/run-tests.sh"]
     gate --> skipped{"any live_podman-marked test skipped?"}
     skipped -->|"yes"| red["run refuses to exit green"]
     skipped -->|"no"| oklive["container contracts verified within a day"]
@@ -178,7 +178,9 @@ found next morning, not by a user).
 PR would get the job disabled within a week, and **a disabled check verifies exactly as much as a
 skipped one**. Post-merge plus nightly catches drift in the external contracts — podman's
 inspect/port/images output formats, and the live behaviour of every pinned tool — within a day,
-which is the timescale those actually change on.
+which is the timescale those actually change on. And **both claimed runtimes gate here**: harnessed
+claims podman *and* docker, and "supported" that is not continuously verified is a claim, not a
+fact, so the workflow runs a podman job and a docker twin (see below).
 
 The automatic triggers were only enabled after the suite was measured green against a real podman
 (`HARNESSED_PODMAN=1 pytest` → 2166 passed, 1 skipped). Scheduling a nightly job against a suite
@@ -224,7 +226,8 @@ credentialed supply-chain rescan, and create the stack's podman volumes: work th
 inside pytest in a separate process the build-once cache cannot deduplicate, and volume creation
 ahead of the tests that exercise volume creation would mask a cold-start failure.
 
-`GITHUB_TOKEN` is **required** on both the build and the test step, not a nicety: mise's aqua
+`GITHUB_TOKEN` is **required** on every step that installs software or builds images — the build
+step, the suite steps, and the launch steps of both jobs — not a nicety: mise's aqua
 backend resolves several pinned tools through `api.github.com`, an unauthenticated runner shares one
 heavily-used rate-limit pool, and when it runs out the API answers 403 mid-layer
 (`aqua:cli/cli@2.96.0 … 403 Forbidden`) — which reads as a broken pin when the pin is fine. Passing
@@ -232,6 +235,53 @@ the workflow token raises the limit from 60/hr per IP to 1000/hr per repo, needs
 configured, and is read-only. The test step needs it for the same reason at one remove: stack images
 install their `tools:` at container runtime through mise, so an unauthenticated 403 there fails a
 test rather than a build, which is harder to read.
+
+### A build that never launches proves nothing about launching
+
+After the suite, both jobs run `mise exec -- uv run --extra dev harnessed test livecheck claude
+--json --keep` — the step that would have caught #458, where `harnessed build` exited 0 on docker
+while `container-run` created the agent against `--network=container:<a pod that is never created>`.
+The build path and the launch path share almost no code past image assembly, so a green build is not
+evidence about the half users actually run. `livecheck`, not `default`, because stack names resolve
+through the user-overlay catalog too — `default` means one thing on a runner and another on a
+developer's machine, where it once pulled in a private recipe holding a 1Password ref; a test must
+not be able to reach a secret. `--keep` is for the step after it: a failure-only *diagnostics*
+collector (`if: failure()`, every command `|| true`) that dumps `ps -a`, container logs, the
+in-container `/tmp/hatago.log` the launch-failure message names but CI would otherwise never have,
+and identity/home listings — because that message is good advice on a laptop and useless in CI,
+where the container is gone by the time anyone reads the run.
+
+### The docker twin
+
+`live.yml` runs a second job, `live-docker`, executing the same suite behind
+`HARNESSED_DOCKER=1` with `CONTAINER_RUNTIME: docker` — and `CONTAINER_RUNTIME` is load-bearing:
+GitHub runners have both binaries and detection prefers podman, so without it this job would
+silently retest the podman path while reporting itself as docker coverage. It is a separate job,
+not a matrix leg, for the same reason `pytest-py313` is: a matrix rewrites the status-check context
+to `live (podman)` / `live (docker)`, and renaming a required check leaves branch protection
+waiting forever on a context that never reports again. Docker availability is asserted
+(`docker info`, not just `--version` — a client with no reachable daemon passes the version check
+and fails everything after), and there is no install step because ubuntu-latest ships it.
+
+### Known-red quarantine, and the on-demand PR path
+
+The podman suite step deselects **four tests by name** (`TestVarlockProxyRulesOutput`, tracked in
+#462): upstream `varlock proxy rules` display drift broke them on 2026-08-28 and the parser is
+failing closed exactly as designed — but a failed step ends the job, so the launch step that
+exists to prove a stack reaches a running agent never ran. They are named one by one, not by class,
+file or marker, so any *new* failure in that module still goes red; delete them when #462 closes.
+
+That quarantine is possible because the live layer is also runnable **on demand against a PR
+branch**:
+
+```console
+gh workflow run live.yml --ref <branch>
+```
+
+This covers the regression half of what an automatic PR trigger would reach for (PR #461 was one
+approval from merging with six podman tests red) without charging two container-runtime jobs to
+every PR, including docs-only ones. Ad hoc is the author's judgement call; the automatic run on
+`main` and the nightly still catch what the author does not.
 
 ### The fail-closed skip accounting
 
@@ -595,17 +645,23 @@ regenerate. It is *not* a verifier of every Claim, and the boundary is deliberat
 
 ### The regeneration workflow verifies the native addon it installs
 
-Its generation counterpart, `openwiki-update.yml` (nightly 08:00 UTC plus `workflow_dispatch`),
-checks out full git history so the diff against the last-documented commit is nonempty and sets
+Its generation counterpart, `openwiki-update.yml` (nightly 08:00 UTC plus `workflow_dispatch`,
+`timeout-minutes: 90` so a wedged run is cancelled rather than spinning for hours), checks out full
+git history so the diff against the last-documented commit is nonempty and sets
 `persist-credentials: false`; it is deliberately *not* fail-fast, because openwiki's page-job queue
 is durable — a run that dies partway has already written every page it finished, and the PR step
 banks that progress as the next baseline — so the failure is re-raised at the end and the job still
-reports red. That is the opposite trade-off from the lint gate, and the right one for a job whose
-output is cumulative rather than binary.
+reports red. The PR step runs under `if: always()` rather than `!cancelled()`, precisely because a
+timeout kill arrives with `cancelled() == true`, and skipping it then would discard every page the
+durable queue just wrote — the exact loss `continue-on-error` exists to prevent. That is the
+opposite trade-off from the lint gate, and the right one for a job whose output is cumulative
+rather than binary.
 
-The workflow installs openwiki with `npm install --global` — deliberately **not** the recipe's
-project-scoped pnpm install — and then **verifies the native addon actually built before running
-anything**. The constraint is identical wherever openwiki is installed: openwiki statically imports
+The workflow installs `openwiki@0.5.1` with `npm install --global` — deliberately **not** the
+recipe's project-scoped pnpm install — then **applies the page-worker retry patch to the
+npm-global copy** (the mise task applies it to the mise-installed runner; here the path is
+explicit, and the patch has been verified to produce a runner byte-identical to the locally patched
+one), and **verifies the native addon actually built before running anything**. The constraint is identical wherever openwiki is installed: openwiki statically imports
 `SqliteSaver` (reaching `better-sqlite3` transitively through
 `@langchain/langgraph-checkpoint-sqlite`), so a missing `better_sqlite3.node` does not degrade one
 subcommand — it breaks every subcommand at import. The two runners solve it differently because
@@ -628,14 +684,16 @@ their defaults differ:
   broken Node install rather than a denied script.
 
 **The local path is the third context, and it fixes the constraint on the pin itself.** `mise.toml`'s
-`npm:openwiki` 0.4.3 pin — the install `mise run openwiki-update` runs against, and the tree the
-retry patch anchors to — carries two escape hatches, both required and both failing in a way that
-does not look like a packaging problem: `trust_policy_excludes` for `fastq@1.20.2`, because aube's
-no-downgrade trust policy refuses an install with no provenance attestation, and `allow_builds` for
-`better-sqlite3`, because mise installs through aube, which denies dependency lifecycle scripts by
-default. Denied, the install still reports success and every openwiki run dies at `Could not locate
-the bindings file` with a 14-line list of paths it tried — so the reviewed allowlist is carried
-where it is actually read, not left to the environment.
+`npm:openwiki` 0.5.1 pin — the install `mise run openwiki-update` runs against, and the tree the
+retry patch anchors to — carries one required escape hatch, `allow_builds` for `better-sqlite3`,
+because mise installs through aube, which denies dependency lifecycle scripts by default. Denied,
+the install still reports success and every openwiki run dies at `Could not locate the bindings
+file` with a 14-line list of paths it tried — so the reviewed allowlist is carried where it is
+actually read, not left to the environment. The former second hatch,
+`trust_policy_excludes` for `fastq@1.20.2`, is gone with the 0.5.1 bump: fastq 1.20.3 is attested
+again and every `^` range in the tree resolves there, and if a later unattested fastq lands the
+install fails loudly at resolve time — the exclude should be re-added with that exact version, not
+pre-emptively widened.
 
 Three contexts, one constraint — and each fix is the one that fits its runner's defaults.
 
@@ -647,19 +705,27 @@ The local entry point is `mise run openwiki-update`, and its first act is to run
 
 The patch exists because of how an openwiki run fails: a page worker that ends its turn without
 calling `submit_page` is marked *skipped*, the run finalizes `interrupted` **without advancing the
-diff base**, and the next run therefore regenerates the whole changeset. That was observed with
-glm-5.3-flash (94 LLM calls, a clean exit, no tool call — PR #445 run 6), and upstream 0.4.3 and
-0.5.0 were verified to ship no retry (2026-09-08). The patch gives each page worker **one fresh
-second attempt** sharing the worker's virtual backend — attempt 2 sees the page markdown attempt 1
-already wrote — before the page is skipped.
+diff base**, and the next run therefore owes a clean finalize over the skipped page. That was
+observed with glm-5.3-flash (94 LLM calls, a clean exit, no tool call — PR #445 run 6), and no
+upstream release through 0.5.1 retries a skipped page — 0.5.1's `runPageAgent` carries the same
+try/skip block byte-for-byte as 0.4.3 (verified 2026-09-16), which is why the patch ports
+unchanged. 0.5.0's durable page manifest (`openwiki/.page-manifest.json`) already reduced the cost:
+a completed page is no longer regenerated on the next run. The patch gives each page worker **one
+fresh second attempt** sharing the worker's virtual backend — attempt 2 sees the page markdown
+attempt 1 already wrote — before the page is skipped.
 
 The patch is defensive about its own applicability, on purpose:
 
 - It is **idempotent**: a marker identifies an already-patched runner; `--check` exits 0/1 to report
-  patched state without touching anything, and `--revert` restores the `.orig` backup.
+  patched state without touching anything, and `--revert` restores the `.orig` backup. It locates
+  the runner across **two mise/pnpm layouts** — the older `.mise/<name>@<version>/` real
+  directories and pnpm 11's symlinked content-addressable store — realpath-resolving and
+  de-duplicating matches, because the store emits several sibling hash directories that all resolve
+  to the same file. On the pnpm 11 layout the patched file lives in the **shared** store, so any
+  other project resolving `openwiki@0.5.1` to the same hash sees the patch too.
 - It **fails loudly when its anchor text no longer matches** — the `runPageAgent` anchor, the
   exactly-one agent declaration, the exactly-one worker try-block — and refuses any install whose
-  version is not the verified 0.4.3. Version drift means a human re-derives the patch against the
+  version is not the verified 0.5.1. Version drift means a human re-derives the patch against the
   new layout; the tool must never patch blind.
 
 One paragraph on the task's environment discipline: provider exports are `env -u`-stripped
@@ -678,7 +744,7 @@ gitignored live clone that only a `main/` checkout has).
 | Gate | Where | Runs on | Proves | Does not prove |
 |---|---|---|---|---|
 | hermetic pytest | `test.yml` jobs `pytest` / `pytest-py313` | PR + push main | pure functions, assembly oracle, emitted text, repo-asset invariants, order independence | any container behaviour — no podman build, no `container-run`; gated tests skip, and a skip is not a pass |
-| live layer | `live.yml` job `live` | push main + nightly 04:00 + dispatch | real `podman build`/run, capability oracle per stack, external contract drift within a day | nothing on PRs; nothing about the host backend; and no packet across the broker's 169.254.1.1 route — that argv layer is asserted hermetically, through injected seams |
+| live layer | `live.yml` jobs `live` (podman) and `live-docker` | push main + nightly 04:00 + dispatch (on demand per branch) | real `podman`/`docker` build and launch, capability oracle per stack, external contract drift within a day | nothing automatic on PRs; nothing about the host backend; and no packet across the broker's 169.254.1.1 route — that argv layer is asserted hermetically, through injected seams |
 | lint | `lint.yml` job `lint` | PR + push main | ruff correctness/security at zero, pyright basic at zero, shellcheck over every tracked script | runtime behaviour; layers after a red one never ran |
 | pin check | `pin-check.yml` job `pins` | weekly Mon 06:00 + dispatch | stale, unheld, past-age pins across the catalog | nothing about code correctness; nothing on PRs by design |
 | capability test | `harnessed test <stack> <harness>` | inside the live layer, or by hand | the manifest's declared capabilities are present in a running instance | undeclared capabilities, host-mode behaviour, interactive attach |
@@ -719,15 +785,6 @@ Its **one deliberate divergence from CI**: it runs every gate even after an earl
 stops, and a stopped run *understates* what is unverified — a ruff finding there means pyright and
 shellcheck never ran. Preflight keeps going and reports each skipped layer **by name**, so a local
 run answers "what else is broken" in one pass instead of four.
-
-**The two end-to-end oracles.** A contribution is done when `harnessed test <your-stack>` is green
-and the live integration test passes — those two, not the hermetic suite, are the checks that
-exercise real containers, and nothing on this ladder substitutes for either. For the git workflow
-itself — worktree per change, full suite passing before proposing a merge, PR into `main`, signed
-commits — see [AGENTS.md](https://github.com/drmikecrowe/harnessed/blob/main/AGENTS.md) and
-[CONTRIBUTING.md](https://github.com/drmikecrowe/harnessed/blob/main/CONTRIBUTING.md); this page
-deliberately does not restate it.
- of four.
 
 **The two end-to-end oracles.** A contribution is done when `harnessed test <your-stack>` is green
 and the live integration test passes — those two, not the hermetic suite, are the checks that

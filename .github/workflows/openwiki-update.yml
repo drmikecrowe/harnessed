@@ -48,7 +48,7 @@ jobs:
         # runner's npm crosses that line the addon silently will not build, so the next step
         # verifies it rather than trusting the install — openwiki imports SqliteSaver at module
         # load, so a missing addon breaks every subcommand, not just the sqlite path.
-        run: npm install --global openwiki@0.4.3 mermaid@11.16.0 jsdom@29.1.1
+        run: npm install --global openwiki@0.5.1 mermaid@11.16.0 jsdom@29.1.1
 
       - name: Verify the native addon built
         # Fails loudly here instead of as "Could not locate the bindings file" mid-generation.
@@ -64,14 +64,16 @@ jobs:
           openwiki --help >/dev/null
 
       - name: Apply the page-worker retry patch
-        # openwiki 0.4.3 AND 0.5.0 mark a page worker "skipped" when its stream ends without
-        # calling submit_page (observed with glm-5.3-flash: a final turn that ends thinking-only,
-        # no text, no tool call — the model spends its whole completion budget on reasoning), and
-        # the run then finalizes `interrupted` without advancing the diff base. The patch gives
-        # each worker one fresh retry before skipping. The mise task applies it automatically to
-        # the mise-installed runner; here the install is npm-global, so the path is explicit.
-        # Verified: patching an npm-global-layout copy produces a runner byte-identical to the
-        # locally patched one, and the patch is idempotent + version-gated (refuses non-0.4.3).
+        # Every openwiki through 0.5.1 marks a page worker "skipped" when its stream ends
+        # without calling submit_page (observed with glm-5.3-flash: a final turn that ends
+        # thinking-only, no text, no tool call — the model spends its whole completion budget on
+        # reasoning), and the run then finalizes `interrupted` without advancing the diff base.
+        # 0.5.1's runPageAgent carries that try/skip block byte-for-byte from 0.4.3, so the patch
+        # ports unchanged. It gives each worker one fresh retry before skipping. The mise task
+        # applies it automatically to the mise-installed runner; here the install is npm-global,
+        # so the path is explicit. Verified 2026-09-16: patching an npm-global-layout copy produces
+        # a runner byte-identical to the locally patched one, and the patch is idempotent +
+        # version-gated (refuses anything but 0.5.1).
         run: python3 tools/openwiki-retry-patch.py "$(npm root -g)/openwiki/dist/agent/repository-runner.js"
 
       - name: Run OpenWiki
@@ -87,8 +89,9 @@ jobs:
           # Same provider config the local `mise run openwiki-update` uses (resolved from
           # ~/.config/harnessed/.env.schema + .env.openwiki): the Anthropic-compatible face of the
           # z.ai GLM Coding Plan. NOT the OpenAI-compatible face — non-streaming HTTP dies at
-          # undici's default 300s headersTimeout, and the streaming flag for that provider is
-          # broken in openwiki 0.4.3 AND 0.5.0 (`wrapModelCall` middleware returns an object).
+          # undici's default 300s headersTimeout, and the streaming flag for that provider was
+          # broken through 0.5.0 (`wrapModelCall` middleware returns an object); 0.5.1 claims a fix
+          # (upstream #817) but this face is not what the Anthropic-client reasoning below wants.
           # The Anthropic client streams SSE by default inside the agent loop, so response
           # headers arrive immediately and long glm turns survive. Verified end-to-end in
           # PR #445 run 8 — first complete finalize in eight attempts.
@@ -98,7 +101,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.OPENAI_COMPATIBLE_API_KEY }}
           ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
           # Spelling verified against z.ai's live /models listing AND the local schema.
-          OPENWIKI_MODEL_ID: glm-5.3-flash
+          OPENWIKI_MODEL_ID: glm-5.2
           # REQUIRED for glm on this provider: the @anthropic-ai/sdk client guard
           # (_calculateNonstreamingTimeout: 3600*maxTokens/128000 > 600s) refuses any
           # NON-streaming call whose cap exceeds 21,333, and the planner is that one

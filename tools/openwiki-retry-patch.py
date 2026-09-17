@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
-"""Patch the mise-installed openwiki 0.4.3 runner to retry a page worker that
+"""Patch the mise-installed openwiki 0.5.1 runner to retry a page worker that
 ends its turn without calling submit_page.
 
 Why this exists: a worker whose stream ends without a submit (observed with
 glm-5.3-flash: 94 LLM calls, clean exit, no tool call) is marked "skipped" by
 openwiki, the page snapshot is restored, and the run finalizes "interrupted"
 WITHOUT advancing the diff base -- one quit costs the next run a full
-regeneration of the whole changeset. Neither 0.4.3 nor 0.5.0 retries a skipped
-page (verified against the 0.5.0 tarball 2026-09-08); see PR #445 run 6.
+regeneration of the whole changeset. No release through 0.5.1 retries a skipped
+page: 0.5.1's runPageAgent carries the SAME try/skip block byte-for-byte as
+0.4.3 (0.5.0/0.5.1 changed submit_page to sparse Claim reconciliation and added
+an inspect_claims tool, nothing else in that function). See PR #445 run 6.
 Until upstream ships a retry, this gives each page worker one fresh second
 attempt before the page is skipped. The retry shares the worker's virtual
 backend, so attempt 2 sees the page markdown attempt 1 already wrote.
 
+0.5.0's durable page manifest (openwiki/.page-manifest.json) reduces what a
+skip costs -- a completed page is no longer regenerated -- but a skipped page
+still leaves the run `interrupted`, so the retry still earns its keep.
+
 The patch fails loudly when its anchor text does not match: that means the
-installed openwiki is no longer the verified 0.4.3 layout, and the patch must
+installed openwiki is no longer the verified 0.5.1 layout, and the patch must
 be re-derived by a human, not guessed at.
 
 Usage:
@@ -32,8 +38,20 @@ import subprocess
 import sys
 
 MARKER = "[openwiki-retry-patch]"
-DEFAULT_GLOB = "~/.local/share/mise/installs/npm-openwiki/0.4.3/node_modules/.mise/openwiki@*/node_modules/openwiki/dist/agent/repository-runner.js"
-EXPECTED_VERSION = "0.4.3"
+EXPECTED_VERSION = "0.5.1"
+# Two layouts, because pnpm changed where a mise-installed package physically lives. The older
+# `.mise/<name>@<version>/` virtual store held a real directory; pnpm 11 instead symlinks
+# node_modules/openwiki into the content-addressable store under ~/.pnpm-store/v11/links/, and
+# emits SEVERAL sibling hash directories that all resolve to the same store path. Globbing alone
+# therefore reports a false ambiguity, so matches are realpath-resolved and de-duplicated.
+#
+# Consequence worth knowing: on the pnpm 11 layout the patched file lives in the SHARED store, so
+# any other project resolving openwiki@0.5.1 to the same hash sees the patch too. That is the only
+# copy pnpm keeps; there is nothing project-local to patch instead.
+DEFAULT_GLOBS = (
+    "~/.local/share/mise/installs/npm-openwiki/{v}/v*/*/node_modules/openwiki/dist/agent/repository-runner.js",
+    "~/.local/share/mise/installs/npm-openwiki/{v}/node_modules/.mise/openwiki@*/node_modules/openwiki/dist/agent/repository-runner.js",
+)
 
 AGENT_DECL = "    const agent = createDeepAgent({\n"
 AGENT_FACTORY = "    const createWorkerAgent = () => createDeepAgent({\n"
@@ -107,12 +125,16 @@ NEW_BLOCK = (
 def find_target(explicit: str | None) -> str:
     if explicit:
         return os.path.expanduser(explicit)
-    matches = sorted(glob.glob(os.path.expanduser(DEFAULT_GLOB)))
+    patterns = [p.format(v=EXPECTED_VERSION) for p in DEFAULT_GLOBS]
+    matches = set()
+    for pattern in patterns:
+        for hit in glob.glob(os.path.expanduser(pattern)):
+            matches.add(os.path.realpath(hit))
     if not matches:
-        sys.exit(f"error: no openwiki install matches {DEFAULT_GLOB}")
+        sys.exit(f"error: no openwiki install matches any of {patterns}")
     if len(matches) > 1:
-        sys.exit(f"error: ambiguous install paths: {matches}")
-    return matches[0]
+        sys.exit(f"error: ambiguous install paths: {sorted(matches)}")
+    return matches.pop()
 
 
 def install_version(target: str) -> str:

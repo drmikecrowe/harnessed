@@ -11,10 +11,11 @@ the content version openwiki observed when it established that Claim:
 `<digest>` is `sha256(selected_lines joined by "\\n", plus a trailing "\\n")` -- verified by
 reproducing it for every anchor in the shipped wiki. The base64 payload carries the selected line
 count and hashes of the first line, the last line, and three lines of context either side; openwiki
-uses those to RE-FIND a block that moved. This script does not decode that payload, because the
-per-line hash inputs are not documented and guessing them would make the check unfalsifiable. It
-re-finds a moved block the direct way instead: scan the file for any window of the same length whose
-digest matches.
+uses those to RE-FIND a block that moved. This script reads ONLY `selectedLineCount` out of that
+payload -- it needs the true block length, and openwiki leaves the `#Lx-Ly` in the resource stale
+when a block relocates (see `Anchor.length`). It does not touch the per-line hashes, whose inputs
+are not documented; guessing them would make the check unfalsifiable. It re-finds a moved block the
+direct way instead: scan the file for any window of the same length whose digest matches.
 
 WHY THAT DISTINCTION IS THE WHOLE POINT. Ordinary development shifts line numbers constantly. A
 check that treats a shifted-but-identical block as drift reports ~30% of Claims stale after a week
@@ -67,10 +68,25 @@ class Anchor:
     start: int
     end: int
     digest: str
+    recorded_length: int | None = None
 
     @property
     def length(self) -> int:
-        return self.end - self.start + 1
+        """Lines the digest actually covers.
+
+        `selectedLineCount` wins over the `#Lx-Ly` span, because openwiki does NOT rewrite the
+        resource URI when it relocates a block. `resolveLineRangeEvidence` (dist/claims/evidence/
+        repository/resolver.js) calls `createLineRangeEvidence(input.resource, lines, changedSpan)`
+        on the changed-and-moved path: a fresh version built from the NEW span, carrying the OLD
+        resource string. Trusting the URI there scans for the wrong window length, never finds the
+        block, and reports a relocated Claim as changed.
+        """
+        return self.recorded_length or self.end - self.start + 1
+
+    @property
+    def uri_is_stale(self) -> bool:
+        """The URI's span disagrees with the line count openwiki recorded for the digest."""
+        return self.recorded_length is not None and self.recorded_length != self.end - self.start + 1
 
 
 def _digest(lines: list[str]) -> str:
@@ -81,9 +97,9 @@ def _digest(lines: list[str]) -> str:
 def _parse_version(version: str) -> tuple[str | None, int | None]:
     """`(digest, recorded_line_count)` for a known scheme, else `(None, None)`.
 
-    The recorded count is a cheap consistency check on our own range parsing: if the evidence says
-    19 lines and the resource range spans 20, this script is reading the resource wrong and must say
-    so rather than report a false mismatch.
+    The recorded count is AUTHORITATIVE for how many lines the digest covers -- see `Anchor.length`
+    for why the `#Lx-Ly` span is only a hint. It was previously read as a consistency check on this
+    script's own range parsing, which asserted an invariant openwiki never promised.
     """
     parts = version.split(":", 3)
     if len(parts) < 3 or parts[0] != _KNOWN_SCHEME or parts[1] != "sha256":
@@ -129,19 +145,11 @@ def collect_anchors(claims_dir: Path) -> tuple[list[Anchor], int, int]:
                     continue
                 start = int(match["start"])
                 end = int(match["end"] or start)
-                if recorded is not None and recorded != end - start + 1:
-                    print(
-                        f"error: {page} claim {claim.get('id')} cites {resource} "
-                        f"({end - start + 1} lines) but its version records {recorded}. "
-                        "This script is parsing the resource range wrong -- fix it rather than "
-                        "trusting the result.",
-                        file=sys.stderr,
-                    )
-                    raise SystemExit(2)
                 anchors.append(Anchor(
                     page=page, claim_id=str(claim.get("id", "?")),
                     statement=str(claim.get("statement", "")),
                     path=match["path"], start=start, end=end, digest=found,
+                    recorded_length=recorded,
                 ))
     return anchors, whole_file, unknown_scheme
 
@@ -196,7 +204,7 @@ def classify(
         if lines is None:
             out["missing"].append(anchor)
             continue
-        if _digest(lines[anchor.start - 1:anchor.end]) == anchor.digest:
+        if _digest(lines[anchor.start - 1:anchor.start - 1 + anchor.length]) == anchor.digest:
             out["exact"].append(anchor)
         elif strict_lines:
             out["changed"].append(anchor)
@@ -247,6 +255,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  missing  {len(buckets['missing']):5}  cited file gone")
         if whole_file or unknown_scheme:
             print(f"  skipped  {whole_file + unknown_scheme:5}  {whole_file} whole-file evidence, {unknown_scheme} unknown version scheme")
+        stale_uri = [a for a in anchors if a.uri_is_stale]
+        if stale_uri:
+            # Not drift: the digest still matches real code. The published page just cites line
+            # numbers that no longer contain it, which is a reader-facing accuracy problem.
+            print(f"  staleURI {len(stale_uri):5}  relocated evidence whose #Lx-Ly was not rewritten")
         print(f"  stale    {100 * len(stale) / total:.1f}% of anchored evidence")
 
         if stale:

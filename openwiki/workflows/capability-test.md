@@ -3,9 +3,6 @@ type: workflow
 title: "Capability test: the manifest oracle versus the live instance"
 description: "How `harnessed test` proves a build: expected capabilities derived from the manifest (never hardcoded), a headless --fresh launch, machine-readable introspection of the hatago servers resource and the mounted profile filesystem with an LLM prompt backstop, recipe-authored bash tests folded into the same report, teardown as part of the contract, and the one structured result that drives both the markdown table and the CI exit code."
 tags: [capability-test, oracle, headless-launch, introspection, hatago, expect, recipe-tests, teardown, secret-hygiene, exit-code]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
 sources:
   - id: openwiki-source-362e06c30ccfdafd87339cb0
     resource: repo://ARCHITECTURE.md
@@ -37,7 +34,10 @@ sources:
     resource: repo://src/harnessed/update.py
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
     resource: repo://src/harnessed/volumes.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 ---
 
 # Capability test: the manifest oracle versus the live instance
@@ -189,19 +189,22 @@ only after teardown, because it is the pod's project bind-mount.*
 
 ### Headless is a launcher mode, not a flag of this module
 
-`HARNESSED_HEADLESS=true` makes `container-run` compose and start the pod **without** the
-interactive attach: members stay up for `podman exec`, the re-attach and stale-recreate prompts are
-skipped, setup notices never block (no TTY), and `--rm` is a documented no-op.
+`HARNESSED_HEADLESS=true` makes `container-run` — the CONTAINER backend's verb, the one actor this
+oracle drives — compose and start the pod **without** the interactive attach: members stay up for
+`podman exec`, the re-attach and stale-recreate prompts are skipped, setup notices never block (no
+TTY), and `--rm` is a documented no-op.
 
 Two behaviours matter specifically to this test:
 
 - **A hub that never comes up is a hard exit 1.** "Headless callers (CI / capability tests) have no
   terminal to notice a degraded hub" — the launcher refuses to print a green SUCCESS line over a
-  dead MCP hub. Inside the launch subprocess the launcher itself waits up to 30 s
-  (`_wait_hatago`) and exits 1 if the port never binds, so by the time `launch_headless` returns,
-  `wait_ready`'s own 60 s deadline is a *second, independent* gate on the same port — not the first
-  line of defence. A stack whose hub is dead fails at step 3 with a `CapabilityError`, before any
-  probe has run.
+  dead MCP hub. Inside the launch subprocess the launcher itself waits up to 90 s
+  (`_wait_hatago`, raised from 30 s after a measured 33.5 s docker start and #456's finding that
+  hatago binds only *after* connecting its stdio children, so the floor includes every child plus
+  one server's ~33 s retry budget) and exits 1 if the port never binds, so by the time
+  `launch_headless` returns, `wait_ready`'s own 60 s deadline is a *second, independent* gate on
+  the same port — not the first line of defence. A stack whose hub is dead fails at step 3 with a
+  `CapabilityError`, before any probe has run.
 - **No hub is probed when no hub should exist.** If `hub_transport: stdio` or every declared server
   is `direct:`, the launcher sets `HATAGO_TRANSPORT=none` (or stdio) and treats the hub as up
   without probing — probing would wait out the timeout and report a degraded hub over correct
@@ -373,12 +376,15 @@ log, and hatago's children are MCP servers that take credentials from the enviro
 child prints exactly the thing this report must not carry.
 
 - The hatago log is **pointed at, never read**. `_HATAGO_LOG_PATH` (`/tmp/hatago.log`, the redirect
-  target in `catalog/base/harnessed-start`) exists only to spell `MCP_MISS_REMEDIATION`: *"re-run
-  with `--keep`, then `podman exec <instance> cat /tmp/hatago.log`"*. A missing MCP server's
-  `detail` names where to look and never quotes what is there. An earlier version of the module
-  copied a 200-line tail of that log into `CapabilityReport`; that was the T-02-07 violation this
-  shape exists to prevent, and the cost is real and accepted — a runner-only MCP failure is not
-  self-diagnosing from the CI log, which is precisely why the one-step remediation exists.
+  target in `catalog/base/harnessed-start`) exists only to spell `MCP_MISS_REMEDIATION`. That
+  remediation is a *function*, `mcp_miss_remediation()`, because it names the runtime: it renders
+  `re-run with --keep, then '<runtime> exec <instance> cat /tmp/hatago.log'` using
+  `paths.active_runtime()` (falling back to `podman` only when no runtime resolves) — the hardcoded
+  `podman exec` once told a docker user to type a command their box could not run. A missing MCP
+  server's `detail` names where to look and never quotes what is there. An earlier version of the
+  module copied a 200-line tail of that log into `CapabilityReport`; that was the T-02-07 violation
+  this shape exists to prevent, and the cost is real and accepted — a runner-only MCP failure is
+  not self-diagnosing from the CI log, which is precisely why the one-step remediation exists.
 - Recipe-test failure detail is truncated to **one tail line, capped at 120 characters**
   (`_TEST_DETAIL_MAX`): `exit <n>: <last non-empty output line>`. Never a full transcript.
 - `CapabilityResult.detail` is documented as "short status reason", and
@@ -400,9 +406,12 @@ The module is split so that everything decidable without a container needs none:
   suite — which is exactly why a grammar drift in the launch command once broke every container-path
   `harnessed test` while nothing caught it.
 
-Runtime selection mirrors the bash dispatcher: `CONTAINER_RUNTIME` env, else `podman` if on `PATH`,
-else `docker`. The launcher binary resolves from an explicit `--harnessed-bin`, then
-`$HARNESSED_DIR/harnessed`, then `PATH`, raising a `CapabilityError` when none is found.
+Runtime selection does **not** live here anymore: `_runtime` delegates to
+`paths.active_runtime()` — the single detector (`CONTAINER_RUNTIME` env, else `podman` if on `PATH`,
+else `docker`; the override moved down into `paths` in #459 after `_runtime`'s own PATH scan
+answered `docker` on boxes that had neither) — raising a one-line error when none resolves. The
+launcher binary resolves from an explicit `--harnessed-bin`, then `$HARNESSED_DIR/harnessed`, then
+`PATH`, raising a `CapabilityError` when none is found.
 
 ## Not the same "capability": the backend matrix
 
@@ -417,9 +426,13 @@ noticing.
 
 ## What this oracle does not prove
 
-Anything about the **host** backend (it launches a pod), anything about interactive attach, and
-**anything a recipe did not declare and the assembler cannot see** — which is why the authoring rule
-("declare what your Dockerfile delivers") and the recipe-test convention exist. It also proves
+The oracle is a **CONTAINER-backend** oracle, by explicit actor: `launch_headless` drives the
+launcher's `container-run` verb, which composes and starts an isolated pod through the
+`ContainerBackend` — nothing in this test ever touches the host backend (`host-run`,
+`HostBackend`). So a green report says nothing about the host path, its host-side installs, or the
+`egress:` gap the backend matrix records for it. It also proves nothing about interactive attach,
+and **anything a recipe did not declare and the assembler cannot see** — which is why the authoring
+rule ("declare what your Dockerfile delivers") and the recipe-test convention exist. It also proves
 presence-and-connection, not usefulness: a connected server whose tools are wrong is green here, and
 only a recipe-authored `tests/*.sh` can say otherwise. Finally, the MCP probe observes the *hub* —
 a `direct:` server is not the hub's child and can only ever come from the backstop.

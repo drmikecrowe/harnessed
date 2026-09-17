@@ -3,9 +3,6 @@ type: "Reference"
 title: "Invariants: the deliberate deviations a reader must not clean up"
 description: "The catalog of constraints that read like defects but are load-bearing — each with the production failure it prevents and the bd id or issue number the source names. Now includes the secrets-broker/door invariants. The page to consult before 'fixing' anything in src/harnessed/."
 tags: [invariants, deliberate-deviations, fail-closed, cleanup-hazards, sequencing, naming-collisions, secrets-broker, pod-networking]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
 sources:
   - id: openwiki-source-362e06c30ccfdafd87339cb0
     resource: repo://ARCHITECTURE.md
@@ -57,7 +54,12 @@ sources:
     resource: repo://src/harnessed/volumes.py
   - id: openwiki-source-4d3b84558965c7b5921b9989
     resource: repo://tests/test_broker_pod_args.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+  - id: openwiki-source-b591b855d79d54f7c2ab0900
+    resource: repo://tests/test_userns_properties.py
+generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 ---
 
 
@@ -110,6 +112,9 @@ entries sit inside), [build pipeline](/openwiki/workflows/build.md),
 | Atomic `os.replace` on the broker record | a plain write is one line | a torn write reading as corrupt → `reconcile` reaping a live broker |
 | A corrupt broker record reads as absent | a corrupt file is an error | `harnessed list` and every teardown path dying on the file they exist to clean up |
 | `USERNS_ARG` pinned to uid 1000; `pod_host_uid()` returns `None` | a fallback number is friendlier than `None` | bd harnessed-rv2.1: six red CI runs; fail-open ownership guard |
+| docker: `--userns=host` + `--user <uid>:0`, volumes chowned to the same uid | the flag and the chown look independent | #456/#457: every volume write EACCESes when either half drifts |
+| Nothing written inside a fresh docker volume before the agent mounts it | a sentinel file is the obvious memo | docker copy-up only seeds an EMPTY volume (PR #461 review): `hatago: No such file` |
+| mise env redirected only for provisioning; the agent session gets the user's mise back | a session-wide redirect looks more thorough | #449: every shim on the user's PATH dies, agent binary included |
 | omp runs without `--profile`, rw host agent dir | sharing auth dirs looks like an isolation bug | login, usage ledger, session resume (#307) |
 | `MISE_STATE_DIR` not redirected | every other mise var is redirected | the user's trust store (empty store broke every trusted config) |
 | One ruamel `YAML` instance per load | a module-level instance is cheaper | parallel `-j` builds loading interleaved nonsense |
@@ -144,10 +149,26 @@ Three supporting facts are just as load-bearing:
   the *image ID* to the recipe-closure hash (bd harnessed-8px.21.3). Stripping the image component
   because it looks redundant with the recipe hash means a base image that gained a tool never
   reaches an existing stack and nothing signals it.
-- **The populate step must use `paths.USERNS_ARG`**, the same mapping the pod is created with. A
-  volume first populated under the default userns is unusable by the agent: uid 1000 inside reads
-  files owned by 999 and every write EACCESes. Verified in both directions in the harnessed-8px.21.1
-  spike.
+- **The populate step must use the runtime's userns fragment** (`paths.userns_args(rt)`), the same
+  mapping the pod is created with. A volume first populated under the default userns is unusable by
+  the agent: uid 1000 inside reads files owned by 999 and every write EACCESes. Verified in both
+  directions in the harnessed-8px.21.1 spike. Since #456 the fragment is runtime-dependent — see the
+  docker section below — which is why every step splices `*paths.userns_args(rt)` (and, on docker,
+  `*paths.container_user_args(rt)`) rather than naming a flag.
+- **Nothing is written inside a freshly created docker volume, ever.** `_chown_volume_for_docker`
+  runs a throwaway `--user root` `chown` container because docker — unlike podman — leaves a new
+  named volume `root:root`. An earlier version gated it on a sentinel *file in the volume* (to stop
+  `chown -R` walking the shared cache each launch, PR #461 review); it worked and broke the launch:
+  docker seeds a volume from the image's mount point **only while the volume is empty**, so the
+  sentinel suppressed copy-up, `~/.local` came up empty, and the agent died with
+  `hatago: No such file or directory`. The "have we done this" state lives *outside* the volume:
+  existence is asked **before** `volume create` (which is idempotent and cannot answer), and only a
+  volume this run created is chowned. The chown also lands with the volume **mounted at its real
+  path**, not `/mnt`: docker performs copy-up at container start, so a chown at `/mnt` was
+  overwritten by the seeded tree's uid-1000 ownership and `cp -a` then failed preserving timestamps
+  on the destination itself (`utimes` needs ownership, not write permission). It chowns to
+  `paths.container_owner_ids(rt)` — on docker the *invoking* uid with gid 0, never `CONTAINER_UID` —
+  see the docker half of the userns section.
 - **`fresh=` may destroy the config volume only because of what it holds.** Composition is purely
   additive, so the discard-on-fingerprint-change is what stops a dropped recipe's skills lingering
   forever; it is safe because credentials and the rw history dirs are *bind-mounted over* the
@@ -201,6 +222,18 @@ Two sub-invariants ride on this:
   `_run_container_installs` returns). A failed install must never certify content that was never
   finished — stamping at copy time left a matching stamp on a half-installed stack and every later
   launch skipped the rebuild silently (bd harnessed-8px.15).
+- **Host `--fresh` wipes the fingerprint stamp AND the stack's tools tree (#452).** Removing the
+  stamp alone forces the rebuild but mise treats an already-installed version as a no-op, so a
+  tool whose install is partial or broken survives every "fresh" launch; rmtree'ing the tools tree
+  is the half that makes the reinstall real. The tools tree is keyed by stack while the home is
+  keyed by (stack, harness), so this touches a tree the stack's other harnesses share — deliberate,
+  because `tools:` is a property of the recipe closure.
+- **Each recipe's container tests run through the shared test executor, right after its install.**
+  `_run_container_recipe_tests` reuses the install argv with the last element replaced — a second
+  composition is where the two would drift — and runs through `capability.run_test_command`, not
+  `proc._run`, because `_run` echoes captured output (wrong for a test transcript) and its callers
+  gate on a narrower failure set than the host seam does. Two asymmetries an "obvious" cleanup
+  would reintroduce, both found by adversarial review.
 - **`install.cache` bind-mounts the parent, never the leaf.** A cache miss *is* "the leaf does not
   exist", and podman statfs's a bind source before the script runs — a leaf mount turns every miss
   into `statfs …: no such file or directory`, i.e. the first build of any new recipe or bumped pin.
@@ -378,7 +411,35 @@ with any number turns the ownership guard into a rubber stamp again.
 
 The scope is honest in the docstring: this reasons about the *declared* argument only and cannot
 observe what podman actually did; a rootful daemon or a missing subuid range still ends in a
-silent EACCES, which only the live runner's `podman info` check (bd harnessed-rv2.3) can see.
+silent EACCES, which only the live runner's `podman info` check (bd harnessed-rv2.3) can see. The
+mapping invariants are pinned property-style by `tests/test_userns_properties.py` — the decisive
+assertion is `pod_host_uid() == os.getuid()` **iff** the mapping names the image's uid, and `None`
+for every other keep-id tail and every non-keep-id mode — so a "friendlier" numeric fallback fails
+the suite, not just a spike.
+
+Since #456/#457 there is a docker half, and it is a **coupled triple**, not three independent
+choices:
+
+- `DOCKER_USERNS_ARG` is `--userns=host` — not an omitted flag, which behaves identically on a
+  default daemon but not on one started with `userns-remap` (docker has no `keep-id`; it exits 125
+  on one, #456). `paths.userns_args(rt)` refuses any runtime it does not know rather than guessing
+  a mapping.
+- `container_user_args` states `--user <invoking-uid>:0` on docker: with `--userns=host` the
+  image's uid 1000 is *host* uid 1000, so on a uid-1001 GitHub runner the agent would otherwise
+  write as 1000 no matter who launched it (#457). The gid is **0**, not the invoker's gid: group 0
+  is the only group an uid the image never created is guaranteed to hold, and the base image pairs
+  with it by giving `$HOME` to group 0 with group perms equal to user perms ("ARBITRARY-UID
+  SUPPORT") — with the invoker's own gid, a uid-1001 agent cannot even enter `/home/harnessed`.
+- `container_owner_ids` is the same numbers the chown targets, which is why it is one function:
+  a volume chowned to `CONTAINER_UID` (or to the invoker's own gid) while the agent runs as
+  `uid:0` is the same defect wearing different numbers — every write into the config and tool
+  volumes EACCESes. `pod_host_uid()` answers `os.getuid()` on docker **only when the daemon is
+  rootful**; `docker_is_rootless()` returning `None` (unreadable daemon) is refused exactly like
+  rootless, because guessing rootful is a fail-open answer in precisely the state where nothing is
+  known, and `guard_ownership` gives docker's unresolved case its own message with its own remedy.
+  The same coupling reaches the firewall runner: on a pod-less runtime it must state the same
+  userns the agent got, because iptables run from a different user namespace than the netns it
+  configures returns EPERM — a mismatch confines nothing (#456).
 
 ## omp runs without `--profile`; the rw host agent dir is mechanism 1
 
@@ -428,7 +489,28 @@ Two adjacent rules keep this safe rather than sloppy:
   on both sides**: a lexical compare read a symlink into a stack's dir as "not harnessed's" and let
   an inherited config dir launder that stack's `trusted_config_paths` into the next launch — an
   over-grant (found by adversarial review). Empty is never ours, and must be rejected before the
-  resolve: `Path("").resolve()` is the CWD, which made an absent variable match.
+  resolve: `Path("").resolve()` is the CWD, which made an absent variable match. The same
+  narrowness rule now covers the whole session snapshot: `_restore_user_mise_env` drops a snapshot
+  value only when it matches harnessed's own shape, so a user's chosen `MISE_DATA_DIR` survives and
+  the *outer stack's* redirect does not — restoring that one verbatim reproduced the broken-shim
+  bug one level out (`mise ERROR omp is not a valid shim`).
+- **The redirect is scoped to PROVISIONING since #449; the agent session gets the user's mise
+  back.** A mise shim re-resolves its tool by argv[0] against `MISE_DATA_DIR` every time it runs,
+  so carrying the redirect into the session broke every shim on the user's own PATH — `node`, `gh`,
+  `python`, and the agent binary itself whenever the harness is one mise installed (`omp` was:
+  `mise ERROR No version is set for shim: omp`). `_restore_user_mise_env` restores the
+  *snapshot*, not a deletion, so a user who set their own variables keeps them. Its PATH
+  twin is the same decision from the other side: `_host_tool_bin_dirs` uses `mise bin-paths` — the
+  tools' real install dirs, exactly the declared set — and **never mise's shims dir**, which is not
+  stack-scoped (measured: 96 shims, 6 declared tools, 28 installs, including the user's whole
+  global tool set left by a release that redirected `MISE_DATA_DIR` without `MISE_CONFIG_DIR`). A
+  shim whose tool has no version in the stack config *dies*, and `omp` was one. The stack bin dir
+  leads the prefix (an `install.sh` binary that `tools:` also declares must keep winning), the
+  prefix is rebuilt rather than appended on the second call, and every entry under the harnessed
+  tools root — any stack's — is removed first, so an outer stack's tools cannot ride into an inner
+  launch. `mise bin-paths` also runs with `cwd=<mise root>`, because mise merges configs from the
+  cwd upward and running it in the project would put the *project's* `mise.toml` tools on the
+  agent's PATH.
 
 ## toollock exists because of four measured mise facts
 

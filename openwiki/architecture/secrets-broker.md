@@ -3,9 +3,6 @@ type: architecture
 title: "The host secrets broker: one varlock proxy per instance (Topology B)"
 description: "The host-side secrets broker (Epic #388 Phase 1, Topology B): why a host process holds the real credentials, the @proxy plus --no-secrets launch gate, the spawn/poll/record/stop/reconcile lifecycle, the pod's pasta door at 169.254.1.1, fail-fatal and fail-safe teardown semantics, and the five-field state record that leaks no secret by construction."
 tags: [secrets-broker, varlock, credential-proxy, topology-b, pasta, egress-firewall, teardown, reconcile, no-secrets, pod]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
 sources:
   - id: openwiki-source-f82224b7b5b27300d9ecc2dc
     resource: repo://catalog/base/egress-firewall.sh
@@ -32,6 +29,9 @@ sources:
   - id: openwiki-source-bbf9cc1f144f5efff8ae1505
     resource: repo://tests/test_module_boundaries.py
 generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 ---
 
 # The host secrets broker: one varlock proxy per instance (Topology B)

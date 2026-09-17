@@ -44,8 +44,8 @@ sources:
     resource: repo://tests/test_install_script.py
 generated: { by: "openwiki/0.4.3", at: "2026-09-09T09:34:57.295Z" }
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-09T09:34:57.295Z
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 ---
 
 # Precedence: who wins when sources conflict

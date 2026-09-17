@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8ceacdcf5585b5de2dbf1f6c781a06c373839b992e6224fde207809af770f424",
+  "pageVersion": "sha256:748bd8da53c5d1f053ad0e9b965b4845388280b342acb410a6c51a6eacda1b1f",
   "claims": [
     {
       "id": "claim_252d58a4136d4bab8deb980788528260",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -30,7 +30,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         },
         {
           "resource": "repo://src/harnessed/synclinks.py",
@@ -52,7 +52,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         },
         {
           "resource": "repo://src/harnessed/synclinks.py",
@@ -70,7 +70,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -104,7 +104,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -164,7 +164,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         },
         {
           "resource": "repo://src/harnessed/staleness.py",
@@ -192,7 +192,7 @@
         },
         {
           "resource": "repo://src/harnessed/volumes.py",
-          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+          "version": "repo-file-v1:sha256:7053ebf8b10b4bf4e21cbe3b13f5a2b393f95af58e66004babe38f6507f6655c"
         }
       ]
     },
@@ -206,7 +206,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -216,11 +216,11 @@
       "evidence": [
         {
           "resource": "repo://catalog/base/Dockerfile.harnessed-base",
-          "version": "repo-file-v1:sha256:d2c857bf490059d5ce6b311d578439f77102a30a41b6e7a257493d6df38e6359"
+          "version": "repo-file-v1:sha256:c092674f565a7a886a953d59a5fafa87dcfa26e391ec6137bafbc34fc99bf79f"
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -234,7 +234,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -244,7 +244,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -262,7 +262,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -276,7 +276,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -290,7 +290,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         },
         {
           "resource": "repo://src/harnessed/schema.py",
@@ -304,7 +304,7 @@
       "evidence": [
         {
           "resource": "repo://catalog/base/Dockerfile.harnessed-base",
-          "version": "repo-file-v1:sha256:d2c857bf490059d5ce6b311d578439f77102a30a41b6e7a257493d6df38e6359"
+          "version": "repo-file-v1:sha256:c092674f565a7a886a953d59a5fafa87dcfa26e391ec6137bafbc34fc99bf79f"
         },
         {
           "resource": "repo://src/harnessed/emit.py#L1062-L1095",
@@ -328,7 +328,7 @@
       "evidence": [
         {
           "resource": "repo://catalog/base/Dockerfile.harnessed-base",
-          "version": "repo-file-v1:sha256:d2c857bf490059d5ce6b311d578439f77102a30a41b6e7a257493d6df38e6359"
+          "version": "repo-file-v1:sha256:c092674f565a7a886a953d59a5fafa87dcfa26e391ec6137bafbc34fc99bf79f"
         },
         {
           "resource": "repo://src/harnessed/emit.py#L1062-L1095",
@@ -346,7 +346,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -356,11 +356,11 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         },
         {
           "resource": "repo://src/harnessed/volumes.py",
-          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+          "version": "repo-file-v1:sha256:7053ebf8b10b4bf4e21cbe3b13f5a2b393f95af58e66004babe38f6507f6655c"
         }
       ]
     },
@@ -370,11 +370,11 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         },
         {
           "resource": "repo://src/harnessed/volumes.py",
-          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+          "version": "repo-file-v1:sha256:7053ebf8b10b4bf4e21cbe3b13f5a2b393f95af58e66004babe38f6507f6655c"
         }
       ]
     },
@@ -384,11 +384,11 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/hosthome.py",
-          "version": "repo-file-v1:sha256:a68e3eceb8fce207dfa5992008ef59cd5792ee877506e1f96fdacb2627370871"
+          "version": "repo-file-v1:sha256:df041e5887f29174ebb8589b14ed9464bf026fe3e408c721798bbead2f4b6c69"
         },
         {
           "resource": "repo://src/harnessed/volumes.py",
-          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+          "version": "repo-file-v1:sha256:7053ebf8b10b4bf4e21cbe3b13f5a2b393f95af58e66004babe38f6507f6655c"
         }
       ]
     },
@@ -398,7 +398,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/volumes.py",
-          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+          "version": "repo-file-v1:sha256:7053ebf8b10b4bf4e21cbe3b13f5a2b393f95af58e66004babe38f6507f6655c"
         }
       ]
     },
@@ -408,11 +408,11 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/paths.py",
-          "version": "repo-file-v1:sha256:ceb67c0d5557b4b72531e5d02ce6e36281a96abb7305ff547eb1d20e27000ea0"
+          "version": "repo-file-v1:sha256:b2f4c8d4cc2a7dacddbfc9e47578dc19b0a00f866ee0335bea907783f19f732a"
         },
         {
           "resource": "repo://src/harnessed/volumes.py",
-          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+          "version": "repo-file-v1:sha256:7053ebf8b10b4bf4e21cbe3b13f5a2b393f95af58e66004babe38f6507f6655c"
         }
       ]
     },
@@ -422,11 +422,11 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         },
         {
           "resource": "repo://src/harnessed/volumes.py",
-          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+          "version": "repo-file-v1:sha256:7053ebf8b10b4bf4e21cbe3b13f5a2b393f95af58e66004babe38f6507f6655c"
         }
       ]
     },
@@ -436,7 +436,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/volumes.py",
-          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+          "version": "repo-file-v1:sha256:7053ebf8b10b4bf4e21cbe3b13f5a2b393f95af58e66004babe38f6507f6655c"
         }
       ]
     },
@@ -456,7 +456,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/volumes.py",
-          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+          "version": "repo-file-v1:sha256:7053ebf8b10b4bf4e21cbe3b13f5a2b393f95af58e66004babe38f6507f6655c"
         }
       ]
     },
@@ -486,7 +486,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         },
         {
           "resource": "repo://src/harnessed/scan.py",
@@ -504,7 +504,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -524,7 +524,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -578,7 +578,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -626,7 +626,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -664,7 +664,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         }
       ]
     },
@@ -674,15 +674,15 @@
       "evidence": [
         {
           "resource": "repo://catalog/base/Dockerfile.harnessed-base",
-          "version": "repo-file-v1:sha256:d2c857bf490059d5ce6b311d578439f77102a30a41b6e7a257493d6df38e6359"
+          "version": "repo-file-v1:sha256:c092674f565a7a886a953d59a5fafa87dcfa26e391ec6137bafbc34fc99bf79f"
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
         },
         {
           "resource": "repo://src/harnessed/paths.py",
-          "version": "repo-file-v1:sha256:ceb67c0d5557b4b72531e5d02ce6e36281a96abb7305ff547eb1d20e27000ea0"
+          "version": "repo-file-v1:sha256:b2f4c8d4cc2a7dacddbfc9e47578dc19b0a00f866ee0335bea907783f19f732a"
         }
       ]
     },
@@ -692,7 +692,7 @@
       "evidence": [
         {
           "resource": "repo://catalog/base/Dockerfile.harnessed-base",
-          "version": "repo-file-v1:sha256:d2c857bf490059d5ce6b311d578439f77102a30a41b6e7a257493d6df38e6359"
+          "version": "repo-file-v1:sha256:c092674f565a7a886a953d59a5fafa87dcfa26e391ec6137bafbc34fc99bf79f"
         }
       ]
     },
@@ -712,17 +712,63 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launchenv.py",
-          "version": "repo-file-v1:sha256:4be22cd21919ac66ee26e22e37b5fc2f403dcf7beae7626fb407105adb5bef01"
+          "version": "repo-file-v1:sha256:ac34a08af5fde24499f5fed231addd685ab686401bbb6829a7dda3f0095f1147"
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:1ba35c4b0859e9ff56471c90689ea2c9136b2fc7dc11470e5d503bc2f5c4dc4b"
+          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+        }
+      ]
+    },
+    {
+      "id": "claim_d8b2c09493f942df872ef58611db77cf",
+      "statement": "tests/test_build_cache_mounts.py pins the cache-mount contract hermetically against the shipped Dockerfiles and emit.CACHE_MOUNTS: every downloading RUN mounts its cache with uid=1000 and gid=1000, every cache target is pre-created before its first mount, no cache mount hides a path the image must ship, the pnpm content-addressed store is never cached (test_no_emitted_layer_mounts_the_store asserts it absent from CACHE_MOUNTS), every cache-mounted RUN is followed by the USER root + chown $HOME $HOME/.cache restore naming ~/.cache explicitly, and the container executor mounts a stack-independent shared ~/.cache download volume (compared across two stack names). A podman-gated class additionally asserts the ownership property in the shipped image.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/emit.py#L1085-L1095",
+          "version": "repo-lines-v1:sha256:68ecb8caa47d39fb49ac10862217bc0dbc32a2d5ff3c60e35fa907e26f9ee4b7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1NjJkYWRjZDFiOGUwM2Q3ZjZjNjEzZmNhZTJkNmE5YjljMzYzZTZmMWNlZTQ3MTJmMWRiZjRlZDNmNmI3ZmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJmNzAzNjQ1MWYyY2JjOGI4Zjg5MmMzMjcyMjBkYWUxOGJmMGJkMGVjOGMwZGI1NmYyZjE4MDZlZTUyMmZiZjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4NGFlZTEzNzFjMjgzNzI2Mzc3OTE4YjNjNzM0ZmE2OGQxYjZhZDljNjVjYTZjMWRjYzg4ZTgzMjliYjUwMjYifQ"
+        },
+        {
+          "resource": "repo://tests/test_build_cache_mounts.py",
+          "version": "repo-file-v1:sha256:9d06243068c55045595a156d7c42a12b7d34c949ba24a4db85a32e60d218fc33"
+        }
+      ]
+    },
+    {
+      "id": "claim_b45894f582494eb19d015113eeff7262",
+      "statement": "The docker-userns ownership layer (#456/#457) makes the base ship an arbitrary-uid-safe home: $HOME (and ~/.ssh, ~/.local) are chowned ${USERNAME}:0 mode 2775 (setgid + group-write, group 0 being the one group any invoker uid holds on docker), ~/.cache recursively (56K — ~/.local's 1.6G of toolchains is deliberately skipped), and ~/.claude is deliberately ABSENT from the image because docker's copy-up would re-apply an empty image dir's ownership on every mount. The base proves the contract at build time as USER 4242:0 (a uid the image never created), since a probe run as uid 1000 — the owner — is blind to that defect class. On docker, volumes._chown_volume_for_docker chowns only volumes created THIS RUN, at their real mount path (not /mnt, which docker copy-up would overwrite), because a have-we-chowned sentinel inside the volume would suppress copy-up and ship an empty ~/.local.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/Dockerfile.harnessed-base#L296-L418",
+          "version": "repo-lines-v1:sha256:e26aede59ff76fe63a3d974b10f25a8b2bc7ed32e5c2db17d24c10032c974436:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4ZTM1YmY5M2QyYjY3MzM5YWU5OWVlYWMyMDcxNDY5ZjJkNGJkM2RlOWNiMTcyZmQ1YzllNzMyYmNhODBhYjY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJkN2MwN2Q1YjY5NjVhYjVjZTkzMTIyOWRlYzQwNGZhMTJjMGQ5YzA0MTdmNzZjZmZhM2ZiMTk3NDA1ZTk3OTI4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzYTdhMWMyZThhZGFjZWUwYWU0MTEwMWRjZTBjMjc3YTYyMjU2OTQ4ZDA5OGU0ZDkzZDU0MjJjNzY1YWZmZmZjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MiwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlNWNlNWFjOGQ1MjQ2NDZjZWJmZmM2MjUxOWZiNTRjNWY0NmU1NmZlNTAyYjliMTc5NDdhOWNkYzkyNDdiMjhhIn0"
+        },
+        {
+          "resource": "repo://src/harnessed/volumes.py#L98-L160",
+          "version": "repo-lines-v1:sha256:f21306643ced0d6f4c52213108dd57193303e41d21f534a8cba27ff37c6737c3:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwNTZiMzI2MmM3YTk5MjMyNGVlNTU5NGY4MjIyZGI1OTkzNDUxMWVlNmU1NWJmODgxYTkxZDkxZWY1ZDE3OTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFhMzExYWY2MTNmNzEwZDRmNmZhMzBiNDQwMTcxM2MzMjE1NmJjMDNjZDdhOTU4NzlmZmFjYWQwYjFhNDI5OGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3M2QxODc0ODQ4MDZiNmExOGJjMzYwNTQzYjllOGU4MDQxOTViY2UzMmUxNmQ1ZjEwYWYzMTY2MGFlOGIzYTAifQ"
+        },
+        {
+          "resource": "repo://tests/test_build_cache_mounts.py#L286-L341",
+          "version": "repo-lines-v1:sha256:d30e9ab0063052b75b889ecd26a756cc1d6fd7c0a58645e7b56fd8509e1f1224:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmZWVkZGU1Zjc3NTZhMGM2MDM2MzIxOTNiYTIwNjBiMmQzOWZjODFmNGM2MzJkMjI2YjRiOGRjZDU0ZWU1MjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDMyZTk2NGQwOTMyMzUxZTVkMTg1MjY5MjgxYjE3MWEzYTA5YjA4YjI4NmU2NjFlYTQ3MDMyM2M4MmViNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE3N2ZlYTE4NjlhYmI1MmI1YjU4NWQxZGVkYjBmYzljMzBjMzk0N2RkZWZkMTQ4MTM3ZjdlNmQ2YzcxOTMzYjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZhZjRiYzNmZTYwNDFmNWQ2OWVhZjUyODZlNGI5ZGI1YjUzNjlhMmUxODY5NDBkMmUzNjFiYzNkNTQ1MzI1NmYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_239d2c0d2b904798b3e0de1357cf9aa8",
+      "statement": "tests/test_launch_parity.py pins build/launch parity as an AST lint, not a semantic guarantee: it collects every harnessed-package helper called by container_run plus its ContainerBackend methods, subtracts those called by _launch_host plus HostBackend, and fails unless each container-only name appears in the hand-maintained CONTAINER_ONLY ledger with a written reason (and fails on stale ledger entries). _build_stack is in that ledger (host assembles in-process every launch) as is _ensure_stack_volumes (host mirror: _materialize_host_home + _host_run_installs). The lint resolves helpers package-wide, not launcher-only, so it keeps seeing helpers as launcher.py is split into modules, and skips ExecutionBackend subclasses because the two backends naming themselves is the seam working.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3290-L3308",
+          "version": "repo-lines-v1:sha256:c836400d81f98748624844bcd5e7ea0b20efe17d17963a9bcba1dc02af6c931b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxNDVhZDliYTMxNzY2MWFiMzRjYmJmZmM2YWMyMzMzOGNhYTNkMjJmNTAxM2UxMWE0YTM5NWY4NjQxNWVlOWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDMyZTk2NGQwOTMyMzUxZTVkMTg1MjY5MjgxYjE3MWEzYTA5YjA4YjI4NmU2NjFlYTQ3MDMyM2M4MmViNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU5Nzc5NDlmMjUxMjY5ZTM1ODMxNTZmNmVhMDY4ZjJlZGE3MGNhMWViODA5MTFhMTQ1MDM1MTZlMGJiNTJiY2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBjZDJjNGNmY2ZiZTY5NmMxMzdkODJhNjgzYmI1MjMxZjQzYTA2NjU2MjU5Njk1Njk4NTYzODU5N2RhMmNlNzkifQ"
+        },
+        {
+          "resource": "repo://tests/test_launch_parity.py",
+          "version": "repo-file-v1:sha256:bbd2a37ccf050532c18802569b500b458bd362fee575519d6cc76bc45b163c83"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-08T23:17:55.419Z"
+    "by": "openwiki/0.5.1",
+    "at": "2026-09-16T21:10:52.541Z"
   }
 }

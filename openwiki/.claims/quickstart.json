@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f54c194fa58edba49bbc0c1334b4021044bc9218c53dbb4fb478b4224ab37362",
+  "pageVersion": "sha256:2c229b43b78f976b9de42cd16534e692934be8e63eb7f1c0bdf28e88b7455648",
   "claims": [
     {
       "id": "claim_f72064555dd644cb92b79992ff4435c3",
@@ -36,15 +36,15 @@
     },
     {
       "id": "claim_f1e13dfc7a934a8590fb7dabb37a1a75",
-      "statement": "The suite must never be invoked as bare pytest or a hand-composed mise/uv/pytest line: tools/run-tests.sh forwards pytest arguments (whole suite, one file, `-k` filters, `-x`), and CI is held to the same entry point — live.yml invokes `tools/run-tests.sh -v` with HARNESSED_PODMAN=1, and tests/test_live_workflow.py fails the workflow definition if it hand-composes a pytest line, so a local green and a CI green are evidence about the same thing by construction.",
+      "statement": "The suite must never be invoked as bare pytest or a hand-composed mise/uv/pytest line: tools/run-tests.sh forwards pytest arguments (whole suite, one file, `-k` filters, `-x`), and CI is held to the same entry point — live.yml invokes `tools/run-tests.sh -v` with HARNESSED_PODMAN=1 (plus four named varlock-proxy deselects tracked in #462), and tests/test_live_workflow.py fails the workflow definition if it hand-composes a pytest line, so a local green and a CI green are evidence about the same thing by construction.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/live.yml#L145-L159",
-          "version": "repo-lines-v1:sha256:b9ebcd19818d64ff38a6fbfc5c20cbd5fc14689154e973132f7e3860009ce7a7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY4NDdlNjQxMDEwNmU4MGQ1NTI1OTdhZWZiOGJhMjJhZTEwM2E3ZTVkZTM2YzY1YTQ5MzNkMDIzNzUwNzdmM2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwZGZhYTQyODBkMWEyNjJlODI5ZjQ5NzZkOTkyOGFiOTQxNGM2YTU3NTFkMGMxMWJhZGEzMDYyZDIyOGNkNDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjljYjVkODlhOThhOTBkMDkwZTg0OWU1YTZjMzkyYzQxODg4MTAxMTZiZDI3OGI3NWZjYWY3MzBmYWE0OTMyYTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhjODBkOWU3Y2QzYWFjNzg4MTVhYzI2ODJiNWZmMjdjOGM0NjU3YzJmMWE3YzE0MjA4ZDhjMjAzZmVkNWYxOWQifQ"
+          "resource": "repo://.github/workflows/live.yml#L164-L189",
+          "version": "repo-lines-v1:sha256:bf7927322c206228ccf4be81703cd17287d22ce0682cf917391fc8822f3a5a0f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5NTJmZWNmZjIzNTAxNjRkZjk0ZWE0MjRiMTU2Njg1NjVlNTdhNTM1NDc4Y2JmZjg2ZjAzOGI1NmU4Yjk0OTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2YmE0Nzk3OTdjZDhkNDEwODVjNGE2MDRiYjY0OTNlZTE0MWUyY2E1OWRlYWY2YTkwYmFhNjA2NGIyMzUwYTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFmNDliY2YwZDA0ZDZlNGIzZjg4NjA0NzA3M2NiODBlYTM1NjdlZDViODM2ZjE3NWRmMjkyOTlkODg1NTNlYjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxOGFhZGE3NDQyZTk5NjgyODNhNjJmY2NlYzA1Y2RiNjFjZWVlZmJjMTUzY2UxYWM2ZmU4ZmNlMjhiNDI2OTQifQ"
         },
         {
-          "resource": "repo://tests/test_live_workflow.py#L96-L111",
-          "version": "repo-lines-v1:sha256:f21432f83c30e5880abb697c12d6f1851cdc055fd79403209bfb4bd986ed266d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2ZWYwZDRhMDNjZGU0YmE3MTQzNzcwNjI5MThiMzFkYjhiMjkzMTdkMzEyNjRjNmM3YThmMDhlMzc3YzdkYWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5YTZkNWE0MDAxMGI4NTdiNDZlMWVhNmJhMTZjZjI2NjlkZmM4MzFiMjJiYTU5ZGI4MGM4NjNkZjkzY2Y4NTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUwNjk1MTE0ZTUyMzVmNjliZWUyMDZmNjVjNGQ2MjM4NGM3M2I1ZDU5YTFlNTk0YTUwOTBkNzUzYzYwMWUwNzMifQ"
+          "resource": "repo://tests/test_live_workflow.py#L96-L100",
+          "version": "repo-lines-v1:sha256:67e523e036498bdbb0f42ef68708a7a246cd2c1f1fb798235d92b4f9449e531d:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODZlZjBkNGEwM2NkZTRiYTcxNDM3NzA2MjkxOGIzMWRiOGIyOTMxN2QzMTI2NGM2YzdhOGYwOGUzNzdjN2RhYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjFkMmU1ZGMwNTQ1MDNhNDlkY2JjN2M3OWI5YjNhYjNmYTE5OTA0Yjg3NTc0OGUyZDQwZWI4Nzk0YWY1MDI3ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjNkZjJhY2YwNmU4YzNmMDNjNzEzNWM2ZThhYzVhOWNhNTQzMmFiZTA2YTc0YWNhMGZkZDlhNTNhMDA4Zjk4NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDA3NzZiNDg3ZTE3NWE1YzBjODVjOGFmNjJlMjUzNTRmNmU5MTgwMTM0OWM0YTQxZGJhNTMwZmRiODUwMTUxNSJ9"
         },
         {
           "resource": "repo://tools/run-tests.sh#L21-L39",
@@ -250,37 +250,33 @@
     },
     {
       "id": "claim_d3952d6f72764251b111922dc24ea210",
-      "statement": "podman or docker is required only for live work — the live layer behind HARNESSED_PODMAN=1, `harnessed test`, and `container-run` — while the hermetic pytest suite and harnessed-tools' emit-only verbs (assemble never invokes podman/docker) run with no container runtime installed; _runtime() prefers podman, falls back to docker, and exits when neither is on PATH.",
+      "statement": "podman or docker is required only for live work — the live layer behind HARNESSED_PODMAN=1, `harnessed test`, and `container-run` — while the hermetic pytest suite and harnessed-tools' emit-only verbs (assemble never invokes podman/docker) run with no container runtime installed; _runtime() delegates detection to paths.active_runtime() (moved there for #456 so runtime choice has one source of truth), prefers podman, falls back to docker, and raises typer.Exit(1) when neither is found.",
       "evidence": [
         {
           "resource": "repo://.github/workflows/test.yml#L29-L36",
           "version": "repo-lines-v1:sha256:d65cbd2adb312c1f0994b861d12d0208703fb3ca6367a07a4ac49daee8b640d0:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTc3NTVkNWQ2ZDdlNDFiZGMzNjE1OTY3MTk5Njk1NzFjYWU4YjIxZTliMzlmNDcwMjIwZjFkZjYxNGY5OTAxNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDViOGQ2MDM5NThmODExY2ZjMzBhNjcxYWNkZmYxNTQwZDM2YjVkM2E1NDIyMGEwODg2MzUwNjM1ZGZlNzlkMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzFkYzlhODBhZTQyZGRkNmVkZjk0MTQ4YjQyZDQyYjY3NzNkZjJmNWQ1NDA0NjU0NmMxZTk1MWJlN2QyODExNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmY5ZTI2MTU2MDMxZTE4MjIxNTQ0MTk1N2FlZGEyNjBhNzdjMGJlMjg1NmRkNTYxYmIxYTU3ZDhhMTkxNTk5MCJ9"
         },
         {
-          "resource": "repo://src/harnessed/cli.py#L1-L9",
-          "version": "repo-lines-v1:sha256:3aa3540a912e9b77aacd0576355d0fee00055e9892f17b9c146a57d61ddc08e7:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDM3OWY1N2I0NTdiMjQ1MDUwZmI4YjYzNjIzMGNiMmZmODZmOWNkOGJmZjExNzM3NzJkN2UxM2YwMzMzMzJlZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTMwM2VjZGQ0YTRkMTBmMTljNzNmZDQyZmQxMjQzN2ZkMzM1NGE4MjY4MTYwNWRhNTI1NWE5N2EzOTA2OGRiYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTViNmU4NzA2YjQzMDQ3ZjJhNmRiNjdmMTMyNjM4NTk1NjA0ZTY3ZjM2OTY2ODc2Y2UwMTU4ZjAwNTNlNmJkMSJ9"
-        },
-        {
-          "resource": "repo://src/harnessed/ctrquery.py#L22-L28",
-          "version": "repo-lines-v1:sha256:1afee572e659f25cc5c71e583c11c23b51dcbb270b04acc16d85f1fefd759377:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGRmZjBhNzE0MWI0MTIwODU3ZTYwN2Q4YTE5NDQ4NTgzODg2MDA1YTFhYzZiNTZhYWNmY2RhYWQ2NjdhMjcyOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDU2Mzg0OTRjNTEyYjM2MGZmMTVjYTU4YzFjZThmN2I5NDhjNmMzZWM1NGY4ZTU3ZDVlMmYzNTY0N2NhMDE1NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmE4ZGYyZjhmNmRjNmFiZTFhYzE5MmRkNDk5OGJmN2JhYjk3MDdjZTYxYWVkMzYwYTFhNWY0NDI1MWVkMTA2NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDU3OTVlNWUyY2ViZjc5NjQ4Y2EzZTM5ODNmYWI0MGUyZTEyMTVhM2M5ODlmZDM3OWQwODViYTQ5YzJhNDA3YiJ9"
+          "resource": "repo://src/harnessed/ctrquery.py#L21-L35",
+          "version": "repo-lines-v1:sha256:67c2a3d0a8fbe1b7b487d6a38766613175bc2cd3c5d9462c2e87d16e7ad09e22:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkZmYwYTcxNDFiNDEyMDg1N2U2MDdkOGExOTQ0ODU4Mzg4NjAwNWExYWM2YjU2YWFjZmNkYWFkNjY3YTI3MjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjZTZmMzM3Y2JhMjc4MTBjZjM1ZDdkMzgwZTI2MGE4ZDIxZjkwNzFiMGUzM2QyODM0ZjNkMjAyMzAwOTQ1NDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhOGRmMmY4ZjZkYzZhYmUxYWMxOTJkZDQ5OThiZjdiYWI5NzA3Y2U2MWFlZDM2MGExYTVmNDQyNTFlZDEwNjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1Nzk1ZTVlMmNlYmY3OTY0OGNhM2UzOTgzZmFiNDBlMmUxMjE1YTNjOTg5ZmQzNzlkMDg1YmE0OWMyYTQwN2IifQ"
         }
       ]
     },
     {
       "id": "claim_992c993b4a6f4b09b518602cba368837",
-      "statement": "A green hermetic suite run proves no container behavior: it performs no podman build and no harnessed container-run, the HARNESSED_PODMAN-gated tests skip on a podman-less runner (with conftest printing a 'live verification' section naming what did not execute — a skip is not a pass), and the gated layer's only home is live.yml on push-to-main plus a nightly cron, deliberately never on pull requests.",
+      "statement": "A green hermetic suite run proves no container behavior: it performs no podman build and no harnessed container-run, the HARNESSED_PODMAN-gated tests skip on a podman-less runner (with conftest printing a 'live verification' section naming what did not execute — a skip is not a pass), and the gated layer's only home is live.yml on push-to-main, a nightly cron (04:00 UTC), and on-demand workflow_dispatch — deliberately never on pull requests, though an author can run it against a branch via `gh workflow run live.yml --ref <branch>`.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/live.yml#L3-L39",
-          "version": "repo-lines-v1:sha256:59409525e3eeecfdfed373684e60a5f7718f2602bddd726ecbe4a000706a9eb1:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwNTAxODVmMmYwMzk5MTE5OGM5OTc1ZGJjYmNlNzFlYWFiYjk2ODk2MmYwZWM4Mzk1MDk5M2NmOGY1N2I5N2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNTBmNGNiNWE3MDgyN2Q4NWMxZTE3NTU4YzhhZGEzMjNhMGNkNjFjM2YwN2FkZDdlMGM4NTA5ZTRjNjcxMTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY1MDRlZGUxMzYzYTZlNTk2MzZkNmE5NTllZGUwYzkyMWVjN2E3NGYzZTk2YTAwNTU1ODUwNTA4ZjNiOTNhNDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyNWFlY2UzZWFlNTZmYTJjZjE5OGNmMmIyMzNjNDFhY2UzYjM1ZjU3NTY1M2JmZDBjNWMyOTY1YjNiNTNmYTYifQ"
+          "resource": "repo://.github/workflows/live.yml#L1-L51",
+          "version": "repo-lines-v1:sha256:9d3723e1c119f65e68f41845e54b54a3d163d12f2685cee0185ed44a2b0bbad4:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkYTA5NWNlOTg4YzA4YzExZjEwNWU4NzVmOWMxODY5ZDEzYzQ0MTI3Y2Q2NTgzZTYyOWRiMDEzNmIwZDA0MTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNTBmNGNiNWE3MDgyN2Q4NWMxZTE3NTU4YzhhZGEzMjNhMGNkNjFjM2YwN2FkZDdlMGM4NTA5ZTRjNjcxMTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyNWFlY2UzZWFlNTZmYTJjZjE5OGNmMmIyMzNjNDFhY2UzYjM1ZjU3NTY1M2JmZDBjNWMyOTY1YjNiNTNmYTYifQ"
         },
         {
           "resource": "repo://CLAUDE.md#L104-L121",
-          "version": "repo-lines-v1:sha256:5edc6b66d1beea302fac9288ea38aceeecc90dc74ad6393934b2061b12ea2170:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlN2Y0YjM2YWM5Y2UwZDA2ZGNkNzJjY2MyNGViMjkwZWNjYTNkYWRjZWUzNmNkNjQxNjg5YTI4MDQ4Yzg1NDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjMDQxYmQzYjQ3ZjE2ZDZiODFiMWMzNzMxMGExODgyNDAxYzFiNmNhOTMwZjJkYWIyMTg2ZWEwNjQwNTllN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBmZDdmNDA5ZmE5YjM4OTQzNWRjM2FlYzFhMjNkMjVkNzQ5YTNiYTJiNDRlNGYyNjRiMTg0ZDk5MmI0NmM0ODIifQ"
+          "version": "repo-lines-v1:sha256:5edc6b66d1beea302fac9288ea38aceeecc90dc74ad6393934b2061b12ea2170:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlN2Y0YjM2YWM5Y2UwZDA2ZGNkNzJjY2MyNGViMjkwZWNjYTNkYWRjZWUzNmNkNjQxNjg5YTI4MDQ4Yzg1NDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjMDQxYmQzYjQ3ZjE2ZDZiODFiMWMzNzMxMGExODgyNDAxYzFiNmNhOTMwZjJkYWIyMTg2ZWEwNjQwNTllN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRkYmMxM2Y5ZDg4NTA0NGQ4YzYzYTk2MmY4MTQxMDAxY2FiOTYwNDFkOWQxZjk4ZmUxNWQ2NTA2OGI1ZGI2MDAifQ"
         },
         {
           "resource": "repo://tests/conftest.py#L11-L27",
-          "version": "repo-lines-v1:sha256:4a10c58635d606de03d8ad1182fbf8e8ee9b865a8833833481c6a3608bd1ad1c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlMGI5ZjY5MTg2NWE0OGM3Y2Q0ZDI1M2NlMmMzOTUxN2RkYjcwMDg0MDI5MzRmMGE3MjI0M2JjNjllOGRlNDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRmNjljNDA0MGQ4NDZhZWEzODhlYTU2NGIzYjI3NTAzMGU1OTg3MTMwMDE1YzUzOTg5MDM4MGNjNDNjODI0YmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc5NDAwOWQ1ZGEzMzFhZTFiNmQyMmQ5YTA3ZjhhMWU4MDIxOThhN2NiNzI2MmM5NGI5NzdmOTEwOWE5OTUzMDYifQ"
+          "version": "repo-lines-v1:sha256:486ba6f1cf2f0c1ea2d776ec4cb28a62562640b27a17937c191e5d5768012273:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4MWJiNzVmN2E3NjMxM2IzM2NkMTRhNDNmZDhhZTIwM2U0OTUzODc4MWM1MjIzMjk5NmNiY2NmODM1NTEzY2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkN2I4M2U1NTM5YmE0MmVhMDgzZDQyOTdjM2EzZDhkMDYzM2M2MTExZTRmZjU3NjcyYmQ3NjY3ZmU3MmZjZjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRmNjljNDA0MGQ4NDZhZWEzODhlYTU2NGIzYjI3NTAzMGU1OTg3MTMwMDE1YzUzOTg5MDM4MGNjNDNjODI0YmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlNzMxZGVjMzUxZjZlODM4N2I2ZTZmZTE4ZTYwOGFkMjc1YTkyM2M1ZWRlNWViZWRmNjcwN2VkYTJmNDEwZDYifQ"
         }
       ]
     },
@@ -346,11 +342,11 @@
     },
     {
       "id": "claim_dd676bcfa69e47cd922a4e3b223e5ad8",
-      "statement": "mise.toml's [tools] block declares and pins the four non-Python tools the dev loop and the wiki tasks depend on — shellcheck 0.11.0, npm:pyright 1.1.411, npm:varlock 1.16.1, and npm:openwiki 0.4.3 — rather than assuming them on PATH; the npm:openwiki entry additionally requires two escape hatches or the install fails in ways that do not look like packaging problems: trust_policy_excludes (fastq ships no provenance attestation at 1.20.2, so the no-downgrade trust policy refuses the whole install) and allow_builds (the mise install backend denies dependency lifecycle scripts by default, and better-sqlite3's install script is what produces better_sqlite3.node — denied, the install still reports success and every openwiki run dies at 'Could not locate the bindings file').",
+      "statement": "mise.toml's [tools] block declares and pins the four non-Python tools the dev loop and the wiki tasks depend on — shellcheck 0.11.0, npm:pyright 1.1.411, npm:varlock 1.16.1, and npm:openwiki 0.5.1 — rather than assuming them on PATH; the npm:openwiki entry carries one required escape hatch, allow_builds = [\"better-sqlite3\"], because the mise/aube install backend denies dependency lifecycle scripts by default and better-sqlite3's install script is what produces better_sqlite3.node — denied, the install still reports success and every openwiki run dies at 'Could not locate the bindings file'. The former trust_policy_excludes hatch is gone: fastq 1.20.3 is attested again and every `^` range in the 0.5.1 tree resolves there, so a future unattested fastq fails loudly at resolve time and the exclude is re-added with that exact version rather than pre-emptively widened.",
       "evidence": [
         {
-          "resource": "repo://mise.toml#L1-L24",
-          "version": "repo-lines-v1:sha256:ac0c45dc78fad0656cf95658ec3231f18bf7e35adf4ef9a212c7f3b726cde8ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3NWI2ZWExZGZiMmEzOGI5MzVkYTNjYjNjY2Q5ZmY0M2FmY2RiNTczZjY5NGNhMjBmODQ2ZThmZmVjOTkyNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyZGZhZjNmNTlmYzRiNmUyYWE0NTc3ZjJjNzEyN2Y3YmRkOWMzNWM5OWQ5NjQ5NzZkZDY5ZmIxNWNkYzI5NzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliMDlmODFhYmU0ZGNkMDY3NmRlZjM3NDlmMzEwMTFjYzFmYjk1NDBmZjJhZDM4M2Q1NWQ4YzQzOWEwYTdlYzQifQ"
+          "resource": "repo://mise.toml#L1-L27",
+          "version": "repo-lines-v1:sha256:56fb31d4333cca57deabe1283afc4db36ae82877a31c398343d0d8cd7215dd25:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3NWI2ZWExZGZiMmEzOGI5MzVkYTNjYjNjY2Q5ZmY0M2FmY2RiNTczZjY5NGNhMjBmODQ2ZThmZmVjOTkyNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0M2JhM2NkZjQzNmRkNGU5ODczOWJlN2U4NThkNjc0OGE4NmQzYjA5NmU2NjU3ODJkM2ZiMmNhYWE4NTA2NWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliMDlmODFhYmU0ZGNkMDY3NmRlZjM3NDlmMzEwMTFjYzFmYjk1NDBmZjJhZDM4M2Q1NWQ4YzQzOWEwYTdlYzQifQ"
         }
       ]
     },
@@ -366,7 +362,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-09T09:34:57.295Z"
+    "by": "openwiki/0.5.1",
+    "at": "2026-09-16T21:10:52.541Z"
   }
 }

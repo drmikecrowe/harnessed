@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1ddb01dd09f78664964f6719d07454dec75d48189e4161770b5740bb2d6410ed",
+  "pageVersion": "sha256:6f0f25d5f34bc42fa665e29908c225a2564ea5a6fbba31254d91b5d6911c8154",
   "claims": [
     {
       "id": "claim_53d617e673d544d78bcddfca751dbff6",
@@ -60,7 +60,7 @@
       "evidence": [
         {
           "resource": "repo://.github/workflows/live.yml#L1-L39",
-          "version": "repo-lines-v1:sha256:9ac2e6d0414f7a13e85100c974457543adfbdeaa80427c754cfc314eb2b54c49:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkYTA5NWNlOTg4YzA4YzExZjEwNWU4NzVmOWMxODY5ZDEzYzQ0MTI3Y2Q2NTgzZTYyOWRiMDEzNmIwZDA0MTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNTBmNGNiNWE3MDgyN2Q4NWMxZTE3NTU4YzhhZGEzMjNhMGNkNjFjM2YwN2FkZDdlMGM4NTA5ZTRjNjcxMTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyNWFlY2UzZWFlNTZmYTJjZjE5OGNmMmIyMzNjNDFhY2UzYjM1ZjU3NTY1M2JmZDBjNWMyOTY1YjNiNTNmYTYifQ"
+          "version": "repo-lines-v1:sha256:9d3723e1c119f65e68f41845e54b54a3d163d12f2685cee0185ed44a2b0bbad4:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkYTA5NWNlOTg4YzA4YzExZjEwNWU4NzVmOWMxODY5ZDEzYzQ0MTI3Y2Q2NTgzZTYyOWRiMDEzNmIwZDA0MTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNTBmNGNiNWE3MDgyN2Q4NWMxZTE3NTU4YzhhZGEzMjNhMGNkNjFjM2YwN2FkZDdlMGM4NTA5ZTRjNjcxMTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyNWFlY2UzZWFlNTZmYTJjZjE5OGNmMmIyMzNjNDFhY2UzYjM1ZjU3NTY1M2JmZDBjNWMyOTY1YjNiNTNmYTYifQ"
         }
       ]
     },
@@ -80,33 +80,45 @@
     },
     {
       "id": "claim_a2dbb523476a4d8baa1331763b707ff7",
-      "statement": "Both live.yml suite steps require GITHUB_TOKEN: mise's aqua backend and runtime tool installs resolve pinned tools through api.github.com, where an unauthenticated runner shares one heavily-used IP rate-limit pool and a 403 mid-layer reads as a broken pin when the pin is fine; the workflow token raises the limit from 60/hr per IP to 1000/hr per repo with no secret to configure.",
+      "statement": "GITHUB_TOKEN is required on every live.yml step that installs software or builds images — the base-image build steps, both suite steps, and both launch steps — because mise's aqua backend and runtime tool installs resolve pinned tools through api.github.com, where an unauthenticated runner shares one heavily-used IP rate-limit pool and a 403 mid-layer reads as a broken pin when the pin is fine; the workflow token raises the limit from 60/hr per IP to 1000/hr per repo with no secret to configure, and the suite steps need it because stack images install their tools: at container runtime through mise, so an unauthenticated 403 fails a test rather than a build.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/live.yml#L109-L123",
+          "resource": "repo://.github/workflows/live.yml#L121-L135",
           "version": "repo-lines-v1:sha256:4de9b3b56d38b75d2a283a6ab34edca7c673b5468f354523ccfb944bf3ebf0a8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmZDQ2MThmODAyMWVkZDA1NjQzZDViM2FkOGExNDdjYTNkODRiMDIzY2I1YjM4ODI3OWViZmUzZTgwYjhhYjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzMWRjOWY5ZTkwMDljOGJlZTQzOWFhZDg0NjRjODg2MWVjZjM0MjA4NTNiZGMwMGQ3ZWM0MzY0MmIyNGFmMTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzZmMzNzExYTJiNWNiZTg1YzU5MWZjODdkMGZmYTg5NWFmZDEyODU4YThiZTlhOWE0MmEwOTMxMzFlODBkY2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJmNjBiM2M2YjMxOWI5ODlhN2Y3MDk2MDlmZTRlYjZiZmNhOTQzYjc2NTQyYjI2NDI0YTM5M2E5M2Q1ZmY5NmYifQ"
         },
         {
-          "resource": "repo://.github/workflows/live.yml#L152-L159",
-          "version": "repo-lines-v1:sha256:e3f255613af321281eaecd0ea9086e1c741118222b816e9cdd835f3887866f15:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjk1MmZlY2ZmMjM1MDE2NGRmOTRlYTQyNGIxNTY2ODU2NWU1N2E1MzU0NzhjYmZmODZmMDM4YjU2ZThiOTQ5NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTBkZmFhNDI4MGQxYTI2MmU4MjlmNDk3NmQ5OTI4YWI5NDE0YzZhNTc1MWQwYzExYmFkYTMwNjJkMjI4Y2Q0NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWY0OWJjZjBkMDRkNmU0YjNmODg2MDQ3MDczY2I4MGVhMzU2N2VkNWI4MzZmMTc1ZGYyOTI5OWQ4ODU1M2ViMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGM4MGQ5ZTdjZDNhYWM3ODgxNWFjMjY4MmI1ZmYyN2M4YzQ2NTdjMmYxYTdjMTQyMDhkOGMyMDNmZWQ1ZjE5ZCJ9"
+          "resource": "repo://.github/workflows/live.yml#L164-L170",
+          "version": "repo-lines-v1:sha256:9cfa255d82903020d8ed5fb95d1cb70deab5a0f68e2d5fd3dd2b083c370e418c:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjk1MmZlY2ZmMjM1MDE2NGRmOTRlYTQyNGIxNTY2ODU2NWU1N2E1MzU0NzhjYmZmODZmMDM4YjU2ZThiOTQ5NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTJkNjFlZDA3ODczNGUzMzZkYjJhZTliMjJhNjhmM2Y5NmU0ZTExNDcwMTdiZDFkNmU3ODk0MDA5NjBjNzc5MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWY0OWJjZjBkMDRkNmU0YjNmODg2MDQ3MDczY2I4MGVhMzU2N2VkNWI4MzZmMTc1ZGYyOTI5OWQ4ODU1M2ViMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2I1ZTg1OGM4YjY4OGJhMjMwMWE1OTI5OTIwNDBiZGQ3NzQ4MGZhZTM5ZGJhNGI0M2ZmOWYyMDAwYmYwZTFhOSJ9"
+        },
+        {
+          "resource": "repo://.github/workflows/live.yml#L205-L214",
+          "version": "repo-lines-v1:sha256:8f5eb2186159bc5fda6598242950286cf505c7fa434604e58ca4d6b9adba60ef:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5Y2RlYmQxYjRmZTNkNTZmNDdjODRlZmM2NjhjYjY5ZWE3ZmE0MjczZTgzNTJkODFiNWJhMTI4MmQ3ZTYwNmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5YmYxZDk2ZTkxNmQzZWY0NmFjMGRlNzFkZGEzNTE0MGQyNDEwMWY0ZjhmZGUwMjcxMjc0YjcwNzM1NWE2MWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzYTM4NDliZDhkNWNmZjljYzVkM2FmNjZhZjk1MGUwYzY4ODQ5MzA1MjhhYTYxMDNlODNlZjkwY2E5MGJjMzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUyYmQwMGY0NDJiYzQ2ODJlODkwOWQ1ZTczNjA5ZWU3MzA3NjI2MDE0ZTQyYzcxNDJjNzNlMGUwZDc0YTVlNGYifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/live.yml#L294-L298",
+          "version": "repo-lines-v1:sha256:f2f7019f0019aa8a77f4235da267624abba6daa73ae96ea700bb61d9ec19136d:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDkxMzE4YTE3Yjg1Y2I4NzY4NGE3ODQ1YjU4YmViMDM4YTYyODgxYmEwOWIxY2E3YjRiYzY4ZjY5NTdhZWJhMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTMxZGM5ZjllOTAwOWM4YmVlNDM5YWFkODQ2NGM4ODYxZWNmMzQyMDg1M2JkYzAwZDdlYzQzNjQyYjI0YWYxOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGYwYzk1NTZlZmMwNDcwZDg4OWE3ODgwODRlOWMwMTk5Mjc5NjQ3N2NlNmJlM2IzMWNiYjM2ZTAzMDgzYzg2NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjA4N2I1MDJlZmI1NWZjMWY2YzM5M2MyYjYyNWMwZGE2ZDdjNjY4M2EyYzUwMjYzMzJjZjNlOGM0ODVmYzBkOSJ9"
+        },
+        {
+          "resource": "repo://.github/workflows/live.yml#L315-L335",
+          "version": "repo-lines-v1:sha256:600038a95f1459f4d1cf8285413615bae84d325553cb4eabc0225ba559f7451b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjYWRmNjgzNDhhNTFhZTEzMjcwNmExMjQ0MTRlNTE0MDBlN2I0NWU1ZTBlZTQyNTM3YzYzMjE1NzMwZWI3ZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5YmYxZDk2ZTkxNmQzZWY0NmFjMGRlNzFkZGEzNTE0MGQyNDEwMWY0ZjhmZGUwMjcxMjc0YjcwNzM1NWE2MWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY1ZWFlZjdmZjgyNTY3NzE4NjM0OWE0NTNlZTc0YWM1YmFkYTlmMzI1MDY2YzgxZWUwZTAxNDQ5NGFhOTg0ZGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUyYmQwMGY0NDJiYzQ2ODJlODkwOWQ1ZTczNjA5ZWU3MzA3NjI2MDE0ZTQyYzcxNDJjNzNlMGUwZDc0YTVlNGYifQ"
         }
       ]
     },
     {
       "id": "claim_9dec5db1ec8546afa56fd3f394b85152",
-      "statement": "The live suite is invoked through tools/run-tests.sh with HARNESSED_PODMAN=1 — never a hand-composed pytest line, so CI and a developer's box run the same thing by construction — and tests/conftest.py fails the session when the gate is open and any live_podman-marked test skipped; the fail-closed decision uses the marker, never skip-reason wording, which is pattern-matched for the report only.",
+      "statement": "The live suite is invoked through tools/run-tests.sh with HARNESSED_PODMAN=1 (HARNESSED_DOCKER=1 in the docker twin) — never a hand-composed pytest line, so CI and a developer's box run the same thing by construction — and tests/conftest.py fails the session when the gate is open and any live_podman-marked test skipped; the fail-closed decision uses the marker, never skip-reason wording, which is pattern-matched for the report only.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/live.yml#L145-L159",
-          "version": "repo-lines-v1:sha256:b9ebcd19818d64ff38a6fbfc5c20cbd5fc14689154e973132f7e3860009ce7a7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY4NDdlNjQxMDEwNmU4MGQ1NTI1OTdhZWZiOGJhMjJhZTEwM2E3ZTVkZTM2YzY1YTQ5MzNkMDIzNzUwNzdmM2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwZGZhYTQyODBkMWEyNjJlODI5ZjQ5NzZkOTkyOGFiOTQxNGM2YTU3NTFkMGMxMWJhZGEzMDYyZDIyOGNkNDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjljYjVkODlhOThhOTBkMDkwZTg0OWU1YTZjMzkyYzQxODg4MTAxMTZiZDI3OGI3NWZjYWY3MzBmYWE0OTMyYTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhjODBkOWU3Y2QzYWFjNzg4MTVhYzI2ODJiNWZmMjdjOGM0NjU3YzJmMWE3YzE0MjA4ZDhjMjAzZmVkNWYxOWQifQ"
+          "resource": "repo://.github/workflows/live.yml#L157-L189",
+          "version": "repo-lines-v1:sha256:e642544446308f0ed22c97611e97441f4f9fc411643fc117ebafe6eca249b779:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY4NDdlNjQxMDEwNmU4MGQ1NTI1OTdhZWZiOGJhMjJhZTEwM2E3ZTVkZTM2YzY1YTQ5MzNkMDIzNzUwNzdmM2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2YmE0Nzk3OTdjZDhkNDEwODVjNGE2MDRiYjY0OTNlZTE0MWUyY2E1OWRlYWY2YTkwYmFhNjA2NGIyMzUwYTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjljYjVkODlhOThhOTBkMDkwZTg0OWU1YTZjMzkyYzQxODg4MTAxMTZiZDI3OGI3NWZjYWY3MzBmYWE0OTMyYTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxOGFhZGE3NDQyZTk5NjgyODNhNjJmY2NlYzA1Y2RiNjFjZWVlZmJjMTUzY2UxYWM2ZmU4ZmNlMjhiNDI2OTQifQ"
         },
         {
-          "resource": "repo://tests/conftest.py#L125-L136",
-          "version": "repo-lines-v1:sha256:b7f6d1dd0d85ce556a235c51db630fe426371722c7af0811da783013371fa419:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcyYWFjNWFiNmVkZGMxYWI2NzA3YTFiMWMwNjQxNDAyMWVhMTBlMmRmOWMxYjlkZmM1ZmMxZTBlNGQxZjcwNDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMTZmZDg4YTI2NDNiOTY1ZjE0NGRkM2U2YTUzMGUzMmZjYWM5NTRhZDg4YzM1NzQwNGMwNzQ4ZmIzNDQ0ZGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJkMDllMmUyMTU2NzM0MjA0MTIzZjI3NzA1NDU5MzQzZjA0MjQ0ZTU2OTBiZGE1ZmJkYjY1ZGQxMjEwNjc0NWQifQ"
+          "resource": "repo://.github/workflows/live.yml#L315-L320",
+          "version": "repo-lines-v1:sha256:f44b17fc09c7119e1d4e10eea1fb6c785699ee30bbf3278510d98648c06415c8:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2NhZGY2ODM0OGE1MWFlMTMyNzA2YTEyNDQxNGU1MTQwMGU3YjQ1ZTVlMGVlNDI1MzdjNjMyMTU3MzBlYjdlZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTBkZmFhNDI4MGQxYTI2MmU4MjlmNDk3NmQ5OTI4YWI5NDE0YzZhNTc1MWQwYzExYmFkYTMwNjJkMjI4Y2Q0NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjVlYWVmN2ZmODI1Njc3MTg2MzQ5YTQ1M2VlNzRhYzViYWRhOWYzMjUwNjZjODFlZTBlMDE0NDk0YWE5ODRkZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDEzNzE2ZmQ4OGQ2MjY3ZTE2M2U2NmRhY2U5ODJlNWQ5ZDI3MzMxMzIzYTRjZTllYjQyZDIwY2VhMmRiNTNmOCJ9"
         },
         {
-          "resource": "repo://tests/conftest.py#L73-L95",
-          "version": "repo-lines-v1:sha256:2c42d7f985f8b164e590c3b740ec9898c09a09ce9201ad253c9eb28cdb2bebc6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5YjdhMDhhZTcxMTYyZTM1YTIxYzY3MDM5YzE5ZTc0MmE3MDNkOTQ0YzE4MzNmNjcwOGZkNDMxOWU4NmI4ZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBiNDY4YWQwYWJkNWRmODYyMGJiOTRiZGZmZTg1ZjQyMTEwZWNkYThhZjc2NGE0ZDVjM2JhMDZiYWE1Zjc3M2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiOGRjNTlmMDg2YzM4YmJmYTVmN2E3MTY0ODI1YTA4ZGQ4MjEwNjc0ODVhMDliNDg5MTcyNDlmMzFlYjljNzUifQ"
+          "resource": "repo://tests/conftest.py#L25-L45",
+          "version": "repo-lines-v1:sha256:b95b664a976be9d8646f0b4788d90f8770773895975c22eb043671ab97dd4bc8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhNmVlZmIyMmIwMGJiMmU0YjcyMDY3NTgwMTM2ZTI0YjIwZDhjODExNTliOTgzYzVkOTE5ZjNiMjRiMTMyOGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjZmVkNjM2YzlkMDhhNmY3NTUwYTU2NjYwMGU1OTEwOWM0OWY1ZDRiOTcyM2Y1Y2MwNzc5ZDQ5Y2QwYTQyM2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUwNzc3MmFmMmQwY2I1MDhhYTFmYmFkNTcwYTUxMGNlMzI3NWMyZjMxZGE2NGNkZTA4YTIxZDEyYmQ1MWY5NTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhZDQyODI4ZTU0Yzg5MzkyZTJhMGEwMjg1MGVjN2U3YzEzODI4NGNmNTc1NTc0OWU1MmI3NDM1YzY5NDc1ZWYifQ"
         }
       ]
     },
@@ -258,15 +270,15 @@
     },
     {
       "id": "claim_c186382988a344c9bbf7345befbeefd5",
-      "statement": "openwiki-update.yml (nightly 08:00 UTC plus dispatch) checks out full git history so the diff against the last-documented commit is nonempty, sets persist-credentials: false, and is deliberately not fail-fast: openwiki's page-job queue is durable, the PR step runs even on failure (if: !cancelled()) banking every completed page as the next run's baseline, and the final step re-raises the failure so the job still reports red.",
+      "statement": "openwiki-update.yml (nightly 08:00 UTC plus dispatch, timeout-minutes 90 so a wedged run is cancelled) checks out full git history so the diff against the last-documented commit is nonempty, sets persist-credentials: false, and is deliberately not fail-fast: openwiki's page-job queue is durable, the PR step runs under if: always() — not !cancelled(), because a timeout kill arrives with cancelled() == true and skipping then would discard every page the durable queue wrote — banking every completed page as the next run's baseline, and the final step re-raises the failure so the job still reports red.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/openwiki-update.yml#L16-L26",
-          "version": "repo-lines-v1:sha256:8feb1ba3bc08ebc9c239a0b8bc6f6857b24603d4485985ee8c81054c36c5e27b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1ZDZjZjdkNDI4Y2E4MTE1ZmM0YmFiYjY4MDczOTAyMzMyN2E3YTlkOTE2M2Y3MDZhMjc2ODdkZDUxNmYzOTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4MmMwOGVjOGZlM2Y4NjFkZTY1MjY0MTMxNmY5MjFmZmE4NzZhNGUzYTQ5MjRlZGI2YzA4Nzg4NjZmYjAxYmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVjNWE4OTI3NzBhZTRmNTMzM2ZkN2M5ZTEyZTBhNmJjNDViMjZiNWJiNzc1M2UwMzlkZjhlZDQ5Yzk3Yjk2MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlZjE2ZTNjOGI1NGUyYjIwNDgxOTZhYmI0Y2Q4MGQyMmE1MDhlY2Q2MDc0NjEyNGEyZWEyZGNjMzQxNzk5ZDEifQ"
+          "resource": "repo://.github/workflows/openwiki-update.yml#L119-L153",
+          "version": "repo-lines-v1:sha256:7f5f493d42eca33971b6d65e09c49ec75f9fa2287483e286cb6bf3568762d7ed:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxY2ZmNGFkMzNiYTkxYjE0OGUxYjFiODI5MGI4ZmZmMjdiMjAzZmFiZmVlNTg3MDI4MmRlMzY3MzgzYjFiZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2NzE4ZjA2N2I1ZTVjMWYwOTkxYTZlNzQ3MjZmZTJhMjNkMjY0MzQ1ZTA4ZTRlYWQwNGZhZjczYzI3ZWQ0NDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0MTRhZTc3N2Q2ZGIzNjY1MjVkNTFhNjdiZWJmNmY5OWM3ZDUwYTE0ZTNlOGU3YmIwOGI5YWZjYjU1MmFiNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
-          "resource": "repo://.github/workflows/openwiki-update.yml#L62-L117",
-          "version": "repo-lines-v1:sha256:d9c2e46c372a2c063f377157394c002b96f58c62ca21d3d2c5b699efcab8f73c:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwZThmOWZhNDBlN2JkMDQ5OWQxYzBkODNmZDc1OGFhODViMzA4NDJkYmQ2MWYwZWE2YjdhZTEwZWZlYzc2ZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2NzE4ZjA2N2I1ZTVjMWYwOTkxYTZlNzQ3MjZmZTJhMjNkMjY0MzQ1ZTA4ZTRlYWQwNGZhZjczYzI3ZWQ0NDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5ZmIzNDlmMTM5ZmVlN2FjNWFlNDJiM2ViMjNmNzcwMDRmNGRkMzAxYmFhZTc1ZjE4MzIwYjBjMzFkODliYTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://.github/workflows/openwiki-update.yml#L12-L30",
+          "version": "repo-lines-v1:sha256:9a3060882a075494f9f08747138a0c85d4daa723532f1ec45ddd0403b5ec3191:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5ZDgwMTU0ZWQ0MmZjNWM3NzliMTMzMTU3OGI1OGI4OWM4MDFlYWNlNzRmMjRjZDQ4ZWI0YTIzNTc5NDBhOTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4MmMwOGVjOGZlM2Y4NjFkZTY1MjY0MTMxNmY5MjFmZmE4NzZhNGUzYTQ5MjRlZGI2YzA4Nzg4NjZmYjAxYmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2ZjdkMzdmYjI5NzM5OWZlYTJhNWNlZjFjYzQwMjhjODk5NzlhOTA1MGE5Mjg1NmYwZDk2ZTFjMThiYTE5YTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlZjE2ZTNjOGI1NGUyYjIwNDgxOTZhYmI0Y2Q4MGQyMmE1MDhlY2Q2MDc0NjEyNGEyZWEyZGNjMzQxNzk5ZDEifQ"
         }
       ]
     },
@@ -276,7 +288,7 @@
       "evidence": [
         {
           "resource": "repo://.github/workflows/openwiki-update.yml#L33-L60",
-          "version": "repo-lines-v1:sha256:c50214c25c902b2abad3b321be14816c4ffac37c8c9a13ab7d0912f0ba1e2d8d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2Y2UwYjBkM2IzODEyMmJjMjc1MTVhOGQ5Njk2MTVkOWUxMGUyODA2NDRmNzYxMjIxZDA0NDc5YWQyNTM5M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2OTYyODIzNmY2ODc1MTVkZDRlMGJiOTZhNGZmNjM1M2Q3MjYxNzdkYTczNTI0NzFjMDFlZDRjODIxMmNhN2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzZjNiODgwMmIzMTBmZjJhZGQwMDI2YjgyZWUyZTllNTcxNTkxMmVhZjA4MWFmODZjZTExMGRkNjQyZmMxYTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkzNzY5ZDI5MmFhYTAwYzJkM2QwMjcwZGZjOTIyMzg2YTBkZTRkYTM4YzkwNzAwNTU4ZWIyMzJiOGRiMmI3YjcifQ"
+          "version": "repo-lines-v1:sha256:6fd3ce08a0f2f055c2906a31f058c6842dc55f64a3beaf4fe4a2f77988b66f31:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2Y2UwYjBkM2IzODEyMmJjMjc1MTVhOGQ5Njk2MTVkOWUxMGUyODA2NDRmNzYxMjIxZDA0NDc5YWQyNTM5M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmYTQ3NTAyZmQ2OGRiODZkMzQwNzAwMDBjZGM4NTY3YWJmOWI1NjEyYTI3N2I0MmQwYzY4NWYwMjgzNGQ4OGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzZjNiODgwMmIzMTBmZjJhZGQwMDI2YjgyZWUyZTllNTcxNTkxMmVhZjA4MWFmODZjZTExMGRkNjQyZmMxYTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkzNzY5ZDI5MmFhYTAwYzJkM2QwMjcwZGZjOTIyMzg2YTBkZTRkYTM4YzkwNzAwNTU4ZWIyMzJiOGRiMmI3YjcifQ"
         }
       ]
     },
@@ -300,29 +312,33 @@
     },
     {
       "id": "claim_13873858f7f24170bd4c351f0b368c0f",
-      "statement": "The local regeneration entry mise run openwiki-update runs tools/openwiki-retry-patch.py before every run — which also re-applies it after any mise install that restores the stock runner — because a page worker that ends its turn without calling submit_page is marked skipped, the run finalizes interrupted without advancing the diff base, and the next run regenerates the whole changeset (observed with glm-5.3-flash, PR #445 run 6; upstream 0.4.3 and 0.5.0 verified to ship no retry, 2026-09-08).",
+      "statement": "The local regeneration entry mise run openwiki-update runs tools/openwiki-retry-patch.py before every run — which also re-applies it after any mise install that restores the stock runner — because a page worker that ends its turn without calling submit_page is marked skipped and the run finalizes interrupted without advancing the diff base (observed with glm-5.3-flash, PR #445 run 6); no upstream release through 0.5.1 retries a skipped page, and 0.5.0's durable page manifest (openwiki/.page-manifest.json) means a skip costs a clean finalize, not a full regeneration. The CI workflow applies the same patch to its npm-global copy explicitly.",
       "evidence": [
         {
-          "resource": "repo://mise.toml#L112-L125",
-          "version": "repo-lines-v1:sha256:21197124ccc9e9aae881b04bd684d2ca45abe06c49e3481da1b7ec2b87c16a39:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ODk3MmRlYWQ4MTY1YjQ5MTU0NTlkMGIyOTdhZWE5ZTI2NTRkZDUyMmUyYzkwMDYwNjEzNWZkYWFlZTlkZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwMTFjOTQ1MTM0NWI2ZmE2OTBiODAzNWRhZTRlNTU5ZmUzMjc0NzgyOWQyM2ZhYjkzNzRkYzQxYWYxNzVhNmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzOTZmMmJkMmMzZDA3ZTYwNDQ2Njk2YjkwYmI2MzlkZjc4NDQ5NjNhZjliNWUxZWVlYTQ5NTNlMDlkZDczMmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzZTA2MmIxOTM0YzlmYWRlODdiMzM5MDdiOGM5YjAzNzZiOGUwNWE5ZTA1OTM3M2M5MTQyNzMwOTkwMGZlMmIifQ"
+          "resource": "repo://.github/workflows/openwiki-update.yml#L66-L77",
+          "version": "repo-lines-v1:sha256:8879a178da85ba34f87a1b7ed2e1896780643c6eff2a6f2b224c0021edfa1be1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwYjliNmZiZjQ1ZGU1OTliOGJjYjAwNWViNTA5MTE4ODYwNmM1NzJkNWE4ZjM5MzBjN2IyZTI4ODdhZTM3MzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmYTQ3NTAyZmQ2OGRiODZkMzQwNzAwMDBjZGM4NTY3YWJmOWI1NjEyYTI3N2I0MmQwYzY4NWYwMjgzNGQ4OGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5ZmIzNDlmMTM5ZmVlN2FjNWFlNDJiM2ViMjNmNzcwMDRmNGRkMzAxYmFhZTc1ZjE4MzIwYjBjMzFkODliYTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkzNzY5ZDI5MmFhYTAwYzJkM2QwMjcwZGZjOTIyMzg2YTBkZTRkYTM4YzkwNzAwNTU4ZWIyMzJiOGRiMmI3YjcifQ"
         },
         {
-          "resource": "repo://tools/openwiki-retry-patch.py#L1-L23",
-          "version": "repo-lines-v1:sha256:1cd5971c8fe50c2d4a2597e98ba6b58735df34c7baa5d8fd7b8b3a76f546a8d7:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ODJjYmRiNGM4YjA3NTE4YmY0ODZjNTg5OTBmYzM5MTc4M2FhMjBhOTE2YmZiMjdhZDIxMWViMWQ1YzM2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1YjZlODcwNmI0MzA0N2YyYTZkYjY3ZjEzMjYzODU5NTYwNGU2N2YzNjk2Njg3NmNlMDE1OGYwMDUzZTZiZDEifQ"
+          "resource": "repo://mise.toml#L115-L130",
+          "version": "repo-lines-v1:sha256:6fe9ed2809b82f8a11f4e0d11b1f734ad0f3f2373e6e8c7c320eb6e4042255dd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ODk3MmRlYWQ4MTY1YjQ5MTU0NTlkMGIyOTdhZWE5ZTI2NTRkZDUyMmUyYzkwMDYwNjEzNWZkYWFlZTlkZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwMTFjOTQ1MTM0NWI2ZmE2OTBiODAzNWRhZTRlNTU5ZmUzMjc0NzgyOWQyM2ZhYjkzNzRkYzQxYWYxNzVhNmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzOTZmMmJkMmMzZDA3ZTYwNDQ2Njk2YjkwYmI2MzlkZjc4NDQ5NjNhZjliNWUxZWVlYTQ5NTNlMDlkZDczMmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzZTA2MmIxOTM0YzlmYWRlODdiMzM5MDdiOGM5YjAzNzZiOGUwNWE5ZTA1OTM3M2M5MTQyNzMwOTkwMGZlMmIifQ"
+        },
+        {
+          "resource": "repo://tools/openwiki-retry-patch.py#L1-L29",
+          "version": "repo-lines-v1:sha256:f4a18dfa617123f89b13f48508977737dfe509f31b97ceefad7d2e1187936f9c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ODJjYmRiNGM4YjA3NTE4YmY0ODZjNTg5OTBmYzM5MTc4M2FhMjBhOTE2YmZiMjdhZDIxMWViMWQ1YzM2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1YjZlODcwNmI0MzA0N2YyYTZkYjY3ZjEzMjYzODU5NTYwNGU2N2YzNjk2Njg3NmNlMDE1OGYwMDUzZTZiZDEifQ"
         }
       ]
     },
     {
       "id": "claim_6118c87267674c188f7d90678db43105",
-      "statement": "The retry patch gives each page worker one fresh second attempt sharing the worker's virtual backend — attempt 2 sees the page markdown attempt 1 already wrote — is idempotent via a marker with --check and --revert modes, and fails loudly rather than patching blind: it refuses any install that is not the verified 0.4.3 and exits when its anchors (runPageAgent, the exactly-one agent declaration, the exactly-one worker try-block) no longer match, so version drift forces a human to re-derive the patch.",
+      "statement": "The retry patch gives each page worker one fresh second attempt sharing the worker's virtual backend — attempt 2 sees the page markdown attempt 1 already wrote — is idempotent via a marker with --check and --revert modes, locates the runner across both the .mise real-directory layout and pnpm 11's symlinked content-addressable store (realpath-resolved and de-duplicated; on the pnpm 11 layout the patched file lives in the shared store), and fails loudly rather than patching blind: it refuses any install that is not the verified 0.5.1 and exits when its anchors (runPageAgent, the exactly-one agent declaration, the exactly-one worker try-block) no longer match, so version drift forces a human to re-derive the patch.",
       "evidence": [
         {
-          "resource": "repo://tools/openwiki-retry-patch.py#L146-L203",
-          "version": "repo-lines-v1:sha256:76452cc7cd461dee3a2efa0e0689c5a2887f66fe08df765aa7f30e4978e93aec:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwYmM1MTI2NWRhM2M0OTRiZGQyOTQwOGMwZTE3NzY2NWJmZWFkNmZkMjc5MzZmMDU5ZDJjNTU3YjE5YTNjZTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU4Y2Y5MTU5ODhmODJmMDZlN2E0MGIwODQ3MzJlYTdlM2Y0NGU2MGEzNzRiMWYyOGE1NjExYTIzMDRlZThiYjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU0ODk5YjcyMTMxZDcyN2M1MmJiZjU3OWRjZGY0OTAzYzI3MzlhNTlhNDJlMDM2N2Y5ODlkNDFkOGVlODI5ZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkNDEzNDBjYzIzOWExNTljZTliNjAyMmU5ZjYzMjI4MzJlMmVhZDc2Y2FlOWU0NzU0ZDIxMGViOGZiNmQ1ZTgifQ"
+          "resource": "repo://tools/openwiki-retry-patch.py#L1-L54",
+          "version": "repo-lines-v1:sha256:aeb27bc0a20e3dc3e3c6afd3b6c99f31bccea34e9dba355916c748b488d84439:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ODJjYmRiNGM4YjA3NTE4YmY0ODZjNTg5OTBmYzM5MTc4M2FhMjBhOTE2YmZiMjdhZDIxMWViMWQ1YzM2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRlNmEzMDdiZWM5OWU3YTM4MTE4ODE0MTQ1OTZlMTUyNDY1NDJlZDIzMjYxMmRhNDZhOWRhYmIxYTI3MWY3ZmEifQ"
         },
         {
-          "resource": "repo://tools/openwiki-retry-patch.py#L34-L104",
-          "version": "repo-lines-v1:sha256:3f4207197bd0621d76d1af16401431657ff2b20ab1264949c7f1e4d95aa7cd4f:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkNzVjNWJiNGQ2MDJhYjBlNmU5NGVlZDZkYThmMDlhNDc2N2IyZGU0YmI4YTg3ZmY4MDY0ZDlmYzg3MGI4NGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIxNDRiNDA3OTU1ZGNkZTI0YzIyZTFkZTU2MTliZGZlMzlkNzFlNjFhNTdlNDlhMDRlMDQ0NWQxMjVhNTI4NzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlNDgwYWE5MDI0ZjkzZjNkMWViMDg5NTVhYjEzNzBiN2ZiNzJiYTllOTYyZjUwMjY1YzViMDg1NjRmYjcwZmEifQ"
+          "resource": "repo://tools/openwiki-retry-patch.py#L56-L110",
+          "version": "repo-lines-v1:sha256:5c43a13943381575b4f2cdd7d08b0f15350799e781cbe4868b66015c61c6d0f0:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjMzc2ZDcxMDgxYWJlNDAwMzgzYWIxOWMzNjg2ZDE1M2Q4M2E4NjMyMmQ5OWFjMmQ3NDc2OWY1MjU5OWUzMTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4MDBiYjM0MGU2ZWIzZWEyN2M4NWFhNjZiMGNhZmUyYTgxMWIyMThkMzg4YTc0MmNhOWI2NzEwYzJlYjRhOWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg4YzZkNzJkY2I4ZDE5MjEyYTY2ZTNkNjZlOWRlZTA3MzI5YzE5MDNlNWRhZWUwNjQwYWQ1NWEwYTJmZWFkY2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyYjIxYmMwMDhjYmQ5MzY3MjdlZmI3YWU2NWRmYjRhYmY3OWQxZTRjOGM5NmQzYjMwNzEzMDEwZjhjYzkxMGEifQ"
         }
       ]
     },
@@ -436,17 +452,59 @@
     },
     {
       "id": "claim_2ef37c0f17e143679d6e95919dee4f68",
-      "statement": "The local mise-installed openwiki runner is the third context for the same native-addon constraint, and its fix lives on the pin itself: mise.toml's npm:openwiki 0.4.3 entry carries two required escape hatches — trust_policy_excludes for fastq@1.20.2 (aube's no-downgrade trust policy refuses an install with no provenance attestation) and allow_builds for better-sqlite3 (mise installs through aube, which denies dependency lifecycle scripts by default; denied, the install still reports success and every openwiki run dies at \"Could not locate the bindings file\" with a 14-line list of paths, because the addon reaches openwiki transitively through @langchain/langgraph-checkpoint-sqlite).",
+      "statement": "The local mise-installed openwiki runner is the third context for the same native-addon constraint, and its fix lives on the pin itself: mise.toml's npm:openwiki 0.5.1 entry carries the one required escape hatch, allow_builds for better-sqlite3, because mise installs through aube, which denies dependency lifecycle scripts by default; denied, the install still reports success and every openwiki run dies at \"Could not locate the bindings file\" with a 14-line list of paths, because the addon reaches openwiki transitively through @langchain/langgraph-checkpoint-sqlite. The former trust_policy_excludes hatch for fastq@1.20.2 is gone: fastq 1.20.3 is attested again and every ^ range in the 0.5.1 tree resolves there; an unattested fastq fails loudly at resolve time.",
       "evidence": [
         {
-          "resource": "repo://mise.toml#L11-L24",
-          "version": "repo-lines-v1:sha256:c3ce745e5dd416589b7a0a260aaf07f2c5716578518dd67938cd61066d741e40:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyZDAyZWIyODI3YWU1ZjBkZDIyYTJmNmFlZmY4ZDlmNmRlZjBmZGZhZTg1MGNiOTI4NmYxYmMxYmIzZTc5NjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyZGZhZjNmNTlmYzRiNmUyYWE0NTc3ZjJjNzEyN2Y3YmRkOWMzNWM5OWQ5NjQ5NzZkZDY5ZmIxNWNkYzI5NzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3NDYzYzYzNWE1NjNhOTExYjMyOTA0ZTY5YzEyNGFhMGZhYWYzOTMyYjU5NDU4MDdjNWM2MGVkYjIyNmY3NDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliMDlmODFhYmU0ZGNkMDY3NmRlZjM3NDlmMzEwMTFjYzFmYjk1NDBmZjJhZDM4M2Q1NWQ4YzQzOWEwYTdlYzQifQ"
+          "resource": "repo://mise.toml#L11-L27",
+          "version": "repo-lines-v1:sha256:d911b1c5f15f614f1e6e31ac572588ccad732712c4620223d5d3eaf335714073:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyZDAyZWIyODI3YWU1ZjBkZDIyYTJmNmFlZmY4ZDlmNmRlZjBmZGZhZTg1MGNiOTI4NmYxYmMxYmIzZTc5NjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0M2JhM2NkZjQzNmRkNGU5ODczOWJlN2U4NThkNjc0OGE4NmQzYjA5NmU2NjU3ODJkM2ZiMmNhYWE4NTA2NWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3NDYzYzYzNWE1NjNhOTExYjMyOTA0ZTY5YzEyNGFhMGZhYWYzOTMyYjU5NDU4MDdjNWM2MGVkYjIyNmY3NDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliMDlmODFhYmU0ZGNkMDY3NmRlZjM3NDlmMzEwMTFjYzFmYjk1NDBmZjJhZDM4M2Q1NWQ4YzQzOWEwYTdlYzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1bdede8ee67b4ef5ae53f625ef4d291d",
+      "statement": "live.yml runs a docker twin job (live-docker) executing the same suite behind HARNESSED_DOCKER=1, with CONTAINER_RUNTIME: docker being load-bearing — GitHub runners have both binaries and detection prefers podman, so without it the job would silently retest the podman path while reporting docker coverage. It is a separate job rather than a matrix leg because a matrix rewrites the status-check context (live (podman)/live (docker)), which would leave branch protection waiting on a context that never reports again; docker availability is asserted with docker info, not just --version.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/live.yml#L248-L298",
+          "version": "repo-lines-v1:sha256:7cd6b961b11140fea7cbd2a5a4dc09519ed8e7672c407382cac077584c09ac10:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4ZTM1ZmY0ZmMwOTE5ZWU2MTgyMzc2MTA0ODdhNWQ2N2U4MjczMGYzOTc2YTQzZjM5MDM1YTUzMjU3ODhmYTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzMWRjOWY5ZTkwMDljOGJlZTQzOWFhZDg0NjRjODg2MWVjZjM0MjA4NTNiZGMwMGQ3ZWM0MzY0MmIyNGFmMTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM0NWM5YjllYWE3MjdmMDRiMzZlYzYyMDM0MjdjMDc4ZWFkM2ViOTYxMjViYjhiMWIwMDRhZGM2ZGFkNGQzMDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIwODdiNTAyZWZiNTVmYzFmNmMzOTNjMmI2MjVjMGRhNmQ3YzY2ODNhMmM1MDI2MzMyY2YzZThjNDg1ZmMwZDkifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/live.yml#L311-L320",
+          "version": "repo-lines-v1:sha256:75aecefb5acfc46019c64c1fc7c0443d996ebdd99df5525dc6b65d81abed3448:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlM2Q0YWJkMTkyNTE3ZTRlMGVlMDM0ZTY3Y2JiMTM5YTFlM2Q0MDMzNjI5MDg2Y2JmMDc2OWNkYTFlOGJkZjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwZGZhYTQyODBkMWEyNjJlODI5ZjQ5NzZkOTkyOGFiOTQxNGM2YTU3NTFkMGMxMWJhZGEzMDYyZDIyOGNkNDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAyYTNkOTJjYmViNWNlY2IxZDIzYjJhOTM0MTM1MjgxM2E0MDViYzE3MzExODdjZWFhNmEwOGNiZjIxZDNmN2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxMzcxNmZkODhkNjI2N2UxNjNlNjZkYWNlOTgyZTVkOWQyNzMzMTMyM2E0Y2U5ZWI0MmQyMGNlYTJkYjUzZjgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_cce5ae43ed6645ffa9d392e58cc999c6",
+      "statement": "After the suite, each live job launches a real stack with harnessed test livecheck claude --json --keep, because a build that never launches proves nothing about launching (#458: build exited 0 while container-run wired the agent to a pod that was never created; the build and launch paths share almost no code past image assembly). livecheck rather than default because stack names resolve through the user-overlay catalog, so default could pull a private recipe holding a 1Password ref into a test; --keep keeps the container for a failure-only diagnostics step (if: failure(), every command || true) that collects ps -a, logs, the in-container /tmp/hatago.log, and identity/home listings — the log the launch-failure message names but CI would otherwise never have.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/live.yml#L191-L246",
+          "version": "repo-lines-v1:sha256:8898a7d4bdc10525e440eda9ce82d71ddec3e6c46123d978e2dc87eafa785f35:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkMTIyMWM0NDA4MjRkZDQ5ZTc1Y2Q5MjQyY2M1OGFhYzdmNTc0NzMyOTgzMzRhZTk1ZDAwMTI3NzdkMzRjMDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExMDljYmM0ZmRjZDk2N2JlNmNiNDNkNTgwMjVmYmM4Y2YxOTMyOGE1NTJiYTUxZWMzNDhhZjliZTJiMGMwOTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZlNjdmNDE3NzM3NDQ0YjhkYTgwZjAzNjY3NzY3OGE0ZTI5ODZiY2MyMjQzMzEwMTY2ZmVhNWUwN2UxMjgxZDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQzYTc4MDYxM2NjOGM4MTQ0YjZmNmRkZDg1NDkwNmU4MTZjYTE4N2I0YmU0NGQxZTBlNzNmZGU1ZmU5NDBkOWEifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/live.yml#L322-L363",
+          "version": "repo-lines-v1:sha256:13b2db1a122c311197c31ae0dc769a5b8bfb185389039d368bad5eb9897c25dc:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4MDE4MTc2YjdkYjUzMDkxNWI0ZjU4ZTgwYjRiZjg1MWVmYzRjYWJhM2ExNzE1YjQyNmQwN2Y3ZWZkOTUwZTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlMzg3OWVhOTZkOTgwYzBhMmQ3ZGE3MzliNGE0Y2FjM2QyNWI3YWUxMjY4NjUzNmM3Mzk5ZmQ0MWE4NmFkNjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE4MjViYzBkYjNlMjYxMDVmYmI2ZWQ2ZTUyMmU4OWJkYjFjZjAwNjg0ZGFhYzUwM2JkOWYyNTAwZDVlNDllZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhjODBkOWU3Y2QzYWFjNzg4MTVhYzI2ODJiNWZmMjdjOGM0NjU3YzJmMWE3YzE0MjA4ZDhjMjAzZmVkNWYxOWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ffb900267f164e1c80704416f7c76451",
+      "statement": "The podman suite step deselects four tests by name (TestVarlockProxyRulesOutput, tracked in #462) because upstream varlock proxy rules display drift broke them on 2026-08-28 while the parser fails closed as designed — but a failed step ends the job, so the launch step that proves a stack reaches a running agent never ran. They are deselected individually rather than by class, file, or marker so a new failure anywhere in that module still goes red. PR regression coverage comes instead from running the workflow on demand against a branch (gh workflow run live.yml --ref <branch>), which covers PR #461-style regressions without charging two container-runtime jobs to every PR.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/live.yml#L171-L189",
+          "version": "repo-lines-v1:sha256:84734aea11c8f8c4dd919bbbeb6775cdba0e6fe2ef3300b4ecc32884516d48ab:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5MzJlYzk2ODM3N2M0MTk2NmNhMDcxZmYwZDE0MmRkYjMyNjNjOGY0Zjk5MjBjMTZjMTQxMjM0NjQ3ZTg3OTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2YmE0Nzk3OTdjZDhkNDEwODVjNGE2MDRiYjY0OTNlZTE0MWUyY2E1OWRlYWY2YTkwYmFhNjA2NGIyMzUwYTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMwYWI5OWJhNmI1N2ZkYzI1OGVmZWQwYjFkZGNjMTZmNzA3OThhY2RkZmY0MDRlOTQ5NjY0ZjRmYjY1NWQ3ZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxOGFhZGE3NDQyZTk5NjgyODNhNjJmY2NlYzA1Y2RiNjFjZWVlZmJjMTUzY2UxYWM2ZmU4ZmNlMjhiNDI2OTQifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/live.yml#L32-L42",
+          "version": "repo-lines-v1:sha256:0183bf4c2a0502e28c7d76158212220476e8519f50db01d29962cf6b6861a3c2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5MjExYjcxMDE5MGVmMTlkOWUzZDdjMTNkMjkwNTE5NWI5MjFkNTk2NmZlY2Q1ODMyZTA4YTU5OWI2ZDAyY2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0YTFmYzFmMmUzMjYxMzJmNDkyZjQzOTJmZmM4MjIzNmFiNzg4NDAyNTQ2MTMwMGUzMzBlM2UyZDYyOWJkNWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5YTIwNzMzMzdjNTgyYWM5ZGJkYTVhNTAxZjIwOTIyZjAzMDBkNzJlYWQ5YTc5MTUwOTY0NGU3ZDdmZWIwYmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJiMTRiZWYxNjY1YjNkZDg0OGI3NWJlNGQ5M2MyNTMxNDc5OGIxNjQ0OGI4MTYzOGFmMTEwZjZhYWIxZDlhMmIifQ"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-09T09:34:57.295Z"
+    "by": "openwiki/0.5.1",
+    "at": "2026-09-16T21:10:52.541Z"
   }
 }

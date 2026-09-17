@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d9a95300ad2e9f3eac625c1319599cd50222db31393c26308f529c0d2f5fe4d2",
+  "pageVersion": "sha256:c720e94ccaed605c7c40ba300455056e865092d2c3fb6248ad15976da24cff68",
   "claims": [
     {
       "id": "claim_884ca4508fb040328ba5ba629d13b020",
@@ -25,16 +25,16 @@
       "statement": "_resolve_stack returns (name, minted_dir) where minted_dir is non-None only when THIS invocation created the manifest; a minted manifest is deleted when its launch fails (container-run on _build_stack failure, host-run on any failure), because a stack that never built lingers in `harnessed list` and no GC reclaims it (volume-gc keys on volumes a never-built stack owns none of), while a pre-existing manifest is never deleted as collateral.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L2914-L2966",
-          "version": "repo-lines-v1:sha256:960d65b5022f9e9ac7f8940715512e8b2753861b605278bc2a4b31488778f4d1:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlZjc3MTFiYWFhNTAzZGZlNjE1YmJmYjEyOTBkYTQyMzAwNzA3ZTUzMWUxOTIyYjQ0YzY4NTNkZmNkN2ZmMDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2ZTBjM2YyNzRiZGIzMjhlZTdkZWU3YmRmODI4NzI1ODc0YjAwZjExYmQwNWRiNGEwNjU4ZDNjMWJjMTVlNGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkYWUyNDkyZjJiNjhhNDY3ZjUwZGYxZWE1YjRhZDI1NzE1YzVhMDdjNDk1MGI0ZDUxNTgxZDQ4NzE2NjRkMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjNGNlZDRjY2I5MTRhZTdiMTRhN2Y2NmI5OGY3ODA4M2Y5N2Y0YjY4NzVkYzU0OTQ2ZmYwYzkzZTg3ZWVmZWYifQ"
+          "resource": "repo://src/harnessed/launcher.py#L3056-L3104",
+          "version": "repo-lines-v1:sha256:ac1b06b900d1196651710b798f9e5a40369a660375ab186474da51e1d6a526ab:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3YjJmYzg5MjIwMDNhOWMwNjQ1YTM3ZjZiZWU2ZWQxYmZmODIwOTI1ZjZjZmE1OTBkNTY2MWFhYzVjOWNhZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2ZTBjM2YyNzRiZGIzMjhlZTdkZWU3YmRmODI4NzI1ODc0YjAwZjExYmQwNWRiNGEwNjU4ZDNjMWJjMTVlNGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI5MTkwZTVlMzAzYjAzZmVjZTJlMmRlNWYwMjVlYTE1MTQ3NWU2Zjg4ZGU4ZDkyOGZhMGVhMjNmYmEyNzVlMjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjNGNlZDRjY2I5MTRhZTdiMTRhN2Y2NmI5OGY3ODA4M2Y5N2Y0YjY4NzVkYzU0OTQ2ZmYwYzkzZTg3ZWVmZWYifQ"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L3063-L3090",
-          "version": "repo-lines-v1:sha256:e20a3cf99aab7e4c996615f5ccd59ae276212aaafdcabd490243e3cced7c6980:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMzdlZDQzZmY0ZDQzMDI1NjI4NTA0MmUwNmMzZjY0NzJiOWNhMDFmYWQzYzFiNGYyYTQxYzQwNjk5YWY0ZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzYjIyMzQzZTljNzU1OTIzM2RjNDZkY2VhNTg5OTY1OGY2Yzg2YTczMTRmYTQ2MjA5OGYyOTI4YWY2YWQzZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI4MmFhYzMwYjI5YmNmYTY0MTBmYTk2YjBmMDA4YTE0OTNhYzFmNWU4MzY4NjdlMGQ3MzEwZDI4YjJlY2VmZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxZTU2YjI0YzllZmE2MjQ0YWYwN2U5OTdkZTViODU3NjU1YmQ4NTBkN2EzYWYwNjExN2IzZWJjMjE5NWFiNWMifQ"
+          "resource": "repo://src/harnessed/launcher.py#L3221-L3241",
+          "version": "repo-lines-v1:sha256:f23f9811c07973f30ed07c37d8d9a5fab5bc8e088803b3384e5db3da413f0319:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0ODAxM2Y2YTBlYjdmNWVhYmNhMmZiMzA4MTYzMjNlYjkwZWQyZTc4MDg4OWNhNjBkYjY2N2IyM2MzNDFkZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzYjIyMzQzZTljNzU1OTIzM2RjNDZkY2VhNTg5OTY1OGY2Yzg2YTczMTRmYTQ2MjA5OGYyOTI4YWY2YWQzZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZiMWI5NDQ0ZjM3Y2YwODJhMjc3OTI4OGU2MDFkYjY3MWUzNjliODc4MDBhOGYzOTJkMmE5YTE4MjlkOTMzYWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxZTU2YjI0YzllZmE2MjQ0YWYwN2U5OTdkZTViODU3NjU1YmQ4NTBkN2EzYWYwNjExN2IzZWJjMjE5NWFiNWMifQ"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L3627-L3643",
-          "version": "repo-lines-v1:sha256:2d4219a70d2b35fd0085843015bf3418030fb6d899fb2df955cbf19faf66e475:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjMmIzZTg2ZmI4MzUzZDM1OWJhZmY5YzE1OTY2ZmU4MDk3ZDdjMmMxODIwYzY0MjU0MjQzYmNhMWFhNmUzZjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyOWM1MjQ0MzRjMDA5YWFmMGQ3ZmU5ZTJmZmU3MjJiMTcwY2Y4ZWIxYzhjMTU3NWU0ZTNiZDUxZTkyNmM3MWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyZjVkNTE1YmJiYzVlODRiMjJkYTViZTg2MzAwOWY1MGRkYjk2YzVjNTEyZDIxNWRkZGI2NDU0Yjc1NjQwZDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3ODZmY2UxMDViNzJjZTFiZTUwMDIxMGMyYzRiNTE2NTBkYTE3MTQ3MWE4YTk3YjdkOTVkMGY0MjJjYzViOWUifQ"
+          "resource": "repo://src/harnessed/launcher.py#L3810-L3827",
+          "version": "repo-lines-v1:sha256:ec97eea8149355a51dfb6973ec28c4bbbd2d3372062c6205cf66dca8eb5321b7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlZTljMDgyMTUzZWNkM2IzNmI4ZGRjNGIxNWM5ZDFmYTI3MTY0MGFlN2E0ZDQxOTU4ODIwOTQwM2Y0N2E1ZWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwNDUxZWY2ZmEwNDFkZGVhYWFlNmQzNjY2ZTdjMTc4NThmNGI0MzNhN2Q5MjMwMzdlNDE0YTM3MTM3ZDUzYmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjU4MzI3MzI4MzA0Nzk3MjBlNTE4NGQ4Zjk2MWQxNGQxODg3MDc4OWEyYWEyODA4MTE3ZjhjNGIxYWI4MTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFlYzJkMDNlY2VjMGI1ZmVmYTc2NDViZjhkODFkZDA3YTcwMTcwZTk1NWIzZDgzZjQ3MjYxNzViMTE0ZjE2YzEifQ"
         }
       ]
     },
@@ -295,16 +295,12 @@
       "statement": "Service sidecars are stamped at create time with harnessed.svc-config-hash (a digest of the full podman run argv); every later `svc up` re-derives what the code would create today and compares, prompting recreation before a harness launches when they drift (proceeding automatically headless) — without this a sidecar drifts arbitrarily far from the code that would create it today, silently.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L1888-L1911",
-          "version": "repo-lines-v1:sha256:7c2afbc4e4b879f1f05f608c2d1954e91213fadb6a0c4a45070bce074bd3810b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYyZGIwM2QzMDI3ZTkzNzQ4NTEyODFiZGIyNzM5MWMyYTY5ZmY2MjRjZThlMWZjM2IyYmJjYWE2ZTM2NDA1N2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkZDU5YTkxNTkwMjUyMjczODkyZGVlOGQ2YmNiYzMzMTUxNmFmODkyMzBmMTc4ZDhmMGU2Yjg1NDA1YmFlYTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE1MzFjM2Q4ZmE2YTQ4MDk5NTIwYjc2MWNlYzg5NmYyODQ1MDVlNjE5MzZlMzc1ODkwM2ZmYzRhNTYyNWMxMmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFjZDkwMTI0MzMwYmMyMzYyM2FlODE4OWEzZWY5YTc0M2NlYmMzYmI3OTYwZWQzNTA3Zjg3OWVjNDY2MTViOWUifQ"
+          "resource": "repo://src/harnessed/launcher.py#L1997-L2023",
+          "version": "repo-lines-v1:sha256:24008ba40927ceb49e3fde3c2ee483ab6ec70a55c01377ef8066948f5912f9ca:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYyZGIwM2QzMDI3ZTkzNzQ4NTEyODFiZGIyNzM5MWMyYTY5ZmY2MjRjZThlMWZjM2IyYmJjYWE2ZTM2NDA1N2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkZDU5YTkxNTkwMjUyMjczODkyZGVlOGQ2YmNiYzMzMTUxNmFmODkyMzBmMTc4ZDhmMGU2Yjg1NDA1YmFlYTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE1MzFjM2Q4ZmE2YTQ4MDk5NTIwYjc2MWNlYzg5NmYyODQ1MDVlNjE5MzZlMzc1ODkwM2ZmYzRhNTYyNWMxMmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFjZDkwMTI0MzMwYmMyMzYyM2FlODE4OWEzZWY5YTc0M2NlYmMzYmI3OTYwZWQzNTA3Zjg3OWVjNDY2MTViOWUifQ"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L1933-L1942",
-          "version": "repo-lines-v1:sha256:a2b263f064d46f649d9ab2e5c4d240b9c98616f384f69558b12f41871cc68650:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNmMDVlNzYzN2E5YmQ5MzVhY2NiMzU1ZTQ2YjYyMDA5NWU5MGU2ZDY3Mzc1MmY5YTBiYjgyNDY1NDIyYTBhOTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmNjdiYzZmMWJhZWNjODk3M2FlODM5M2FhYjk4Yjk3NGU2NWQ0NjVhMGEzZTcyMmY4YmY4Y2YxMWRhMzhiZmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYzZTlkZDVkMzdiNjFhNGY0NjNlZDdkMDAyMzVjZjFjNDc1ZjYzNDg0MDJlOWZkNWQ4MDI1MjY5ZmIyZDQ2OTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk2YjVkZGRiNGYwN2UwZjQ3MTcwNDFmMGRkNzMyMTY0YTBkNzA2MTI3N2Y2YmRmNmUxNTk0NzBhYzMzMjQzYjkifQ"
-        },
-        {
-          "resource": "repo://src/harnessed/svcstate.py#L307-L324",
-          "version": "repo-lines-v1:sha256:082e65db3616ddc791208b08624b856eff7c8b89147a795059d9bdab2b475b36:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3MGI1NWZkN2NmZDU1MTJjODFhNjc2YzFhNGRhZGU4OGZlOGQ5YWE5NTYwOTAyNjJmODE5NWE0OTY2NWNiNzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlYjY4YzcwMzRjNWNjZWU4MWQ0MzQzYjU4Zjk1MzRlODgwYWE2OTJkMTcyZThlZjkyN2U1Mjg4NTZjZmNlY2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU3N2NjYWEyOGE3YjMyZjgwZTIwNDc5YTE2OGI5MWVkYmYxMTQyOWQ2MDQyNjU4NzNlNjUwYjk1YWQ4NmMwMjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJiNjE5MGQwMjI4N2YxYWM5NThlZTkyMGU5Mjg5NDViNDA4ZGM1ZTBlNzQwN2UzODFkOWUyYTEzYmM0MmZiMmYifQ"
+          "resource": "repo://src/harnessed/svcstate.py#L307-L338",
+          "version": "repo-lines-v1:sha256:1aea5e73684923e69e94c659099c131b08f7420cab09f9a747ef5a47e8de6155:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3MGI1NWZkN2NmZDU1MTJjODFhNjc2YzFhNGRhZGU4OGZlOGQ5YWE5NTYwOTAyNjJmODE5NWE0OTY2NWNiNzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1NDJhNWQ4Njc2YTI4ZmRjZTM2MmExMzY3ODRjNmQxMTAyYWU2OTViZjc5ZTAzNjc4ZmE1MmQxYmI4Y2FkYmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU3N2NjYWEyOGE3YjMyZjgwZTIwNDc5YTE2OGI5MWVkYmYxMTQyOWQ2MDQyNjU4NzNlNjUwYjk1YWQ4NmMwMjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiMjEzZTJmODdhNThmNTE5NTliMjcwZDRjZmEwNjA2MzFmNTVhNzcxNDJkYTVhM2IyYzI1OTZlODUzNzNkZjAifQ"
         }
       ]
     },
@@ -411,8 +407,8 @@
       "statement": "update.apply is an allow-list of per-file rewriters dispatched on the file being written (YAML round-trippers for recipe/agent manifests including field-valued build-arg pins, a plain-text rewriter for extra-tools), and an unrecognized file is skipped rather than naively line-edited — fail-closed, costing a bump nobody asked for instead of a corrupted catalog file.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/update.py#L903-L950",
-          "version": "repo-lines-v1:sha256:ab793fd98b5058e35dc0c075ee604c523a05b1aeea850a4a9b7eb84df71e9492:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkNTJkOTg5MDBhNzE2MzY4YTA5YjNiOTg4MGE2YzMyY2ZhMzRjY2VkNDQ1ZjI1N2ZjMDY3NWJjNWFmZWZlNjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhNmE5YjFlMzk0OWNhMThmMWUyOGRlZGNiODM4MjRlY2NlZjEzYjQ0MGY2ZTM3MzdiMDg3MDc1NjUyODYyNWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://src/harnessed/update.py#L960-L1019",
+          "version": "repo-lines-v1:sha256:0a4f44f347a3a479016d97b75f4e3a23f4e97395c194f1777fe287600a66f13b:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkNTJkOTg5MDBhNzE2MzY4YTA5YjNiOTg4MGE2YzMyY2ZhMzRjY2VkNDQ1ZjI1N2ZjMDY3NWJjNWFmZWZlNjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhNmE5YjFlMzk0OWNhMThmMWUyOGRlZGNiODM4MjRlY2NlZjEzYjQ0MGY2ZTM3MzdiMDg3MDc1NjUyODYyNWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -555,8 +551,8 @@
       "statement": "The `# as typed:` provenance line is the one place user argv reaches a file, so it is bounded (2048 bytes, marked truncated) and sanitized to printable characters plus tab (a newline would close the comment and let the next line execute). launcher._typed_invocation refuses to emit a line that would lie: none when the process never went through main (a CliRunner test would emit the bare word `harnessed`) and none when the recorded argv names a different verb than the launch being written.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L5339-L5359",
-          "version": "repo-lines-v1:sha256:73907922bad1f2c046ecc20eee74168348fbc1158323605130a7eb4df669fa42:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmNmQwYmE0Y2U1NmU3NTI3Yjc4MzVlYzEyMjc1OWYwZDI0YWRkNWFmOTcwOTQwN2Y3ODVmNjdiNTdiNmMyNWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5ZjVlNTZmNjlmYjhmNjVlYmFkN2MwZmNmYzNkM2FiMzIzYzI0NzFmMDM1NjQ1NmY1ZmRhNTY1NmZkNDY2OTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRiZmYwMTE3OGIyZTEyODM2ZjFiOTliZmE5NTI4MGU2YmQyMmVlZmMxMzFmNjYyNzNmZWVkNGVjY2Y5YjI4ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxZjA5NjcyZjZlZjRiZWQ4YTlhMjIyMDBmNDM0YjYyOTVjNTRjYmQwYmFjY2RiYzM3ZjJlMTkyZjNlNTMyYmMifQ"
+          "resource": "repo://src/harnessed/launcher.py#L5556-L5598",
+          "version": "repo-lines-v1:sha256:aac1c1bb4aa01e764309f131d4751cc8f8887a580adb117ece3aa0dfe239de52:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwM2QyOTZmN2JhY2IzNWQ5ZjZhZTUyNmRiMGNlOWEwNzJiNGIyYzlmMjcxZWQzYjgzNjEyZTcyNThhMTFhZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5ZjVlNTZmNjlmYjhmNjVlYmFkN2MwZmNmYzNkM2FiMzIzYzI0NzFmMDM1NjQ1NmY1ZmRhNTY1NmZkNDY2OTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUzNDQxM2I2ZmRmZjgyZmI4MWNkYmUyZWUzZjI3MmViZjdiNTkyNGE3ZTc1Mjc2Y2VhYTMyOGNkZDU4MGFlNTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxZjA5NjcyZjZlZjRiZWQ4YTlhMjIyMDBmNDM0YjYyOTVjNTRjYmQwYmFjY2RiYzM3ZjJlMTkyZjNlNTMyYmMifQ"
         },
         {
           "resource": "repo://src/harnessed/launchscript.py#L112-L143",
@@ -651,11 +647,11 @@
       "statement": "`harnessed-tools test` is the one harnessed-tools verb that drives the container runtime: it re-exposes the capability oracle (with --root/--project/--harnessed-bin/--keep/--no-tests/--json), whose launch_headless sets HARNESSED_HEADLESS=true and shells out to `harnessed container-run <harness> <project> --stack <name> --fresh` using the launcher binary resolved from --harnessed-bin ($HARNESSED_DIR/harnessed, then PATH). The launch's wire_services starts the stack's service sidecars, and the oracle's teardown removes only the instance pod, so those sidecars are still running after the test — removing one is `harnessed svc down`'s job; the headless environment also makes sidecar-drift recreation proceed without the interactive confirm.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/capability.py#L489-L538",
+          "resource": "repo://src/harnessed/capability.py#L508-L557",
           "version": "repo-lines-v1:sha256:49b7f83eb1623b5152b2918482cb52231417e9012196578bd0f583e52f20d190:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlMzJlOWI2ZDFkMmJhYWM3MjQ2ZDdkMDliMjQ4NTllODI3NjZiMzUzZTZlNjNmY2U4MTNlMjQyOTZkYTY5MGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4OTc4YjhhNzIxOGY5NGNlMjYxNTg3NDdjOWQxYzdiY2FiOTg4NTI3ZGI3YzFkZmQ0NmQyMGI2YTBkMmNmMDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3MDE0OWUwNjlhZDY3ZWNjZjQ3MzY0NmZmMWM3NTAwNTBkMzI5ZDExMDAxOGRjNTc2Njg3OGVhZmExZDYwN2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlmMTcwN2MzZjc5ZDc1M2UyZmMyOGZiNGNlMzEzZWI2ZTY4MjJjY2ZlOTE0NjVhNzM5YTg5YjQ1ZWViN2I0NTMifQ"
         },
         {
-          "resource": "repo://src/harnessed/capability.py#L541-L557",
+          "resource": "repo://src/harnessed/capability.py#L560-L576",
           "version": "repo-lines-v1:sha256:b7db3c04f655a59e67f0b98891f1454c1873302f86be38a957b3bc03bd73d746:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1OTYzYjNiNWJkNDViMzAyOWRmZTEyOGNhZjU2MmQ0ZTU4MjMwYTY5MjhjNWExYjIxZjY1YjlmMWUyNWNjY2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwNjJlNThlYTBiMGZkMTk1YmEwNzY2MTNiNjMwZDU5ZTY3YmQ0NzBiYjE5ZTk3YTIwYzkwMjM2NmU1YmEwZTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEwNzliNDcxN2U2YjlmMjMwNWFhM2VmOTgyMDM0MjEwZDI2MjBmY2Y1Mjc5N2Q3OTc4ZDcyMzMwMDM2MjdmMGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxNzQ3MjJhZjkxMThkYjUzNWNjZDI4MTNjMTQ4NjEzMDcxNTc1YTgzZGU4NjQ4NjFlMGNlNWMzMWY0OWNlZTYifQ"
         },
         {
@@ -663,12 +659,8 @@
           "version": "repo-lines-v1:sha256:0463a39e95c4aadcc3496e0816337258890f84854a8431643c045c76fbf46555:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ZjJhNDMyMWU1ODI3M2E4ZDNhODNkZTQ2MTEzZWI2YTg5YTI4MjE2Y2M4NTcyMjY1YjZmMzliNmUxZjM4ZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYwMjQ2YjQzMzY4MzVkYjkxMmVhNmQzOWE4MDI2YjYwYzczZWU3NTYzOGFmZWYwMmFiNTQ5NGJiYzVjMmVhN2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1OTU0NDY0MmI0MmE0ZjcyN2MwY2NjOTRmZDkxNDVjYjNkZjE4MmE1MmI2ZTMwYzY4YzZjZGMzZTA1ODU2M2YifQ"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L1896-L1911",
-          "version": "repo-lines-v1:sha256:05cbd3696d232101565bda258ddc063aa9e51dbaaa15bcb117e990c710d19060:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwMjk0MWZjMDM1ZmVlODFhODczZWEyZGY2MzM4ZTFiZTk5N2Y1MDJiYWY2NzA0YTk4OTRjMDZmMmU3ZTk3M2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkZDU5YTkxNTkwMjUyMjczODkyZGVlOGQ2YmNiYzMzMTUxNmFmODkyMzBmMTc4ZDhmMGU2Yjg1NDA1YmFlYTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZmNGQ3MGU4YTY2NmUxYTdkODk5MDE4ZDJmZjg1ZGM1YTUyZjI1NDM0ZWRhOWQ5YjE4MTkwNTQ5ZTEwZjE5YTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFjZDkwMTI0MzMwYmMyMzYyM2FlODE4OWEzZWY5YTc0M2NlYmMzYmI3OTYwZWQzNTA3Zjg3OWVjNDY2MTViOWUifQ"
-        },
-        {
-          "resource": "repo://src/harnessed/launcher.py#L3322-L3338",
-          "version": "repo-lines-v1:sha256:c8c10fbe9718f430dc6ba3ae12bfb3717e618535c4700097fab03ea0e43f40fa:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5ZjkxMTcwMWI3ODUwNjBiN2VhY2MyMGUzZmY1NDk2ZDBmNDBmYzVmMzFlNzA3ODkxNTAyZDRiOWRmYzNiOTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1NWU2Njg3ODk2Y2M2MzQ2ZjEyOTcwNzRmOWM3NTViOGVkMzEzOTg1MzZlMWUzNGI3Yjc0M2EwMWFhOTJkNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIwYTJlMmE3Nzg4Y2UxMTZmMTU1NTA2NGZiNjc5NDMxMTRjMDg5ZjZiN2I3ZjA0MGEyYWJkOWI0ODQwODc3YjUifQ"
+          "resource": "repo://src/harnessed/launcher.py#L2004-L2023",
+          "version": "repo-lines-v1:sha256:d5c27d676d44e4199504365a4694a725d1743a6efe67d245afbc5119a84762fc:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2OTk0ZGQzNTFhMjI4NTQ2NzY2YmQxZDY2NGJhZWUxODMwMWIyNDI0OGJiNjYyYzQ2Yzc3YTU4NTFiYTkyNzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkZDU5YTkxNTkwMjUyMjczODkyZGVlOGQ2YmNiYzMzMTUxNmFmODkyMzBmMTc4ZDhmMGU2Yjg1NDA1YmFlYTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2NzM2OTdlMDM5ZTIzYWUwZTRmZDE5ZTk2NDNhYjJkMTVmOWUxODBkNjFkYmQ4Y2M4NTg5MzBlMDA4YjFmODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFjZDkwMTI0MzMwYmMyMzYyM2FlODE4OWEzZWY5YTc0M2NlYmMzYmI3OTYwZWQzNTA3Zjg3OWVjNDY2MTViOWUifQ"
         }
       ]
     },
@@ -677,16 +669,16 @@
       "statement": "Both run verbs share one grammar in which the VERB picks only the backend and a FLAG picks the stack: _STACK_OPT, _RECIPE_OPT, and _EXTENDS_OPT are module-level option objects used by both container-run and host-run so the two grammars cannot drift; _resolve_stack errors when --stack and --recipe are given together ('provide either --stack or --recipe, not both'), and with neither flag it runs the --extends baseline (`default`) — exactly as if --stack default had been typed, a legitimate launch rather than a malformed one — while --no-extends is the one shape that cannot mean that and requires at least one --recipe (the recipe list is then the whole stack). The recipe form is content-named, minting a real manifest under the generated catalog root so `harnessed list`, the staleness check and both GCs treat it like any other stack.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L2914-L2948",
-          "version": "repo-lines-v1:sha256:5aa6516eb5dd1fdc5600c4f988591fd091543d63321e9b32f7e09acee4eb9aef:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlZjc3MTFiYWFhNTAzZGZlNjE1YmJmYjEyOTBkYTQyMzAwNzA3ZTUzMWUxOTIyYjQ0YzY4NTNkZmNkN2ZmMDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2NDIzMGQ0ZTZmMDJjZjBmOGVmNTUxMjY2NWM3ZThiMjIxYTMyN2FiZDEwZmQyNzA4Mzk0MjE1NGQ4MmViZDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkYWUyNDkyZjJiNjhhNDY3ZjUwZGYxZWE1YjRhZDI1NzE1YzVhMDdjNDk1MGI0ZDUxNTgxZDQ4NzE2NjRkMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJjZjJmYzIwNGUzYzViYjg5MGUzMDNmYmYzODFjY2RjOTczMTY5NzFiMWFjZGYxMjcyOTAxYzdiM2VmMzczZDUifQ"
+          "resource": "repo://src/harnessed/launcher.py#L3056-L3104",
+          "version": "repo-lines-v1:sha256:ac1b06b900d1196651710b798f9e5a40369a660375ab186474da51e1d6a526ab:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3YjJmYzg5MjIwMDNhOWMwNjQ1YTM3ZjZiZWU2ZWQxYmZmODIwOTI1ZjZjZmE1OTBkNTY2MWFhYzVjOWNhZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2ZTBjM2YyNzRiZGIzMjhlZTdkZWU3YmRmODI4NzI1ODc0YjAwZjExYmQwNWRiNGEwNjU4ZDNjMWJjMTVlNGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI5MTkwZTVlMzAzYjAzZmVjZTJlMmRlNWYwMjVlYTE1MTQ3NWU2Zjg4ZGU4ZDkyOGZhMGVhMjNmYmEyNzVlMjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjNGNlZDRjY2I5MTRhZTdiMTRhN2Y2NmI5OGY3ODA4M2Y5N2Y0YjY4NzVkYzU0OTQ2ZmYwYzkzZTg3ZWVmZWYifQ"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L2969-L2988",
+          "resource": "repo://src/harnessed/launcher.py#L3107-L3126",
           "version": "repo-lines-v1:sha256:460730163dfde47728cc4188cf8c50581216478b3430c7e9585cf77f8a909875:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3NDBhOWUwNmUyODIxMzg3NjI0MzZhZmFhOGE0M2I5ZDQ0ZDg0ZTNlNWM4MTg3NzRmZTM0NThmYzg5MmIzMjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ1MjUzMzMwZTNjM2U2OTc5ODc1MGJiZjc2ODNmZWQzOGYwOTM3NGEyM2FmMWJhM2EwOWI0NDQ0NzAzOTE5MDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjViNDA0NzU4ZmYxNDFkMjk3NjVhNWIyZjIzNGNiNmQwYjE5Yzk1NThmZWYyMWQzODAyMTc5MjNiMzJlOGNjYWIifQ"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L3612-L3625",
-          "version": "repo-lines-v1:sha256:06aa5d9333f41d0db1eb84d224755dedc1fd07540b242e0e96b998270248dbc3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlZjZhN2UzNWY2NDdkZTg0MDJjYWE0YzhiZTZhOTE0ODNkOTNjYzIyYjA1ZWY1NzM2ZjM2NzEyMThlZTc4ZWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlZTljMDgyMTUzZWNkM2IzNmI4ZGRjNGIxNWM5ZDFmYTI3MTY0MGFlN2E0ZDQxOTU4ODIwOTQwM2Y0N2E1ZWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEwOTJmMTBkMzVmYTFmMzQyMjM2OWY2NWE0ZDQ2ZjJiZjIyZmNjZjM2YTUwZGI1MDA4Mjk0NWYyOTM4Y2EwZDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIyYzdkYjFhNTFkZjRlN2QxNTE3OTFkMWVlMTZhOTA3MGQzZTllMTc2OGIwY2M1ODNkZWZkYjQ3ZDU3ZmIyZGQifQ"
+          "resource": "repo://src/harnessed/launcher.py#L3150-L3159",
+          "version": "repo-lines-v1:sha256:c192fc023bb14863614985a5606761dfdf86cca11b7c87d8a79dbc8211e07af5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwODJkNWM0ZDkxZDk1M2RjMzIxMmMyZGRlMTg1MzYwODhjMDI1NTBkZDQyMjE3OWNkNzBhYTZiY2MxN2EwOWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1NDJlOWQwZTI0NTdiZmJjODNmNTZkMzg2ZjEyNmY3MDU2ZTg2MzAzZTUyZDJiYWVlOTZkNGM4NDQzZWQxMTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5OGIwNjNkOWI0N2U2NTM3OTYyNTU3MmNjZTE5NzY2OWQ1NzY3ZTEyYzE4YmUwNzU2NTJiOGNkOTgxY2U4ZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzM2JiNTA2YWY2NjEwZDNmMzdhMmE1ZjI5Yjk3OTA4MjMyMWJiM2ZlZDE5NmNhODFlY2Y5Y2RmY2Y0OGE0ZTIifQ"
         }
       ]
     },
@@ -748,7 +740,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.4.3",
-    "at": "2026-09-08T23:17:55.419Z"
+    "by": "openwiki/0.5.1",
+    "at": "2026-09-16T21:10:52.541Z"
   }
 }

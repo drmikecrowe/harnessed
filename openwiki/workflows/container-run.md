@@ -46,10 +46,12 @@ sources:
     resource: repo://tests/test_broker_lifecycle.py
   - id: openwiki-source-4d3b84558965c7b5921b9989
     resource: repo://tests/test_broker_pod_args.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+  - id: openwiki-source-f725ea11f1806a58b06d7f3e
+    resource: repo://tests/test_launch_parity.py
+generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
 verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 ---
 
 # Container launch: `container-run` end to end
@@ -75,6 +77,13 @@ the [secrets broker](/openwiki/architecture/secrets-broker.md) that BOUNDARY sta
 one starts at all, the [aoe row and launcher script](/openwiki/integrations/aoe-and-launch-scripts.md)
 a launch registers, and [`harnessed build`](/openwiki/workflows/build.md), which produced the profile
 this verb launches.
+
+The same function is registered under a second name, `container-exec` (#450): the non-interactive
+twin, distinguished by `ctx.info_name` rather than a wrapper signature (twenty-odd options would be
+a second place for one to drift). In exec mode `--shell` is refused outright (`-i` with no pty would
+hand a piped caller a shell it cannot drive), every interactive confirm takes the non-interactive
+branch instead of blocking, and the attach exec allocates **no pty** (`-i` always, `-t` only when
+somebody is at the keyboard) so the harness prints plain text rather than fullscreen redraws.
 
 ## The sequence
 
@@ -339,6 +348,14 @@ Volumes are identified by **label** (`harnessed.role` / `harnessed.stack` / `har
 never by parsing the name — a stack name may contain the same hyphens the name format uses, so
 `harnessed-cfg-claude-a-b` is ambiguous about where the harness ends.
 
+One runtime wrinkle: docker does **not** chown a freshly created named volume to match the
+container's user namespace the way podman does, so on docker only, a volume *this run created* is
+first chowned to the image's uid by a throwaway `--user root` container
+(`volumes._chown_volume_for_docker`) — deliberately as a chown, never by running the populate steps
+as root, which would change what recipe install scripts can do. The "have we done this already"
+state lives outside the volume (the caller asks before `volume create`), because docker performs
+copy-up only while the volume is *empty* and a sentinel file inside would suppress it.
+
 ### The volume-composition invariant
 
 > **Copy-up lifts the image's `~/.claude` into the volume; profile content is then layered on top.
@@ -562,10 +579,14 @@ config is project-agnostic (built before any project is known; path mirroring ma
 project path per-launch), so serena/repowise would otherwise resolve the container home instead of
 the project root. Per-instance so two projects on the same stack never race on one shared cwd.
 
-`self.member_mounts` is then derived: `_without_userns(self.mount_args)` (a filter on the
-`--userns` *flag*, not a literal value — an inline inequality against the bare `keep-id` spelling
-silently stopped matching once the mapping was pinned), plus the hatago config `:ro`, plus
-`_setup_script_mounts`. Since the hatago-consolidation, hatago runs **in** this container rather
+`self.member_mounts` is then derived: `_without_userns(self.mount_args)` on a pod runtime (a filter
+on the `--userns` *flag*, not a literal value — an inline inequality against the bare `keep-id`
+spelling silently stopped matching once the mapping was pinned), plus the hatago config `:ro`, plus
+`_setup_script_mounts`. Honest note from the source: no mounts builder emits `--userns` today, so
+the filter is **inert** — it is kept because the strip is only ever correct for a pod, and an
+unconditional strip would silently swallow a mapping the moment a builder starts emitting one. On a
+pod-less runtime the mapping is delivered by `_agent_placement_args`, not from here. Since the
+hatago-consolidation, hatago runs **in** this container rather
 than as a separate pod member, so the hub and the stdio children it spawns share the container's
 home and see the project bind-mount. Waiting for the hub is a readiness gate, not wiring — the
 sequencer does it after the container starts.
@@ -679,7 +700,10 @@ The `--network` value is composed by `mounts._mcp_remote_pod_args`; the possible
   every launch of that stack. Truncates the middle, keeping the `harnessed-<harness>-` head and the
   trailing project hash. Set on the **pod**, not the member: pod members share the pod's UTS
   namespace.
-- **`--userns=keep-id:uid=1000,gid=1000`** (`paths.USERNS_ARG`). Bare `keep-id` maps the invoking
+- **`--userns=keep-id:uid=1000,gid=1000`** (`paths.USERNS_ARG`, the podman spelling;
+  `paths.userns_args` is runtime-aware and yields `--userns=host` on docker, which has no
+  `keep-id` and where an omitted flag would remap uid 1000 into a subuid range under a
+  `userns-remap` daemon). Bare `keep-id` maps the invoking
   host uid to the *same number* inside, while the container process is the image's uid 1000 — so a
   bind-mounted host dir is writable from inside only when the invoking user *happens to be* uid 1000
   (true on many dev boxes, false on a `ubuntu-latest` runner). Pinning the mapping makes the
@@ -721,10 +745,25 @@ The `--network` value is composed by `mounts._mcp_remote_pod_args`; the possible
   about both. The callback may be unreachable and the pod has no route to the broker, but neither
   failure is invented by harnessed — both are consequences of the operator's explicit value.
 
+### Placement: who owns the netns
+
+`_agent_placement_args(rt, pod, inst)` decides where the agent container lives, and the answer is
+runtime-shaped. On **podman** the agent is a pod member: `--pod <pod>` and nothing else — the
+mapping and hostname are pod properties, and podman *rejects* `--userns` on a member. On a
+**pod-less runtime** (docker) there is no infra container to inherit from, so the agent *is* the
+namespace owner: it states its own bounded `--hostname`, its own mapping
+(`paths.userns_args`) and — docker-only, paired with `_chown_volume_for_docker` — `--user` of the
+invoking uid, because docker maps nothing and without it the agent writes as host uid 1000 whoever
+launched it (wrong on a GitHub runner at uid 1001). Crucially the docker branch carries **no**
+`--network=container:`: nothing ever creates a container by the pod's name there, so the agent
+creates its own netns and everything else (the firewall runner, service sidecars) joins *it* via
+`_netns_anchor`, which asks which runtime — never `pod or inst`.
+
 ### `podman run -d` and the env precedence
 
 ```bash
-podman run -d [--pod <inst> | --network=container:<inst> --hostname <bounded>]
+podman run -d [--pod <inst>]                          # podman: member of the pod
+                   # or, on docker: --hostname <bounded> --userns=host --user <invoker>
   --name <inst>
   --env-file <global> --env-file <project>       # resolved, layered global → project
   -e <recipe env ...>                            # FIRST — catalog-authored, must not clobber
@@ -816,7 +855,13 @@ the unconfined side of the boundary.
 `egress-firewall.sh` installs a **default-DROP** OUTPUT policy in the pod's netns, so "it did not
 run" is not a degraded firewall — it is *no* firewall. Recipe-declared `egress:` domains are unioned
 across the stack's recipes and passed as positional args, so the allowlist opens them only when a
-recipe that needs them is present.
+recipe that needs them is present. The union has a second member: `launchenv.api_endpoint_egress_hosts`
+over the resolved launch env adds the host of the agent's **own model API** when the user has
+repointed it (`ANTHROPIC_BASE_URL` and friends live in the user's `.env.schema`, which no recipe can
+see; measured: a repointed gateway timed out at the DROP policy while `api.anthropic.com` — in the
+baked allowlist — answered, and the agent reported it as an auth failure). It reads the already
+resolved env as a mapping rather than re-reading the env-files, so there is no third copy of the
+global → project precedence to drift.
 
 **Fail-closed layer 1 — the script refuses to report success on a failed call.**
 
@@ -926,8 +971,13 @@ terminal to notice.
 `launcher._attach` execs into the running instance:
 
 ```bash
-podman exec -it -e TERM=xterm-256color -w <start_dir> <inst> bash -l -c <shell_cmd>
+podman exec -i [-t] -e TERM=xterm-256color -w <start_dir> <inst> bash -l -c <shell_cmd>
 ```
+
+`-i` always — a piped prompt on stdin has to reach the agent — but `-t` only when somebody is at
+the keyboard: under `container-exec` (#450) a pty makes the harness switch to its fullscreen
+renderer, drawing the answer onto the alternate screen buffer where it is gone at exit, so the
+non-interactive twin drops the `-t` and gets plain text.
 
 `shell_cmd` is `mise_init && init_prologue && [keyring_init] && tail`, where `tail` is the harness
 command derived by `attachcmd.py` — a module that derives and never spawns:
@@ -1030,6 +1080,19 @@ change to the one path no test covers — and why the page's invariants below ar
 reader must not "clean up". The capability test (`capability.launch_headless`) drives
 `container-run --fresh` headlessly against a real podman and host-derives the instance name through
 `paths.instance_name`, so it never depends on scraping the launcher's stdout.
+
+The **parity authority** is `tests/test_launch_parity.py`: an AST lint over
+`container_run`+`ContainerBackend` vs `_launch_host`+`HostBackend` that asserts (1) every
+harnessed-defined helper the container path calls and the host path does not appears in the
+hand-annotated `CONTAINER_ONLY` ledger — each entry carrying the *reason* it cannot apply to a host
+launch (the broker, the bind mounts, the netns firewall are container-only *by nature*; the
+isolated-auth store *by decision*, tracked separately) — (2) the ledger holds no stale names (a
+listed-but-uncalled name would pre-authorise a future helper that reuses it), and (3) a regression
+pin that the five historically-missed capabilities (`_ensure_services`, the socket env, the agent
+path, recipe `init:`, setup notices) really run on the host path. It catches **absence**, not
+wrongness — the docstring says so explicitly — and it scopes helper lookup package-wide
+(`harnessed.*`), not `launcher`-only, so extracting helpers into new modules does not silently
+blind the lint.
 
 ## Invariants
 

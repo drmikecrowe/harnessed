@@ -1,40 +1,248 @@
 ---
 type: mechanism
-title: "Supply-chain scanning: the gate, its thresholds, and its placement"
-description: "The scan layer that watches the catalog's downloads: osv-scanner + pip-audit with a pure-Python severity gate at CVSS >= HIGH (7.0), the build-then-scan ordering (the derived Dockerfile has no scan layer at all), the credentialed advisory in-image pass with its coverage accounting, and the online rescan path behind the SEC-04 nightly systemd timer."
-tags: [supply-chain, security-scan, osv-scanner, pip-audit, cvss-gate, harnessed-scan, rescan, nightly-scan, systemd-timer, podman-save, coverage-accounting]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-08T23:17:55.419Z
+title: "Supply chain and pinning: what ships, how it is pinned, and how it is scanned"
+description: "The pinning surfaces (recipe tools:, extra-tools pins, image-layer pins, per-recipe mise.lock checksums merged by toollock at launch), the `harnessed update` staleness sweep and its scheduled `--check`, and the scan layer itself: osv-scanner + pip-audit with a pure-Python severity gate at CVSS >= HIGH (7.0), the credentialed advisory in-image pass, and the online rescan path behind the SEC-04 nightly systemd timer."
+tags: [supply-chain, pinning, skills-pins, extra-tools, mise-lock, toollock, harnessed-update, stale-pins, security-scan, osv-scanner, pip-audit, cvss-gate, harnessed-scan, rescan, nightly-scan, systemd-timer, coverage-accounting]
 sources:
   - id: openwiki-source-e916c387e9195be48f6d9d41
     resource: repo://catalog/base/Dockerfile.harnessed-base
+  - id: openwiki-source-18cedd09b868a0074380c4cd
+    resource: repo://catalog/base/extra-tools.default.txt
   - id: openwiki-source-c799522f988c7842c7395388
     resource: repo://catalog/base/harnessed-scan
   - id: openwiki-source-0852603a38d760a77db2bc8a
     resource: repo://src/harnessed/cli.py
   - id: openwiki-source-eea4d18f75a13f889234865d
     resource: repo://src/harnessed/emit.py
+  - id: openwiki-source-154371253083f8b9b656eefa
+    resource: repo://src/harnessed/hostrun.py
   - id: openwiki-source-2b85b44d9f80bbb3b6ce747d
     resource: repo://src/harnessed/launchenv.py
   - id: openwiki-source-ecbe6256d6933ca2c8c9678f
     resource: repo://src/harnessed/launcher.py
   - id: openwiki-source-8553af2aa8f78f1287a035ce
     resource: repo://src/harnessed/scan.py
+  - id: openwiki-source-4d719c6f3a70a2ece04f213b
+    resource: repo://src/harnessed/toollock.py
+  - id: openwiki-source-dedbae614432467fbfc419d9
+    resource: repo://src/harnessed/update.py
+  - id: openwiki-source-0d783cb9b16f618063f9ca7b
+    resource: repo://src/harnessed/volumes.py
   - id: openwiki-source-9090cceb822144ffaf7a8998
     resource: repo://systemd/harnessed-rescan.service
   - id: openwiki-source-7af162bd104477b196c3dcdd
     resource: repo://systemd/harnessed-rescan.timer
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+  - id: openwiki-source-ea14567b6809338069bc5030
+    resource: repo://tests/test_ci_pin_check_workflow.py
+  - id: openwiki-source-d93dd2b98c101e2e05d79086
+    resource: repo://tests/test_external_contracts_live.py
+  - id: openwiki-source-e2b1acf61421728c9503bf21
+    resource: repo://tests/test_extra_tools_pins.py
+  - id: openwiki-source-8cfda4d10d1810d7ff1abb89
+    resource: repo://tests/test_recipe_pin_hygiene.py
+  - id: openwiki-source-45aae4ce11629bd1314329a5
+    resource: repo://tests/test_toollock_wiring.py
+  - id: openwiki-source-854929ba43f12d27e96036d0
+    resource: repo://tests/test_update_pins.py
+generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 ---
 
-# Supply-chain scanning: the gate, its thresholds, and its placement
+# Supply chain and pinning: what ships, how it is pinned, and how it is scanned
 
-The scan layer is `src/harnessed/scan.py` (the gate), `catalog/base/harnessed-scan` (the in-image
-advisory pass), and the `rescan`/`scan` verbs in `src/harnessed/launcher.py` that drive both —
-scheduled nightly by the two units in `systemd/`. Its job: no built image ships a HIGH+ (CVSS ≥ 7.0)
-advisory without somebody seeing it, and a scanner that silently did nothing never reads as a clean
-result.
+Everything harnessed installs from the outside world arrives through one of a handful of pin
+surfaces, and every one of them is *closed* — a floating reference is rejected before anything
+downloads. This page covers the pinning half first (what is pinned where, how per-recipe
+`mise.lock` checksums are enforced at launch, and how `harnessed update` keeps pins from rotting),
+then the scanning half that watches the result: `src/harnessed/scan.py` (the gate),
+`catalog/base/harnessed-scan` (the in-image advisory pass), and the `rescan`/`scan` verbs in
+`src/harnessed/launcher.py` that drive both — scheduled nightly by the two units in `systemd/`.
+
+## Part I — Pinning
+
+### The pin surfaces and their fail-fast gates
+
+There are four places a version string can live, and each has a gate:
+
+1. **Recipe `tools:`** (`recipe.yaml`) — `schema._parse_tools` rejects a spec with no `@`
+   (`"@" not in spec`), so `npm:context-mode@1.0.169` and `pulumi@3.251.0` are the only legal
+   shapes. `@latest` is equally illegal.
+2. **`extra-tools.txt`** — `catalog/base/extra-tools.default.txt` is the template (seeded to
+   `~/.config/harnessed/extra-tools.txt` on first build); `schema.parse_extra_tools` holds it to
+   the same rule. The motivating failure (bd harnessed-2o9) is the file's own header comment: a
+   bare name is not "unversioned", it is `@latest` resolved at build time — the most floating
+   form the file can hold — and on 2026-08-06 it broke the base image outright, because *absence
+   of a version reads as "nothing to validate"* to any check looking for a floating marker.
+3. **Image layers** (`catalog/base/Dockerfile.harnessed-base`) — the runtimes
+   (`node@22 pnpm@11 python@3.12 bun@1.2 rust@1.87 go@1.24 gh@2.96.0`), the node-bundled npm
+   self-upgraded to a *patched, pinned* `npm@11.18.0` (a self-upgrade is the only way to move what
+   the scan sees under `lib/node_modules`), `socket@1.1.143` and
+   `@drmikecrowe/hatago-mcp-hub@0.1.2` via `pnpm add -g`, and corepack *deleted* rather than
+   acknowledged — the findings go away because the code does, and the deletion layer proves it
+   happened (resolve `mise where node@22`, refuse an empty answer, then `! command -v corepack`)
+   because `rm -rf` on a missing path returns 0.
+4. **Per-recipe `mise.lock`** — checksum-verified bytes per platform, covered next.
+
+The extra-tools gate runs **on the host, before podman is invoked**: the base build stages its
+context through `launcher._staged_build_context`, which parses the file and raises
+`PinValidationError` naming the *user's* file (`~/.config/harnessed/extra-tools.txt`) and the
+recovery ("delete it and rebuild"), not the "do not edit" template. Before that guard existed an
+unpinned entry surfaced as `exit status 123` from inside a RUN layer, naming nothing.
+
+### The guard/build agreement invariant
+
+The build's extra-tools step is a shell pipeline —
+`grep -v '^\s*#' | grep -v '^\s*$' | awk '{print $1}' | xargs -r mise use -g` — so the Python
+validator and awk must agree on what an entry *is*, or a file can pass every check and still kill
+the image. `tests/test_extra_tools_pins.py` enforces this the strong way: it **reads the pipeline
+out of the real Dockerfile** (anchored on the literal `/tmp/extra-tools.txt` COPY target, cut at
+`xargs`) and runs it, so editing the Dockerfile breaks the tests rather than letting them drift.
+The agreement rules that fell out of real defects:
+
+- CRLF files must not hand mise `bat@0.26.1\r` (awk does not treat `\r` as a separator);
+- a UTF-8 BOM is stripped once and only once;
+- **printable ASCII only** (SPEC amendment 2): the characters `str.splitlines()` breaks on that
+  awk's record separator does not (`\x0b`, `\u2028`, `\u2029`, …) are *refused*, not folded — awk
+  would read `bat@0.26.1\u2028dua@2.41.1` as ONE tool name, so there is no reading of the file both
+  sides agree on, and failing closed is the only answer that cannot silently install the wrong
+  thing. The rule is "agree, or refuse — never diverge", asserted as a property for the whole
+  class, not per-defect.
+
+The regression gate on the shipped template (`test_the_shipped_default_passes_its_own_validator`)
+holds the *real* `extra-tools.default.txt` to the rule (a fixture copy would defeat the point),
+and its dua entry is asserted on **presence and pinned-ness, never the version number** — an early
+literal `dua@2.41.1` assertion turned red on a routine 2026-09-14 bump to 2.44.0 with nothing
+wrong, so the gate now proves "dua is still listed and still carries a version".
+
+### toollock: per-recipe checksums, merged at launch
+
+A stack's tool set is the **union** of its recipes' `tools:`, composed at launch — but the
+checksums are authored per **recipe**, as a `mise.lock` beside `recipe.yaml`
+(e.g. `catalog/recipes/tokensave/mise.lock`: version, per-platform `sha256`, and download URL for
+`github:aovestdipaperino/tokensave@7.11.1`). `src/harnessed/toollock.py` merges the lockfiles of
+the recipes a stack actually uses. Four facts were measured against a real mise before any of this
+was written (module docstring), because each would otherwise have produced a mechanism that
+verifies nothing:
+
+1. **mise ENFORCES the lockfile** — a wrong checksum fails `mise install` with `Checksum
+   mismatch`, exit 1. Without this the feature is decorative.
+2. **The file must be named `mise.lock`** — `$MISE_CONFIG_DIR/config.lock` and
+   `config.toml.lock` are *silently ignored*: install exits 0 on a corrupted checksum. This is
+   the failure the wiring most needs to avoid, which is why both install paths set
+   `MISE_CONFIG_DIR` explicitly and write the lock there by exact name.
+3. `mise lock` refuses to generate one for a global config, so assembly cannot shell out — the
+   merge is harnessed's to perform.
+4. Each tool's tables are contiguous, so **verbatim block extraction** is safe: unknown future
+   fields are copied through untouched rather than lost to a re-serialisation (mise owns this
+   format). The block splitter recognises both quoted (`tools."npm:x"`) and bare (`tools.pulumi`)
+   paths — requiring the quoted form dropped `pulumi` and all seven of its platform checksums,
+   a fail-open in the middle of the mechanism whose job is to fail closed.
+
+Merge semantics, all fail-closed where it matters:
+
+- **Identical blocks for the same spec merge to one entry** (two recipes pinning the same tool is
+  ordinary); **differing blocks raise `ToolLockError`** — "one tool cannot have two sets of bytes
+  in one stack" — surfaced as an error naming both recipes, and the whole install exits 1.
+- A lockfile that is not valid TOML is rejected before merge: a broken file would otherwise be
+  concatenated into the stack's and break every tool in it, not just its own.
+- **An empty body REMOVES** `mise.lock` from the config dir rather than declining to write — a
+  leftover lockfile from a previous recipe list would keep asserting checksums for tools the stack
+  no longer installs.
+- A recipe that ships no lockfile is not an error: enforcement is per-tool, so adoption is
+  incremental and an absent lock means "these tools install unverified, as they always have".
+
+Both install paths do the merge (`tests/test_toollock_wiring.py` asserts the merged file reaches
+exactly where mise will read it, in each mode, and is removed again when a stack no longer has
+one):
+
+- **Container path** (`volumes.py`): the merged body is passed as env `HARNESSED_TOOL_LOCK` and
+  `printf %s`'d into `$MISE_CONFIG_DIR/mise.lock` by the same shell that runs
+  `mise use -g … && mise install` — interpolated into `-c` rather than the argv, because
+  hand-quoting a multi-line TOML body has an arbitrary-code-shaped failure mode. The config dir is
+  ephemeral by design: only the *installed tools* persist in the volume; the lock only has to
+  exist during `mise install`.
+- **Host path** (`hostrun.py`): `toollock.write_stack_lock` writes (or removes) the file into the
+  redirected `MISE_CONFIG_DIR` **before** the install runs.
+
+### `harnessed update`: the staleness sweep
+
+Pinning trades a broken build for a silently rotting one, so `src/harnessed/update.py` sweeps
+every pin surface and offers bumps. Its classification rules (each pinned by a test class in
+`tests/test_update_pins.py`):
+
+- **RESOLVABLE vs OPAQUE.** `tools:` and extra-tools entries name their backend, so the latest
+  version is a registry lookup (npm/PyPI/GitHub/mise registry; a scoped npm package keeps its
+  slash unescaped and its version splits at the **last** `@`). `install.cache` keys, shell-var
+  SHAs in `install.sh`, and Dockerfile `ARG REF=` literals are opaque — machine-unresolvable, but
+  **reported, never silently skipped**: a pin the tool quietly drops reads as "everything is
+  current", which is worse than no tool. Opaque pins are also never auto-rewritten — there is no
+  safe automated edit for a ref buried in shell.
+- **HELD.** A `hold:` on a `tools:` entry or an `install.hold` on a script (the motivating case is
+  skill content no scanner vets) makes its pins informational: listed with the newer ref, never
+  offered for bumping, never failing `--check`. Without that, a deliberately frozen pin makes CI
+  permanently red and the hold is worthless.
+- **Version order is numeric, not lexicographic** (`1.9.0 < 1.10.0`), a leading `v` is ignored,
+  and a release outranks its own prerelease — so a bump is never a silent downgrade. A pin *ahead*
+  of the registry is not stale.
+- **Resolver failures and unknown packages are `unresolved`, never `current`** — a registry
+  timeout must never read as up-to-date.
+
+`--check` is the CI mode: it exits non-zero on a stale pin (extra-tools pins included) and
+**writes nothing** — building a report must leave the catalog byte-identical. Unresolved pins
+alone do not fail the check, because every recipe with a Dockerfile literal has one; failing on
+them would make CI permanently red and teach everyone to ignore it. The workflow placement
+(`.github/workflows/pin-check.yml`, guarded by `tests/test_ci_pin_check_workflow.py`) is itself a
+design decision: `harnessed update --check` resolves **live registries**, so its result depends on
+what third parties published today — wired to `pull_request` it would fail an unrelated
+contributor's branch unfixably by the author. It therefore runs on `schedule` and
+`workflow_dispatch` only, never on a diff; the hermetic test suite, whose result depends only on
+the diff, still gates PRs.
+
+On accept, `apply` rewrites the pin **in place**: recipe YAML goes through a ruamel round-trip
+that preserves comments and reflows nothing (a bump must produce a one-line diff), extra-tools
+goes through a line rewriter that keeps trailing comments, blank lines, and neighbouring entries
+untouched, does not match a shared-prefix neighbour (`dua` must not rewrite `dua-cli`), and
+rewrites only the *entry* — the same text recurring in a comment is prose. A recipe that ships a
+`mise.lock` is **relocked in the same write** (`update._relock_recipe`): a bumped pin beside a
+stale lock forces mise to migrate the lock at install time, re-resolving every platform and
+tripping mise's provenance-downgrade guard on machines that bumped nothing — reported as a
+supply-chain alarm for a release that is in fact attested. A recipe shipping no lockfile relocks
+nothing; inventing one would fabricate a supply-chain claim nobody authored.
+
+```mermaid
+flowchart TD
+    R["recipe tools: pins"] --> U["union of the stack's tools at launch"]
+    E["extra-tools.txt pins, validated before podman runs"] --> B["base image layer: mise use -g"]
+    U --> L["toollock merges per-recipe mise.lock blocks, verbatim, fail-closed on disagreement"]
+    L --> MI["mise install enforces the merged checksums in MISE_CONFIG_DIR/mise.lock"]
+    B --> SCAN["the scan layer sees what the pins actually installed"]
+    SW["harnessed update sweep: resolvable, opaque-reported, held"] -->|"apply + relock"| R
+    SW -->|"check, writes nothing"| CI["scheduled pin-check workflow, never on a PR diff"]
+```
+
+*Figure: the pin surfaces, the launch-time lockfile merge mise enforces, and the sweep that keeps
+the pins from rotting.*
+
+### What the pin check proves
+
+The pin hygiene lint (`tests/test_recipe_pin_hygiene.py`, AC-1 "one pin, one place") holds that
+every upstream version/ref string appears exactly once per recipe: an `install.sh` shell literal
+whose value equals a version the same recipe's `tools:` already pins is a second source of truth
+kept in sync only by a comment, and comments do not fail builds. The exemption allowlist is
+asserted to contain only recipes that still duplicate — an allowlist that outlives its reason is
+how a lint stops meaning anything. And the convention reaches the test suite itself: live-contract
+fixtures pin their images (`alpine:3.20`, "Pinned — project hygiene forbids a floating tag"),
+because those tests exist to prove external output *formats*, and a floating tag would let the
+thing under test change out from under the assertion.
+
+## Part II — Scanning
+
+The scan layer is `src/harnessed/scan.py`, `catalog/base/harnessed-scan`, and the
+`rescan`/`scan` verbs in `src/harnessed/launcher.py`, scheduled nightly by the two units in
+`systemd/`. Its job: no built image ships a HIGH+ (CVSS ≥ 7.0) advisory without somebody seeing it,
+and a scanner that silently did nothing never reads as a clean result.
 
 The single most misread fact about this layer is **where it runs**, so it comes first.
 
@@ -329,7 +537,9 @@ Each rung is bigger than the one below it, with a different reason:
 ## Related pages
 
 - `/openwiki/workflows/build.md` — where the post-build credentialed scan sits in the build's stage
-  order (Stage 8), and the volume population the scan mounts.
+  order, and the volume population the scan mounts.
+- `/openwiki/testing/verification-ladder.md` — what each gate (pin check, scan gate) proves, and
+  what a green run does not.
 - `/openwiki/operations/cli.md` — the `scan`/`rescan` verbs, the nightly timer's execution path, and
   the `harnessed-tools` entrypoints including `scan-image-online`.
 - `/openwiki/testing/verification-ladder.md` — what each gate proves, and what a green run does not.

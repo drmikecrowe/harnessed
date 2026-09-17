@@ -3,6 +3,9 @@ type: mechanism
 title: "Wiki automation: mise tasks, the retry patch, and the CI update workflow"
 description: "How this repository regenerates and validates its own wiki: the mise openwiki-* tasks and the openwiki_env guard that strips provider exports before varlock, tools/openwiki-retry-patch.py and the skipped-page failure it fixes, the scheduled GitHub workflow that banks finished pages as a PR even when the run fails, and the .openwikiignore read boundary the generator honors."
 tags: [openwiki, wiki, mise, github-actions, ci, retry-patch, varlock, drift, cron, automation, openwikiignore]
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-16T21:10:52.541Z
 sources:
   - id: openwiki-source-6d4b4e707b8d60b6ccfa3425
     resource: repo://.github/workflows/openwiki-update.yml
@@ -14,17 +17,14 @@ sources:
     resource: repo://mise.toml
   - id: openwiki-source-d1f45dd4433e3f1723ccd204
     resource: repo://tools/openwiki-retry-patch.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-09T09:34:57.295Z" }
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-09T09:34:57.295Z
+generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
 ---
 
 # Wiki automation: mise tasks, the retry patch, and the CI update workflow
 
 The wiki under `openwiki/` is generated, never maintained by hand. The generator is
-`langchain-ai/openwiki`, pinned at 0.4.3 in `mise.toml` — the version verified against this tree
-(2026-08-29); `latest` would make the provider env-var contract an unpinned assumption. Two entry
+`langchain-ai/openwiki`, pinned at **0.5.1** in `mise.toml` — the version verified against this tree
+(2026-09-16); `latest` would make the provider env-var contract an unpinned assumption. Two entry
 points run it and both execute the same command, `openwiki code --update --print`: locally
 `mise run openwiki-update`, and in CI the scheduled workflow `.github/workflows/openwiki-update.yml`
 (daily `cron: "0 8 * * *"` plus `workflow_dispatch`). A third task, `mise run openwiki-drift`,
@@ -41,22 +41,22 @@ flowchart TD
     changed["code changes on main"] --> driftq["mise run openwiki-drift - exit 1 means cited code changed"]
     driftq -->|"clean"| current["wiki is current - nothing to do"]
     driftq -->|"drift"| local["local - mise run openwiki-update, from main/"]
-    local --> patch["tools/openwiki-retry-patch.py runs first - idempotent"]
+    local --> patch["tools/openwiki-retry-patch.py runs first - idempotent, version-gated 0.5.1"]
     patch --> envw["openwiki_env - env -u strips provider exports, then varlock run --filter wiki keys"]
     envw --> gen["openwiki code --update --print"]
-    nightly["CI - openwiki-update.yml - nightly 08:00 UTC plus manual dispatch"] --> ciinstall["npm install -g openwiki 0.4.3, then verify better_sqlite3.node exists"]
-    ciinstall --> cirun["openwiki code --update --print - stock runner, no retry patch"]
+    nightly["CI - openwiki-update.yml - nightly 08:00 UTC, 90m hard ceiling"] --> ciinstall["npm install -g openwiki 0.5.1, verify better_sqlite3.node, apply retry patch"]
+    ciinstall --> cirun["openwiki code --update --print - anthropic / glm-5.2, cap 20000"]
     cirun --> queue["durable page-job queue - each finished page is written as it completes"]
     gen --> queue
-    queue -->|"worker ends without submit_page"| retry["one fresh retry - patched runner only"]
+    queue -->|"worker ends without submit_page"| retry["one fresh retry - patched runner, local and CI"]
     retry -->|"second miss"| skip["page skipped - run finalizes interrupted, diff base not advanced"]
-    queue --> pr["create-pull-request runs even on failure - banks finished pages"]
+    queue --> pr["create-pull-request runs on always() - banks finished pages, job re-raises failure"]
     skip --> pr
     pr --> merge["merge makes that progress the next run's baseline"]
 ```
 
-*The regeneration loop. CI banks partial progress even on a failed run; the drift gate decides when
-a local regeneration is worth starting.*
+*The regeneration loop. CI banks partial progress even on a failed or timed-out run; the drift gate
+decides when a local regeneration is worth starting.*
 
 ---
 
@@ -134,17 +134,19 @@ it through `varlock run` would touch 1Password for nothing.
 ### The failure it fixes
 
 A page worker whose stream ends without a `submit_page` call is marked **skipped** by openwiki, the
-page snapshot is restored, and the run finalizes **`interrupted` without advancing the diff base** —
-one quit costs the next run a full regeneration of the whole changeset. Observed with
-glm-5.3-flash: 94 LLM calls, a clean exit, no tool call, no error (PR #445 run 6). Neither upstream
-0.4.3 nor 0.5.0 retries a skipped page — verified against the 0.5.0 tarball on 2026-09-08. Until
-upstream ships a retry, this patch gives each page worker **one fresh second attempt** before the
-page is skipped.
+page snapshot is restored, and the run finalizes **`interrupted` without advancing the diff base**.
+Observed with glm-5.3-flash: 94 LLM calls, a clean exit, no tool call, no error (PR #445 run 6).
+No release through **0.5.1** retries a skipped page: 0.5.1's `runPageAgent` carries the same
+try/skip block byte-for-byte as 0.4.3 (0.5.0/0.5.1 changed `submit_page` to sparse Claim
+reconciliation and added an `inspect_claims` tool, nothing else in that function). 0.5.0's durable
+page manifest (`openwiki/.page-manifest.json`) softens what a skip costs — a completed page is no
+longer regenerated — but a skipped page still leaves the run `interrupted`, so the retry still earns
+its keep. Until upstream ships one, this patch gives each page worker **one fresh second attempt**
+before the page is skipped.
 
 ### What the patch changes
 
-It edits the mise-installed runner (`dist/agent/repository-runner.js` under
-`~/.local/share/mise/installs/npm-openwiki/0.4.3/...`) inside `runPageAgent`: the single
+It edits the installed runner (`dist/agent/repository-runner.js`) inside `runPageAgent`: the single
 `const agent = createDeepAgent({...})` becomes a `createWorkerAgent` factory, and the worker call is
 wrapped in a two-attempt loop. The retry **shares the worker's virtual backend**, so attempt 2 sees
 the page markdown attempt 1 already wrote. A first miss emits a named event
@@ -156,7 +158,7 @@ exactly as the stock code does.
 
 The patch must never guess at a moving target:
 
-- It **refuses any install whose version is not the verified 0.4.3**.
+- It **refuses any install whose version is not the verified 0.5.1**.
 - It **fails loudly when its anchor text does not match** — `runPageAgent` must exist, and the agent
   declaration and the worker try-block must each be found exactly once — with the error
   `anchor drift, re-derive the patch`. Version drift means a human re-derives the patch against the
@@ -165,13 +167,23 @@ The patch must never guess at a moving target:
   restores the `.orig` backup; `--check` exits 0/1 to report patched state without touching
   anything), and every write is followed by a `node --check` syntax check.
 
-### Local only
+### Finding the runner: two install layouts
 
-The patch is wired into the local task alone. Its default target glob is the **mise** install
-layout, and `openwiki-update.yml` runs the stock npm-installed runner with no patch step — a skipped
-page in CI still finalizes the run interrupted. That is survivable there for exactly one reason: the
-durable page-job queue plus the PR banking step (next section) mean the finished pages still become
-the next run's baseline.
+The default target covers two globs, because pnpm changed where a mise-installed package physically
+lives. The older `.mise/<name>@<version>/` virtual store held a real directory; pnpm 11 instead
+symlinks `node_modules/openwiki` into the content-addressable store under `~/.pnpm-store/v11/links/`
+and emits several sibling hash directories that all resolve to the same store path — so matches are
+realpath-resolved and de-duplicated before the patch will run (an unresolvable ambiguity is an
+error, not a guess). One consequence worth knowing: on the pnpm 11 layout the patched file lives in
+the **shared store**, so any other project resolving `openwiki@0.5.1` to the same hash sees the
+patch too. That is the only copy pnpm keeps; there is nothing project-local to patch instead.
+
+### Both runners, not just local
+
+The mise task applies the patch automatically to the mise-installed runner; CI applies it explicitly
+to its npm-global copy (`tools/openwiki-retry-patch.py "$(npm root -g)/openwiki/dist/agent/repository-runner.js"`).
+Verified 2026-09-16: patching the npm-global layout produces a runner byte-identical to the locally
+patched one, so both entry points get the same retry behavior.
 
 ---
 
@@ -188,7 +200,7 @@ in the job needs them.
 
 ### Install, then verify the native addon actually built
 
-The workflow installs with `npm install --global openwiki@0.4.3` (plus `mermaid` and `jsdom`, which
+The workflow installs with `npm install --global openwiki@0.5.1` (plus `mermaid` and `jsdom`, which
 add high-fidelity validation of the pages' Mermaid diagrams) — deliberately **not** the recipe's
 project-scoped pnpm install. The two differ because their constraints do: the recipe installs under
 `catalog/base/pnpm/config.yaml`, whose `strictDepBuilds: true` denies better-sqlite3's build script
@@ -219,31 +231,44 @@ The page-job queue is **durable**: a run that dies partway has already written e
 finished, and the PR step below banks that progress as the next run's baseline. Letting the job die
 here instead discards that progress and defeats the resumable architecture the queue exists for.
 The trade-off is the opposite of a lint gate's, and right for a job whose output is cumulative
-rather than binary — and the failure is still surfaced: the last step re-raises when
-`steps.openwiki.outcome == 'failure'`, so the job reports red.
+rather than binary — and the failure is still surfaced: the final step re-raises when
+`steps.openwiki.outcome == 'failure'`, so the job reports red. The job also carries a hard
+`timeout-minutes: 90` ceiling — a wedged run (the 2026-09 death loops spun for 8–13h) is cancelled
+at 90m, which is survivable precisely because the PR step below banks whatever pages finished.
 
-The model env is `OPENWIKI_PROVIDER: openai-compatible` against `glm-5.3`. Two env facts are
-deliberate:
+The model env is `OPENWIKI_PROVIDER: anthropic` against z.ai's Anthropic-compatible face
+(`ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic`, model `glm-5.2`). Not the OpenAI-compatible
+face: non-streaming HTTP dies at undici's default 300s `headersTimeout`, the streaming flag for that
+provider was broken through 0.5.0, and the Anthropic client streams SSE by default inside the agent
+loop, so response headers arrive immediately and long glm turns survive (verified end-to-end in
+PR #445 run 8 — the first complete finalize in eight attempts). The secret's *name*
+(`OPENAI_COMPATIBLE_API_KEY`) is a legacy of the first attempt; its value is the dedicated z.ai key
+for openwiki. Two env facts are deliberate:
 
-- **`OPENWIKI_MAX_OUTPUT_TOKENS` is unset.** glm-5.3 is a reasoning model: reasoning tokens are
-  drawn from the completion budget, so a tight output cap returns HTTP 200 with **empty content and
-  no error** — a silently blank page. The model's own ceiling stays in force; do not add the
-  variable without re-measuring against this model. (The local task strips the same variable for a
-  different, measured reason — the non-streaming timeout guard — see the environment guard above.)
+- **`OPENWIKI_MAX_OUTPUT_TOKENS: "20000"` is set, and required.** The same
+  `@anthropic-ai/sdk` non-streaming timeout guard the local task strips the variable for refuses
+  any non-streaming call whose cap exceeds 21,333 — and the planner is that one non-streaming call.
+  20,000 keeps it under the guard while leaving room for reasoning plus the `submit_page` call:
+  glm draws reasoning tokens from the completion budget, so the cap must not be raised above
+  21,333 — and must not be dropped low either, since a low cap returns HTTP 200 with empty content,
+  a silently blank page.
 - **No `LANGCHAIN_TRACING_V2`.** That variable gates openwiki's interactive setup wizard
   (`setup/credentials/steps.js`), which additionally requires a TTY (`cli/app/app.js`) that CI does
   not have. It is needed for a terminal run; here it is redundant.
 
 ### Banking the result: the PR step
 
-`peter-evans/create-pull-request` runs `if: ${{ !cancelled() }}` — even when generation failed — so
-a partial run still opens its PR. `add-paths` limits the PR to `openwiki`, `AGENTS.md`, `CLAUDE.md`,
-and the workflow itself: the wiki, the two pointer blocks the run keeps current, and the workflow
-that defines the pipeline. The branch is `openwiki/update`, and the body states the contract
-plainly: when the result is `failure`, the PR intentionally preserves only the pages completed
-before the failure, and merging makes that progress the baseline for the next run. It also tells
-the reviewer what to do before merging: `mise run openwiki-drift` reports which pages cite code
-that has changed.
+`peter-evans/create-pull-request` runs `if: ${{ always() }}` — even when generation failed or the
+90-minute timeout killed the job — so a partial run still opens its PR. `always()`, not
+`!cancelled()`: a timeout leaves `cancelled() == true`, and skipping this step on a timeout would
+discard every page the durable queue just wrote — the exact loss the run step's `continue-on-error`
+exists to prevent. `add-paths` limits the PR to `openwiki`, `AGENTS.md`, `CLAUDE.md`, and the
+workflow itself: the wiki, the two pointer blocks the run keeps current, and the workflow that
+defines the pipeline. The branch is `openwiki/update`, and the body states the contract plainly:
+when the result is `failure`, the PR intentionally preserves only the pages completed before the
+failure, and merging makes that progress the baseline for the next run. It also tells the reviewer
+what to do before merging: `mise run openwiki-drift` reports which pages cite code that has
+changed.
 
 `openwiki/.run.json` is gitignored in this repository, so unlike upstream's scheduled-workflow
 example there is no transient run-state file to delete before this step.
