@@ -56,6 +56,28 @@ Notes:
   ports, and set `remoteUser`. The permission surface moves into a (possibly untrusted) repo file —
   hence VS Code Workspace Trust. Full isolation *minus whatever the json opens*.
 
+### 2a. Docker as a container-backend engine
+
+`container (podman)` names the backend, not the only engine under it. `docker` is a second engine
+of the same backend, selected the same way podman is (`paths.active_runtime`, `launcher._runtime`).
+The composed stack, the pod-vs-pod-less choice aside, is identical; what differs is how each engine
+is asked to deliver the same guarantees.
+
+| Property | podman | docker |
+|---|---|---|
+| Userns mapping | `--userns=keep-id:uid=1000,gid=1000` (`paths.USERNS_ARG`), maps the invoking host user onto the image's uid | `--userns=host` (`paths.DOCKER_USERNS_ARG`), opts the container out of any daemon `userns-remap`; docker has no `keep-id` equivalent (`paths.userns_args`) |
+| Agent's own user | Inherited via keep-id; no extra flag needed | Runs explicitly as the invoking user (`paths.container_user_args`, group 0 per `_ARBITRARY_UID_GID`), since `--userns=host` maps nothing by itself (`launcher._agent_placement_args`) |
+| Rootless daemon | Supported; keep-id is the whole story | **Refused before any container is created.** A rootless docker daemon draws the image's uid 1000 from the host's subuid range, the same unpredictable-owner problem podman's bare `keep-id` has, so `launcher._preflight_runtime` exits 1 naming the cause. An unreadable daemon (docker not running, permission denied, `docker info` timeout) is also refused, never treated as "probably rootful" (`paths.docker_is_rootless`, `TestRootlessDockerIsRefusedBeforeAnythingIsCreated`) |
+| Network namespace | The POD is the netns anchor; every member joins it by construction | No pods. The agent container owns its own netns and states its own `--hostname`; the firewall runner and service sidecars join it via `--network=container:<agent>` instead of `--pod` (`launcher._netns_anchor`, `launcher._agent_placement_args`) |
+| Named-volume ownership | A new named volume is chowned to the container's user namespace automatically | A new named volume is `root:root`-owned unless the image already populates that path; harnessed chowns it explicitly in a throwaway `--user root` container before anything else touches it (`volumes._chown_volume_for_docker`) |
+| Volume copy-up timing | Populates when the volume is first **mounted** | Populates when the container **starts**, so the chown step above must run against its target path first, or a later copy-up would overwrite the chown (comment above `volumes._ensure_config_volume`'s mount-at-real-path choice) |
+| Egress firewall | The firewall runner joins the pod (`--pod <pod>`) and gets `CAP_NET_ADMIN` to install iptables rules affecting every member | Same runner, pod-less form: joins the agent's netns via `--network=container:<agent>` plus its own `--userns` mapping, since there is no pod to inherit from (`launcher._firewall_runner_argv`) |
+| varlock secrets broker | Started via a pasta network option on `pod create`, giving the pod a loopback door to it | **Does not exist.** There is no `pod create` to carry that option, so a docker launch prints a note and falls back to resolving secrets straight into the container env, tracked as its own gap rather than silently assumed away (issue #468) |
+
+Everything else, recipe composition, `install:`/`setup.script`, MCP wiring, the backend contract in
+§3, is engine-independent; only the mechanics above vary. `live-docker` in CI exercises this engine
+directly, and it must pass on a non-1000-uid runner, not merely on a uid-1000 dev box.
+
 ## 3. The backend interface (contract)
 
 Every backend implements the same seam so a composed stack can run on any of them:
