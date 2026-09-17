@@ -4984,9 +4984,14 @@ def _scan_image(rt: str, run_env: dict, image: str) -> bool:
         tar_path = tf.name
     try:
         _run([rt, "save", image, "-o", tar_path])
+        # `sys.executable`, for the reason `test_stack` carries at length (#460): this process IS
+        # harnessed, so its own interpreter imports `harnessed.cli` by construction and already
+        # has every declared runtime dependency, `ruamel.yaml` included. The old line spelled a
+        # checkout — `uv run --no-project` plus `PYTHONPATH=<root>/src` — and died in every
+        # installed copy with `ModuleNotFoundError: No module named 'harnessed'`, hidden on
+        # developer machines because `--no-project` borrows an activated virtualenv (#493).
         res = _bounded(
-            ["uv", "run", "--no-project", "--quiet", "--with", "ruamel.yaml",
-             "python", "-m", "harnessed.cli", "scan-image-online", tar_path],
+            [sys.executable, "-m", "harnessed.cli", "scan-image-online", tar_path],
             timeout=_SCAN_ONLINE_TIMEOUT,
             env=run_env,
         )
@@ -5040,8 +5045,7 @@ def scan(
         return
 
     rt = _runtime()
-    root = _harnessed_dir()
-    run_env = {**os.environ, "PYTHONPATH": str(root / "src"), "CONTAINER_RUNTIME": rt}
+    run_env = {**os.environ, "CONTAINER_RUNTIME": rt}
     _out.print(f"[blue][INFO][/blue] Scanning stack '{stack}' — harness(es): {', '.join(to_scan)}")
     has_errors = False
     for target in to_scan:
@@ -5095,8 +5099,7 @@ def rescan(
         if not images:
             _out.print("No harnessed-labelled images found to rescan")
             return
-    root = _harnessed_dir()
-    run_env = {**os.environ, "PYTHONPATH": str(root / "src"), "CONTAINER_RUNTIME": rt}
+    run_env = {**os.environ, "CONTAINER_RUNTIME": rt}
     has_errors = False
     for image in images:
         if not _scan_image(rt, run_env, image):
