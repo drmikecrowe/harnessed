@@ -4751,21 +4751,26 @@ def test_stack(
         _build_stack(rt, stack, harness)
 
     # Delegate to the capability test (the harnessed.cli `test` entrypoint).
+    #
+    # `sys.executable`, never an interpreter resolved by name. This process IS harnessed, so its
+    # own interpreter can import `harnessed.cli` by construction and already carries every
+    # declared runtime dependency. Nothing has to be synthesized onto PYTHONPATH, and an
+    # inherited PYTHONPATH survives instead of being overwritten.
+    #
+    # This used to run `uv run --no-project ... python` with PYTHONPATH set to `<root>/src`.
+    # That is a checkout layout. An installed harnessed keeps the package in the tool's
+    # site-packages, so every installed copy died here with
+    # `ModuleNotFoundError: No module named 'harnessed'` before it reached a container (#460).
+    # It went unnoticed for so long because `uv run --no-project` BORROWS an activated
+    # virtualenv: every developer on this repo has one, and no installed user does.
     run_env = {
         **os.environ,
-        "PYTHONPATH": str(root / "src"),
         "CONTAINER_RUNTIME": rt,
         "HARNESSED_DIR": str(root),
     }
-    cmd: list[str] = []
-    if shutil.which("uv"):
-        cmd = ["uv", "run", "--no-project", "--quiet", "--with", "ruamel.yaml", "--with", "rich",
-               "python", "-m", "harnessed.cli", "test", stack, harness, "--root", str(root)]
-    elif shutil.which("python3"):
-        cmd = ["python3", "-m", "harnessed.cli", "test", stack, harness, "--root", str(root)]
-    else:
-        _err.print("[bold red]error:[/bold red] 'uv' or 'python3' required for capability test")
-        raise typer.Exit(1)
+    cmd: list[str] = [
+        sys.executable, "-m", "harnessed.cli", "test", stack, harness, "--root", str(root)
+    ]
 
     if project:
         cmd += ["--project", project]
