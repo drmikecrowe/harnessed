@@ -23,12 +23,52 @@ from ruamel.yaml import YAML
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "live.yml"
+CLAUDE_MD = ROOT / "CLAUDE.md"
 
 
 @pytest.fixture(scope="module")
-def job() -> dict:
+def workflow() -> dict:
     assert WORKFLOW.is_file(), f"missing workflow: {WORKFLOW}"
-    return YAML(typ="safe").load(WORKFLOW.read_text())["jobs"]["live"]
+    return YAML(typ="safe").load(WORKFLOW.read_text())
+
+
+@pytest.fixture(scope="module")
+def job(workflow) -> dict:
+    return workflow["jobs"]["live"]
+
+
+def _triggers(workflow) -> dict:
+    """The `on:` block, whichever key the loader produced.
+
+    YAML 1.1 reads a bare `on` as the boolean True; 1.2 reads it as the string. ruamel's safe loader
+    is 1.2 here, but a loader change must not silently turn every trigger assertion into a KeyError
+    that reads like a missing trigger.
+    """
+    return workflow.get("on", workflow.get(True))
+
+
+def _as_list(value) -> list:
+    if value is None:
+        return []
+    return [value] if isinstance(value, str) else list(value)
+
+
+def _claude_md_live_paths() -> list[str]:
+    """The first column of CLAUDE.md's "Why the suite cannot see it" table."""
+    marker = "| Trigger | Why the suite cannot see it |"
+    text = CLAUDE_MD.read_text()
+    assert marker in text, f"{CLAUDE_MD} no longer carries the live-trigger table"
+    paths: list[str] = []
+    for line in text.split(marker, 1)[1].splitlines():
+        if not line.startswith("|"):
+            if paths:
+                break
+            continue
+        cell = re.fullmatch(r"`([^`]+)`", line.split("|")[1].strip())
+        if cell:
+            paths.append(cell.group(1))
+    assert paths, "the live-trigger table has no backticked paths in its first column"
+    return paths
 
 
 def _steps(job) -> list[dict]:
@@ -182,3 +222,88 @@ class TestItProvisionsTheLiveGates:
         assert build < steps.index(_suite_step(job)), (
             "the image must exist before pytest collects, not merely before the tests run"
         )
+
+
+class TestItGatesPullRequests:
+    """#467. The live layer is the only thing in CI that starts a container, and until this change
+    it ran on no PR at all — so the container path had no merge gate, only a manual dispatch step
+    documented in CLAUDE.md that PR #461 demonstrates nobody runs.
+
+    The shape matters as much as the trigger. A `paths:`-filtered workflow does not run on a PR that
+    misses the filter, so it reports NO status — and a required check that never reports deadlocks
+    the PR forever (`test.yml` records that trap for `pytest`). A job skipped by an `if:` reports a
+    `skipped` conclusion instead, which satisfies the requirement and costs nothing. These tests pin
+    the working shape so a well-meaning simplification back to `on: pull_request: paths:` cannot
+    land quietly.
+    """
+
+    def test_it_runs_on_pull_request(self, workflow):
+        assert "pull_request" in _triggers(workflow), (
+            "live.yml does not run on pull_request, so nothing gates the container path"
+        )
+
+    def test_the_trigger_carries_no_paths_filter(self, workflow):
+        pr = _triggers(workflow)["pull_request"] or {}
+        assert "paths" not in pr and "paths-ignore" not in pr, (
+            "a paths filter on the trigger stops the workflow reporting at all on a PR that misses "
+            "it; a required `live` check would then wait forever. Filter in the `changes` job."
+        )
+
+    @pytest.mark.parametrize("name", ["live", "live-docker"])
+    def test_the_container_jobs_hang_off_the_changes_job(self, workflow, name):
+        job = workflow["jobs"][name]
+        assert "changes" in _as_list(job.get("needs")), f"{name} does not depend on `changes`"
+        assert "needs.changes.outputs.live" in str(job.get("if", "")), (
+            f"{name} is not conditioned on the filter, so every PR pays for a container launch"
+        )
+
+    def test_the_changes_job_is_unconditional_and_publishes_the_decision(self, workflow):
+        """It is the only job that always runs, so it must not itself be filtered — and its output
+        is the whole interface the other two read."""
+        changes = workflow["jobs"]["changes"]
+        assert "if" not in changes and "needs" not in changes
+        assert "live" in changes.get("outputs", {})
+
+    def test_non_pull_request_events_still_run_the_layer(self, workflow):
+        """Push to main, the nightly, and a manual dispatch have no diff to filter on and all mean
+        "run the layer". A filter that answered `false` for them would silently delete the coverage
+        this workflow existed for before #467."""
+        body = _run_bodies(workflow["jobs"]["changes"])
+        assert re.search(r'!=\s*"?pull_request"?', body), (
+            "the filter has no non-PR escape hatch; the nightly and post-merge runs would be gated "
+            "on a diff that does not exist"
+        )
+
+    def test_the_filter_covers_every_path_claude_md_names(self, workflow):
+        """CLAUDE.md's table and this job are one filter written twice. The table is what a
+        contributor reads; the job is what actually runs. Drift between them is how a file lands on
+        the documented list and gets no live evidence anyway."""
+        body = _run_bodies(workflow["jobs"]["changes"])
+        missing = [p for p in _claude_md_live_paths() if p not in body]
+        assert not missing, (
+            f"CLAUDE.md names {missing} as needing live evidence, but the `changes` job does not "
+            "match them, so a PR touching only those files skips both container jobs"
+        )
+
+    def test_the_filter_fails_closed(self, workflow):
+        """The one failure mode that silently opens the gate.
+
+        A dependent job whose `needs` FAILED reports a `skipped` conclusion, and GitHub accepts a
+        skipped required check as satisfied. So if this step dies on an api.github.com hiccup, the
+        PR merges with no container evidence and a green tick. The API call must therefore be
+        handled rather than left to `set -e`, and the handler must answer `true`.
+        """
+        body = _run_bodies(workflow["jobs"]["changes"])
+        guarded = re.search(r"if !\s*files=.*gh api", body)
+        assert guarded, (
+            "the PR file-list call is unguarded; a transient API failure would fail the `changes` "
+            "job, skip both container jobs, and satisfy a required check having proved nothing"
+        )
+        assert body.count('live=true" >> "$GITHUB_OUTPUT"') >= 2, (
+            "the API-failure branch does not fall back to running the live layer"
+        )
+
+    def test_the_workflow_gates_changes_to_itself(self, workflow):
+        """A change to the gate must run the gate. Without this, a PR can weaken, break, or skip
+        this workflow and the first evidence arrives post-merge on `main`, where no author looks."""
+        assert ".github/workflows/live.yml" in _run_bodies(workflow["jobs"]["changes"])
