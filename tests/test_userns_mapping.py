@@ -24,6 +24,7 @@ import os
 import re
 import subprocess
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -222,6 +223,165 @@ class TestVolumeStepsCarryTheMapping:
         for cmd in argvs:
             userns = [a for a in cmd if a.startswith("--userns=")]
             assert userns == [paths.USERNS_ARG], f"step does not pin the mapping: {cmd}"
+
+
+class TestEveryCreationSiteEnumerated:
+    """Close the class #456 and #459 were two instances of (epic #466): find every argv-building
+    site that CREATES a container, structurally, rather than trust the next author to remember one.
+
+    A "creation site" here is any list literal shaped like `[rt, "create", ...]`, `[rt, "run", ...]`
+    or `[rt, "pod", "create", ...]` (also `self.rt`, or the runtime spelled as the literal "podman"/
+    "docker") — the same shape every real call site above uses. For each one, the mapping must be
+    findable either right there in the list, or elsewhere in the SAME enclosing function (the
+    `common = [*paths.userns_args(rt), ...]` idiom `_run_container_installs` uses, where the marker
+    is on a variable spliced in two lists later).
+    """
+
+    # Small and explicit, per exemption:
+    #   * `_agent_placement_args` — not the mapping itself but the ONE function that decides whether
+    #     to emit it (pod member vs pod-less), and it is asserted directly by
+    #     test_docker_userns.py's `TestAgentPlacementArgs*` classes. Trusting it here is trusting a
+    #     unit that is independently covered, not trusting the call site.
+    _ALLOWED_HELPERS: ClassVar[set] = {"_agent_placement_args"}
+
+    # Keyed by (filename, enclosing function name). Each entry is a REASON, not a rubber stamp.
+    _EXEMPT_FUNCTIONS: ClassVar[dict] = {
+        # This container is `docker cp`'d out of, never bind-mounted to — see the comment above its
+        # call in launcher.py ("Copying out has no such dependency"). A caller that DOES need the
+        # mapping (the `build` re-scan) splices it in via `extra_args` (launcher.py's `vol_args`),
+        # which this static sweep cannot see through a parameter. Real coverage: an unbind-mounted
+        # container has nothing for a foreign uid to make unwritable.
+        ("launcher.py", "_scan_image_in_container"): "cp-only container, never bind-mounted",
+    }
+
+    def _marker_present(self, node) -> bool:
+        for n in ast.walk(node):
+            if isinstance(n, ast.Call):
+                func = n.func
+                name = func.attr if isinstance(func, ast.Attribute) else (
+                    func.id if isinstance(func, ast.Name) else None
+                )
+                if name == "userns_args" or name in self._ALLOWED_HELPERS:
+                    return True
+            if isinstance(n, ast.Name) and n.id in ("USERNS_ARG", "DOCKER_USERNS_ARG"):
+                return True
+            if isinstance(n, ast.Attribute) and n.attr in ("USERNS_ARG", "DOCKER_USERNS_ARG"):
+                return True
+        return False
+
+    @staticmethod
+    def _is_runtime_token(elt) -> bool:
+        if isinstance(elt, ast.Name) and elt.id == "rt":
+            return True
+        if isinstance(elt, ast.Attribute) and elt.attr == "rt":
+            return True
+        return isinstance(elt, ast.Constant) and elt.value in ("podman", "docker")
+
+    @staticmethod
+    def _is_create_or_run(elt) -> bool:
+        return isinstance(elt, ast.Constant) and elt.value in ("create", "run")
+
+    def _creation_sites(self, path: Path):
+        """Yield (lineno, list_node, enclosing_function_node_or_None) for every matching list.
+
+        `["rt", "volume", "create", ...]` is excluded: a NAMED VOLUME is not a container, and never
+        takes `--userns` at all (`podman volume create --userns` is a usage error). Guarded on the
+        literal "volume" one element earlier than "create" so this cannot also swallow `pod create`.
+        """
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        func_of: dict[int, ast.AST] = {}
+        for fn in ast.walk(tree):
+            if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for child in ast.walk(fn):
+                    func_of.setdefault(id(child), fn)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.List) or len(node.elts) < 2:
+                continue
+            if not self._is_runtime_token(node.elts[0]):
+                continue
+            if not any(self._is_create_or_run(e) for e in node.elts[1:3]):
+                continue
+            if isinstance(node.elts[1], ast.Constant) and node.elts[1].value == "volume":
+                continue
+            yield node.lineno, node, func_of.get(id(node))
+
+    @staticmethod
+    def _spliced_names(node) -> set:
+        """Names spliced into this list as `*name` (the `common` idiom) — worth resolving."""
+        return {
+            e.value.id for e in node.elts
+            if isinstance(e, ast.Starred) and isinstance(e.value, ast.Name)
+        }
+
+    @staticmethod
+    def _assigned_name(node, fn) -> str | None:
+        """The variable this list is assigned to (`run_cmd = [...]`), if any, so a later top-level
+        `run_cmd += [...]` in the same function can be found."""
+        if fn is None:
+            return None
+        for stmt in ast.walk(fn):
+            if isinstance(stmt, ast.Assign) and stmt.value is node and len(stmt.targets) == 1 \
+                    and isinstance(stmt.targets[0], ast.Name):
+                return stmt.targets[0].id
+        return None
+
+    def _unconditional_marker_for_name(self, fn, varname: str) -> bool:
+        """True when `varname` is assigned or augmented WITH the marker by a statement that sits
+        directly in the function's own body — never nested inside an `if`/`for`/`while`/`try`.
+
+        That nesting check is the whole point: #459 item 1 was exactly `run_cmd += [*paths.
+        userns_args(rt), ...]` sitting inside `if svc.scope == "project":`, which a plain "is the
+        marker anywhere in this function" scan cannot tell apart from an unconditional append.
+        """
+        if fn is None:
+            return False
+        for stmt in fn.body:
+            if not isinstance(stmt, (ast.Assign, ast.AugAssign)):
+                continue
+            target = stmt.targets[0] if isinstance(stmt, ast.Assign) else stmt.target
+            if isinstance(target, ast.Name) and target.id == varname and self._marker_present(stmt):
+                return True
+        return False
+
+    def test_every_creation_site_carries_the_mapping_or_is_exempt(self):
+        offenders = []
+        for path in sorted(SRC.rglob("*.py")):
+            if path.name == "paths.py":
+                continue
+            for lineno, node, fn in self._creation_sites(path):
+                if fn is not None and (path.name, fn.name) in self._EXEMPT_FUNCTIONS:
+                    continue
+                if self._marker_present(node):
+                    continue
+                # `*common`-style: the marker lives on a variable assigned, unconditionally, at the
+                # top of the SAME function (volumes.py's `_run_container_installs`).
+                if any(
+                    self._unconditional_marker_for_name(fn, name)
+                    for name in self._spliced_names(node)
+                ):
+                    continue
+                # `run_cmd = [...]` then grown later: the marker must land on `run_cmd` via a
+                # statement that is NOT hidden behind a branch.
+                assigned = self._assigned_name(node, fn)
+                if assigned is not None and self._unconditional_marker_for_name(fn, assigned):
+                    continue
+                offenders.append(f"{path.name}:{lineno} (in {fn.name if fn else '<module>'})")
+        assert not offenders, (
+            "these container-creation sites carry no userns mapping and are not in the explicit "
+            f"exemption list: {offenders}"
+        )
+
+    def test_the_sweep_is_not_vacuous(self):
+        """Guard the guard: an enumerator that finds nothing passes trivially."""
+        found = [
+            (path.name, lineno)
+            for path in sorted(SRC.rglob("*.py"))
+            if path.name != "paths.py"
+            for lineno, _node, _fn in self._creation_sites(path)
+        ]
+        assert len(found) >= 8, (
+            f"the sweep found only {len(found)} creation site(s); it is measuring too little: {found}"
+        )
 
 
 class TestPodMembersCarryNoUserns:

@@ -1064,7 +1064,8 @@ def _with_image_container(rt: str, image: str, fn: Callable[[str], _T]) -> _T | 
     create/rm instead of one apiece — same podman commands, one container.
     """
     cid = _bounded(
-        [rt, "create", image], timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True, text=True
+        [rt, "create", *paths.userns_args(rt), image],
+        timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True, text=True
     ).stdout.strip()
     if not cid:
         return None
@@ -1867,7 +1868,10 @@ def _svc_run_cmd(
     here, which is what makes hashing this argv a faithful fingerprint of the running container's
     configuration (`_svc_config_hash`).
     """
-    run_cmd = [rt, "run", "-d", "--name", cname, *_corp_proxy_ca_mount_args()]
+    # Every service container gets the mapping, not just project-scope ones (#459): a global-scope
+    # service under rootful docker with --userns-remap is remapped just the same, and pod_host_uid()
+    # is only accurate while every creation site emits this flag (paths.docker_is_rootless docstring).
+    run_cmd = [rt, "run", "-d", "--name", cname, *paths.userns_args(rt), *_corp_proxy_ca_mount_args()]
     if svc.is_ephemeral_port:
         # 127.0.0.1 with NO host port: the runtime allocates. That is the whole dynamic-port
         # story — N project-scoped sidecars can never collide, and nothing is written down to go
@@ -1894,7 +1898,7 @@ def _svc_run_cmd(
         # bytes stay host-owned (a dolt data dir written by a foreign uid would EACCES for every
         # agent container). Unpinned, this was the loudest symptom of bd harnessed-rv2.1 — the
         # entrypoint's `mkdir -p /data/dolt` died with EACCES on any host whose uid is not 1000.
-        run_cmd += [*paths.userns_args(rt), "-v", f"{host_dir}:/data:rw"]
+        run_cmd += ["-v", f"{host_dir}:/data:rw"]
         # Path-preserving mirror: a host-side client (e.g. `bd`) that passes its absolute path to
         # the containerised Dolt server (e.g. via `CALL dolt_backup('add', ..., '<abs-path>')`)
         # will have Dolt resolve that path against the CONTAINER filesystem. Without this second
