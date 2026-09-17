@@ -119,15 +119,21 @@ editing the assertion.
 
 A green run is not end-to-end proof: the suite runs no `podman build` and no `harnessed container-run`.
 
-### Run the live layer yourself when you touch the container path
+### The live layer gates the container path automatically
 
-`live.yml` does not run on `pull_request`. Nothing else in CI starts a container, so on these
-files a green suite, a green `lint`, and a green `pytest` are all consistent with a stack that
-cannot launch. Change any of them and dispatch it against your branch BEFORE asking for review:
+Nothing else in CI starts a container, so on these files a green suite, a green `lint`, and a green
+`pytest` are all consistent with a stack that cannot launch. `live.yml` closes that hole: it runs on
+`pull_request`, and its `changes` job runs `live` and `live-docker` when the PR touches any file
+below (plus `.github/workflows/live.yml` itself). A PR that touches none of them skips both, and
+pays for no container launch.
 
-```bash
-gh workflow run live.yml --ref <your-branch>     # then read BOTH jobs: live and live-docker
-```
+**Do not dispatch it by hand.** That step used to live here and it did not survive contact — PR #461
+merged four defects because nobody ran it. Push the branch, open the PR, read both jobs. Dispatch
+(`gh workflow run live.yml --ref <your-branch>`) is now only for evidence on a change the list does
+not cover, or before a branch has a PR.
+
+**Keep this table and the `changes` job in sync.** They are one filter written twice; the job is
+what actually runs.
 
 | Trigger | Why the suite cannot see it |
 | --- | --- |

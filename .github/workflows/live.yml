@@ -29,29 +29,98 @@ name: live verification
 # Measured on a real podman before enabling these: `HARNESSED_PODMAN=1 pytest` → 2166 passed,
 # 1 skipped (the one remaining skip needs a dolt binary, bd harnessed-3x1 note).
 #
-# STILL NOT on `pull_request`. A PR that touches the build or launch path runs this layer ON
-# DEMAND, against its own branch:
+# NOW ON `pull_request`, conditionally (#467). The ad-hoc dispatch this file used to describe —
+# `gh workflow run live.yml --ref <branch>` — depended on the author remembering to run it, and
+# PR #461 is the proof that it does not survive contact: four defects merged with every local check
+# green because nobody dispatched the one job that could see them. The judgement call is now made by
+# `changes` below instead of by a human, from the same file list CLAUDE.md already carried.
 #
-#   gh workflow run live.yml --ref <branch>
-#   gh run watch "$(gh run list --workflow live.yml --branch <branch> -L1 --json databaseId -q '.[0].databaseId')"
-#
-# That is the whole mechanism. It covers the gap the automatic trigger was reaching for — a
-# REGRESSION, as opposed to external drift; PR #461 was one approval from merging with six podman
-# tests red — without charging two container-runtime jobs to every PR, including the ones that
-# change only docs or tests. Ad hoc is a judgement call the author makes; the automatic run on
-# `main` and the nightly still catch what the author does not.
+# WHY NO `paths:` FILTER ON THE TRIGGER, which is the obvious way to write this. A `paths:`-filtered
+# workflow does not run at all on a PR that misses the filter, so it REPORTS NOTHING — and a
+# required status check that never reports deadlocks the PR forever. `test.yml` already records that
+# trap for `pytest`. A job skipped by an `if:` condition is the opposite: it reports its context with
+# a `skipped` conclusion, which satisfies the requirement and costs no runner time. So the filter
+# lives in a job, not in the trigger.
 #
 # Both runtimes gate here. "Supported" that is not continuously verified is a claim, not a fact,
 # and harnessed claims both podman and docker.
 on:
   workflow_dispatch:
+  pull_request:
   push:
     branches: [main]
   schedule:
     - cron: "0 4 * * *"     # 04:00 UTC: contract drift found next morning, not by a user
 
 jobs:
+  # THE FILTER, as a job. Cheap (no checkout, no toolchain — one API call), and it always runs, so
+  # `live` and `live-docker` always have a context to report against.
+  #
+  # The list is CLAUDE.md's, unchanged: the five source paths whose behaviour exists only in a built
+  # image or a running container, and which therefore no hermetic suite can see. Keep the two in
+  # sync — CLAUDE.md now points at this job rather than restating a manual step.
+  #
+  # `.github/workflows/live.yml` IS ON THE LIST even though it is not a source file. A change to the
+  # gate must run the gate; otherwise a PR can break, weaken, or silently skip this workflow and
+  # the only evidence arrives after merge, on `main`, where no PR author is looking.
+  #
+  # Every non-PR event answers `true`: push to `main`, the nightly, and a manual dispatch all mean
+  # "run the layer", and none of them has a diff to filter on.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      live: ${{ steps.decide.outputs.live }}
+    steps:
+      - name: Decide whether this event needs the live layer
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "event=$EVENT_NAME — not a PR, so the live layer always runs."
+            echo "live=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The PR's own file list, from the API rather than from a `git diff` against a fetched
+          # base: no checkout, no fetch-depth guessing, and it is the same set GitHub shows on the
+          # "Files changed" tab.
+          #
+          # FAILS CLOSED. Under `set -e` an API hiccup would kill this step, and a dependent job
+          # whose `needs` failed reports `skipped` — which a required status check accepts. So the
+          # one thing a flaky api.github.com must not do is quietly open the gate. If the diff
+          # cannot be read, assume the change is on the list and run the layer.
+          if ! files="$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename')"; then
+            echo "Could not read the PR's file list; running the live layer rather than guessing."
+            echo "live=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          decision=false
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            case "$f" in
+              catalog/base/Dockerfile.harnessed-*|\
+              catalog/base/harnessed-start|\
+              src/harnessed/volumes.py|\
+              src/harnessed/launcher.py|\
+              src/harnessed/paths.py|\
+              .github/workflows/live.yml)
+                echo "on the live list: $f"
+                decision=true
+                ;;
+            esac
+          done <<< "$files"
+          if [ "$decision" = false ]; then
+            echo "No file on the live list changed; skipping both container jobs."
+          fi
+          echo "live=$decision" >> "$GITHUB_OUTPUT"
+
   live:
+    needs: changes
+    if: needs.changes.outputs.live == 'true'
     runs-on: ubuntu-latest
     # 30 was thin: observed runtimes 15:03, 14:41 and 23:47, so run 31133464515 came within six
     # minutes of being killed — and a timeout kill presents as an unrelated failure, which is the
@@ -265,6 +334,10 @@ jobs:
   # job's entire value is that a real docker did the work, so a silent fallback to no-runtime must
   # fail loudly here.
   live-docker:
+    # Same gate as `live`, and deliberately the same one: a PR that earns a podman launch earns a
+    # docker launch, because #458 was a defect only docker could see.
+    needs: changes
+    if: needs.changes.outputs.live == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
