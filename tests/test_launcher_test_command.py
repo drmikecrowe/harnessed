@@ -58,6 +58,12 @@ def delegated(monkeypatch, tmp_path):
         captured["env"] = dict(kwargs["env"])
         return subprocess.CompletedProcess(cmd, 0)
 
+    # An installed user's plain shell exports no PYTHONPATH, so neither does the environment
+    # these tests start from. Left in, an ambient one reaches the child through `**os.environ`
+    # and can make `harnessed` importable on its own — the import probe would then pass on code
+    # that resolves its interpreter by name and supplies nothing, which is the regression this
+    # file exists to catch. The two tests that care about PYTHONPATH set it themselves.
+    monkeypatch.delenv("PYTHONPATH", raising=False)
     monkeypatch.setattr(launcher, "_harnessed_dir", lambda: root)
     monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
     monkeypatch.setattr(launcher, "is_built", lambda stack, harness: True)
