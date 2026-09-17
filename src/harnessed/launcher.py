@@ -1894,10 +1894,11 @@ def _svc_run_cmd(
     if svc.scope == "project":
         assert project_path is not None  # noqa: S101  # type-narrowing: guarded by the caller
         host_dir, _, location = _service_data_dir(svc, stack, project_path)
-        # keep-id, pinned to the image uid: the service writes as the invoking user, so bind-mounted
-        # bytes stay host-owned (a dolt data dir written by a foreign uid would EACCES for every
-        # agent container). Unpinned, this was the loudest symptom of bd harnessed-rv2.1 — the
-        # entrypoint's `mkdir -p /data/dolt` died with EACCES on any host whose uid is not 1000.
+        # This mount relies on the userns mapping emitted at the top of `run_cmd`: the service
+        # writes as the invoking user, so bind-mounted bytes stay host-owned (a dolt data dir
+        # written by a foreign uid would EACCES for every agent container). Unpinned, this was the
+        # loudest symptom of bd harnessed-rv2.1 — the entrypoint's `mkdir -p /data/dolt` died with
+        # EACCES on any host whose uid is not 1000.
         run_cmd += ["-v", f"{host_dir}:/data:rw"]
         # Path-preserving mirror: a host-side client (e.g. `bd`) that passes its absolute path to
         # the containerised Dolt server (e.g. via `CALL dolt_backup('add', ..., '<abs-path>')`)
