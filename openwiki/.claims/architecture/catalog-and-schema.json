@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ab522d913958d607bf64cfb1c3d7f995b85c3debc27c6b972b2a70d7d7e6e2b2",
+  "pageVersion": "sha256:487653f09714a31f215c16941c82d80e9b8e445e7d3ab9302b7e1d0955f71e29",
   "claims": [
     {
       "id": "claim_16f91e01a46d46c696c7c62db5057ced",
@@ -666,11 +666,11 @@
     },
     {
       "id": "claim_b93e4b7dd01f4853942ba85de757fa40",
-      "statement": "`tests/test_recipe_uniformity.py` asserts the catalog-wide recipe contract by discovery (`rglob` over `catalog/recipes`, naming no recipe): declared install scripts must exist and pass `validate_install_script`, no `install.sh` may fetch its own binary via a package manager (the pin belongs in `tools:`), and no script may hardcode the container `/home/harnessed`.",
+      "statement": "`tests/test_recipe_uniformity.py` asserts the catalog-wide recipe contract by discovery (`rglob` over `catalog/recipes`, naming no recipe): declared install scripts must exist and pass `validate_install_script`; no `install.sh` may fetch its own binary via a package manager (the pin belongs in `tools:`); no script may hardcode `/home/harnessed`; no script may use GNU-only `sed -i` (BSD/GNU host portability); and every `mise.lock` must name only versions its `tools:` pin also names, since a stale lock forces a mise migration at install time that can fail on other platforms.",
       "evidence": [
         {
           "resource": "repo://tests/test_recipe_uniformity.py",
-          "version": "repo-file-v1:sha256:7d4e4813aebc49f9264e06442023c4c11fea988867f51a124ceb3816d55fd2fb"
+          "version": "repo-file-v1:sha256:372de810f90b3974765d502715e8f213f7f7aa3abd001f7371ef0178fe15fe1a"
         }
       ]
     },
@@ -687,6 +687,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-16T21:10:52.541Z"
+    "at": "2026-09-17T09:44:27.184Z"
   }
 }
