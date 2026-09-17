@@ -132,6 +132,16 @@ jobs:
             .github/workflows/openwiki-update.yml
           branch: openwiki/update
           commit-message: "docs: update OpenWiki"
+          # REQUIRED by the branch ruleset, which demands a GitHub-verified signature on every
+          # commit in a PR. Without it the action commits over plain git with no signing key, and
+          # the PR is unmergeable — #482 sat blocked until the commit was rewritten by hand.
+          #
+          # This does NOT need a signing key in Actions secrets. The action switches to creating
+          # the commit through the GitHub API, which signs it server-side with GitHub's own key, so
+          # there is no private key here to store or rotate. The trade is attribution: an API commit
+          # is authored by github-actions[bot], where the plain-git path attributed it to the
+          # repository owner.
+          sign-commits: true
           title: "docs: update OpenWiki"
           body: |
             Automated OpenWiki documentation update.
