@@ -5,7 +5,7 @@ description: "How authored catalog content (agents, recipes, services, stacks) i
 tags: [catalog, schema, catalog-roots, resolution, overlay, extends, recipe-families, pin-validation, packaging, wheel, dynstack]
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-16T21:10:52.541Z
+    at: 2026-09-17T09:44:27.184Z
 sources:
   - id: openwiki-source-4e2e2b93eeb15847052a26fb
     resource: repo://.github/workflows/pin-check.yml
@@ -51,7 +51,7 @@ sources:
     resource: repo://tests/test_recipe_uniformity.py
   - id: openwiki-source-a488585d132d26b93d838e43
     resource: repo://tests/test_tools_field_parity.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-17T09:44:27.184Z" }
 ---
 
 # Catalog: schema, roots, resolution, and packaging
@@ -505,14 +505,21 @@ Focused verification a change here should keep green:
 - **`tests/test_recipe_uniformity.py` asserts the catalog-wide contract by DISCOVERY, not roster.**
   It `rglob`s every `recipe.yaml` under `catalog/recipes` and asserts properties of *all* recipes:
   a declared `install.script` exists on disk and passes `validate_install_script`; no `install.sh`
-  fetches its own binary via a package manager (`pnpm add -g`, `npm i -g`, `uv tool install`,
-  `pipx install`, `cargo install`, `mise use -g`) — the pin belongs in `tools:` and nowhere else,
-  because a fetch in the script is a second pin that drifts invisibly against the one `harnessed
-  update` reads; and no script hardcodes the container `/home/harnessed` (host-mode scripts must use
-  `$HARNESSED_CONFIG_DIR` / `$HARNESSED_INSTALL_CACHE` / `$HOME`). Nothing in the file names a
-  recipe: a rule that applies to one recipe is either a rule that applies to all or is not
-  harnessed's rule. These replaced per-recipe migration tests whose hand-maintained roster went
-  stale on every pin bump.
+  fetches its own binary via a package manager (`pnpm add -g`, `npm i -g`, `npm install -g`,
+  `uv tool install`, `pipx install`, `cargo install`, `mise use -g`) — the pin belongs in `tools:`
+  and nowhere else, because a fetch in the script is a second pin that drifts invisibly against the
+  one `harnessed update` reads and the lockfile records; and no script hardcodes the container
+  `/home/harnessed` (host-mode scripts must use `$HARNESSED_CONFIG_DIR` / `$HARNESSED_INSTALL_CACHE`
+  / `$HOME`). Beyond the pin rules, it also asserts that no `install.sh` uses GNU-only `sed -i` —
+  the same script runs in the container (GNU) and on a macOS host (BSD), whose `sed -i` argument
+  grammars disagree irreconcilably, so writes go through `sed … > tmp && mv tmp file` — and that
+  every `mise.lock` beside a recipe names only versions its `tools:` pin also names: a stale lock
+  forces mise to migrate it at install time, which re-resolves every platform in the file and can
+  trip an older mise's provenance guard as a supply-chain attack, breaking launches on machines
+  that bumped nothing (`harnessed update` regenerates the lock in the same commit; a hand-edited
+  pin must too). Nothing in the file names a recipe: a rule that applies to one recipe is either
+  a rule that applies to all or is not harnessed's rule. These replaced per-recipe migration tests
+  whose hand-maintained roster went stale on every pin bump.
 - **`tests/test_tools_field_parity.py` pins that `tools:` is honoured by BOTH executors.** `tools:`
   owns *what binary*; `install.sh` owns configuration and content. The tests run against synthetic
   recipes (the subject is the executor, not any catalog entry): a host launch must install declared

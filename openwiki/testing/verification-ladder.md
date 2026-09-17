@@ -57,10 +57,10 @@ sources:
     resource: repo://tools/openwiki-retry-patch.py
   - id: openwiki-source-42360cb3e257ef7023d23d39
     resource: repo://tools/preflight.sh
-generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-17T09:44:27.184Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-16T21:10:52.541Z
+    at: 2026-09-17T09:44:27.184Z
 ---
 
 
@@ -640,8 +640,14 @@ regenerate. It is *not* a verifier of every Claim, and the boundary is deliberat
   cited code changed or its file is gone, `2` the wiki or its Claims are unreadable or malformed —
   an explicit exit 2, because an accidental exit 1 would collide with the one status a caller gates
   on. `--rev` diffs against a git revision instead of the working tree (what a wiki generated then
-  would say about now), `--quiet` prints nothing but the exit status, and `--strict-lines`
-  collapses the moved/changed distinction for when a reformat *should* count.
+  would say about now), `--quiet` prints nothing but the exit status, `--strict-lines`
+  collapses the moved/changed distinction for when a reformat *should* count, and `--limit`
+  (default 20) caps how many stale Claims are listed before the `... and N more` line. The re-find
+  scan also keys on the `selectedLineCount` recorded in the version payload rather than the
+  `#Lx-Ly` span, because openwiki does not rewrite the URI when a block relocates — trusting the
+  URI there scans for the wrong window length and reports a relocated Claim as changed; such
+  relocated anchors are surfaced separately as `staleURI` (a reader-facing accuracy problem, not
+  drift).
 
 ### The regeneration workflow verifies the native addon it installs
 
