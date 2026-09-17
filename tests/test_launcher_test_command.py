@@ -78,13 +78,20 @@ def delegated(monkeypatch, tmp_path):
 def _without_an_active_virtualenv(env: dict[str, str]) -> dict[str, str]:
     """`env` as an installed user's plain shell would have it: no virtualenv in scope.
 
-    This scrub is what makes the import assertion mean anything, and it is also the answer to
-    why the defect survived to release. `uv run --no-project` resolves `python` through the
-    caller's environment, so an activated virtualenv — `VIRTUAL_ENV`, or its `bin` directory
-    sitting on `PATH` — silently supplied `harnessed` to the child. Every developer working on
-    this repository has one active. Nobody who installs the tool does. Leave either in place
-    and this assertion passes on the broken code, measuring the test runner's shell instead of
-    what the command chose.
+    Be precise about what this buys, because it is easy to over-read. It does NOT constrain
+    `sys.executable`: an interpreter invoked by absolute path finds its own site-packages
+    through its compiled-in prefix, so the probe passes on the fixed code no matter what this
+    function removes. That is not a tautology, it is the property under test — the fix's whole
+    claim is that the delegated interpreter carries `harnessed` with it rather than depending
+    on the environment to supply it.
+
+    The scrub is what gives the probe teeth against every OTHER shape, the previous
+    implementation included. `uv run --no-project` resolves `python` through the caller's
+    environment, so an activated virtualenv — `VIRTUAL_ENV`, or its `bin` directory on `PATH` —
+    silently handed `harnessed` to the child. That is also why the defect survived to release:
+    every developer here has such a virtualenv active and no installed user does. Leave either
+    in place and this assertion goes green on the broken code, measuring the test runner's
+    shell instead of what the command chose.
 
     A `PATH` entry is a virtualenv's `bin` when `pyvenv.cfg` sits beside it. Entries that are
     not are kept, so `uv` itself stays resolvable and a failure here is an import failure
