@@ -10,8 +10,6 @@ sources:
     resource: repo://catalog/base/Dockerfile.harnessed-claude
   - id: openwiki-source-c799522f988c7842c7395388
     resource: repo://catalog/base/harnessed-scan
-  - id: openwiki-source-23775c3de52f3ab95a13cb8b
-    resource: repo://README.md
   - id: openwiki-source-c45652791b6bc8bb3a3f3d3e
     resource: repo://src/harnessed/assemble.py
   - id: openwiki-source-bfccb812c84b1bb2eeabf062
@@ -44,10 +42,10 @@ sources:
     resource: repo://tests/test_build_cache_mounts.py
   - id: openwiki-source-f725ea11f1806a58b06d7f3e
     resource: repo://tests/test_launch_parity.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-17T13:01:59.112Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-16T21:10:52.541Z
+    at: 2026-09-17T13:01:59.112Z
 ---
 
 # Build pipeline: from stack and harness to profile, images, and populated volumes
@@ -337,9 +335,10 @@ recipe layers (the apt/root bodies the volumes cannot carry) rebuild for a chang
 recipe.
 
 **The repo disagrees with itself about the lineage, and the code sides with the parent lineage.**
-README's "Why the agent installs last" paragraph and three launcher comments assert an "agent-last"
-design: the standalone agent image "is no longer the FROM parent of the derived stack images"
-because the emitter "inlines the agent's Dockerfile body as their LAST layers instead" — under which
+Three launcher comments (`_build_base_image`'s docstring, `_build_agent_image`'s NOTE, and the block in
+`_build_stack`) assert an "agent-last" design: the standalone agent image "is no longer the FROM
+parent of the derived stack images" because the emitter "inlines the agent's Dockerfile body as their
+LAST layers instead" — under which
 an agent bump would rebuild only the agent layer plus the scan while the recipe layers stay cached
 and harness-independent (a stack declaring `harnesses: [claude, omp]` would build its recipe layers
 once and both harnesses would share them). The emitter implements no such inlining —
@@ -349,9 +348,9 @@ bodies. So the agent-parent lineage is what the code builds today, and the agent
 including its "an agent bump rebuilds only the agent layer + scan" cache property — is the
 intended-but-not-implemented half; the bump cost that rationale exists to remove is the cost
 currently being paid. Anyone touching the lineage must settle it deliberately: change the emitter's
-`FROM`, the launcher's lineage comments, the README paragraph, and the agent Dockerfiles
-**together**, and re-check that an agent bump leaves the per-stack recipe layers cached. **The
-invariant is the cache property, not any single line.**
+`FROM`, the launcher's lineage comments, the README's build-and-images wiki pointer ("why the agent
+installs last"), and the agent Dockerfiles **together**, and re-check that an agent bump leaves the
+per-stack recipe layers cached. **The invariant is the cache property, not any single line.**
 
 One half of the agent-last story IS true today, and it is why `_build_agent_image` still runs once
 per process and must keep doing so: the plain agent image is the **fallback** a container launch

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5b56500716a7662d4b48bf8770999190473517c49e7096b2c26251a6bdb2c797",
+  "pageVersion": "sha256:d5178e12ed99b56c1d4fe49bf38b38293a4afe0e931c56bd0a6d4a183b5a6ae8",
   "claims": [
     {
       "id": "claim_b90a0ef34e7e4e1d815bf6dd523d7df3",
@@ -258,11 +258,11 @@
     },
     {
       "id": "claim_92a9f9407e1d409093558fbce9343382",
-      "statement": "The create-pull-request step runs `if: ${{ always() }}` — not `!cancelled()` — so it opens even after a failed generation or a 90-minute timeout kill (timeout-minutes: 90 cancels wedged runs; skipping the PR on a timeout would discard every page the durable queue wrote). `add-paths` limits the PR to openwiki/, AGENTS.md, CLAUDE.md and the workflow itself, the branch is `openwiki/update`, the body tells reviewers to check claims with `mise run openwiki-drift` before merging, and a final step re-raises exit 1 when steps.openwiki.outcome == 'failure' so the job still reports red.",
+      "statement": "The create-pull-request step runs `if: ${{ always() }}` — not `!cancelled()` — because timeout-minutes kills the job with cancelled() == true, and skipping the PR step on a timeout would discard every page the durable queue wrote. `add-paths` limits the PR to openwiki, AGENTS.md, CLAUDE.md and the workflow itself, the branch is `openwiki/update`, and the PR body states that a `failure` result intentionally preserves only the pages completed before the failure, directing reviewers to `mise run openwiki-drift` before merging; a final step re-raises exit 1 when steps.openwiki.outcome == 'failure' so the job still reports red. `sign-commits: true` is required by the branch ruleset's verified-signature demand: without it the plain-git commit was unmergeable (#482 sat blocked), and the action instead creates the commit via the GitHub API, signed server-side with GitHub's own key (authored by github-actions[bot]) so no signing key is stored in Actions secrets.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/openwiki-update.yml#L119-L153",
-          "version": "repo-lines-v1:sha256:7f5f493d42eca33971b6d65e09c49ec75f9fa2287483e286cb6bf3568762d7ed:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxY2ZmNGFkMzNiYTkxYjE0OGUxYjFiODI5MGI4ZmZmMjdiMjAzZmFiZmVlNTg3MDI4MmRlMzY3MzgzYjFiZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2NzE4ZjA2N2I1ZTVjMWYwOTkxYTZlNzQ3MjZmZTJhMjNkMjY0MzQ1ZTA4ZTRlYWQwNGZhZjczYzI3ZWQ0NDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0MTRhZTc3N2Q2ZGIzNjY1MjVkNTFhNjdiZWJmNmY5OWM3ZDUwYTE0ZTNlOGU3YmIwOGI5YWZjYjU1MmFiNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://.github/workflows/openwiki-update.yml#L119-L163",
+          "version": "repo-lines-v1:sha256:a52cca2ddd985260367075117d96631a0017e812e361dcb300aa94ef13cf22a2:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxY2ZmNGFkMzNiYTkxYjE0OGUxYjFiODI5MGI4ZmZmMjdiMjAzZmFiZmVlNTg3MDI4MmRlMzY3MzgzYjFiZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2NzE4ZjA2N2I1ZTVjMWYwOTkxYTZlNzQ3MjZmZTJhMjNkMjY0MzQ1ZTA4ZTRlYWQwNGZhZjczYzI3ZWQ0NDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0MTRhZTc3N2Q2ZGIzNjY1MjVkNTFhNjdiZWJmNmY5OWM3ZDUwYTE0ZTNlOGU3YmIwOGI5YWZjYjU1MmFiNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
           "resource": "repo://.github/workflows/openwiki-update.yml#L15-L18",
@@ -371,10 +371,24 @@
           "version": "repo-lines-v1:sha256:8879a178da85ba34f87a1b7ed2e1896780643c6eff2a6f2b224c0021edfa1be1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwYjliNmZiZjQ1ZGU1OTliOGJjYjAwNWViNTA5MTE4ODYwNmM1NzJkNWE4ZjM5MzBjN2IyZTI4ODdhZTM3MzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmYTQ3NTAyZmQ2OGRiODZkMzQwNzAwMDBjZGM4NTY3YWJmOWI1NjEyYTI3N2I0MmQwYzY4NWYwMjgzNGQ4OGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5ZmIzNDlmMTM5ZmVlN2FjNWFlNDJiM2ViMjNmNzcwMDRmNGRkMzAxYmFhZTc1ZjE4MzIwYjBjMzFkODliYTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkzNzY5ZDI5MmFhYTAwYzJkM2QwMjcwZGZjOTIyMzg2YTBkZTRkYTM4YzkwNzAwNTU4ZWIyMzJiOGRiMmI3YjcifQ"
         }
       ]
+    },
+    {
+      "id": "claim_82c52496f4fc46c8ab3d8789548816fe",
+      "statement": "tools/openwiki-drift.py verifies only line-ranged evidence anchors (repo://path#Lx-Ly) by recomputing the repo-lines-v1 sha256 digest of the selected lines against the working tree; whole-file evidence (no #L) and Claims using unknown version schemes (e.g. a future repo-lines-v2) are skipped and reported separately rather than guessed at, so the gate cannot go quietly green on unverified evidence. It re-finds moved-but-identical blocks by scanning for a window of the recorded line count whose digest matches and reports them as moved, not drift; only a changed digest or a missing file exits 1, and malformed wiki/Claims exit 2.",
+      "evidence": [
+        {
+          "resource": "repo://tools/openwiki-drift.py#L26-L57",
+          "version": "repo-lines-v1:sha256:e897d9c5d6bcdbaf8cc165b050ff62b0d7a8db8a27e0683b849d0d1de8a70fff:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2ZDdhNzQxZjQwNzA3YjA5N2M0MmZhYjE5YmE1YjU0MmZiZjExYTZkZDFmMmUyNmY3MzgxYzhiMzUzMDY2MDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU4YTliM2NkOGE5MzRhMzcxMWQ2ZGJmNTdiYmE5MWVjZTFmMDBjZjFmYTNmYmM1NWEzZThhZjkyMmYyMTc1YWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQwZjBlZmM4YjcyODczMDBjMTFkZDVkODgzMzE4Y2FlOTBlZjNiN2JkYWY5MDJjYmI5ZTMzZjE3MzgzZTg0ZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwY2UzZjI0YWI0N2MyZjVhOWQzMzdmMzc3ZWQ4NTczZmE1NjU4NDA3NjQwMmYxYWYwNTRhM2RlZDYxOTQ2MmYifQ"
+        },
+        {
+          "resource": "repo://tools/openwiki-drift.py#L73-L94",
+          "version": "repo-lines-v1:sha256:8d2390a3d31615e674d66eb0fef53733a5eb693bc0dbd41afd9f6d97c703a64f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzZDAwY2YyNzA5NjRkNDRhMTNkZmFjODc1MmIwOWZjYzQzNWIwZjE5YjMxNmFiY2Y4MWE3YWE2NGJiMTIyZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViNjFhYjY3YTFmOWM4ZmM0YmEyY2U2YmQ5NDY1ZWUzYjI4N2UzZjlkMGI2NTBmNTM5OGZjODgyOWVhMDQwNzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhZTZlNDRjNWQzYWExZmEwNTFiMzdjOTVhYzNmMjA2M2FkMzI4ZTk1NGJkNjBlOGY3YmIxMDY0N2QxNjAzNWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxYTI2ZDNkNzE0MjMyNzcyNWQ2ZTdlMTE0YjUwZTlhZWJkMzFlN2ZjNjg1ODNiNjc0ZjM1MWFiOGFlZGEwNzQifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-16T21:10:52.541Z"
+    "at": "2026-09-17T13:01:59.112Z"
   }
 }

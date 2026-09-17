@@ -57,10 +57,10 @@ sources:
     resource: repo://tools/openwiki-retry-patch.py
   - id: openwiki-source-42360cb3e257ef7023d23d39
     resource: repo://tools/preflight.sh
-generated: { by: "openwiki/0.5.1", at: "2026-09-17T09:44:27.184Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-17T13:01:59.112Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-17T09:44:27.184Z
+    at: 2026-09-17T13:01:59.112Z
 ---
 
 
@@ -662,6 +662,15 @@ timeout kill arrives with `cancelled() == true`, and skipping it then would disc
 durable queue just wrote — the exact loss `continue-on-error` exists to prevent. That is the
 opposite trade-off from the lint gate, and the right one for a job whose output is cumulative
 rather than binary.
+
+The PR step commits through `peter-evans/create-pull-request` with `sign-commits: true` — required
+by the branch ruleset, which demands a GitHub-verified signature on every commit in a PR (#482 sat
+blocked until the unsigned commit was rewritten by hand). No signing key lives in Actions secrets:
+the action switches to creating the commit through the GitHub API, which signs it server-side with
+GitHub's own key; the trade is attribution — the commit is authored by `github-actions[bot]` rather
+than the repository owner. The PR's `add-paths` banks only `openwiki/`, `AGENTS.md`, `CLAUDE.md` and
+the workflow file itself, and its body names the run outcome and points at `mise run openwiki-drift`
+before merging.
 
 The workflow installs `openwiki@0.5.1` with `npm install --global` — deliberately **not** the
 recipe's project-scoped pnpm install — then **applies the page-worker retry patch to the

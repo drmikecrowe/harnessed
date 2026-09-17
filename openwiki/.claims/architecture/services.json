@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c16c2ac06746ab23997fa1139e3e684a6adec5bb20c6f43928bc5fef5219d538",
+  "pageVersion": "sha256:f0ecff4e2c3a78c164014f3ed4865f1961756f20991ddb24a1855d5f68522481",
   "claims": [
     {
       "id": "claim_70b25d784d2e49d29875cccf2e8dedc9",
@@ -165,8 +165,8 @@
       "statement": "The `publish:` forms bind 127.0.0.1 only — an unqualified `-p` publishes on every interface and would put a project's data on the LAN — while a `scope: global` service's plain `-p <port>:<port>` is deliberately unqualified because pod members reach it via host.containers.internal, an address loopback alone does not answer. And because a TCP port has no filesystem ACL a published service must authenticate: when any client_env value uses {password}, the launcher provisions one secret per service+key with secrets.token_urlsafe(24) — token_urlsafe, never a hash of the guessable project path — stored 0600 in a 0700 XDG-state dir, never in the service's data dir (which for in_repo placement is the user's repo), and passed to the container generically as HARNESSED_SVC_PASSWORD.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L1761-L1779",
-          "version": "repo-lines-v1:sha256:e0fe8e864ba3fb23273069981077431b51d4ebc67ea893fc5dfda233913a6492:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyOWI3NDE4MmJlYjA4YWQ5OWIxY2UwMzg0MTk5ZmIxMTk5MWU5MGRlZGMzMmU2NDYzNzg3NzRmNTU1ODAwMDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3MTQzODFlYTVkZWFkYzhjYmZiNTAxMmJlZTkxMzUzNWEyODNjMzFlZjI4ZjllM2EyZTY4YmU0Y2M0NGYzNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxMjVhMzRiYjk3NWFlYzQyYzg5MDQ4YmY5MGEwNzFkOTFiMmQ4ZWRkM2ZjNjQ3NThlZjg5YjQ1NzI3MDhhOTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZmMTBmOTcwZDEzNDFjMzMzMTYxMTNmZjcyMzhhYzgyNjY3NWM5MGM0ZjU2Yzc4NGZkMmExNTY4YmFkNWZmMWIifQ"
+          "resource": "repo://src/harnessed/launcher.py#L1875-L1892",
+          "version": "repo-lines-v1:sha256:b3f30924a5298a985b6be3ac173a5dc53c4b0f8e061c30d397cc38c9eb74a9b3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkMTc5NGRlN2I0YmQ1N2ViY2RiNjFjODVmZjg1MTQzOWIwNzNiZDNkN2E5N2UwYmI3MzNiN2EzNmNlYjk2NzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3MTQzODFlYTVkZWFkYzhjYmZiNTAxMmJlZTkxMzUzNWEyODNjMzFlZjI4ZjllM2EyZTY4YmU0Y2M0NGYzNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJlZjJiMDA0OWFkNjVlOTUyOGU5MGEwY2U0NDY0Mzc0MmViYTU0MTg1NmVmMTUzMTc3ZWU1MDMzZjNiMjVjMjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZmMTBmOTcwZDEzNDFjMzMzMTYxMTNmZjcyMzhhYzgyNjY3NWM5MGM0ZjU2Yzc4NGZkMmExNTY4YmFkNWZmMWIifQ"
         },
         {
           "resource": "repo://src/harnessed/svcstate.py#L125-L147",
@@ -179,12 +179,12 @@
       "statement": "_svc_run_cmd builds the exact `<rt> run` argv for a sidecar as a PURE function (reads the filesystem, writes nothing) because it is called twice: once on the create path and once against an already-running container to compute what the current code would create; hence the allocate-once stable_port and password arrive as arguments resolved by _ensure_service, and everything fixed at container create time (mounts, published ports, env, userns) is in the argv, making its hash a faithful config fingerprint.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L1844-L1947",
-          "version": "repo-lines-v1:sha256:1cd5bfa6ed6bdc61c2650c729a65aa8666e933494a5cefc9b712c448addcf60b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3ZDY5ZWMxYzVmZDYxNDQyZThjZDQxMmU4YTgyM2Y4MjM3YjE1NDQzYmUzMDc4NTE0NTI2YzAwMjQxMTYyY2ZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJkOTJkZWM4MjY1MDY1N2FiYTcwNWNjZjM1MjdhOWE5MTkzYmQyMmZkNzczY2MxYTIyM2VmZGY3NjZlMDJiODcyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjYTYzY2Q2MDE1MTdlYTEyMzBiMTdjZjE4MGI3MDkwNTc4ZmZiN2MyYzE0MWMxZTBiZjJjZjI5NmY3NDc0MjM4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiMTI2NzhjMjAwZDYzYmMwMzAzMTkxOWNiYjYwNTFiMTRkYzM4ODU1OTI1MGJlNTQxMjY4NmUwMmJlZmY4YzNiIn0"
+          "resource": "repo://src/harnessed/launcher.py#L1844-L1952",
+          "version": "repo-lines-v1:sha256:f7cdec20547077d78927fa688d970c3a007ed5c2fe42aa593934c6cdd6ae4076:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJkOTJkZWM4MjY1MDY1N2FiYTcwNWNjZjM1MjdhOWE5MTkzYmQyMmZkNzczY2MxYTIyM2VmZGY3NjZlMDJiODcyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4ZGViNGU1OTQ0ZjUwYjY0MmJmOGQwZjQyZWQ0YjI2N2EyN2MxOTc0NDM4YTE5NTkyNDUxZTg1NWI5ZDQwNzgzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiMTI2NzhjMjAwZDYzYmMwMzAzMTkxOWNiYjYwNTFiMTRkYzM4ODU1OTI1MGJlNTQxMjY4NmUwMmJlZmY4YzNiIn0"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L1988-L2003",
-          "version": "repo-lines-v1:sha256:23db9d30947b6cf9dcdd961f747068023979c884973b9150c9ae699e46073cbd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmMTAwODBkNmI4MTQyMzc5Y2M2NzU1MjUzMWZiOWMzYjY4ZjljZDkxMTVjOTY3NjMyOWQxOTMwZmM1M2Y0MDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2OTBkNTFlNTA4MTZmMzVjZGZmYmNjNTAwNzRiZTk1NjA4NWQzYWNhM2RmNjMwZjIxZWY0ODQzMGFjZmM4NDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkzM2E4OTJlZTE0OTk5YjVjYjBkMjEwNmNiNjk3Njc0NDkwOTExOTAxYWM1ZWEzODVmNjdmMzk5Y2M5OGE0M2UifQ"
+          "resource": "repo://src/harnessed/launcher.py#L1994-L2009",
+          "version": "repo-lines-v1:sha256:a494be904b2ba278a4d93710ae435722f6405126527f98179b5e08dad0f91473:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyMDFiMjhjZTQ3NzJjZTQwODlhZThjODMxNWUyMTkzYWZjMjc3NWRhYzI2MWZjZmM4NGZlNjlkMjc0MzVjOWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2OTk0ZGQzNTFhMjI4NTQ2NzY2YmQxZDY2NGJhZWUxODMwMWIyNDI0OGJiNjYyYzQ2Yzc3YTU4NTFiYTkyNzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZkZDYzNTNhYTBjYjZiNWFkZDYxYmU0ZDdhYzkwYmM2NmI4NTUwOWMwMWM3Yjk5YjNmZWIxMjczNThjNThkMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4NjM0NDU2MGQ2MGFiZWI5MmU3NGJhN2Q1Y2JjOTZjZWM5NmYxMjI5MmQxYmFkOTJiMTE1NDhkMzRkNTNlZDUifQ"
         }
       ]
     },
@@ -591,10 +591,54 @@
           "version": "repo-lines-v1:sha256:3d59da365c46b703582de4f8a79d30cc3c012c4c16e1cb8eebbe273bb0e68c8e:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiNWY1ZmUzM2MzMWEwYjA1YTQ3YzRhMTM3NDM0NWM1MjJjYTdlODc0ZWNiMmVjYTgwZTUyNjI0NjljNDc4OTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3MDE0OWUwNjlhZDY3ZWNjZjQ3MzY0NmZmMWM3NTAwNTBkMzI5ZDExMDAxOGRjNTc2Njg3OGVhZmExZDYwN2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUyMGNhYmZlYWMxMjBhZjY1YTY4NDI5ZjU5NjFlMzNiMzQxNGZiY2MyODFjY2M0ODY0MzVkZmY1MzU0YmI3YTMifQ"
         }
       ]
+    },
+    {
+      "id": "claim_4f472abd450c42a2901f4f128ee4eab3",
+      "statement": "Every service container — not just project-scoped ones — gets the userns mapping emitted first in _svc_run_cmd (#459), pinned to the image's uid as --userns=keep-id:uid=1000,gid=1000 rather than the unpinned host-uid form: the unpinned form only kept bind mounts writable on hosts whose user is uid 1000, and elsewhere the entrypoint died on mkdir -p /data/dolt with EACCES (bd harnessed-rv2.1); paths.pod_host_uid() is only accurate while every creation site emits the flag, and tests/test_userns_mapping.py pins the explicit uid mapping and source-sweeps that no module outside paths.py emits the unpinned form.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1871-L1874",
+          "version": "repo-lines-v1:sha256:7b042906ebbbd7fabbe6ba03925689106138e35de157ec0fd194b39469750f28:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjYwZDkwMjNlZmU0MjMxMWE3NjdmNjJhYTEwZTdhOGUxMGQxOTA1YTFkMDZiN2QwMTA0MTlmMzk5NWIwODRiYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDg5MDIwZmMzYTg5OGI3ZGNjZThkZDg2Yzk4YzY3OGRmNTc2Njk0NzU1Njc4MDZjMGFlN2I5NTI2NjAzN2FjZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzEyNWEzNGJiOTc1YWVjNDJjODkwNDhiZjkwYTA3MWQ5MWIyZDhlZGQzZmM2NDc1OGVmODliNDU3MjcwOGE5NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjFkODViZDA2MGFkNmQzYzhlYWNlODJjYTgwYzMwOWYyM2Q3YmE2YzRkNDZiNWM2Y2M3YWMxYzQ0MzVmYjA3NiJ9"
+        },
+        {
+          "resource": "repo://tests/test_userns_mapping.py#L1-L80",
+          "version": "repo-lines-v1:sha256:55af3cc8637308cacd2125c4762c519bf87767367f186ee7e3425ea91d04daa0:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwOTM2MWQ0N2M5M2I2M2NiMjcyMjM0Y2JhNWIzZDFmY2M2OWFjYjBlZTE1ZTdjMzRkZmZiMDQyMmJlNmNkNjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5ZmFmOWQ5MjJjZjM4ZjkxYzJhYmE1NDc4MzkzNjZlMmRhZWVkNmI3NmNlZmM2OTUwMmQzNTdkOGVhMTBiY2YifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d037ff7c7dfa488b9311b4ce8348426d",
+      "statement": "A project-scoped sidecar's data dir is bind-mounted twice: -v {host_dir}:/data:rw for the server's own view, plus a path-preserving mirror -v {host_dir}:{host_dir}:rw so that absolute paths a host-side client hands the containerized server (e.g. dolt_backup 'add' with an abs path) resolve against the same already-mounted rw directory instead of dying with EACCES when parent dirs like .bare/ are absent from the container filesystem.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1894-L1910",
+          "version": "repo-lines-v1:sha256:ea6c5d0fbb6297ecd1db57f6382df1ef1a0d235f1ae541ce7f570bc7bb7a8e90:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlOWJiYWI0Y2IwNGZlYTY4ODU0MjYyZTkzMGYzYjNiMjRiOWY1YjExYzJiM2E1YjA4ZWIyNzFkMWRiNTdmMzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2ZTcyYWQ2OTgzMjAyNTQ5Mjg2ZTljMjU0YzRmMWZkYjdjNGM0YmYzNTc5Y2RhMWQ5OTAzYWYwZWMzZTQ5NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU0N2M3OGFhYTE4YjAwYTQ5MDU5MDlhODIyYWNkYWIyNDkyNDYwZjE2OWZlMGRjYjJlZjFhNTMyOTJkOWJmMDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE5YTNkN2M0MzNhOWZkMTdlOGY2NWRjNmEwODM4NTc2OWI4ZTliMDg5ZjgyN2E1YWNjMTdmY2JhZDRhMTRlY2EifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_244addf7d69246b1b17360408f8020de",
+      "statement": "On the in_repo placement path the service container additionally mounts the workspace path-preservingly and receives the git surface — the repo, the host's git identity via _git_identity_config_mount (honouring XDG ~/.config/git as well as legacy ~/.gitconfig), the ssh agent, the non-secret ssh surface always, and private keys only when the stack opted in and came from the user's own overlay via the same _trusted_ssh_keys gate as the agent container — because the service's own git traffic (dolt clone at init, dolt push at sync) runs inside this container.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1916-L1947",
+          "version": "repo-lines-v1:sha256:b5312cddfc6926fd766677c08dab1820534e29fab152a7cba3dac868ab634f10:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkODEzZmZlNWEzZDcwMjkyY2UwODZmOTZmNzEyMDgxYjA4ODhiMTExYzU0ODkyNWI2MGQxZGJhNjZhOGQ0N2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiZDc5YzZlYmRmYzAwZjA1NTk5NWQ0YTVjYWI3NmQ2N2VkYTJkYzhlODVlMjM0MmNkOTRlNzY5NjEwMDQyMzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliNGZmYjNiNjIyNTU2MjdiMDJmY2FlZWQ0MmUwZDQxMzJiMDY1NTJmODZmM2IwY2JiM2Y4YWQxYmVhY2U4ZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0YzgwODVkY2IzOTk2ZDhlZDcyNzEwZDlkMWE4ZjVkYTU0YWI0MjA5OTVjZjc3MGY4MTcxMmJlN2YyNWMwMTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_cc28693e127a40efb87f00764cb940fa",
+      "statement": "_wait_hatago's 90 s timeout is a measured, not guessed, bound (#456): docker showed container start 11:52:38.6 to hub listening 11:53:12.2 (33.5 s), the old 30 s bound failed deterministically, and the floor is hatago binding only after connecting its configured MCP servers — hub plus stdio children plus an unreachable server's ~33 s retry budget; the polling loop is deadline-driven (time.monotonic) because the in-container timeout 1 does not bound the wrapping podman exec and a count-based loop would understate its own duration.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1746-L1793",
+          "version": "repo-lines-v1:sha256:d074b560a9eb68292f11d0672950c349276a007d81c91ce32747b1f3a4779be6:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1NGZkOGJiOGQyYzY4MTcxMTkyMGQyMDQ4NGJjMWU4YmY1NmM4NjY1MjU1ZDM2NzI4NGJmODBhMjNlM2IwMzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1YmM0NzExZWNjYTA0NTBhZmM4MzI3NzlhODg2NzZhN2M2OTYwZmEzZGE1YWY0MTBlZTAyZDFlMDE1MTU5MWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU2ZGZiZjQ1M2Y3ZjFiZWJhYjcyODM2MWIwZjM5M2VlYjRjMWZiNjY4ZjllYTIyYjkxNmRhY2Y1ZGZmODFkODMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE4OTI3NTYwZjU0YWIyYzU5NmVkYTEyNTdkNjZmZmM3ZmM0OTc4NTQ5OTgzMzVlMTNmZmMwOTg0YTU4NzE2ODcifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-16T21:10:52.541Z"
+    "at": "2026-09-17T13:01:59.112Z"
   }
 }

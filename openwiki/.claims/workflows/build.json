@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:748bd8da53c5d1f053ad0e9b965b4845388280b342acb410a6c51a6eacda1b1f",
+  "pageVersion": "sha256:8f113eabcd39a3df27d5a8a99c2c49068cbbc419c03d580fb85745e4bf826d09",
   "claims": [
     {
       "id": "claim_252d58a4136d4bab8deb980788528260",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         }
       ]
     },
@@ -30,7 +30,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         },
         {
           "resource": "repo://src/harnessed/synclinks.py",
@@ -52,7 +52,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         },
         {
           "resource": "repo://src/harnessed/synclinks.py",
@@ -70,7 +70,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         }
       ]
     },
@@ -104,7 +104,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         }
       ]
     },
@@ -164,7 +164,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         },
         {
           "resource": "repo://src/harnessed/staleness.py",
@@ -206,7 +206,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         }
       ]
     },
@@ -220,7 +220,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         }
       ]
     },
@@ -234,7 +234,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         }
       ]
     },
@@ -244,25 +244,21 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         }
       ]
     },
     {
       "id": "claim_a0a5991670f544818cee7b77b535dfca",
-      "statement": "As the code stands, the standalone per-harness agent image IS the derived image's direct FROM parent (every agent manifest's image: is harnessed-<harness>, matching the emitter's FROM harnessed-${HARNESS}:latest), so base → agent → derived ordering inside _build_stack is required — the derived build's FROM has nothing to resolve until the agent image exists — and _build_derived_image passes no --build-arg because the emitter's in-file ARG HARNESS=<harness> default makes the tag resolve. The README's \"Why the agent installs last\" paragraph and the launcher's three \"agent-last\" comments claim otherwise — that the agent image is \"no longer the derived image's parent\" because write_derived_dockerfile \"inlines the agent's Dockerfile body as their LAST layers\", so an agent bump would rebuild only the agent layer + scan while recipe layers stay cached and harness-independent — but the emitter reads no agent manifest and inlines nothing, so that cache property is intended-but-not-implemented and an agent pin bump currently invalidates every derived stack's cached recipe layers. The verified half of the agent-last story is the fallback role: container-run falls back to the plain agent image for a stack with no derived image yet (derived if _image_exists(rt, derived) else _agent_image(harness)), which is why _build_agent_image must keep running once per process. Anyone touching the lineage must change the emitter's FROM, the launcher's lineage comments, the README paragraph, and the agent Dockerfiles together and re-check the cache property.",
+      "statement": "As the code stands, the standalone per-harness agent image IS the derived image's direct FROM parent (every agent manifest's image: is harnessed-<harness>, matching the emitter's FROM harnessed-${HARNESS}:latest), so base → agent → derived ordering inside _build_stack is required — the derived build's FROM has nothing to resolve until the agent image exists — and _build_derived_image passes no --build-arg because the emitter's in-file ARG HARNESS=<harness> default makes the tag resolve. Three launcher comments (in _build_base_image, _build_agent_image, and _build_stack) still claim otherwise — that the agent image is \"no longer the derived image's parent\" because write_derived_dockerfile \"inlines the agent's Dockerfile body as their LAST layers\", so an agent bump would rebuild only the agent layer + scan while recipe layers stay cached and harness-independent — and the README's build-and-images section still advertises \"why the agent installs last\", but the emitter reads no agent manifest and inlines nothing, so that cache property is intended-but-not-implemented and an agent pin bump currently invalidates every derived stack's cached recipe layers. The verified half of the agent-last story is the fallback role: container-run falls back to the plain agent image for a stack with no derived image yet (derived if _image_exists(rt, derived) else _agent_image(harness)), which is why _build_agent_image must keep running once per process. Anyone touching the lineage must change the emitter's FROM, the launcher's lineage comments, the README pointer, and the agent Dockerfiles together and re-check the cache property.",
       "evidence": [
-        {
-          "resource": "repo://README.md",
-          "version": "repo-file-v1:sha256:dadf9f1040a1b8b66e75349e8360b347b42f44e23f14621fc097cba27d39f97b"
-        },
         {
           "resource": "repo://src/harnessed/emit.py",
           "version": "repo-file-v1:sha256:340247819598a1e5d8b1297e4e645f8c206dbb5abeb7ae29b8653f1fc2c439b0"
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         }
       ]
     },
@@ -276,7 +272,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         }
       ]
     },
@@ -290,7 +286,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         },
         {
           "resource": "repo://src/harnessed/schema.py",
@@ -346,7 +342,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         }
       ]
     },
@@ -356,7 +352,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         },
         {
           "resource": "repo://src/harnessed/volumes.py",
@@ -370,7 +366,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         },
         {
           "resource": "repo://src/harnessed/volumes.py",
@@ -422,7 +418,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         },
         {
           "resource": "repo://src/harnessed/volumes.py",
@@ -486,7 +482,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         },
         {
           "resource": "repo://src/harnessed/scan.py",
@@ -504,7 +500,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         }
       ]
     },
@@ -524,7 +520,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         }
       ]
     },
@@ -578,7 +574,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         }
       ]
     },
@@ -626,7 +622,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         }
       ]
     },
@@ -664,7 +660,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         }
       ]
     },
@@ -678,7 +674,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         },
         {
           "resource": "repo://src/harnessed/paths.py",
@@ -716,7 +712,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:b1bdf42b445bdcc32b87dce4e2300f301b86ab99d6b246db46861037e5fab39a"
+          "version": "repo-file-v1:sha256:cde4327900d9729232549d19c3e1b6f5439a71326bcbf9378f5331ee09f50c4d"
         }
       ]
     },
@@ -769,6 +765,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-16T21:10:52.541Z"
+    "at": "2026-09-17T13:01:59.112Z"
   }
 }
