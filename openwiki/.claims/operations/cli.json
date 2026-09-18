@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:334185c4b68326b5f171e12a02e0c9e1d6c73f495b523db08fd0dd943648258a",
+  "pageVersion": "sha256:b5028a4352e6a71551150533960f0978bc82cf783ba46a9971f2aad0de43a949",
   "claims": [
     {
       "id": "claim_884ca4508fb040328ba5ba629d13b020",
@@ -196,15 +196,15 @@
     },
     {
       "id": "claim_e0ec5b9c4c264646815a227790035f1d",
-      "statement": "`harnessed test <stack> <harness>` auto-assembles first when the stack is not built or its profile is stale, then delegates to a subprocess (`uv run`/`python3 -m harnessed.cli test` with PYTHONPATH/CONTAINER_RUNTIME/HARNESSED_DIR set). The subprocess is deliberately unbounded — the child bounds its own work at capability.DEFAULT_TEST_TIMEOUT (120s) per test — and the child's return code becomes the exit code.",
+      "statement": "`harnessed test <stack> <harness>` auto-assembles first when the stack is not built or its profile is stale, then delegates to a subprocess launched as `sys.executable -m harnessed.cli test` with `CONTAINER_RUNTIME` and `HARNESSED_DIR` set and no PYTHONPATH synthesis — the #460 fix, because the prior `uv run --no-project` + `PYTHONPATH=<root>/src` delegation spelled a checkout layout and died with ModuleNotFoundError in every installed copy. The subprocess is deliberately unbounded — the child bounds its own work at capability.DEFAULT_TEST_TIMEOUT (120s) per test — and the child's return code becomes the exit code.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/capability.py#L50-L60",
-          "version": "repo-lines-v1:sha256:0d4be0a73ac6f1eddef6f5d0bc396998134ffd5fb81d6c332c89138cc85fc415:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzNWQxZmQ5ZmNiMWRhYjFhYmI2MWY0YzUxZDVmZDBlMWEwZjRjZTYxYzBkY2ZmZjRhZWQ4NGRlNmIyOWQ2N2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZhYTAzMTE3NDcwMGQ5NDczOTM0NmJkZWNkODFkZjE2ZGIxNzI3N2ZkZjhiOGMzOTg2ZDBlNDU2YzNhOTdlYWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU0MWIyMjZlMGM1NGM4ZWM5NWYxMTBiYzQxYzdjMTI1NTJlYjU5MjVhNzg0NzJhYjlhZjFjOWRkMDdmOWYxMTAifQ"
+          "resource": "repo://src/harnessed/capability.py#L56-L56",
+          "version": "repo-lines-v1:sha256:13ba08aa2858b7337c1bf1762347ea91b2c5385b38336739eaedfd68273ef642:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTNiYTA4YWEyODU4YjczMzdjMWJmMTc2MjM0N2VhOTFiMmM1Mzg1YjM4MzM2NzM5ZWFlZGZkNjgyNzNlZjY0MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTNiYTA4YWEyODU4YjczMzdjMWJmMTc2MjM0N2VhOTFiMmM1Mzg1YjM4MzM2NzM5ZWFlZGZkNjgyNzNlZjY0MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWNiNzU1OGY3ZmQxZTIyZDM3MjJkOGRhOTRiOTRkZGRiNTFiNGFjNzc1NmJkNDkxYTdhZThjYjg5NTI3YjBjMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGEwMzVhZjJkZDEzYWZlZTQ4OWE1M2NmMDI1NGIwMDhkYTc2MDVjM2RjYzlhNDRkYTU3ZjVkNzQzYmM3MGIzNSJ9"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L4487-L4546",
-          "version": "repo-lines-v1:sha256:396a12e46170597e18d3ef4a4522142da2be5eaa75e1f64a8a87aa34ec74715f:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhZDRhMDg3YTMxZThhMWNmNmU5MDFiMzc0YWRlYWZlZGRiMzY4N2Q1MzMxZjNlMzljOWNiMjhjNTFmYzEwYWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ0NzI0MzEyNzY2YzNlZjkwYmMxMmEyZmRlMjAzODFkYjAwOWMwZjdhNWEwZWJhN2NhZWRjZDlkNmExNjdmZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU2ZGZiZjQ1M2Y3ZjFiZWJhYjcyODM2MWIwZjM5M2VlYjRjMWZiNjY4ZjllYTIyYjkxNmRhY2Y1ZGZmODFkODMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwNTgyNWZhZmQ4OGM0NzQwNjE3ZGVhODU0ODY2MjFhNTdmM2RjNDM3YWQ5N2UyYzZmOTY0Y2I4Yzc5OWU4NzMifQ"
+          "resource": "repo://src/harnessed/launcher.py#L4741-L4786",
+          "version": "repo-lines-v1:sha256:20025d9165628e8c6b9dc80fadaf03668d81adce91007d2c9648c2a7c5037d84:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxODEyNGJhMTU5OWE0M2NmODUzMGRmNDQxMmNiODFhZmE1MGJhYmFmYjY5ODg1ZGY2MmNhMjU5MGYwZDM0NGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ0NzI0MzEyNzY2YzNlZjkwYmMxMmEyZmRlMjAzODFkYjAwOWMwZjdhNWEwZWJhN2NhZWRjZDlkNmExNjdmZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJjYTNjMDljMmI2MjhkYmJlNzBiMjJmMzRkOTA2NTcwODc4NTExZjk1ZmVmYTg2ZmQ4YzlkMDYxMmNjODBlYTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwNTgyNWZhZmQ4OGM0NzQwNjE3ZGVhODU0ODY2MjFhNTdmM2RjNDM3YWQ5N2UyYzZmOTY0Y2I4Yzc5OWU4NzMifQ"
         }
       ]
     },
@@ -306,29 +306,29 @@
     },
     {
       "id": "claim_c466d3d886ba4416b18f757dc205c0a9",
-      "statement": "Image re-scans run two complementary passes: a credentialed in-image scan (the only path where snyk and socket actually run, since builds never pass secrets — builds get only osv-scanner + pip-audit; advisory, always exits 0) and an online archive scan (podman save + osv-scanner against osv.dev with offline-DB flags dropped, so it sees CVEs disclosed after the build), which GATES on HIGH+ with exit 1.",
+      "statement": "Image re-scans run two complementary passes: a credentialed in-image scan (the only path where snyk and socket actually run, since builds never pass secrets — builds get only osv-scanner + pip-audit; advisory, always exits 0) and an online archive scan (podman save + `sys.executable -m harnessed.cli scan-image-online` against osv.dev with offline-DB flags dropped, so it sees CVEs disclosed after the build), which GATES on HIGH+ with exit 1; `_scan_image` returns clean only when both passes are clean.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L4731-L4755",
-          "version": "repo-lines-v1:sha256:40b740d19da8f9e41ebc3b748c29a7a4abb4d5e1ad3897f4395a3bf15586978b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlMzMxMDcyMzAxZGZjYTkwMTEyZTNhNTJkNmQ4NDZkZmY0MDZhYjRmNmIxMDI3N2YwYjA2NWIyOTA5YzA2ZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzOTgzMDkzMmI5NzYxNmEwYjM3NTM2ZDdmY2JhNWQzNTU1ZmU2YWNiZjc0MDA4M2FiY2I2NWI0MTdlOTdhM2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyNTQwOGMxOWYxNzc2NzE3NzFhYWU0Zjc2ODAzMWRiNTU4YzEwODgyOWIxZjQ1Nzk0YzIyMDFjZGM2MWIyNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ1OWI3MzBmNzFkNDk1ZTRjZjNiYmJhMzgwMjA3ZTZmNjQ0ZDEzMDdkOGY3OTMxNjhhMmExZmIwYWNkNjcwNzEifQ"
+          "resource": "repo://src/harnessed/launcher.py#L4971-L5000",
+          "version": "repo-lines-v1:sha256:57f2cc2f32294befd986f2ca1efe6b57e22e14af4b8a60219394c3bda9e72223:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlMzMxMDcyMzAxZGZjYTkwMTEyZTNhNTJkNmQ4NDZkZmY0MDZhYjRmNmIxMDI3N2YwYjA2NWIyOTA5YzA2ZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzOTgzMDkzMmI5NzYxNmEwYjM3NTM2ZDdmY2JhNWQzNTU1ZmU2YWNiZjc0MDA4M2FiY2I2NWI0MTdlOTdhM2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyNTQwOGMxOWYxNzc2NzE3NzFhYWU0Zjc2ODAzMWRiNTU4YzEwODgyOWIxZjQ1Nzk0YzIyMDFjZGM2MWIyNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ1OWI3MzBmNzFkNDk1ZTRjZjNiYmJhMzgwMjA3ZTZmNjQ0ZDEzMDdkOGY3OTMxNjhhMmExZmIwYWNkNjcwNzEifQ"
         },
         {
-          "resource": "repo://src/harnessed/scan.py#L165-L193",
-          "version": "repo-lines-v1:sha256:ddca5db395dd9f0936a98558d76ac9acacc5323099c117f079e574d14509c0fd:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjYTExYmQyNjY3YjU3YTkzZmQ2ZjNhMzUyMmMzNzQ4MDc1MmY4NzAxMzIxZWVkNmI3MDFjMDhiZGRjYmQyMTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0MTNmYTA4ZWZhMWQwNTk4ZDZjNGEzMWQ3NDE4OTdmYWY0YzBjN2I5YTAwZTBiNDk3MjAyYzQ3ZDQ3Njk5N2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2MDI0MjBmYmQ1OWYzOTRiN2U5MTQ1YjVjNmE5OGIxYzJiNzMzMmUyZjM1NGU3ZWRlODgzZDE4ZDMyYTdlNjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://src/harnessed/scan.py#L117-L130",
+          "version": "repo-lines-v1:sha256:4b11708fcf463f5b4d4c6aa441efe9180a7e7a662d5c998cc02df7d4efccda0f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyNjZiMGQxYTEyMjUzNTBjNDA4OTE0YTRlYWQxMDBmYjhmNzI1MjdkMzUwOTE1OWYyM2EzNzAzYzMzNmQ5ZTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjljOGYzYzViYmU0N2ZhOTFmNjM2MWQ2ZTBkODRjZWNhMjYyYmZlYTZkMmM1OTA1ZGQyODAzNjBjMmNjMmZiZTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2NjY0OTYwZmVjNjNhYzAwMjYxNDUzNjRjYTBiZTcxMWJhNjE2Y2JlODVkNmJhNGEyOTBiOTYwMWNhNjY5MzEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/scan.py#L172-L190",
+          "version": "repo-lines-v1:sha256:7b32f24a33dffbe9a65866f1bae66ad1155d1eec2cd6dd75d938970d535426f4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhNjMwZjdlZTU5Y2I1ZmZlM2I3N2IxMmJkOTNjNmI0MTA1ODJhN2U4ZGY4ODM4ZThiYTRkOTdjZjdhZjczOWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU4NDIzYTljOWFmM2IwMGMzY2M5NTJmMTVjZDJlMDdlMGRhOWVjM2M1Mjk4ZWJkNjkzMzk3ZDFlYTY0ZGYyNmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ0NjZlNzUyZWNlNDBkMjMwMWNkNzU0NDdmNGI5MGU4NjE5ZTk5MTg5NzU5NjczNjM0ZjViNTE5ZTg2ZjZjOTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA2NDEzZWY0MmNmNmU5NGJiN2NhNTkyYTRlNWUwYmEzNTJjNmQ0M2VmMzY4N2M1YzBkNTM3NDQwMWQyNzY5NTAifQ"
         }
       ]
     },
     {
       "id": "claim_6d01139feadd43ccac71aa2b856b53e0",
-      "statement": "`harnessed rescan` with no argument enumerates images by label=harnessed=true and that listing goes through _listing, which aborts on any non-zero runtime exit — load-bearing because rescan is the nightly timer's ExecStart and an unanswered listing printing 'nothing to rescan' with exit 0 would silently skip the whole nightly vulnerability scan, indistinguishable from a nightly that keeps finding nothing (scan.py's Pitfall 6 warning sign).",
+      "statement": "`harnessed rescan` with no argument enumerates images by label=harnessed=true and that listing goes through `_listing`, which aborts on any non-zero runtime exit — load-bearing because rescan is the nightly timer's ExecStart and an unanswered listing printing 'nothing to rescan' with exit 0 would silently skip the whole nightly vulnerability scan, indistinguishable from a nightly that keeps finding nothing (scan.py's Pitfall 6 warning sign).",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L2048-L2067",
-          "version": "repo-lines-v1:sha256:13459d59af99d08d47ec931dcffdb7f6e892a8172545e98559146d114bc2f598:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiNjdlODBlZDczMDc4MDE2NWVkNWUxZDk4OGJkYmE4NmQyYWY0YjdmYzAxODJjNDRlZTdhNjQzZWIzZjIxNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4MWExYWU2ZWM3ZmYzZjY4YTQwMjVkNjM3NjBmZDA3MTI0NGJiY2VhYjNmM2Q2MGI4ZDA4YWYxNTk3OWMyZTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk0ODFmYjhjNmYyZjNhNjQwMzhmOWQyYzU5OGM0MDE1YWQ1MzA2YzEyNDc5OTA5NTAyYjdmMmJkYzE2ODg3NTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ5NWRiNWI0ZjNiMDJjODRiZGQwNWY2MDEyMTRhMThjNTUxMzBiOGMzZGM0ZGZlYzkxNzVkNTg4NWU2MTBjMzgifQ"
-        },
-        {
-          "resource": "repo://src/harnessed/launcher.py#L4814-L4865",
-          "version": "repo-lines-v1:sha256:109868c3a8930921d9c02f008bba3c360e4196d211ccda96cfa6195d98403d96:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliMTUzYjFkYTI4ZWY4OWY3NjkyM2IwMzQ0YmU2MDdiY2YwZDU3YzBjZGViN2I3ZmZmNDM4Y2FiMzFlZTgxNjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzNmI5MjVkMTY4MTlkMWZhZDMzNTlmMTQ2YTY4MzdkZjJiMjRmMWVlNzg2ODUxNjk3ZjgzMjRiOTA3OWM3OWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4ODczMGFmMzQ5ZTY2NmVhNWFiYzlhZThkOGIzZGM4ZDFjZmZiYzM1OWM0NjZkNzdhYTIwM2ExMGFiOGI2Y2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFhMjcxNDQ2NTU1ZDdlYmNhZTQ2MzFmY2RmZTQ4YTQ3ZjA2MWQ0YWE5MmNhYzFjYzkzYjk5MzE0YzJhMjc5ZDYifQ"
+          "resource": "repo://src/harnessed/launcher.py#L5088-L5101",
+          "version": "repo-lines-v1:sha256:a6d6b4e6e3d27e736342e95c4e8d04fb3523422f71d0fa023bc872ee549b73a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5YzcxNDk3Y2ZjODJlNmZlMGZmZmYwYjA2MjM2NWVmNDk3MTUzODhhNjU0N2I5N2ExMzAwZjdlZWEyOGYwMmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlN2JjZDM2ZWY1M2I0NDUyM2U2NWU5OGQxOTQ0OTkzZTBmZjE3NDZmNTUzNmMxYTUxMTc0NmYzZTAxZTc1NmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA4MTgxODU0NjcyMmJkYTljOWU4NzA2OTA4OWY0MGY4ZWI4YjZkOGZmMTViNWVmYTIyMjQ0ZTUwZjdmMjU1YWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU4Mzk3NTYwZmY2Njk3OGVjYzI2ZDA0ZmNhYzI4ZDhjOTMwNzJiNDRmN2JhOGNkZmNlY2RhYWRiYzE0YmI0N2UifQ"
         }
       ]
     },
@@ -737,10 +737,24 @@
           "version": "repo-lines-v1:sha256:174d40bb03dbf5918fac0223572978df2b9073169bed6daffe1aae43f64ca721:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFjMjgwMzlmMDRlZjczNDkwYjc3NTcwYTgyZTg4ZDAwYzQyMDk0MDY2NmZiMzcwYzcyNmZhNDQwY2JjMzRkY2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlNTNjNTUzNjE4ZmQzMmQ5NmIwNTYyMWMyNzUwYTcwYjkxNmZjNmQxMDhlZjA0MDQyNjkzODc1MWY0MWEzZTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE1YmE1MjQ4NDA5MjEzMWI5Nzc1NGU4M2I5MzE3YzA5N2M1Y2JlZmRhYjI2NWNmNTQxZWI5ZmFjNzc5NGRlOTIifQ"
         }
       ]
+    },
+    {
+      "id": "claim_c3e47ef8af4d441c9ad371564eab86a5",
+      "statement": "The CLI's surfaced service addresses are mode-dependent: `host.containers.internal:<port>` is the containerized-agent address only, while a host-run client reaches the same published port at `127.0.0.1:<port>` — `svcstate.resolve_client_env` resolves `{host}` per launch mode (`127.0.0.1` for host, `host.containers.internal` for container) for project-scoped service client env, and `harnessed list`'s broker section prints `127.0.0.1:<port>` because its reader is on the host; `aws-sso serve` defaults to bind 0.0.0.0 for the same container-reachability reason, token-gated and overridable with `--bind-ip 127.0.0.1`.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L5485-L5492",
+          "version": "repo-lines-v1:sha256:b66a9c9fedf92c1123ff9b997f23d428c1f9aec3b161f141c30c46b0a202980a:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTM5ZGJkYjEwMzhlMzMwNjVkYWMyYTYxNTIyNzgwMmQ2MDZjMjA2ZDMzMzI5ODIwZTkzYTNlOWYyNWIyZTZlYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODQ1N2JhYmYyNzk5YTg0MGJjMGU5M2VkMjFlYTU5NDEzNzEzYjhlMDBhY2ZkYWJlZmE4ZTYyMWQ4ZDRmNjUwNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGY0NDE3ODNkMTNlNTE3ZGJjNmE3MWQ5MzVhZTdiNTZmYjkxYzBmZTAwZmZmMmI4YTYyMzUyZTBhNmVhYjYyZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWY5NzAyYzMxZGM0MTUzMjRjYzUxY2IwODI1NDBiZjYyNTdkNzk1N2JjM2FkM2FhOWQ2YzUwN2VhNjAwNTRkOCJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/svcstate.py#L243-L263",
+          "version": "repo-lines-v1:sha256:8d635ff43899400f347a64e1088a3ae679c233d043029e888646964a02ac8de9:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1YzYyZjMzZWIwNGMxZTVhMGQ1ZTljMDA4MTY4MTFmNzZlNWI3YTU0YjM4MjcwNWYwMzdhNGE1ZjY5ZDgwZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmMmYwZjBmOGNiYmNkN2UzODFiYTU2ZmExMDcyYTY4MDIwNGUyMjYyZGIxYmUzOTRhNGQ5ZTc0OWE5Y2YxNGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhMWI4M2Q2Y2I1NGUzYTFhMDQzNjhlYjBjOWY4ZDg0ZjM3NDZhNTIxNDZkMDlmNjVhN2Q4NmJlNjFjYzg0NTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA5N2NlZDFhNzA0NTI4YWI4NWI0ZjIyN2M0NjI3NmM5ODQ2MzA4YWY3ZDY1YzljOTJhYWIxMzgyYjU5NWU3M2IifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-17T13:01:59.112Z"
+    "at": "2026-09-18T12:41:13.644Z"
   }
 }

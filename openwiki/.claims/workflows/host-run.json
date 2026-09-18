@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:4b710da61edac4b028dd1c5ff05f54df7abcb1925fa02d31c9915e33922c3906",
+  "pageVersion": "sha256:1d827b79c49d5bf5561b45d80ef2fac015f6ede3f0d1e60e79f7ce04a19f9e0e",
   "claims": [
     {
       "id": "claim_43a776daac44445ca2877b7331bbdf10",
@@ -821,10 +821,24 @@
           "version": "repo-lines-v1:sha256:5e13596bdf557e31b788980d2ba25e7e6674282693ef5a7fcf0fab8668b91241:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2YzMjEyNWMwY2I5Njc4MTk2MGUxYWExN2QxM2VkZWE1ZTNjYzcxMDlmMGM3M2VhMTc0Y2JjNDdiNjQ0NjU3MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzUyNGM5M2ZmMGRmYWU3Y2IyZGQxZGVmYWFiMGU4NTcxOTE3Y2IyYmI3ZGVkNzkyM2I3ZjQzYjRkOWYyMDE1NiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTBjMGUxMGUzM2Q5ZGM4MDcwMzY3Y2RjODNhYjcxNzBhZWQyZjJhZGUyMmQ2ZTg1MDliMDA1MWYwYTI1OTFiZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWZhMGM5ODNkYzQzY2YwNDljN2RkODg4NWMwOTZkOTY0ODM0YmI5OGNhMTI0MjhhZTgwYjExNjcxYmY4Mjg1NCJ9"
         }
       ]
+    },
+    {
+      "id": "claim_d3281b4cb1914025a091630653ca54cd",
+      "statement": "host-run clients reach port-published services at 127.0.0.1:<port>: svc_client_env resolves each project-scoped service's client_env template per launch with {host} = 127.0.0.1 in host mode (host.containers.internal is the containerized-agent address only), applied to the agent's os.environ via setupenv.harnessed_env.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L128-L128",
+          "version": "repo-lines-v1:sha256:07a7692057984c6b1c1b7410206f5afda414fb041a2ca4fbf0f1ff6bd597b0cd:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDdhNzY5MjA1Nzk4NGM2YjFjMWI3NDEwMjA2ZjVhZmRhNDE0ZmIwNDFhMmNhNGZiZjBmMWZmNmJkNTk3YjBjZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDdhNzY5MjA1Nzk4NGM2YjFjMWI3NDEwMjA2ZjVhZmRhNDE0ZmIwNDFhMmNhNGZiZjBmMWZmNmJkNTk3YjBjZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTIwNjM4NGY0YzIxMzcwYWJlNzZmNTZiNmNjMDdkNGM2YWM5MGIwM2MxY2Y1YTkzNzI0YTBiOWUwZWE3Y2JlNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODI0ZjBjZmE3NmE0OTE3NjQ2YTc0NzVjYzY1ZWYzYmZhNmIzMWQ5NjRlZjI4Y2Q1NTg4ZDc5NDQ2YjQ3ZTMxNCJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/svcstate.py#L235-L255",
+          "version": "repo-lines-v1:sha256:961e5c187e3f3291a7023e8872b08cb8c510cc3e4643c128a4ceebbb6b5de6c1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlZWY1ZTA4MDIxMTk4MDg2ZWU5ZDMxNDg5OTMzMzM1NTJlOWEwNTNjYTM0YTMyZmNhZDQyODFhZDdmZDk3ODQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2YjA0NDkxNDY5NzIyZTgzNjNhOTRlNDA0NDUzOGUwMTNhMmEyMTdlMzZiMWU1NjhiYTYwYWNiN2I0YzhmMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1NzIyYjhjNGYyODMxYTA4YTZmZjE2OGQxNjUxMTRiNmZkYmFjZjk4NDIxNTM2NjI3NzY5M2JkY2IzYmQwMjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhmMDk1YWFmYjRmYWY3OWIxNDdjNWY5ZDg1YjdlNzg1MGQ4YTNkOWFlZDE4MGJkMTE0OThlYzk0OTcwOWZkYjMifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-16T21:10:52.541Z"
+    "at": "2026-09-18T12:41:13.644Z"
   }
 }

@@ -24,16 +24,18 @@ sources:
     resource: repo://src/harnessed/paths.py
   - id: openwiki-source-2e234f8645cb88b1fd759f98
     resource: repo://src/harnessed/setupenv.py
+  - id: openwiki-source-5e89566b7a4e43a53be5c7b2
+    resource: repo://src/harnessed/svcstate.py
   - id: openwiki-source-4d719c6f3a70a2ece04f213b
     resource: repo://src/harnessed/toollock.py
   - id: openwiki-source-f725ea11f1806a58b06d7f3e
     resource: repo://tests/test_launch_parity.py
   - id: openwiki-source-a488585d132d26b93d838e43
     resource: repo://tests/test_tools_field_parity.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-16T21:10:52.541Z
+    at: 2026-09-18T12:41:13.644Z
 ---
 
 # Host launch: `host-run` end to end
@@ -919,6 +921,13 @@ Two lifecycle consequences follow, and both are visible to the operator:
   A service-backed stack therefore leaves a running container behind any host-run session — which
   is the desired behaviour (the next launch, or a plain `bd` in a terminal, dials the same socket)
   but is not "no containers involved".
+
+For a sidecar reached over a **published port** rather than a socket, the client env is resolved per
+launch rather than baked: `svcstate.svc_client_env` fills each service's `client_env` template with
+`{host}` = **`127.0.0.1` in host mode** — host-run clients reach services at `127.0.0.1:<port>` —
+while `host.containers.internal:<port>` is the **containerized-agent** address only; both name the
+same published port. This is applied inside the folder-env contract (`setupenv.harnessed_env`), so
+the agent's `os.environ` carries it with the rest of the box.
 
 A socket-backed sidecar composes with a host agent for free — the socket is a filesystem object
 inside the persist dir the service bind-mounts, so the host process dials exactly the path the

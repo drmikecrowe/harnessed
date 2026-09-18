@@ -43,10 +43,10 @@ sources:
     resource: repo://tests/test_launcher_timeouts.py
   - id: openwiki-source-5186c279ca95998d7d77dd87
     resource: repo://tests/test_mcp_remote_launch_auth.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-17T13:01:59.112Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-17T13:01:59.112Z
+    at: 2026-09-18T12:41:13.644Z
 ---
 
 
@@ -235,7 +235,7 @@ Several steps run on the host **because the alternative would put a secret where
 
 - **varlock resolution and the 1Password timeout are host-side by construction.** 1Password desktop-app auth binds the grant to the calling host application and cannot work from inside a container. The base image even ships a `setsid` shim in front of the `op` CLI so a recipe that shells out to it inside the pod gets a clean "no accounts" exit instead of stealing the agent's TTY with an interactive setup prompt it can never satisfy. Scanner and launch secrets are always resolved *before* anything enters a container — and Topology B extends the same principle to the proxy: `varlock proxy` runs on the host for exactly this reason, with the pod reaching it over the loopback door described above.
 - **Scanner tokens reach only the credentialed re-scan.** `_build_derived_image` never touches secrets or varlock — building must always succeed without credentials, so recipe verification never depends on a secret resolving. snyk and socket therefore sit out the image build itself and run on exactly one code path: `_scan_image_in_container`, reached from `harnessed rescan` (also the nightly systemd timer, and re-invoked by `harnessed build` after the derived image is built, unless `--no-security-scans`). Tokens are resolved on the **host** via `_resolve_launch_secrets(None)` — global schema only, project env deliberately not layered in, since a rescan is about the image, not the cwd — handed to podman as a mode-0600 temp `--env-file`, and unlinked in a `finally`. The token names live in the user's scanner schema (see `.env.schema.example`).
-- **aws-sso forwarding is a broker URL, not a copy.** For `forward_aws_sso: true` stacks the launcher injects only `AWS_CONTAINER_CREDENTIALS_FULL_URI` (the host's aws-sso ECS server via `host.containers.internal`) and its bearer token read from the user-owned token file `harnessed aws-sso serve` writes. The in-container AWS SDK pulls short-lived STS credentials over HTTP; no aws-sso binary, store, or SSO token ever enters the container, and the bearer arrives as a per-launch `-e`, never an image layer.
+- **aws-sso forwarding is a broker URL, not a copy.** For `forward_aws_sso: true` stacks the launcher injects only `AWS_CONTAINER_CREDENTIALS_FULL_URI` — `http://host.containers.internal:<port>/` (`127.0.0.1:<port>` for anything addressing the server from the host itself; the default port is 4144) — and its bearer token read from the user-owned token file `harnessed aws-sso serve` writes. The in-container AWS SDK pulls short-lived STS credentials over HTTP; no aws-sso binary, store, or SSO token ever enters the container, and the bearer arrives as a per-launch `-e`, never an image layer. The launch-time reachability probe deliberately hits `127.0.0.1` (it runs on the host), while the containerized agent's endpoint uses the podman host gateway — the same dual-address rule every published host service follows.
 - **Credential directories are unmountable by declaration.** Recipe `persist: global` entries are default-deny with hard-deny roots — `~/.ssh`, `~/.aws`, `~/.gnupg`, harnessed's own config dir, and bare `$HOME` itself — that no allowlist entry can override. The persist system, which *does* copy host dirs into per-stack mount trees by design, is fenced off from every directory the credential machinery treats as a live store.
 - **The corporate proxy CA is the one credential handled as a build secret instead** — a trust anchor that must be trusted before a container's first HTTPS call, not a launch-time value. It never appears in this list's launch-time mechanics at all; the next section owns its full build/run path.
 

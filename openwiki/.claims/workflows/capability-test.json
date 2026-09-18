@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:881aa61d149034e361dfe997c727e70db8c0703ed267a384ed9a51568106e8bb",
+  "pageVersion": "sha256:22be4f8e25771a62b98708a019f817b80e47896b48e0fe26ab9214ef46e617fe",
   "claims": [
     {
       "id": "claim_2fb8a606a96a4476af1bfd3cee8955d2",
@@ -286,11 +286,15 @@
     },
     {
       "id": "claim_906b7ba775aa4bb991a72e86dfa05e15",
-      "statement": "The user-facing verb launcher.test_stack performs a freshness preflight (paths.is_built, then staleness.check_profile_fresh), assembling first when the profile is missing or stale so the test always runs against current source, then delegates to the harnessed-tools test entrypoint in a subprocess (uv run … python -m harnessed.cli test, else python3 -m) with PYTHONPATH, CONTAINER_RUNTIME and HARNESSED_DIR exported, exiting with the child's return code and deliberately unbounded because the child bounds its own work per test script.",
+      "statement": "The user-facing verb launcher.test_stack validates the harness against HARNESS_CONFIG_DIR, then performs a freshness preflight (paths.is_built, then staleness.check_profile_fresh), assembling first via _build_stack when the profile is missing or stale so the test always runs against current source. It then delegates to the harnessed-tools test entrypoint in a subprocess as `sys.executable -m harnessed.cli test <stack> <harness> --root <root>` (issue #460: the prior `uv run --no-project` form set PYTHONPATH to a checkout-layout <root>/src and broke installed copies with ModuleNotFoundError), exporting only CONTAINER_RUNTIME and HARNESSED_DIR while an inherited PYTHONPATH survives. It forwards --project, --keep and --json, exits with the child's return code, and is deliberately unbounded because the child bounds its own work per test script (capability.DEFAULT_TEST_TIMEOUT).",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L4349-L4408",
-          "version": "repo-lines-v1:sha256:396a12e46170597e18d3ef4a4522142da2be5eaa75e1f64a8a87aa34ec74715f:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhZDRhMDg3YTMxZThhMWNmNmU5MDFiMzc0YWRlYWZlZGRiMzY4N2Q1MzMxZjNlMzljOWNiMjhjNTFmYzEwYWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ0NzI0MzEyNzY2YzNlZjkwYmMxMmEyZmRlMjAzODFkYjAwOWMwZjdhNWEwZWJhN2NhZWRjZDlkNmExNjdmZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU2ZGZiZjQ1M2Y3ZjFiZWJhYjcyODM2MWIwZjM5M2VlYjRjMWZiNjY4ZjllYTIyYjkxNmRhY2Y1ZGZmODFkODMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwNTgyNWZhZmQ4OGM0NzQwNjE3ZGVhODU0ODY2MjFhNTdmM2RjNDM3YWQ5N2UyYzZmOTY0Y2I4Yzc5OWU4NzMifQ"
+          "resource": "repo://src/harnessed/launcher.py#L4722-L4786",
+          "version": "repo-lines-v1:sha256:58999cea3c69bb442bfaa1f1500ce69cdff0cc1de466aa3b2e6a0b18de2ff85b:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhZDRhMDg3YTMxZThhMWNmNmU5MDFiMzc0YWRlYWZlZGRiMzY4N2Q1MzMxZjNlMzljOWNiMjhjNTFmYzEwYWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ0NzI0MzEyNzY2YzNlZjkwYmMxMmEyZmRlMjAzODFkYjAwOWMwZjdhNWEwZWJhN2NhZWRjZDlkNmExNjdmZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU2ZGZiZjQ1M2Y3ZjFiZWJhYjcyODM2MWIwZjM5M2VlYjRjMWZiNjY4ZjllYTIyYjkxNmRhY2Y1ZGZmODFkODMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwNTgyNWZhZmQ4OGM0NzQwNjE3ZGVhODU0ODY2MjFhNTdmM2RjNDM3YWQ5N2UyYzZmOTY0Y2I4Yzc5OWU4NzMifQ"
+        },
+        {
+          "resource": "repo://tests/test_launcher_test_command.py#L1-L75",
+          "version": "repo-lines-v1:sha256:648f21ad21f28f998c6610d943d63273059e715ed87167b19488fc7b29895cb6:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0MGNiY2JjYmE5ODExMGU1YzdhZTFiOWNiZjFmMDgxZDliM2E0MzYxMGZjMTM4MDc5ODIyY2RhZWM0ZGMxNzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzNmIyZDI0MmU4MWMzMTM1MGVlMThkM2FlZDlhZWRkZjYyNjIyZjNmZDMxMmM3OGQzNWUzN2Y5YTU2Mzk0NDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQzYTUwZGFkNTJmMDRkYmZjMDVkYjBmZjdlM2MzOWQ2MjNlYTBmNjkxNjgxNzUzZmM1OTRjOWZkN2JjNGZlZmYifQ"
         }
       ]
     },
@@ -415,6 +419,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-16T21:10:52.541Z"
+    "at": "2026-09-18T12:41:13.644Z"
   }
 }

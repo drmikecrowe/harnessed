@@ -1,8 +1,8 @@
 ---
 type: concept
-title: "The env contracts: folder env and install env across both modes"
-description: "The two harnessed-owned environment contracts catalog-authored content may rely on — the folder-env contract (setupenv.harnessed_env, one key set on every surface a recipe runs on) and the install-env contract (emit.install_env, the deliberate project-free subset), each delivered by one mechanism per mode so the same winner holds in both — plus the host-only extras that belong to neither."
-tags: [env-contract, folder-env, install-env, environment-variables, setupenv, hostrun, emit, install-scripts, precedence]
+title: "The env contracts: launch env, folder env, and install env across both modes"
+description: "The environment layers a launch assembles — the user-owned launch env (launchenv: varlock schemas and plain .env files, resolved global → project into --env-file paths for the container and an os.environ map for the host), plus the two harnessed-owned contracts catalog-authored content may rely on: the folder-env contract (setupenv.harnessed_env, one key set on every surface a recipe runs on) and the install-env contract (emit.install_env, the deliberate project-free subset), each delivered by one mechanism per mode so the same winner holds in both — plus the host-only extras that belong to neither."
+tags: [env-contract, launch-env, folder-env, install-env, environment-variables, setupenv, hostrun, emit, install-scripts, varlock, secrets, precedence]
 sources:
   - id: openwiki-source-362e06c30ccfdafd87339cb0
     resource: repo://ARCHITECTURE.md
@@ -18,12 +18,16 @@ sources:
     resource: repo://catalog/recipes/superpowers/install.sh
   - id: openwiki-source-c45652791b6bc8bb3a3f3d3e
     resource: repo://src/harnessed/assemble.py
+  - id: openwiki-source-085f2349c58adb4062c2803f
+    resource: repo://src/harnessed/broker.py
   - id: openwiki-source-0f0f277c40d34909acb07908
     resource: repo://src/harnessed/capability.py
   - id: openwiki-source-eea4d18f75a13f889234865d
     resource: repo://src/harnessed/emit.py
   - id: openwiki-source-154371253083f8b9b656eefa
     resource: repo://src/harnessed/hostrun.py
+  - id: openwiki-source-2b85b44d9f80bbb3b6ce747d
+    resource: repo://src/harnessed/launchenv.py
   - id: openwiki-source-ecbe6256d6933ca2c8c9678f
     resource: repo://src/harnessed/launcher.py
   - id: openwiki-source-9e1601e7fac817552c717cd7
@@ -38,19 +42,24 @@ sources:
     resource: repo://src/harnessed/svcstate.py
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
     resource: repo://src/harnessed/volumes.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+  - id: openwiki-source-2d6ad5b59b5bca036a93519d
+    resource: repo://tests/test_claude_container_auth.py
+  - id: openwiki-source-f725ea11f1806a58b06d7f3e
+    resource: repo://tests/test_launch_parity.py
+generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-16T21:10:52.541Z
+    at: 2026-09-18T12:41:13.644Z
 ---
 
-# The env contracts: folder env and install env across both modes
+# The env contracts: launch env, folder env, and install env across both modes
 
 harnessed runs catalog-authored content — recipe Dockerfiles, `install.sh`, `setup.sh`, `init.run`,
 `setup.condition` — on two surfaces: containerized and host-native. A recipe author must be able to
 write one script and have the same names mean the same things in both. That guarantee is delivered
 by **two** harnessed-owned contracts, each with exactly one definition and one delivery mechanism
-**per mode**:
+**per mode**, layered on top of a **user-owned launch env** that harnessed resolves in both modes
+before anything catalog-authored runs:
 
 | Contract | One definition | Where it exists | Defined by |
 | --- | --- | --- | --- |
@@ -67,6 +76,95 @@ come from), [container launch](/openwiki/workflows/container-run.md) and
 [host launch](/openwiki/workflows/host-run.md) (the two sequencers that inject the contract),
 [precedence](/openwiki/concepts/precedence.md) (the full conflict table this page's ordering facts
 come from), [credentials](/openwiki/concepts/credentials.md).
+
+---
+
+## The launch env: user-owned variables, resolved per mode
+
+`src/harnessed/launchenv.py` owns the first layer: the environment the **user** brings — API keys,
+tokens, gateway URLs — read from varlock schemas and plain `.env` files. It is not catalog-authored
+and not a contract recipes may rely on by name; it is what the contracts layer *on top of*. The
+module's one rule is the same as the rest of this page: the two launch modes read the same sources
+in the same order, so the same winner holds in both.
+
+### Sources and precedence
+
+Two scopes, layered **global → project** (project wins):
+
+1. **User-global `~/.config/harnessed/`** — `.env.schema` resolved via varlock (opt-in: the schema
+   must exist and `varlock` must be on PATH), else a bare `.env` read literally. This is also the
+   sole source of scanner tokens for `harnessed rescan`.
+2. **The project dir** — `<project>/.env.schema` → `varlock load` there (varlock itself cascades
+   `.env` / `.env.local` overlays on top of the schema); else `<project>/.env` normalized into a
+   temp env-file. A schema always beats a sibling bare `.env` in the same dir.
+
+### One answer, two shapes
+
+`launchenv` returns the same resolution in the shape each mode can consume —
+`_resolve_launch_secrets` (a list of `--env-file` paths, because podman needs a file) and
+`_resolve_launch_env` (a `KEY -> value` map, because on the host `os.environ` **is** the box and
+nothing is written to disk). Both are imported by `launcher.py`; the launch-parity test maps the
+pair explicitly so the two halves cannot drift.
+
+- **Container path.** Every env-file handed to `--env-file` is a mode-0600 **temp** file harnessed
+  generated; the user's own `.env` is copied, never handed to podman directly. The caller MUST
+  unlink the temps after launch — resolved secrets must not linger on disk. Podman `--env-file` is
+  last-wins, so the global → project ordering is the precedence mechanism.
+- **Host path.** The map is applied in-process to `os.environ` by the caller; values never touch
+  disk, which is strictly better than the container's temp file (which exists only because podman
+  needs a file).
+
+### varlock resolution and its failure semantics
+
+`_varlock_resolve` runs `varlock load --format json` (JSON, not the `env` format, because that
+format double-quotes every value and podman `--env-file` keeps quotes literal) with a 60-second
+timeout: varlock authenticates against a secrets manager (1Password), so an unattended launch must
+fail with a message instead of hanging on an unlock nobody will approve. **Every failure mode —
+timeout, non-zero exit, invalid JSON — degrades gracefully**: the function returns `None` and the
+launch proceeds without those secrets rather than hard-failing on ones it may not need. An
+`OP_SERVICE_ACCOUNT_TOKEN` already in the host env is passed through (headless / CI bearer auth).
+
+Values are memoized per schema dir for the lifetime of the CLI process: one launch must see a
+**consistent** secret set, and `varlock load` subprocesses (up to four per launch uncached) are not
+free. The None failure result is cached too.
+
+### The env-file format's hard limits
+
+- A **multiline value** (PEM block, SSH key) is **skipped with a warning**, never written: podman
+  reads a value to end-of-line, so writing it would truncate it at the first line and parse every
+  following line as its own `KEY=VALUE` — corrupted key material failing far away. A host-native
+  launch has no such limit.
+- A **plain `.env` is normalized** before podman sees it: one pair of surrounding quotes and any
+  `export ` prefix are stripped (`KEY="v"` → `KEY=v`), because podman keeps quotes literal.
+  Comment/blank lines pass through.
+
+### Proxy readiness warnings (names, never values)
+
+When a schema opts into the credential-proxy model — detected by a **text test** for a `@proxy`
+annotation shape (`@proxy(…)`, `@proxy=…`, `@proxyConfig={…}`), not the bare word, so a prose
+mention buys no resolving subprocess — `_warn_unproxied_secrets` runs `varlock proxy rules` and
+names, once per schema dir: secrets with no route (which will reach neither agent nor upstream once
+the broker cutover lands — a placeholder no API accepts, surfacing as an unexplained 401), secrets
+that failed to resolve outright, and passthrough items (a declared decision, reported as a note).
+It prints **names and modes only, never values**, which is what makes it safe on every launch. The
+`proxy rules` output is human-formatted and will drift; if the parsed line count disagrees with the
+declared `Secrets (N)` count the parser refuses to guess and says so. `proxy_schema_dirs` returns
+the same composed, opted-in dir set (two file reads, no subprocess) and is the gate on starting a
+secrets broker at all — the broker must resolve the same set the `--env-file` path resolves.
+
+### Consumers
+
+- `_strip_var_from_env_files` deletes a variable (e.g. `CLAUDE_CODE_OAUTH_TOKEN`) from the resolved
+  temp env-files for `isolated_auth` stacks: suppressing the `-e` forward alone is not enough
+  because `--env-file` is handed to podman unconditionally, and a user-global token would reach a
+  stack whose purpose is to run as somebody else. Rewriting in place is safe *only* because every
+  path is a harnessed-generated temp.
+- `api_endpoint_egress_hosts` extracts the hostnames of `ANTHROPIC_BASE_URL` /
+  `ANTHROPIC_BEDROCK_BASE_URL` / `ANTHROPIC_VERTEX_BASE_URL` from the resolved env and feeds them
+  to the egress firewall: those URLs come from the user's schema, not from any recipe's `egress:`,
+  so without this a gateway-repointed agent has every request DROPped at the firewall and reports
+  it as an auth failure. It takes the already-resolved mapping rather than re-reading sources — a
+  third reader would be a third place for the precedence to drift.
 
 ---
 
@@ -298,7 +396,9 @@ Two further pieces of host-side env sit outside both contracts and are layered a
 
 The rows that matter here are in [precedence](/openwiki/concepts/precedence.md); restated only as
 far as this page needs them. Identical in both modes: **inherited environment → recipe `env:` →
-harnessed-owned contract.** The contract wins.
+harnessed-owned contract.** The contract wins. The inherited environment at the bottom already
+includes the user-owned launch env resolved above — in a container it arrives via `--env-file`, on
+the host via `os.environ`.
 
 - Container mode, install step: the executor merges
   `{**resolve_recipe_env(...), **install_env(...)}` and passes the result as `-e VAR=…` — the dict

@@ -49,7 +49,7 @@ sources:
 generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-16T21:10:52.541Z
+    at: 2026-09-18T12:41:13.644Z
 ---
 
 # State: what lives where on disk, staleness, and GC

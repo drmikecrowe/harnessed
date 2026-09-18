@@ -57,10 +57,10 @@ sources:
     resource: repo://tools/openwiki-retry-patch.py
   - id: openwiki-source-42360cb3e257ef7023d23d39
     resource: repo://tools/preflight.sh
-generated: { by: "openwiki/0.5.1", at: "2026-09-17T13:01:59.112Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-17T13:01:59.112Z
+    at: 2026-09-18T12:41:13.644Z
 ---
 
 
@@ -71,9 +71,11 @@ itself plus the regeneration path that stands behind it, and local tools that re
 before a PR. The organizing rule is stated once and never relaxed: **a green at one rung says
 nothing about any rung above it.** A green pytest run performs no `podman build` and no
 `harnessed container-run` — CLAUDE.md says exactly that, in one line, at the end of its test
-section. A green lint run says nothing about types or tests. The live layer and the pin check do
-not run on pull requests at all, so a green PR merge has proven, by construction, nothing about
-containers or about registry drift.
+section. A green lint run says nothing about types or tests. The pin check does not run on pull
+requests at all, so a green PR merge has proven, by construction, nothing about registry drift; the
+live layer runs on a pull request only when the PR touches the five source paths whose behaviour
+exists only in a built image or a running container, or the gate itself (see below) — on every
+other PR a green merge has, by construction, proven nothing about containers.
 
 The gates also *understate*: each one stops at its first failure, so a red run tells you what broke
 and silently withholds what was never checked. `tools/preflight.sh` exists to remove that locally
@@ -90,18 +92,23 @@ flowchart TD
     change["a change on a branch"] --> pr["pull_request"]
     pr --> pytest["test.yml - pytest and pytest-py313"]
     pr --> lint["lint.yml - ruff then pyright then shellcheck"]
+    pr --> changes["live.yml job changes - PR touches the live list?"]
+    changes -->|"yes"| live["live + live-docker jobs"]
+    changes -->|"no"| skiplive["both container jobs report skipped"]
     pytest --> merge["merge to main"]
     lint --> merge
-    merge --> live["live.yml - push to main plus nightly 04:00 UTC"]
+    merge --> live
+    nightly["nightly 04:00 UTC"] --> live
     live --> gate["HARNESSED_PODMAN=1 / HARNESSED_DOCKER=1 suite via tools/run-tests.sh"]
     gate --> skipped{"any live_podman-marked test skipped?"}
     skipped -->|"yes"| red["run refuses to exit green"]
-    skipped -->|"no"| oklive["container contracts verified within a day"]
+    skipped -->|"no"| oklive["container contracts verified"]
     weekly["weekly Monday 06:00 UTC"] --> pins["pin-check.yml - harnessed update --check"]
 ```
 
-*Which workflow runs when, and the one refusal that turns a skip into a failure. Nothing in this
-diagram runs the live layer or the pin check on a pull request.*
+*Which workflow runs when, and the one refusal that turns a skip into a failure. Only the pin check
+is absent from pull requests entirely; the live layer joins a PR when the `changes` job finds a
+file on its list.*
 
 ---
 
@@ -171,16 +178,32 @@ a fixed number.
 ## Rung 2 — the live layer behind `HARNESSED_PODMAN=1`
 
 `.github/workflows/live.yml` is the home for everything the hermetic runner skips. It triggers on
-`workflow_dispatch`, `push: [main]`, and a nightly `cron: "0 4 * * *"` (04:00 UTC — contract drift
-found next morning, not by a user).
+`pull_request`, `push: [main]`, `workflow_dispatch`, and a nightly `cron: "0 4 * * *"` (04:00 UTC —
+contract drift found next morning, not by a user). Both claimed runtimes gate here: harnessed claims
+podman *and* docker, and "supported" that is not continuously verified is a claim, not a fact, so the
+workflow runs a podman job and a docker twin (see below).
 
-**Deliberately NOT on `pull_request`.** These tests run `podman build`; adding those minutes to every
-PR would get the job disabled within a week, and **a disabled check verifies exactly as much as a
-skipped one**. Post-merge plus nightly catches drift in the external contracts — podman's
-inspect/port/images output formats, and the live behaviour of every pinned tool — within a day,
-which is the timescale those actually change on. And **both claimed runtimes gate here**: harnessed
-claims podman *and* docker, and "supported" that is not continuously verified is a claim, not a
-fact, so the workflow runs a podman job and a docker twin (see below).
+**On `pull_request`, conditionally — and the filter is a job, not a `paths:` trigger (#467).** The
+workflow used to rely on an author remembering to dispatch it by hand against a branch, and PR #461
+is the proof that does not survive contact: four defects merged with every local check green because
+nobody dispatched the one job that could see them. So the trigger is now `pull_request` — unfiltered
+— and a cheap `changes` job (no checkout, no toolchain; one `gh api --paginate` call for the PR's
+file list, the same set GitHub's "Files changed" tab shows) decides whether the container jobs are
+needed. The list is CLAUDE.md's, unchanged: the five source paths whose behaviour exists only in a
+built image or a running container (`catalog/base/Dockerfile.harnessed-*`, `catalog/base/harnessed-start`,
+`src/harnessed/volumes.py`, `src/harnessed/launcher.py`, `src/harnessed/paths.py`) — plus
+`.github/workflows/live.yml` itself, because a change to the gate must run the gate or a PR can
+weaken it and the evidence only arrives on `main`, where no PR author is looking. Every non-PR event
+answers `true`: push to `main`, the nightly, and a manual dispatch all mean "run the layer".
+
+Why the filter lives in a job and not in a `paths:`-filtered trigger: a filtered workflow **does not
+run at all** on a PR that misses the filter, so it reports nothing — and a required status check
+that never reports deadlocks the PR forever (the trap `test.yml` already records for `pytest`). A
+job skipped by an `if:` condition is the opposite: it reports its context with a `skipped`
+conclusion, which satisfies the requirement and costs no runner time. And the filter **fails closed**:
+under `set -e` an `api.github.com` hiccup kills the step, a dependent job whose `needs` failed
+reports `skipped` — which a required check accepts — so the one thing a flaky API must not do is
+quietly open or close the gate; if the file list cannot be read, the layer runs.
 
 The automatic triggers were only enabled after the suite was measured green against a real podman
 (`HARNESSED_PODMAN=1 pytest` → 2166 passed, 1 skipped). Scheduling a nightly job against a suite
@@ -256,14 +279,16 @@ where the container is gone by the time anyone reads the run.
 `live.yml` runs a second job, `live-docker`, executing the same suite behind
 `HARNESSED_DOCKER=1` with `CONTAINER_RUNTIME: docker` — and `CONTAINER_RUNTIME` is load-bearing:
 GitHub runners have both binaries and detection prefers podman, so without it this job would
-silently retest the podman path while reporting itself as docker coverage. It is a separate job,
+silently retest the podman path while reporting itself as docker coverage. It shares the `changes`
+gate with `live`, deliberately the same one: a PR that earns a podman launch earns a docker launch,
+because #458 was a defect only docker could see. It is a separate job,
 not a matrix leg, for the same reason `pytest-py313` is: a matrix rewrites the status-check context
 to `live (podman)` / `live (docker)`, and renaming a required check leaves branch protection
 waiting forever on a context that never reports again. Docker availability is asserted
 (`docker info`, not just `--version` — a client with no reachable daemon passes the version check
 and fails everything after), and there is no install step because ubuntu-latest ships it.
 
-### Known-red quarantine, and the on-demand PR path
+### Known-red quarantine
 
 The podman suite step deselects **four tests by name** (`TestVarlockProxyRulesOutput`, tracked in
 #462): upstream `varlock proxy rules` display drift broke them on 2026-08-28 and the parser is
@@ -271,17 +296,12 @@ failing closed exactly as designed — but a failed step ends the job, so the la
 exists to prove a stack reaches a running agent never ran. They are named one by one, not by class,
 file or marker, so any *new* failure in that module still goes red; delete them when #462 closes.
 
-That quarantine is possible because the live layer is also runnable **on demand against a PR
-branch**:
-
-```console
-gh workflow run live.yml --ref <branch>
-```
-
-This covers the regression half of what an automatic PR trigger would reach for (PR #461 was one
-approval from merging with six podman tests red) without charging two container-runtime jobs to
-every PR, including docs-only ones. Ad hoc is the author's judgement call; the automatic run on
-`main` and the nightly still catch what the author does not.
+The docker twin runs the same suite with no deselections — the drift is in `varlock proxy rules`
+output, which the docker run parses identically, so a docker-green run is itself evidence the
+quarantine is scoping the failure, not hiding it. PR regression coverage no longer depends on
+anyone remembering anything: the `changes` job runs the layer automatically on every PR that touches
+the live list, and `workflow_dispatch` (`gh workflow run live.yml --ref <branch>`) remains available
+for any other branch an author wants checked before proposing it.
 
 ### The fail-closed skip accounting
 
@@ -759,7 +779,7 @@ gitignored live clone that only a `main/` checkout has).
 | Gate | Where | Runs on | Proves | Does not prove |
 |---|---|---|---|---|
 | hermetic pytest | `test.yml` jobs `pytest` / `pytest-py313` | PR + push main | pure functions, assembly oracle, emitted text, repo-asset invariants, order independence | any container behaviour — no podman build, no `container-run`; gated tests skip, and a skip is not a pass |
-| live layer | `live.yml` jobs `live` (podman) and `live-docker` | push main + nightly 04:00 + dispatch (on demand per branch) | real `podman`/`docker` build and launch, capability oracle per stack, external contract drift within a day | nothing automatic on PRs; nothing about the host backend; and no packet across the broker's 169.254.1.1 route — that argv layer is asserted hermetically, through injected seams |
+| live layer | `live.yml` jobs `live` (podman) and `live-docker`, gated by the `changes` job | PRs touching the live list + push main + nightly 04:00 + dispatch | real `podman`/`docker` build and launch, capability oracle per stack, external contract drift within a day | nothing about the host backend; no packet across the broker's 169.254.1.1 route — that argv layer is asserted hermetically, through injected seams |
 | lint | `lint.yml` job `lint` | PR + push main | ruff correctness/security at zero, pyright basic at zero, shellcheck over every tracked script | runtime behaviour; layers after a red one never ran |
 | pin check | `pin-check.yml` job `pins` | weekly Mon 06:00 + dispatch | stale, unheld, past-age pins across the catalog | nothing about code correctness; nothing on PRs by design |
 | capability test | `harnessed test <stack> <harness>` | inside the live layer, or by hand | the manifest's declared capabilities are present in a running instance | undeclared capabilities, host-mode behaviour, interactive attach |
