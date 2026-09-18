@@ -89,7 +89,7 @@ def _git_init(path: Path) -> None:
 
 
 class TestWriting:
-    """S1–S5 — a launch writes the script, and the name carries the stack."""
+    """S1 to S5 — a launch writes the script, and the name carries the stack."""
 
     def test_host_verb_writes_the_host_suffix(self, proj):
         written = launchscript.write("host-run", "serena", "claude", proj)
@@ -153,6 +153,144 @@ class TestTwoStacksDoNotCollide:
         beta = launchscript._read_as_the_shell_does(proj / "claude-beta-container")
         assert "--stack alpha" in alpha and "--stack beta" not in alpha
         assert "--stack beta" in beta and "--stack alpha" not in beta
+
+
+class TestTheExcludeSurfaceGrowsPerStack:
+    """S28 — the one place the rename leaks outside aoe.
+
+    `info/exclude` used to gain one line per harness and backend. It now gains one per STACK as
+    well, in a file every worktree of the checkout shares. That is a deliberate consequence rather
+    than an accident, and it is asserted so nobody "tidies" it later without meeting this note.
+    """
+
+    def _exclude(self, proj: Path) -> Path:
+        return proj / ".git" / "info" / "exclude"
+
+    def test_two_stacks_get_two_lines(self, proj):
+        _git_init(proj)
+        launchscript.write("container-run", "alpha", "claude", proj)
+        launchscript.write("container-run", "beta", "claude", proj)
+        lines = launchscript._read_as_the_shell_does(self._exclude(proj)).split("\n")
+        assert "/claude-alpha-container" in lines
+        assert "/claude-beta-container" in lines
+
+    def test_relaunching_one_stack_still_adds_nothing(self, proj):
+        _git_init(proj)
+        for _ in range(4):
+            launchscript.write("container-run", "alpha", "claude", proj)
+        lines = launchscript._read_as_the_shell_does(self._exclude(proj)).split("\n")
+        assert lines.count("/claude-alpha-container") == 1, "idempotence must survive the rename"
+
+
+class TestTheNameGrammar:
+    """S10 to S14 — `parse_script_name` is the single reader of the name `script_name` builds."""
+
+    def test_a_three_part_name_parses(self, proj):
+        assert launchscript.parse_script_name("claude-serena-container") == (
+            "claude", "serena", "container",
+        )
+
+    def test_a_stack_name_containing_dashes_is_recovered_whole(self, proj):
+        """The reason the parse reads from BOTH ends rather than splitting on `-`."""
+        assert launchscript.parse_script_name("claude-gsd-core_repowise-host") == (
+            "claude", "gsd-core_repowise", "host",
+        )
+
+    def test_a_stack_name_containing_the_backend_word_is_not_confused(self, proj):
+        assert launchscript.parse_script_name("claude-host-container") == (
+            "claude", "host", "container",
+        )
+
+    def test_the_legacy_two_part_name_is_not_a_match(self, proj):
+        """S11 — it names no stack, so nothing can attribute it to one."""
+        assert launchscript.parse_script_name("claude-container") is None
+        assert launchscript.parse_script_name("claude-host") is None
+
+    def test_an_empty_stack_field_is_not_a_match(self, proj):
+        """S14 — `claude--container` has the shape but names nothing."""
+        assert launchscript.parse_script_name("claude--container") is None
+
+    def test_an_unknown_harness_is_not_a_match(self, proj):
+        """S12 — the narrowness that keeps a user's own script out."""
+        assert launchscript.parse_script_name("notaharness-serena-container") is None
+
+    def test_an_unknown_backend_is_not_a_match(self, proj):
+        """S13 — `host` and `container` are the whole set."""
+        assert launchscript.parse_script_name("claude-serena-attach") is None
+
+    def test_the_legacy_parser_accepts_only_the_retired_shape(self, proj):
+        """D1(a) — repair recognises what attribution must not."""
+        assert launchscript.parse_legacy_script_name("claude-host") == ("claude", "host")
+        assert launchscript.parse_legacy_script_name("notaharness-host") is None
+        assert launchscript.parse_legacy_script_name("claude-attach") is None
+
+
+# P1 and P2 — module level, matching the note above about hypothesis and class fixtures.
+#
+# The stack alphabet spans what a RESOLVED name can hold: an authored name is a directory name
+# (alphanumerics, `-`, `_`, `.`), and a derived one is `[a-z0-9-]` components joined on `.` with an
+# optional `-<hex>` digest. Names that would be rejected upstream are still generated on purpose:
+# the round trip is a property of the STRING, and it must not depend on the name being sensible.
+_STACK_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789-._"
+
+
+@given(
+    harness=st.sampled_from(sorted(launchscript.HARNESS_CONFIG_DIR)),
+    verb=st.sampled_from(sorted(launchscript._VERB_SUFFIX)),
+    stack=st.text(alphabet=_STACK_CHARS, min_size=1),
+)
+@settings(max_examples=300, deadline=None)
+def test_the_name_round_trips_for_any_stack(harness, verb, stack):
+    """P1 — whatever the stack, the parse recovers all three fields exactly.
+
+    This is the property the whole rename rests on. A stack name may contain `-` and `.`, so a
+    parse that split on the separator would recover the wrong fields for `gsd-core_repowise` and
+    for every derived name. Reading the harness from the front and the backend from the back is
+    what makes the middle unambiguous, however many separators it holds.
+    """
+    name = launchscript.script_name(verb, stack, harness)
+    assert launchscript.parse_script_name(name) == (
+        harness, stack, launchscript._VERB_SUFFIX[verb],
+    )
+
+
+@given(
+    harness=st.sampled_from(sorted(launchscript.HARNESS_CONFIG_DIR)),
+    verb=st.sampled_from(sorted(launchscript._VERB_SUFFIX)),
+    stack=st.text(alphabet=_STACK_CHARS, min_size=1),
+)
+@settings(max_examples=200, deadline=None)
+def test_every_name_we_write_is_recognised_as_a_row(harness, verb, stack):
+    """P2 — aoe must accept every name a launch can actually produce.
+
+    Stated as a property rather than as examples because the failure it guards is asymmetric: a
+    name we write but do not recognise makes `harnessed rm` skip a row it should remove, silently.
+    """
+    name = launchscript.script_name(verb, stack, harness)
+    assert aoe._is_launcher_script([f"/p/{name}", "--"]) is True
+
+
+@given(stack=st.text(min_size=1).filter(lambda s: "\x00" not in s))
+@settings(max_examples=100, deadline=None,
+          suppress_health_check=[HealthCheck.function_scoped_fixture])
+def test_a_stack_name_never_escapes_the_project(tmp_path_factory, stack):
+    """P3 — containment, by the contract that ALREADY exists. No guard was added.
+
+    The stack name reaches a filesystem path for the first time in this change, so containment
+    needs stating. It does not need enforcing, and this asserts why:
+
+      * `script_name` always prefixes `{harness}-`, so the result can never be absolute and the
+        join can never be replaced;
+      * a separator still targets something INSIDE the project folder;
+      * a missing parent lands on `write`'s existing blanket `except OSError`, which returns None.
+
+    If this ever fails, the answer is a guard and a spec revision, not a weaker property.
+    """
+    proj = tmp_path_factory.mktemp("p")
+    written = launchscript.write("host-run", stack, "claude", proj)
+    if written is not None:
+        assert proj.resolve() in written.resolve().parents or written.parent == proj, \
+            "a written launcher must live inside the project folder"
 
 
 class TestParityWithCommandFor:

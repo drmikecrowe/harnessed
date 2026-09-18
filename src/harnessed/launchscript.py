@@ -2,13 +2,13 @@
 
 Replaces `lastrun` and `--last` (bd harnessed-7mt superseded). That record held the same facts and
 held them INVISIBLY: nothing printed it, so "what did I launch here" meant reading shell history.
-The replacement is a file you can `cat`, run, and extend — `./claude-container --fresh`.
+The replacement is a file you can `cat`, run, and extend — `./claude-serena-container --fresh`.
 
 THE TRAILING `--` DOES NOT LIVE IN THIS FILE, and that is the whole design. `aoe.command_for` ends
 with a separator so aoe's appended `--resume <id>` sails past harnessed's own option parsing to the
 agent (see that function's note; it cost a respawn loop to learn). Put that separator in the script
-and every flag a human adds — `./claude-container --fresh` — lands past the parser too and reaches
-the agent instead of harnessed. So the script ends with `"$@"` and the aoe ROW ends with `--`:
+and every flag a human adds — `./claude-serena-container --fresh` — lands past the parser too and
+reaches the agent instead of harnessed. So the script ends with `"$@"` and the aoe ROW ends with `--`:
 the row invokes `<script> --`, the separator arrives as the script's own argument, and both the
 human flag and the agent flag reach the process they were meant for.
 

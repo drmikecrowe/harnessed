@@ -630,9 +630,13 @@ class TestForgetStack:
 class TestForgetStackReadsTheLauncherScript:
     """`harnessed rm <stack>` must attribute a script row to its stack — by reading the script.
 
-    The row's command names no stack (that is the identity property), so the only place the stack
-    can be read from is the file the row would run. Same file, so the two cannot disagree — the
-    `--last` shape this replaced had to consult a side record for the same answer.
+    THE SCRIPT REMAINS THE AUTHORITY, even now that the filename also carries the stack. The two
+    can disagree, because a human may rename or hand-edit the file, and `rm` tears down containers:
+    so the stack it acts on is the one the file would actually LAUNCH, never the one its name
+    advertises. See `test_the_exec_line_wins_when_the_name_disagrees`.
+
+    Before the rename the command named no stack at all, so reading the file was the only option.
+    It is now a choice, and this is the reason for it.
 
     UNATTRIBUTABLE ROWS ARE LEFT ALONE. `rm` is destructive and unattended, so a missing or
     unreadable script means "not mine to remove", never "remove it anyway".
@@ -654,6 +658,27 @@ class TestForgetStackReadsTheLauncherScript:
         rec = Recorder(sessions=rows).install(monkeypatch)
         aoe.forget_stack("container-run", "serena")
         assert rec.removed() == []
+
+    def test_the_exec_line_wins_when_the_name_disagrees(self, monkeypatch, tmp_path):
+        """S18 — a renamed file is torn down by what it LAUNCHES, not by what it is called.
+
+        Written by hand rather than through `write`, because `write` cannot produce this state: it
+        is what a human leaves behind after `mv`. `rm` is destructive, so the stack it acts on has
+        to be the one the file would really start.
+        """
+        script = tmp_path / "claude-alpha-container"
+        script.write_text(
+            f"#!/bin/sh\n{launchscript.SENTINEL}\n"
+            f"exec harnessed container-run claude {tmp_path} --stack beta \"$@\"\n",
+            encoding="utf-8",
+        )
+        rec = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "beta")
+        assert rec.removed() == ["s1"], "the exec line names beta, so beta's teardown claims it"
+
+        rec2 = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "alpha")
+        assert rec2.removed() == [], "the filename says alpha, and the filename is not the record"
 
     def test_a_row_whose_script_names_the_stack_is_removed(self, monkeypatch, tmp_path):
         script = launchscript.write("container-run", "serena", "claude", tmp_path)
@@ -1164,6 +1189,31 @@ class TestCommandDrift:
         p = tmp_path / "proj"
         p.mkdir()
         return p
+
+    # ---- the launcher rename: a legacy row must END as a correct row ----
+
+    def test_a_legacy_two_part_row_ends_as_one_correct_new_row(self, monkeypatch, proj):
+        """S20 — the END STATE, which is the only thing that matters to a user upgrading.
+
+        Asserting that `_is_ours` returns True for a legacy name would pass while this path stayed
+        broken, so this drives the real `sync_session` and checks what the dashboard is left
+        holding: the stale row renamed aside, and a row whose command is the three-part name.
+
+        The failure this guards is not a stale row. It is NO row: one foreign row at the
+        (title, path) key sets `blocked` and suppresses the whole registration, so a user would
+        relaunch, get nothing, and be told harnessed did not write their own row.
+        """
+        rec = self._rec(monkeypatch, proj, f"{proj}/claude-host --")
+        assert self._sync(proj) is not False, "registration must not be blocked by a legacy row"
+        assert len(self._renames(rec)) == 1, "the legacy row is renamed aside, never deleted"
+        [add] = rec.registrations()
+        assert _flag(add, "--cmd-override") == f"{proj}/claude-serena-host --"
+
+    def test_a_legacy_row_for_a_deleted_script_is_still_repaired(self, monkeypatch, proj):
+        """S20a — ours is decided by the command's SHAPE, never by the file existing."""
+        rec = self._rec(monkeypatch, proj, "/gone/claude-container --")
+        self._sync(proj)
+        assert len(self._renames(rec)) == 1
 
     # ---- repair path: the stored command is one harnessed writes ----
 

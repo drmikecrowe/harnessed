@@ -21,13 +21,23 @@ silently cost every registration until `--create-aoe-only` surfaced it. The one 
 is `--tool`, whose VALUE aoe validates and may reject; it is issued with a plain retry behind it so a
 rejection costs the label rather than the row. See `sync_session`.
 
-Session identity is (project path, harness). The recorded command is `mise run <harness>` — the
-project's own launch task (see `mise_command`) — so a project gets one row per harness, and which
-STACK that row starts is whatever `[tasks.<harness>]` in its `mise.local.toml` currently says.
-Relaunching claude against a different stack rewrites that task, and the row follows. Harness stays
-part of identity because a stack has a separately assembled profile per harness
-(`profiles/<stack>/<harness>/`), so claude and omp are two different things to run. Titles stay
-purely cosmetic, so a user renaming a row cannot break identity.
+Session identity is (project path, verb, harness, stack) — all four, and each earned its place by
+a bug. The recorded command is the project's own launcher script, `<project>/<harness>-<stack>-<verb>`
+(see `replay_command`), so every field reaches the key through the FILENAME rather than through a
+flag. That distinction is what keeps adding a launch flag free: a flag in the command would re-key
+every existing row whenever the flag set changed.
+
+Harness is in the key because a stack has a separately assembled profile per harness
+(`profiles/<stack>/<harness>/`), so claude and omp are two different things to run. Verb is in it
+because one row cannot restart two backends. Stack is in it because, while it was absent, a launch
+rewrote the single script, the existing row matched and was left alone, and the row then replayed
+the newcomer under the older stack's label.
+
+Titles stay purely cosmetic, so a user renaming a row cannot break identity.
+
+(This paragraph previously described `mise run <harness>` and a `mise.local.toml` task. Both were
+retired when the launcher script replaced them; the text outlived them, which is the failure mode a
+docstring stating identity can least afford.)
 
 UNLESS THE USER NAMES THE ROW. `--aoe-group` and `--aoe-title` (see `sync_session`) override the
 derived group and title, and supplying BOTH also replaces the identity key: the row is matched on
