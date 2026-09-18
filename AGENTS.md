@@ -104,12 +104,28 @@ substantial edits (~14s on this repo); a stale index gives stale answers.
 | Need | Call | Notes |
 | --- | --- | --- |
 | Read one symbol | `get_code_snippet` | Returns source, docstring, complexity, callers/callees. Replaces `Read`. Get `qualified_name` from `search_graph` first — never guess it. |
-| Find code | `search_graph` `query:` | BM25. Returns exact line ranges; follow with a ranged `Read` for surrounding context. |
-| Callers, callees, impact | `trace_path` | `depth` 1–2. Leave `include_tests` false. |
+| Find code | `search_graph` `query:` | BM25. Returns exact line ranges; follow with a ranged `Read` for surrounding context. Swamped by tests — see below; when you can almost name the symbol, use `name_pattern`. |
+| Callers, callees, impact | `trace_path` | **`depth: 1`.** `include_tests: false` to read the design, `true` when you need the blast radius — it names the covering tests. |
 | Hot paths, fan-in, outliers | `query_graph` | Cypher. |
 
 Warnings — all hit on this repo, not copied from the tool's docs:
 
+- `trace_path` at `depth: 2` mixes real transitive callers with collisions on common method names,
+  and nothing in the output separates them: inbound on `script_name` reported 89 callers against a
+  true 3, the extras arriving through unrelated `write` methods. Depth 2 generates leads; only
+  depth 1 is an answer. `include_evidence: true` prints each hop's resolver — `lsp 0.95` is sound,
+  `heuristic 0.38` is a guess.
+- `search_graph` `query:` ranks Methods +10, so on a test-heavy repo every test method outranks the
+  function you want: `_is_launcher_script` was absent from the top 12 of 869 matches for a query
+  describing it exactly. BM25 is for discovery you cannot name; `name_pattern` is for the rest.
+- `file_pattern` **fails silently**. `name_pattern` with `file_pattern: "src/.*"` returned
+  `total: 0` and a "check your spelling" hint; dropping `file_pattern` returned the 5 real rows. A
+  confident empty set reads as "the symbol does not exist" — never conclude absence from a filtered
+  search.
+- **One index per checkout, keyed on path.** `main/` and each `.claude/worktrees/<name>/` are
+  separate entries in `list_projects`. Querying from a worktree under `main`'s project name answers
+  about the wrong tree. Read the name from `list_projects` every time; `index_status` also reports
+  `not_indexed`, which is by-design exclusion and not a failure.
 - `detect_changes` at `depth: 2` is a context bomb: `HEAD~5` over 19 files returned 607 symbols /
   53KB and blew the token cap. Use `depth: 1` or `scope`.
 - `semantic_query` without a companion `query:` fills `results` with the whole graph as noise.
@@ -133,7 +149,7 @@ active guidance, and it sits OUTSIDE the markers so an `openwiki` run cannot rew
 | Constraints an editor must not "clean up" | `openwiki/concepts/invariants.md` |
 | Who calls this symbol; what a change reaches | `codebase-memory-mcp` (above) — never the wiki |
 | Coding style; known-weak areas; tech debt | `docs/codebase/` CONVENTIONS, CONCERNS — see the limit below |
-| Scoping unbuilt work: what a ticket touches | **grep the source.** The wiki documents what IS; a ticket is about what is NOT |
+| Scoping unbuilt work: what a ticket touches | **`trace_path` first, then grep.** The wiki documents what IS, so it cannot scope a change — but the graph can, and it is the step this row used to skip. Grep is the third pass, for conventions duplicated by hand, which have no call edge |
 
 Prefer a page when the answer spans many modules — `precedence.md` collects one rule from eight of
 them. Prefer the source when a single comment is the answer, which here is often: the comments are
