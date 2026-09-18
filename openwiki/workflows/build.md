@@ -34,6 +34,8 @@ sources:
     resource: repo://src/harnessed/schema.py
   - id: openwiki-source-14bd2e9ce8d26435ef5776a8
     resource: repo://src/harnessed/staleness.py
+  - id: openwiki-source-5e89566b7a4e43a53be5c7b2
+    resource: repo://src/harnessed/svcstate.py
   - id: openwiki-source-49ee9cf3450e26c1ce6d9dc6
     resource: repo://src/harnessed/synclinks.py
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
@@ -42,10 +44,10 @@ sources:
     resource: repo://tests/test_build_cache_mounts.py
   - id: openwiki-source-f725ea11f1806a58b06d7f3e
     resource: repo://tests/test_launch_parity.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-17T13:01:59.112Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-17T13:01:59.112Z
+    at: 2026-09-18T12:41:13.644Z
 ---
 
 # Build pipeline: from stack and harness to profile, images, and populated volumes
@@ -183,7 +185,10 @@ Then `_merge_servers` unions every recipe's `mcp.servers`, **raising `CollisionE
 declare the same server name** (naming both), and `_resolve_service_servers` rewrites
 `service:`-referenced servers to `http://host.containers.internal:<port>/mcp` by reading the
 service's `services/<name>/service.yaml`. The resolution lives in `assemble`, not `emit`, so emit
-stays dumb about services.
+stays dumb about services. The `host.containers.internal` form is the **containerized** agent's
+dial: a containerized agent reaches a host-published service through the podman host gateway,
+while a host-run agent dials the same service at `127.0.0.1:<port>` — `svcstate` keeps the two
+dials straight and rebakes the wiring per mode.
 
 Two harness-capability gates follow, both on the same boundary — only claude's MCP config is
 emitted per stack; codex, opencode and antigravity bake theirs into their image, and omp has no hub

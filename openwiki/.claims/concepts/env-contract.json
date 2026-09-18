@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2d4a10a638dfa56c3b83a5026aacd6ae4db73638e95722910a9de88352886dd6",
+  "pageVersion": "sha256:fa7cea45e75301b4e01871b610f8bf9c49a8bc5408fda0cda22d1ded77fe7448",
   "claims": [
     {
       "id": "claim_89b9018576c54312a09266c5c908552c",
@@ -489,10 +489,140 @@
           "version": "repo-lines-v1:sha256:cc71a15fc416a463bfad5e6c6cb0cbd7696ceb93dbdd83017378209b767c01fb:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWVjYmYxZmUxN2Y5ZTA4YmQ3NjM5YjQ0OWQ0ZTk2ZmQwNGJlYTRhODUxMmFiMmJhZTA0ZWQ3OGFhMDEwZDY4ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjVhZTQ0MTg0MjZmNDE5NDZhMDk1MWRiMmJmMDAzYTc3NGVmZjU5MThhZmFhOTQ0ZDZmMTEzY2VjOGMwOTExMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzJmYzIwNDdiYjg1N2JjYmU1ODQwMTJjYWNkMmQyMWIyM2Q4N2Y5NjQ0Nzg1MDdlYjBjNjI2NjA2NTg0ZGNjMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDE2ZWI0NDBhYmI5M2FhNzlmZjk4OWVmYjg2N2M1NTI5M2E1MTliNmZkMjk2Njc2ZTVkZGM4NGRkMjQ5NmUxMSJ9"
         }
       ]
+    },
+    {
+      "id": "claim_02b235f2c84c4d5f8c1243b5de869ba3",
+      "statement": "launchenv resolves the user-owned launch env from two scopes layered global → project (project wins): user-global ~/.config/harnessed/.env.schema via varlock else a bare .env, then the project's .env.schema via varlock else a normalized .env; a schema always beats a sibling bare .env, and the global schema is also the sole source of rescan scanner tokens.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L455-L508",
+          "version": "repo-lines-v1:sha256:f993a3c03e94036355d0ed3539666a4e0e0e4122b741ba55334325e7470cd4af:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNiOTJlMzViZGQ2MGM0MDhkYjEyYWNhOGRhYjJhOWMyMGRkNGVmNWYxNzRiZDVjYzJiNjg2NWU0MmFiODViYTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczY2Y4MjE4ZjU0MzZkMjQ3MzcwMzgyNTdiNmI3YjQyNmViNDViMTczMjQxZjU0YmQzMGE4ZGU0YWJmNzcxODIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxMjU2ZjIxZDBlZGNkNjMzN2E5MDQzZTY4NjM0ZTU1ZGE4YjRiYmE2MmNlODk2MmMyMzVhNTAxYTQ4NGQ0NDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlkNmJmMjA0ODVlY2Y5OWUwOGY0OTJiZWUwNTViZmI2YTQzYjZmZmE3ZWVlZTI2MmFmMmQ5OGExNjE0OGYwNDQifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L570-L607",
+          "version": "repo-lines-v1:sha256:37062995c4bbb392c64eb2402a9b32663999aa3cafdceda45a55cee02d91e776:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmYTg3N2MyZTIyMGUxNDY0MzM1Y2E2MDBjNDAxMzNlNGRjZTM3YWI4MTBiMjEyZWYxOTFhYTY1MjJhOWMwODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzOTRkMzkzY2ExYThmZjk1NWM2ODhiMDYxMzM4OGRmOGJlODBjMmQ1NWQ4MzkyZWM0MjlkMThlM2M5MjUwYTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJiMTA5ODgwODc2YzY4MjRmZTUxY2ZmN2VjMThhOGJmMTAyMThmZjc3MGE0OTQ2OGZhYmJmZjI0MDMyYWE1ZjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_11a0f8e3c8f24c5e84078566b3126a73",
+      "statement": "The same resolution is delivered per mode by two functions in launchenv: _resolve_launch_secrets returns ordered --env-file paths for the container (podman needs a file) and _resolve_launch_env returns a KEY→value map for the host (os.environ is the box, nothing written to disk); launcher.py imports both so the halves share precedence and cannot drift.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L1-L14",
+          "version": "repo-lines-v1:sha256:292d7cd861571d13b5913bbae0a8420958a4c23f95114495583b52e3fe05b91e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3OWFhNDc4NzA1OGE0NjRjZGRlNjU0M2Y2NTk5Mjg5Yzc4YmQxNTFlNWM4ZWZlMDZjM2UyM2ExMDUxNWY3MjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2ODNmZmE3ZGM4NGEzODUwYzU2MGM5NDNhODJjNTQxOTI2YjgwNTg5MTliMDQ5MWRlMjRiNzE1ZWU0YzNiN2IifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L220-L228",
+          "version": "repo-lines-v1:sha256:dd47f731a79c7da7352a2b002ae5a845669b5a2a690da8ebfd260686d5319cc3:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWFhN2QwOTk4YTkxOWZkYjAwZmU2MTE2M2RiMTI2NGMxYWVmMWJiZmI2ZDFjNDAyMWUzMzk5ZmI2NDZlZjhkYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmFmYmEwNTI3YzM5NTNjNGI2ZTBlNWI1NzM5YmE4MzYxMmY4MDUzYmNkYzk0NjY3MzAxOTNjZDFkNTkwYjQwOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDY0YTU4NTMxMmY2NWExMWVkMzA0NzFmYmNkMTkxZjA3M2NjNDJiNTIxODgyNmJiMjEzMzYxNjM1OGRjZjkyZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmVjYjdmYTI4ZDU5YWFmYmFlYmZjZTY2ODFiY2UwYTQxZGRhMmE5ODk3ZjBmNGUzZDQ1MzZmOTFjNjRmZTU5ZCJ9"
+        },
+        {
+          "resource": "repo://tests/test_launch_parity.py#L146-L146",
+          "version": "repo-lines-v1:sha256:faa0d213fa9bc59d447420de98c4a753f30b04f029e9afe783e50a7ea097362d:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmFhMGQyMTNmYTliYzU5ZDQ0NzQyMGRlOThjNGE3NTNmMzBiMDRmMDI5ZTlhZmU3ODNlNTBhN2VhMDk3MzYyZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmFhMGQyMTNmYTliYzU5ZDQ0NzQyMGRlOThjNGE3NTNmMzBiMDRmMDI5ZTlhZmU3ODNlNTBhN2VhMDk3MzYyZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTFmN2Y5NTEwOGE5OGFkMDAxZjk2N2FhNGMwODYxNjlmZWM1M2NlOWE1Y2Y5ZTM0ZGUzNjlhNTdmM2VjYWUxZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTQzYzg4OTJmN2E5NDk1NWNmODM5ODQzNGY0ZDk5ZGJmZDM1YTI0MTgyYzY0YjA4MDFmNzg2YjRiNTFkMzM2MSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_9781386870314d68bed66f305f9cf96a",
+      "statement": "Every env-file handed to podman --env-file is a mode-0600 temp file harnessed generated — the user's own .env is copied and normalized (quotes and `export ` prefixes stripped), never handed to podman directly — and the caller must unlink the temps after launch; --env-file being last-wins makes the global → project file order the precedence mechanism.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L241-L269",
+          "version": "repo-lines-v1:sha256:f174576c0cb502b903b2eda4af296ba49d850da7bb73f4e99de88631c9e993be:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxZGRlZDM4YTMzNTdkZTU3NmM2MzcwNjgwNjExNzlmMzllMDdkYjI1NjEwYzE3YjJlZmQ4YzFhMDU0NDcwNDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzMmQ1NzNiODdhYTdkZWYyYWRlZjdmOTU4ZjlmMmNkNmRhY2YwNjc1ZGQwYzg1OTlmMzYwNGU3ZTY0MWVlNzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkNjExNDEzYTE0MjcwNWYzYzVlYjE5MmY4M2NhZTljZDdiNzJiNjBkOGRlZjFlM2M3OGQ0MGEzNjdmNGEwNjEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L455-L473",
+          "version": "repo-lines-v1:sha256:5e067b250623afb8cde2b3ad569b687ab514e3d7e9efad5291806c73135f6c90:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNiOTJlMzViZGQ2MGM0MDhkYjEyYWNhOGRhYjJhOWMyMGRkNGVmNWYxNzRiZDVjYzJiNjg2NWU0MmFiODViYTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxMjU2ZjIxZDBlZGNkNjMzN2E5MDQzZTY4NjM0ZTU1ZGE4YjRiYmE2MmNlODk2MmMyMzVhNTAxYTQ4NGQ0NDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA2NmMyMTM5OTIwNDYyMDkxMTQ3Mjc1YWM4ODIxY2VlNDk5ZGFmNGRmNTIyNjcwNGE2Mzk1ZmNmYTU5YTQ4Y2EifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_33a36e2491b6478eaa4c6580c42bf591",
+      "statement": "_varlock_resolve uses --format json (not the env format, whose double quotes podman keeps literal) with a 60s timeout, and every failure mode — timeout, non-zero exit, invalid JSON — returns None so the launch degrades gracefully instead of hard-failing; results (including None) are memoized per schema dir for the process lifetime, and OP_SERVICE_ACCOUNT_TOKEN set in the host env is passed through for headless auth.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L100-L167",
+          "version": "repo-lines-v1:sha256:3144c8af8f782e964ed3493c660e8d0933725e0a65e0d2ee7422a87a493d6dc4:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzZjU4MmM3MDA1YmIzODk1YmEzNmMyMmJjNWE5Yjk1ZmNhNDkzODEwODkzNGVjNGFlODM3M2Y4YmQyMWY4MmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzOTRkMzkzY2ExYThmZjk1NWM2ODhiMDYxMzM4OGRmOGJlODBjMmQ1NWQ4MzkyZWM0MjlkMThlM2M5MjUwYTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0MjQyMDFkZjY3ZDgzMzY0MWE1MmJkNWNjMzY3ODY4NWQ0OThhYmVkN2ViMDI3NTcwYTg2OTcwYWRmZjk5Y2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliMzI0MjM2MWFiMzA5NTc0NzE2ZGYzMGY1MGRhNzg4MDFhOTIwMzMwYjMzNTg2MDFlNzYwMzdlMGZhNGJjOGIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L44-L49",
+          "version": "repo-lines-v1:sha256:e9850923f9370208317d979eb8c9a28771ca2e07c7d5811bdcdd054b5f9c20a6:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWQzYTU1NmRmMGZmZDBiYTM0ZjJhYTVkYjY2ZTU1NTQ2MmMzYjNhMGU2ZTA0MGQ3ZDVjZGZlZGIxYjBmOWUyYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmQ5NDMzMDMxYmI5MjkzYzFmZjEzNWI3YzY1Yzk3MWM4NjI2OTI5OTcwYmI0MjExYTkxYWVjODNkNDg3MzRkMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjFiZjNiNzZlMjkxNmFlMzU4ZGZiYmI0MTcwNzJiOGI0MGUwYjJiMTFlYzdkOTA3Zjk1NWIzZmVmOWNjZmMwYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDE1MDA0ZTYxNTZjOGI2YjAxMzExM2NlYzZiYmRiZWFmODRiOTJlMDVkNzk5YTBiMDA0YWQ0ZGQ3NTk5NGViMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_67aef480e6d04b3ba11a0a5cc0856b9c",
+      "statement": "Multiline secret values are skipped with a warning rather than written to an env-file, because podman reads values to end-of-line and would truncate them; plain .env values are unquoted because podman keeps quotes literal.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L170-L199",
+          "version": "repo-lines-v1:sha256:641cd54deef2b28dc2eff82c0bfed294ae6ac345ec12b15f5b93e33bf374dd91:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkNWUzZDM1OTM4ZTE3NTJmMzU1NzIyYjNkN2E5ZDQ0YjJjNTcyN2EyMTdjMzc4MGY3NGJhYTZmMDA1ZDQ3MTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2YWI1YjE1NzkwYjM0NjZiMzFmMTM1YjZiOTNlNDgwYzU3YTgyODU3ZmUyYjdiNTI3N2U1ZmJlY2E4NTZhOWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRkOTczODYxYWNiNTc3YmU5OTc2YTdiMjg1MDZlZGI5NjZlNjA2ZWZiYmEyZjIyNWVhZGRjOTc0NDE2ZTczNGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAzM2I4NTQ0YzFhZjFkNTBjOGI2YmQwZGE1YjcxZmQyOTFkMTBjODdmMmFkNDZmYjZmMzI5NTBmYTA1MDEyZDEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L241-L249",
+          "version": "repo-lines-v1:sha256:2fd12f74c1f762d9343aa4f6805f42146bd6b0c51eff0efdc06bee5bbdf0af5c:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDFkZGVkMzhhMzM1N2RlNTc2YzYzNzA2ODA2MTE3OWYzOWUwN2RiMjU2MTBjMTdiMmVmZDhjMWEwNTQ0NzA0MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTZhNzE1MjU3MmVlODRmMTA5MDZjNzRiOWYyYTkyNDM0ZGRhYjBlM2M0MjgxM2IwNGU1OTdlZmNlYzk1MWIyNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGNjNGE3ZDFjYzc5NmFiYTNlNDY3MjMzMjdmNTE3ZTlmODExOTgyZDI1MGYwNzAyOTg2ZTRiNTc2NGFkOTU4OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTMyM2NlZDIzZDhjOTc2MmNjNDNhNzgwY2E1MDM1NTU4M2NiZjUzY2RmYzM0ZGEzZDhmZTEzNmFmNjI3YTBhMCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_8ea2f15c01b24df28bd15fee2d222ac5",
+      "statement": "Proxy readiness warnings are gated on a text test for an actual @proxy annotation shape (not the bare word, so prose mentions buy no resolving subprocess), print names and modes only — never values — and _varlock_proxy_modes refuses to guess if its parsed line count disagrees with the declared Secrets (N) header count.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L272-L348",
+          "version": "repo-lines-v1:sha256:ce1a2188d467c7f0f1ffe6c99b6da2e665cfc07b09c731b13bd6fbdc74ff0b88:eyJzZWxlY3RlZExpbmVDb3VudCI6NzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlNGQ4YzFiNGY4OGQ3Y2Y2N2I4YTM3YTdkYmJiYzY0MGVlMGQwNTBlN2M3YTdmYTI4ZDY4ZTY0Yjg0MjdiMjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhMTFjMDU2N2QwYTVmOWU5YjEzNWY2NWNkMjUzNzJkZmQ2Mjg3NzVmN2MxZWQyNTNmOGJhZDQyZGQyZDY2NjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY0YTVmYWM3NDc0OGFiYzJhMDhmYjBiNDY2NWRlNWZkYzFlOGYyZTBiZTVmMWUzM2JkNTAxZmM1NTg4YmMzYzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyZmI5MmM3ZWMyYmE3NzllYTlmODgxOWY3ZDFhMjEyY2E4ZTU1YzRkZTRiMjg4ZDM2ZTkyOWNmN2M5ZWRjMjgifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L351-L366",
+          "version": "repo-lines-v1:sha256:eac8ee064c76a3417e2857256a37b2ac4deb3f02de985be3d3e0a62b968bd21e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdhZDhmZmMyNWY0NTI1ZGEwY2ExYTZiNDE2YTYxNmEzNDA3NWRiMWM5N2MwYzU1MGMwY2E0N2EyNWYwM2YxYjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3MjIzMTA2ZmQ4NzQyYjcwZWEyMzNmOWRjMzU5ZjRiMDJiYmIwNjliNzI4M2VlZjc2MjQ5OTUxNmJkN2I5YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiNWFhYzlhYjc1M2RiY2M3MzQ1OTA2MmNjMjBiMWVmZmQwMWY4YWMzYjVlYmZmOWRlZDlhMDc2MWNhMWQ5NTgifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L76-L90",
+          "version": "repo-lines-v1:sha256:f1c805784a03c0cbb9fb018b79a4da9a96ae58bbc7470924c199f8a0bd44aaec:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwZjk5ZDM1MDRkODE5N2JmZDAzMGU1MDVkZDZlNWUyZTViNDQyMmNlOTBmZTZhNzRmNTBmZWE5ZDcwMTY1NzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmYWU0NjI1ZTkzNWQzMzJjZDVmMjMzODYyZDBhMTM1YTVjZjk5ZTdmM2UzNmE5ZTM2M2NiMmQwMTUxZmFmZTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk0NmFiYWUzZmM1NzBkNDNhYTE1NTAwMTU3MWU5MTFmYzBjZGJjYjA3YWRjYzgzODhhYzMzYWU4YTg1ZmYxNDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQzMDJmZTZmYzBiMjI2MzIxYTQ2YTBiMDliMmYwMGRjMjE3MDZkZmRiYjkxMGI2NWRlM2RiMTQ1MTE2MzJmY2EifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_20ccea4f38454f7a835adc70ac206edb",
+      "statement": "proxy_schema_dirs mirrors the _resolve_launch_secrets dir selection to return only schema dirs that opt into the proxy model (two file reads, no subprocess), and is the gate on starting a secrets broker, which must resolve the same set the --env-file path resolves.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/broker.py#L268-L268",
+          "version": "repo-lines-v1:sha256:c1035aac814eb24da4d8b0b9e61a262a50d822c38c57ae5a8d7dd74884c8a43f:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzEwMzVhYWM4MTRlYjI0ZGE0ZDhiMGI5ZTYxYTI2MmE1MGQ4MjJjMzhjNTdhZTVhOGQ3ZGQ3NDg4NGM4YTQzZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzEwMzVhYWM4MTRlYjI0ZGE0ZDhiMGI5ZTYxYTI2MmE1MGQ4MjJjMzhjNTdhZTVhOGQ3ZGQ3NDg4NGM4YTQzZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmE0YzhkMDA4YjA4NTU0NGMyZDNjNzMzMTU0OWJkNDI1NzUyZjdlODZiNmUwMzQzNzc1ZmI1YzkxZjFhNDFkNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTkzYTE3ZGYzYmZmNTEzMzg5ODJjN2Q0NGVhMDZiNjIzMmQ0NzI4NmZlZjc2NTFkNmQ5NDgwMzNhOGNlNTU5ZCJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L430-L452",
+          "version": "repo-lines-v1:sha256:e6bd139d38c620ea27f4ba45a94ff140457b63652df1286bd5e9a351f5b97031:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiNjhhZjQ4M2Q4MjEwOTc0ZGNkZWI4NmU5ZTg0NzM4NmYyYTIwNDZiYjc0MGVlMDZhYzc3ZDQxYzZmZTU1YjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmNjk5NzdkMDA3ZjAzMTUwZWNjNzJiNDZlY2YwNzJjMmNjMmQ5ZTQwYmQ0MDlhZmQ0MjlkNDJiZTcwNzYzNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiMWU3YmRlNGEzNTIwMDMwZWZlNzM0NjU1ZDJiYjY3MDMzZWU0NzgxZDEwN2RmYTEwMzFkZGVlNDg2NmMxMjcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1da3be6a516b4411b59dfd94701288d9",
+      "statement": "_strip_var_from_env_files deletes a variable (e.g. CLAUDE_CODE_OAUTH_TOKEN) from the resolved temp env-files for isolated_auth stacks, because --env-file is handed to podman unconditionally and a user-global token would otherwise reach a stack whose purpose is to run as somebody else; in-place rewriting is safe only because every path is a harnessed-generated temp.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L511-L535",
+          "version": "repo-lines-v1:sha256:05d051e0400898706ec4efc08b6e0417f4ec463d3a17dce3fa89b83b3e58affa:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjMmE3YTk4YzIxZDRmYWMyMDAxMmMzNzRlYzgzODI1Y2QzODVhZDNjOTEwZGM4ZDc0MjFmMzcwYTg2N2I1YTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkZWMxODc4ZmQ1ZTViODVmMDQ3MmU1MDA4YjliMjllYzA2YzBkOWJlNWY3MzAwYTU0NTAxYjhhYmQ4NTczYTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkYmExZDY3MDEyYTM5OTVmMDYzNjBmNTQ5Y2M5OGU3MTAyNTdiYTdjNTRhNTkwNTAyYmY1ZDY3NzUzMjdkMTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjYmMzNzJkMzYxZWI1M2Q2OGJkMjQxNjY4MGI2NzE0YjcyNmJlODY1YTI1ZmE3ZDA4Yzk2Y2FkYjg0ZGIxY2QifQ"
+        },
+        {
+          "resource": "repo://tests/test_claude_container_auth.py#L510-L510",
+          "version": "repo-lines-v1:sha256:e1c938e1bb09f7d227fab7b8a923ba8e3289aaf9060c2f8ceca8a02f72483623:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTFjOTM4ZTFiYjA5ZjdkMjI3ZmFiN2I4YTkyM2JhOGUzMjg5YWFmOTA2MGMyZjhjZWNhOGEwMmY3MjQ4MzYyMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTFjOTM4ZTFiYjA5ZjdkMjI3ZmFiN2I4YTkyM2JhOGUzMjg5YWFmOTA2MGMyZjhjZWNhOGEwMmY3MjQ4MzYyMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjU5MmZiMGYzMGU4ZGI2YmQzMDZhNjFlMDIzZTgxNDkzZDBlZTRiMmYzYWE5YzcyZTllMzRkYTIwZjhhZjFjNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmIyNDRmZTNkNmU0MDYyZDg5YjI2ODNmZDlkZTYxOTEzZjQzOGY0ZjQ4OGZkODFjNDEzZWExNzkyZmMxYTdkNiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_a9d67c654c9d4b67a110475f6f0ebf0b",
+      "statement": "api_endpoint_egress_hosts extracts hostnames from ANTHROPIC_BASE_URL / ANTHROPIC_BEDROCK_BASE_URL / ANTHROPIC_VERTEX_BASE_URL in the already-resolved env and feeds them to the egress firewall, because those user-set URLs are unknown to any recipe's egress: declarations and would otherwise be DROPped; it takes the resolved mapping rather than re-reading sources to avoid a third precedence implementation.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L538-L567",
+          "version": "repo-lines-v1:sha256:41049eb5b2c2a855db2782ea094905d92852a2381f42ef89c97b4086f647cb55:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzNDVmNThmYjVjNmRlOWZkZWUyOThmNDM1YTcwNjM1NTJkNzc4ZWIxNWNmOTkwMDM4NzZhMDExMDg5MmMzNTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiNzQ0YWRjM2FlZDJhMjllYWEwMjBjNzEzM2IwMzVkNGFjMWZiYThiNzIxNTdhNzI4MDAyMGM1YWQzZTlkMjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBkZmY3Y2E2ZGZjZDk5NDdkZmU5MjJkZWZmMTAxYTY3NDdkZmI1MjI3OGZjOTc0OTU1NDUxZDRhZjIzNjMwODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4N2ZhZGUwNmFhNDZjMDEwMjQ5YTI1ODAyNjg1MThmZWYzNmRmNDg1ODJhZDdjYTZlMjNhYTFjZDZhYzNjMmQifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-16T21:10:52.541Z"
+    "at": "2026-09-18T12:41:13.644Z"
   }
 }

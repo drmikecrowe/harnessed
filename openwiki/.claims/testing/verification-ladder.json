@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:35a1400270d3cb12cedb3c11fed78abac316254464c9b3b803e87b06ecf22c2c",
+  "pageVersion": "sha256:29e9fcb80bf58e0a51c86e7ed200d12204d869906a21a4a1d45b5dcc883abe93",
   "claims": [
     {
       "id": "claim_53d617e673d544d78bcddfca751dbff6",
@@ -56,11 +56,15 @@
     },
     {
       "id": "claim_b3514aae5867481c9c41e617931f4eda",
-      "statement": "The live layer is the home for everything the hermetic runner skips: live.yml triggers on push to main, nightly at 04:00 UTC, and manual dispatch, deliberately never on pull_request — podman-build minutes on every PR would get the job disabled (and a disabled check verifies exactly as much as a skipped one), while post-merge plus nightly catches external-contract drift within a day; the automatic triggers were only enabled after the suite measured green against a real podman.",
+      "statement": "live.yml is the home for everything the hermetic runner skips: it triggers on workflow_dispatch, push to main, nightly 04:00 UTC, and — since #467 — on pull_request, but conditionally. A cheap `changes` job (no checkout; one gh api --paginate call for the PR's file list) decides whether the live and live-docker jobs run, matching the PR's files against CLAUDE.md's five live-only source paths plus .github/workflows/live.yml itself (a change to the gate must run the gate). Every non-PR event answers true. The filter is a job, not a `paths:` trigger, because a filtered workflow reports nothing on a non-matching PR and a required status check that never reports deadlocks the PR, whereas a job skipped by an `if:` reports a skipped conclusion that satisfies the requirement; the filter fails closed — if the API call fails, the layer runs. The automatic triggers were only enabled after the suite measured green against a real podman.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/live.yml#L1-L39",
-          "version": "repo-lines-v1:sha256:9d3723e1c119f65e68f41845e54b54a3d163d12f2685cee0185ed44a2b0bbad4:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkYTA5NWNlOTg4YzA4YzExZjEwNWU4NzVmOWMxODY5ZDEzYzQ0MTI3Y2Q2NTgzZTYyOWRiMDEzNmIwZDA0MTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNTBmNGNiNWE3MDgyN2Q4NWMxZTE3NTU4YzhhZGEzMjNhMGNkNjFjM2YwN2FkZDdlMGM4NTA5ZTRjNjcxMTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyNWFlY2UzZWFlNTZmYTJjZjE5OGNmMmIyMzNjNDFhY2UzYjM1ZjU3NTY1M2JmZDBjNWMyOTY1YjNiNTNmYTYifQ"
+          "resource": "repo://.github/workflows/live.yml#L1-L53",
+          "version": "repo-lines-v1:sha256:2c877be8421d5507015fb2366f772d25418fd89b87b2f2acd11868fe4a5c0502:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkYTA5NWNlOTg4YzA4YzExZjEwNWU4NzVmOWMxODY5ZDEzYzQ0MTI3Y2Q2NTgzZTYyOWRiMDEzNmIwZDA0MTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNTBmNGNiNWE3MDgyN2Q4NWMxZTE3NTU4YzhhZGEzMjNhMGNkNjFjM2YwN2FkZDdlMGM4NTA5ZTRjNjcxMTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI5M2I2NmE4ZWRlYTIzYThjYWJlZWE5NTZhZGFkZDYyMzE1NjgzNWY0ZmM0YjdhNjc5MTJjNjk2MTE1ZGJiMGEifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/live.yml#L55-L123",
+          "version": "repo-lines-v1:sha256:f61864e7358c83b6de55c5fbeafc3c6372d5cf9ef0d9fc55b1a8197fd3cb1dd7:eyJzZWxlY3RlZExpbmVDb3VudCI6NjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5ZDgwMTU0ZWQ0MmZjNWM3NzliMTMzMTU3OGI1OGI4OWM4MDFlYWNlNzRmMjRjZDQ4ZWI0YTIzNTc5NDBhOTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkMGNlYTExZWNlODVkN2I5YTA4ZWY4NjA4ZmJkMGEwZjU3MmYwMWJiNjIzMjNiMDQxOTE3N2UyNTc2MGIyYzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgxYTcxNDdiNTAwMzM1Y2QxMjU0MTY2ODEwODhiODRiMDEzZTY0M2JkOTRjNTc2ZWJlMzVhODhkNWYzZTI5NWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI2ZGM2MGEwMDJmODJiZjYwODE0ODEwNTIwNWE3NTZlNjg5YzUwMzg4ZGIzODI4OTM5YTMxMDZmNzQ2YzJlMzYifQ"
         }
       ]
     },
@@ -470,7 +474,7 @@
       "evidence": [
         {
           "resource": "repo://.github/workflows/live.yml#L248-L298",
-          "version": "repo-lines-v1:sha256:7cd6b961b11140fea7cbd2a5a4dc09519ed8e7672c407382cac077584c09ac10:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4ZTM1ZmY0ZmMwOTE5ZWU2MTgyMzc2MTA0ODdhNWQ2N2U4MjczMGYzOTc2YTQzZjM5MDM1YTUzMjU3ODhmYTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzMWRjOWY5ZTkwMDljOGJlZTQzOWFhZDg0NjRjODg2MWVjZjM0MjA4NTNiZGMwMGQ3ZWM0MzY0MmIyNGFmMTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM0NWM5YjllYWE3MjdmMDRiMzZlYzYyMDM0MjdjMDc4ZWFkM2ViOTYxMjViYjhiMWIwMDRhZGM2ZGFkNGQzMDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIwODdiNTAyZWZiNTVmYzFmNmMzOTNjMmI2MjVjMGRhNmQ3YzY2ODNhMmM1MDI2MzMyY2YzZThjNDg1ZmMwZDkifQ"
+          "version": "repo-lines-v1:sha256:0b96bf375885e8c99b8d5e8aabc1c33ce22af4ae5e83e9b15cad6f4ac8a31fb4:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4ZTM1ZmY0ZmMwOTE5ZWU2MTgyMzc2MTA0ODdhNWQ2N2U4MjczMGYzOTc2YTQzZjM5MDM1YTUzMjU3ODhmYTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzMWRjOWY5ZTkwMDljOGJlZTQzOWFhZDg0NjRjODg2MWVjZjM0MjA4NTNiZGMwMGQ3ZWM0MzY0MmIyNGFmMTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM0NWM5YjllYWE3MjdmMDRiMzZlYzYyMDM0MjdjMDc4ZWFkM2ViOTYxMjViYjhiMWIwMDRhZGM2ZGFkNGQzMDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIwODdiNTAyZWZiNTVmYzFmNmMzOTNjMmI2MjVjMGRhNmQ3YzY2ODNhMmM1MDI2MzMyY2YzZThjNDg1ZmMwZDkifQ"
         },
         {
           "resource": "repo://.github/workflows/live.yml#L311-L320",
@@ -494,21 +498,21 @@
     },
     {
       "id": "claim_ffb900267f164e1c80704416f7c76451",
-      "statement": "The podman suite step deselects four tests by name (TestVarlockProxyRulesOutput, tracked in #462) because upstream varlock proxy rules display drift broke them on 2026-08-28 while the parser fails closed as designed — but a failed step ends the job, so the launch step that proves a stack reaches a running agent never ran. They are deselected individually rather than by class, file, or marker so a new failure anywhere in that module still goes red. PR regression coverage comes instead from running the workflow on demand against a branch (gh workflow run live.yml --ref <branch>), which covers PR #461-style regressions without charging two container-runtime jobs to every PR.",
+      "statement": "The podman suite step deselects four tests by name (TestVarlockProxyRulesOutput, tracked in #462) because upstream varlock proxy rules display drift broke them on 2026-08-28 while the parser fails closed as designed — but a failed step ends the job, so the launch step that proves a stack reaches a running agent never ran. They are deselected individually rather than by class, file, or marker so a new failure anywhere in that module still goes red. PR regression coverage no longer depends on ad-hoc dispatch: the `changes` job runs the layer automatically on every PR that touches the live list (#467 replaced the old `gh workflow run live.yml --ref <branch>` arrangement after PR #461 showed authors do not remember to dispatch it); workflow_dispatch remains available for any other branch.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/live.yml#L171-L189",
+          "resource": "repo://.github/workflows/live.yml#L240-L258",
           "version": "repo-lines-v1:sha256:84734aea11c8f8c4dd919bbbeb6775cdba0e6fe2ef3300b4ecc32884516d48ab:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5MzJlYzk2ODM3N2M0MTk2NmNhMDcxZmYwZDE0MmRkYjMyNjNjOGY0Zjk5MjBjMTZjMTQxMjM0NjQ3ZTg3OTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2YmE0Nzk3OTdjZDhkNDEwODVjNGE2MDRiYjY0OTNlZTE0MWUyY2E1OWRlYWY2YTkwYmFhNjA2NGIyMzUwYTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMwYWI5OWJhNmI1N2ZkYzI1OGVmZWQwYjFkZGNjMTZmNzA3OThhY2RkZmY0MDRlOTQ5NjY0ZjRmYjY1NWQ3ZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxOGFhZGE3NDQyZTk5NjgyODNhNjJmY2NlYzA1Y2RiNjFjZWVlZmJjMTUzY2UxYWM2ZmU4ZmNlMjhiNDI2OTQifQ"
         },
         {
-          "resource": "repo://.github/workflows/live.yml#L32-L42",
-          "version": "repo-lines-v1:sha256:0183bf4c2a0502e28c7d76158212220476e8519f50db01d29962cf6b6861a3c2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5MjExYjcxMDE5MGVmMTlkOWUzZDdjMTNkMjkwNTE5NWI5MjFkNTk2NmZlY2Q1ODMyZTA4YTU5OWI2ZDAyY2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0YTFmYzFmMmUzMjYxMzJmNDkyZjQzOTJmZmM4MjIzNmFiNzg4NDAyNTQ2MTMwMGUzMzBlM2UyZDYyOWJkNWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5YTIwNzMzMzdjNTgyYWM5ZGJkYTVhNTAxZjIwOTIyZjAzMDBkNzJlYWQ5YTc5MTUwOTY0NGU3ZDdmZWIwYmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJiMTRiZWYxNjY1YjNkZDg0OGI3NWJlNGQ5M2MyNTMxNDc5OGIxNjQ0OGI4MTYzOGFmMTEwZjZhYWIxZDlhMmIifQ"
+          "resource": "repo://.github/workflows/live.yml#L32-L43",
+          "version": "repo-lines-v1:sha256:1a9843b0ad386fc30d1f337ad56a6db75a6f8c9c9b821e8ad8b1b7f6f9ff0ef8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2ODUzYWVhMGU2MTkyOTQxYzY2ZjE1YWQ3YzUwNzFlNTlmMGZmMzEzYjQyMTMxMDU5NDk5OTBjMzgyNTA4NWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhNDExN2Q0ODJmMjI1ZGUwMjY2MDMwZjYyNTQ3MGNiMjZjMWExZmRkNzY2MzAxY2IwYTMyM2RmMzg0ZTU1YTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5YTIwNzMzMzdjNTgyYWM5ZGJkYTVhNTAxZjIwOTIyZjAzMDBkNzJlYWQ5YTc5MTUwOTY0NGU3ZDdmZWIwYmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJiMTRiZWYxNjY1YjNkZDg0OGI3NWJlNGQ5M2MyNTMxNDc5OGIxNjQ0OGI4MTYzOGFmMTEwZjZhYWIxZDlhMmIifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-17T13:01:59.112Z"
+    "at": "2026-09-18T12:41:13.644Z"
   }
 }

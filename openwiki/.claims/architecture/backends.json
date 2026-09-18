@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d8719d32a98054aa8e9326f0f374cebd5d7fe5934d665071f79e8c9cfab38c16",
+  "pageVersion": "sha256:97f3c760fd3c401cbd46676639f098e87726411f31c64877d796e230b1230694",
   "claims": [
     {
       "id": "claim_bb6a98608e1546bdaa0420599c092f05",
@@ -532,35 +532,31 @@
     },
     {
       "id": "claim_b548424552dc4568b6451104d0f487a9",
-      "statement": "The host backend runs neither of the container path's staleness gates — profile freshness (staleness.check_profile_fresh, run only by container-run) and image staleness on re-attach (_container_stale, which compares the running container's image ID to the current image) — because it assembles in-process on every launch and builds no image. Its substitute is _host_stack_fingerprint over the stack's recipe closure: computed in _host_launch_plan before the materialize and stamped into the config dir by _stamp_host_home only after the first-start installs succeed, so a failed install is retried rather than certified. The fingerprint carries harnessed's own __version__ because a host launch has no image build to force a refresh; the container fingerprint adds the image's identity to the same string instead, because podman's copy-up runs exactly once per volume.",
+      "statement": "The host backend runs none of the container path's launch gates — the profile gates (is_built presence plus staleness.check_profile_fresh, run only by container-run) and the image-label re-attach check (_container_stale, comparing the running container's image ID to the current image, with _img_differs behind it) — because it assembles in-process on every launch and builds no image. Its substitute is _host_stack_fingerprint over the stack's recipe closure, gating the wholesale rebuild of the host config dir: computed in _host_launch_plan before the materialize and stamped into the dir by _stamp_host_home only after the first-start installs succeed, so a failed install is retried rather than certified. The fingerprint carries harnessed's own __version__ because a host launch has no image build to force a refresh; the container fingerprint adds the image's identity to the same string instead, because podman's copy-up runs exactly once per volume.",
       "evidence": [
         {
           "resource": "repo://src/harnessed/ctrquery.py#L98-L102",
-          "version": "repo-lines-v1:sha256:d545e7cb8ccbdffbce9747effa3a026d0ddfafe94542b908b3375ce128b5b875:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDBiZTcwNjU4OTRiODI3NDI3M2U3MDVhYjg3NGVhNzNmOTAzMDI1MDQ5ZDRjZjg2Y2E5Zjk4NjlkODUwNDdkMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWEwYjMxMDFhM2IwNTk3OTk3MDBkMjQyYTAxMWU4MDYxNzQ0YWU4MzM0NmY2NTBkNTA0MzVhMGIyYjRhYzZhNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDVlOGFlZWRlNmFjNjQ0OTA0MWYxOWZjYTE0NGUxNjUwN2ExYzAzMGZjZjJjYjFlNjJmZDhiOTBhYjIxMzU3MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmVhNjllZTgwZmNlYzkxMzY5OWQ3YjA3M2RmOWUwZDVmYzVkYzg5ZjgwYTI4NmQ5M2QwOWMyZGRmYTcyOTcwOCJ9"
+          "version": "repo-lines-v1:sha256:6019f00549517924fbcfc75418f03bd5f35bd0d1d015d52ec8623a3f9cbf84be:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGFkNTc5YWFmMmY1ZjZlOWZmNDNjYTM4N2NkZDdkM2M2YjBhMzVjNjVhNzQzNDUzNDgyOGE0NDBkZjc2MTkyMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2VhOGMzZTYxNzQzNjZjYzJlYzA0ZTQ4NjAyZDBmYjI1YWFmMDBiNGYwODMyMzViZTk3NThkYTVjMjZkYmFlOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDQ2NzZjZmY5NWUwMTcxMjE0MDRkZWJkM2U5MWU2ZjZmNDU1YTlmYTQxNmIyMjM2NDg5ZWNiMzI2NzZmNTE3NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWJkMzE0YTNlNTc0N2YzNmIyZjlmMmE5ODJmYTgzYzA2OTY5YTkyMTU5MzUxN2VlOWFmZDgzYTI1ZDY5MjUyOSJ9"
         },
         {
           "resource": "repo://src/harnessed/hosthome.py#L36-L50",
-          "version": "repo-lines-v1:sha256:936f015b28448abb8fffec2ee7651dff3b436e6cc8bf0b808a193c8ccdde53e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2MTE5YTExM2ZhYmNhOTNjZWIxMjRhNjYyOThiMWZhNjdjNDZmYjJiNzBmMzZlNzgzNTQ5ZTRjMzFjNDlkNDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkY2EwZWZlNzc5NmI0Y2ExNDliN2Q4NzZiMWI1ZmRhZWU0MDI0MjBlYTkzNGZlYTBiYzdiOGMyNDRkNjM0MDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg1YjE1OTM5ZjljYzRiOGY0ZTgxYWRmYmZkNWY1NzU3MmZkYzhiYTMzYWFjZGM5MTM5ZjcxYmYxZWMwZmMxZTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjM2MxNzgxY2I5NWUxMzMxMWM1MWQyOGI5ZjRkNzQ1ZTlkNWM5OWJmNjg4YjVhZjVmNzVkOTg4OGE5NzY0MTEifQ"
+          "version": "repo-lines-v1:sha256:8fd1d2fd9573d82843060658e6dda7233815bc7f63d38449430927d7db3991c3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxMzMyMjFhYjExMWZmMDY2Mjk1MDIxMzI5NzdjZmY3ODNkYzg4M2YwYzk4OTJlMmQ3OWFmOTk4ZGI4NDcwNTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyMWQzNDdiZjZlZjNiYjJlZjIwMjlmODg0OWExMDdjZmY0NTdhNWVjNDJhZDMxNWRhMDAwZGZlYWNlNmIxZjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdhNGFmMzc1NDZhYjkxYTE0YmVmNTE3MWMzMjdmMjI0YTY1NDZkMzBhYzA3YzFhZWRlMGYwNzkwOTQ4MDhhZDUifQ"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L2313-L2315",
-          "version": "repo-lines-v1:sha256:9a863db576b5e0a500b372697d3ff3c546b04ad508b6dcc2338d88408af2aefa:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2RjYWZiMTkwODNiNDc3OWJmZWM0MzhjM2ZiMTg3OTA4YmU3Y2MwOWE3MjUzNTQ3YmIwOGVjM2YxOTQ2MTRiOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNmNlZDg0MGM2NmI5MzAyMzRkZTNlOWVhYjczZmY3MTA4NmNlNGJmYzBkYjIyMmFhYjI0MmRmZWMwM2VmYTVlNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTI3ZGIwMmRlMDY4OGRkNzVjODdkMDU1NTkxOWRjMjYxMzM0OTAwMGMwNjJhN2UyYWQ5MDViMDZjYzA2MGEwNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDMwMDJmNmI3NDQ4MDYxZDU2MmNhZWI0NWYwZTc3ZTg5OTc5NmQyYzU1YTBkZGVlZDQxZjEwNDcxZGQxMzcwYiJ9"
+          "resource": "repo://src/harnessed/launcher.py#L2663-L2678",
+          "version": "repo-lines-v1:sha256:4d5bedc4a07ece21d4ccd3b40c2f4f06f5c3c55bbf84aa706da1a76a0b528d19:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjZmI3YTI4OWMxYmFlYTQ3YmE4MTU2MDVjNThjMmQyODU0N2Q5ZGVkOTMyYjUxNzJjN2U2YzdhZGQwYzQ5ZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlN2JjZDM2ZWY1M2I0NDUyM2U2NWU5OGQxOTQ0OTkzZTBmZjE3NDZmNTUzNmMxYTUxMTc0NmYzZTAxZTc1NmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQwMGM3OGQ4NDkzMjliOGJmMjJmOTY3ZjljNDU0MDc1OGM2NWQzN2U2NjlkNjZiYWE2ZjA5YzlhYmE3MDVlZjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ3NjgxOTI5NWE3MTEyMmQ2MWFiYzQ3OThiZWUxNjU5OGZkYWQxZDk3YzFjZDUzMGVhZGIwMTcyNDQxOWViOGIifQ"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L2554-L2557",
-          "version": "repo-lines-v1:sha256:615ebf7ded634170936365632367c13d6d4ccc6498a98615eb052761b1817891:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTI5NGNiZmE2MGY3NzRjMzY0YTQ4ZWU4MzE4NTlkOTI5ZjcwYTE5NjM3ZWZlM2EyYWIyZDEwMzMxMTk0NTc2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTRjM2M4YTM5MzRhMmQwNTVhMzcxODNhOWQzMTU5NDY3YjhlNDhlOGUzZWIzNDk0Mjk5NWFkODcyMTQyOWNiOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWJhYTY4NTRmODI5MDhhNGVhMmY4YjBmYmJmZTJjMWY1ODc3MTRkZjRkYWQ0MGFlMWE1YjZkNDBkYTJjMzZhNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmRlOGY5YTcxNmNhNzE4MGQzZjBkZDQ4NDAwYWUyMGY5Mjk4MDNhMGRjYzJkNzYyZTBlNmQ2ZmFiZWE1YTVmZSJ9"
+          "resource": "repo://src/harnessed/launcher.py#L3870-L3897",
+          "version": "repo-lines-v1:sha256:7ae6dd1a5106d6bcfdee72f1ab151b207426c763376f7bde1dcc87ad49d06e6c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjMWNhNzM0MTBhOWIxZmI5Y2FiZGJmZjNjNDUyMWI2NjMyODhmOGUxMmU0MDQ4ZjQxNDY5MzViOGJhMGY2ODMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjMGM3NDY0NzZmODcyMGI4YzI0NjQ4Y2Y5OTM1NWNhYjUwMjAzMGFkZDY2ZmRlYzlmMzI4MWUyODNkYjY3NzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkODFiM2ZiMWI0YmEwYjY2YWVjYjE1NzM0ZjU5MDYwZGQ0ZjQ0NTNjNTJhYmYxMWIzMzBjMzcyMTQ1MWQ0N2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ4ZTM4NmEwYjY2M2MwMjc1MDQ4NzNhNjdkZGQxYTU4MjQ0ODNhNWZiZjVkMDMzZTRhM2ZhM2RlNDVhYmM4Y2YifQ"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L2679-L2684",
-          "version": "repo-lines-v1:sha256:bcefa911aaa56e7f858fbb0ca3e1a3afa8ff241b4c9a22baf993eeb6def73b19:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWNlMTVlN2VkNjZmMjFjZWEzMjQ2YWQ5MGI3MGY4YzE4Y2MyNGM5NGUyNTgxZWMwZmVlOGVmZWIwZmI4OTNjYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGFmZGU1ZmM5NjdiMjU0NzRkOTYxMjNkNzJlZWFjNjJlNTlkOWE2ZTVmNzY2ODQ5ZGIzY2QwYzU5YWMxNTc0MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmU0NTBmNDJlODNkOTVkNWY4OTYxM2ZjYTUzMGM2MTZjODBhYTBkZDQ3ZGQ5ZDRmZjhmNzM1MWI5ZjFmMzgyYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODNmMDhlODhjZDg4NmJjNDQyY2U4NmU3NTcwNzRhODNlYTBmNTliNzI3MzU0ZGZjZTdjYjliNGIwM2I4OTk4ZSJ9"
+          "resource": "repo://src/harnessed/launcher.py#L4016-L4030",
+          "version": "repo-lines-v1:sha256:8bf300637d848ea930cb19d46f2f7962e1632c237c1a253542aed944e296b473:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2MWE1OGE0Yjg2NDc1YTVhMzZkMjMzYjdjMGFkM2IzZTAwZDQzM2VmOTVmOTAxMjhlYjU2OGUzNWNjZWExNmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYyYWI1NmFjMGE4NjliZjgwOWVlZTFiZGRjZTM4OGFmMDc3YzlmYjM2NzI1MjFkYzdmYzk1ZTIwOWExMTc3Y2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4MjRkZWU0YmZiMWYwNmM2NzFhYjE1ZDY2MjNkMGFjMDIwMGNiYTY3NDQ2NzllMjg0MDVjMTlhNGI1YTk3MmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIyZTM0YmYxZWFkNmExOTAxMTM3ZWVhYWU2YWZmNzQ3YTUwM2NjMDA5NmQ2OTA2NjIwMmY5MTU2YzlhMGI4ODIifQ"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L3679-L3693",
-          "version": "repo-lines-v1:sha256:4dbeeac156d61a755ec208b8230193f4087de792c8cefa12416ae6c8cd6ca6e3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjMWNhNzM0MTBhOWIxZmI5Y2FiZGJmZjNjNDUyMWI2NjMyODhmOGUxMmU0MDQ4ZjQxNDY5MzViOGJhMGY2ODMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiMGYyZDM4MzY3MzU3ZjE2OWRmMGIzODFiODliZjE4YzJhMDliZmZhNTIyOGIzZjIxNWU4M2I0YmQzZGMyYzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkODFiM2ZiMWI0YmEwYjY2YWVjYjE1NzM0ZjU5MDYwZGQ0ZjQ0NTNjNTJhYmYxMWIzMzBjMzcyMTQ1MWQ0N2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZlODRmZTY0NTc3YjVlNTZmZjZhZmQ1YTMxNzZiZWY2ZGM3Mjg2ODkyYWUyYzM0ZTBkNGZiZTVjODYwOTlmYjIifQ"
-        },
-        {
-          "resource": "repo://src/harnessed/volumes.py#L201-L215",
-          "version": "repo-lines-v1:sha256:ef0aa4cb8b00b1a39d7efc721f4d4c208314c89fef741c5e483a02dca1d80cf7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjZWJiN2I1YTZhOGIxODlmOTUwNWE4MDcyMzg1Y2RlMzk4Y2RmZmEyNDc4NmI5YTA4OGM3YWU4ODk1NzJlMDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4NzViOTNmZWE0YjU5OWI4YTg1ZjdhNjIwNmExM2UxYTlkZmJhYjlkODg1NWI4YmY4ZWUzZDMyZmVjMTA0MWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4YjBiNGM5OTkwY2NlY2ZmNWUyNjE2N2Y2MTc1ZDhkOWRhNWJjZTIwOWNlNWM4ZmE5NTVkMzM0NGVmZDRmNGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlOWQ5ZGZhNjllYzA0ZTUyYTM3MDg4NmExNDY5MWNjMDE0NDdhYTMzMjZiZjkzNDUxNjg2OTJmMzNkNTY2NGEifQ"
+          "resource": "repo://src/harnessed/volumes.py#L285-L297",
+          "version": "repo-lines-v1:sha256:4fd1b18834fe85bbbb79e541935c08f9076ff8c109e6f5b570757bc93ec4a59a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4NzViOTNmZWE0YjU5OWI4YTg1ZjdhNjIwNmExM2UxYTlkZmJhYjlkODg1NWI4YmY4ZWUzZDMyZmVjMTA0MWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIwMTA3ZmE4MmM1YWVlMDRiNDQyMWE2OTcxMmRmZWE3ZDhjYTkxY2MxMzIxMTFiMGQ4M2FhMGFhOWM5ZWVjMmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlOWQ5ZGZhNjllYzA0ZTUyYTM3MDg4NmExNDY5MWNjMDE0NDdhYTMzMjZiZjkzNDUxNjg2OTJmMzNkNTY2NGEifQ"
         }
       ]
     },
@@ -623,6 +619,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-16T21:10:52.541Z"
+    "at": "2026-09-18T12:41:13.644Z"
   }
 }

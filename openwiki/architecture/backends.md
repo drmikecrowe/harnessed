@@ -1,11 +1,11 @@
 ---
 type: architecture
-title: "Execution backends: the six-capability contract and backend-owned sequencing"
-description: "The backend.ExecutionBackend seam — six capabilities (materialize config, provision tools, wire MCP, seed auth, wire services, apply isolation), backend-owned sequencing with no shared driver, the two-phase capabilities FIRST_START/ATTACH and BOUNDARY/EGRESS (with the secrets broker started inside the container BOUNDARY), LaunchSpec versus backend-instance state, the registry, and the module-boundary rule that keeps backend.py free of launcher imports."
-tags: [execution-backends, backend-contract, capability-set, sequencing, launchspec, provision-tools, apply-isolation, seed-auth, secrets-broker, capmatrix, module-boundaries, hostbackend, containerbackend]
+title: "Container and host backends: asymmetry, gating differences, shared invariants"
+description: "The two launch backends that live in launcher.py — ContainerBackend (container-run) and HostBackend (host-run) — the six-capability contract they both implement, the sequencing each backend owns, the profile/image-label gates the host backend skips in favor of the _host_stack_fingerprint host-home rebuild gate, and the module-boundary rule that keeps backend.py free of launcher imports."
+tags: [execution-backends, backend-contract, capability-set, sequencing, launchspec, provision-tools, apply-isolation, seed-auth, secrets-broker, capmatrix, module-boundaries, hostbackend, containerbackend, gating]
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-16T21:10:52.541Z
+    at: 2026-09-18T12:41:13.644Z
 sources:
   - id: openwiki-source-f2bd22307a3451ac2519580c
     resource: repo://BACKENDS.md
@@ -29,10 +29,10 @@ sources:
     resource: repo://tests/test_launch_parity.py
   - id: openwiki-source-bbf9cc1f144f5efff8ae1505
     resource: repo://tests/test_module_boundaries.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
 ---
 
-# Execution backends: the six-capability contract and backend-owned sequencing
+# Container and host backends: asymmetry, gating differences, shared invariants
 
 harnessed's product is the **composition layer** — recipes compose into stacks. *Where* a composed
 stack runs (naked host, container, devcontainer, microVM) is a pluggable **execution backend**, and
@@ -185,14 +185,17 @@ scripts run on first start (fingerprint-gated), `setup.script` at attach time."*
 | **container** | `_ensure_stack_volumes` — composes **both** volumes in one call, because podman's copy-up populates them together | `_run_container_setups` — `podman exec` each pending script |
 
 The gate behind `self.rebuilt` is the host backend's substitute for staleness checks it does not
-run. The container sequencer gates its launch on two of them — `staleness.check_profile_fresh` (the
-assembled profile can predate its recipes) and the re-attach image check `_container_stale` (a
-running container can predate an image rebuild). The host path has neither problem to have: it
-assembles in-process on every launch and builds no image. What it gates instead is the **wholesale
-rebuild of the config dir**: `_host_stack_fingerprint` (hosthome.py) hashes the stack's recipe
-closure, is computed in `_host_launch_plan` before the materialize, and is stamped into the dir by
-`_stamp_host_home` only after the first-start installs succeed — a stamp certifies finished content,
-so a failed install is retried rather than trusted. And because a host launch has no image build to
+run. The container sequencer gates its launch on the profile gates — `is_built` (an assembled
+profile must exist) and `staleness.check_profile_fresh` (the profile can predate its recipes) —
+plus the image-label re-attach check `_container_stale` (a running container can predate an image
+rebuild; `_img_differs` is the label comparison behind it). **The host backend skips both the
+profile gate and the image-label gate**: it assembles in-process on every launch (`_launch_host`
+calls `assemble(...)` before anything is materialized), so there is no pre-built profile to be
+stale, and it builds no image. What it gates instead is the **wholesale rebuild of the config
+dir**: `_host_stack_fingerprint` (hosthome.py) hashes the stack's recipe closure, is computed in
+`_host_launch_plan` before the materialize, and is stamped into the dir by `_stamp_host_home`
+only after the first-start installs succeed — a stamp certifies finished content, so a failed
+install is retried rather than trusted. And because a host launch has no image build to
 force a refresh, that fingerprint carries harnessed's own `__version__`; volumes.py notes the
 container fingerprint adds the image's identity to the same string instead, because podman's copy-up
 runs exactly once per volume and would otherwise hide image updates forever.

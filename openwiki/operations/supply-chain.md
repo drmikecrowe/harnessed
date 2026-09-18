@@ -1,7 +1,7 @@
 ---
 type: mechanism
 title: "Supply chain and pinning: what ships, how it is pinned, and how it is scanned"
-description: "The pinning surfaces (recipe tools:, extra-tools pins, image-layer pins, per-recipe mise.lock checksums merged by toollock at launch), the `harnessed update` staleness sweep and its scheduled `--check`, and the scan layer itself: osv-scanner + pip-audit with a pure-Python severity gate at CVSS >= HIGH (7.0), the credentialed advisory in-image pass, and the online rescan path behind the SEC-04 nightly systemd timer."
+description: "The pinning surfaces (recipe tools:, extra-tools pins, image-layer pins, per-recipe mise.lock checksums merged by toollock at launch), the `harnessed update` staleness sweep with its minimum-release-age gate, per-shape bump rewriters and verify-before-commit output, the scheduled `--check`, and the scan layer itself: osv-scanner + pip-audit with a pure-Python severity gate at CVSS >= HIGH (7.0), the credentialed advisory in-image pass, and the online rescan path behind the SEC-04 nightly systemd timer."
 tags: [supply-chain, pinning, skills-pins, extra-tools, mise-lock, toollock, harnessed-update, stale-pins, security-scan, osv-scanner, pip-audit, cvss-gate, harnessed-scan, rescan, nightly-scan, systemd-timer, coverage-accounting]
 sources:
   - id: openwiki-source-e916c387e9195be48f6d9d41
@@ -44,10 +44,10 @@ sources:
     resource: repo://tests/test_toollock_wiring.py
   - id: openwiki-source-854929ba43f12d27e96036d0
     resource: repo://tests/test_update_pins.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-16T21:10:52.541Z
+    at: 2026-09-18T12:41:13.644Z
 ---
 
 # Supply chain and pinning: what ships, how it is pinned, and how it is scanned
@@ -179,6 +179,18 @@ every pin surface and offers bumps. Its classification rules (each pinned by a t
   **reported, never silently skipped**: a pin the tool quietly drops reads as "everything is
   current", which is worse than no tool. Opaque pins are also never auto-rewritten — there is no
   safe automated edit for a ref buried in shell.
+- **The sweep covers four sources, not one.** Beyond recipe `tools:`, `build_report` also sweeps
+  **agent manifests** (`agent.yaml` pins live in `build_args.<KEY>.value`, not inside a spec
+  string — A7: agent manifests own their pins too, and used not to be swept at all, which is how
+  three agents reached main with genuinely unpinned downloads), the **tracked extra-tools
+  template** `catalog/base/extra-tools.default.txt` (deliberately the tracked file, not the
+  user's host `~/.config/harnessed/extra-tools.txt` — a bump must land as a reviewable diff, and
+  the host file is nobody's to rewrite; an unpinned entry there is skipped *entry by entry* so
+  one bad line cannot blind `--check` to the other fourteen, bd harnessed-2o9), and a declared
+  **`unpinnable`** backend, which is sorted into its own bucket *before* the resolvable check so
+  "we said this cannot be pinned" is never misread as "the resolver failed". Every extra source
+  rides the same classification path — same cooldown, same hold semantics, same buckets — because
+  a pin reported differently from every other pin is a pin nobody trusts.
 - **HELD.** A `hold:` on a `tools:` entry or an `install.hold` on a script (the motivating case is
   skill content no scanner vets) makes its pins informational: listed with the newer ref, never
   offered for bumping, never failing `--check`. Without that, a deliberately frozen pin makes CI
@@ -187,7 +199,23 @@ every pin surface and offers bumps. Its classification rules (each pinned by a t
   and a release outranks its own prerelease — so a bump is never a silent downgrade. A pin *ahead*
   of the registry is not stale.
 - **Resolver failures and unknown packages are `unresolved`, never `current`** — a registry
-  timeout must never read as up-to-date.
+  timeout must never read as up-to-date. A newer release whose backend gives **no publish date**
+  is also `unresolved` ("review it by hand"), because its age cannot be checked against the
+  minimum-release-age gate.
+
+### The minimum-release-age gate (pnpm `minimumReleaseAge`)
+
+A bump is offered only from releases at least `DEFAULT_MINIMUM_RELEASE_AGE_MINUTES = 10080`
+(**7 days**; launcher exposes `--minimum-release-age`, 0 disables the gate) — modelled on pnpm's
+`minimumReleaseAge` on the theory that a compromised or broken publish is usually yanked within
+days. The 7-day default (pnpm uses 1) is measured, not guessed: on 2026-07-25 all five pins the
+command offered were younger than a week, two of them hours old. Crucially a too-fresh *newest*
+release does **not** mean "no update": the newest release that *is* old enough is offered instead,
+and the newer one it passed over is named in the finding (`skipped_newer`) — refusing outright
+would leave a stale pin stale for a week even when a mature intermediate release exists. A pin
+whose only newer candidates are all too fresh lands in a separate **`cooling`** bucket, and
+`apply` refuses cooling pins even if a caller passes the wrong bucket, so the cooldown cannot be
+raced.
 
 `--check` is the CI mode: it exits non-zero on a stale pin (extra-tools pins included) and
 **writes nothing** — building a report must leave the catalog byte-identical. Unresolved pins
@@ -209,7 +237,43 @@ rewrites only the *entry* — the same text recurring in a comment is prose. A r
 stale lock forces mise to migrate the lock at install time, re-resolving every platform and
 tripping mise's provenance-downgrade guard on machines that bumped nothing — reported as a
 supply-chain alarm for a release that is in fact attested. A recipe shipping no lockfile relocks
-nothing; inventing one would fabricate a supply-chain claim nobody authored.
+nothing; inventing one would fabricate a supply-chain claim nobody authored. The relock runs
+against a **copy in a temp dir** (`mise lock` writes into its config root, so a crash must not
+leave a stray `mise.toml` in `catalog/`, which ships inside the wheel) on a 900s budget —
+`mise lock` downloads each platform's artifact to verify provenance — and relocks are collected
+into a set and run **after** the bump loop, once per manifest against the finished recipe (three
+bumped entries must regenerate the lock once, not three times against half-bumped YAML).
+
+### The bump flow: one rewriter per pin shape, then verify before committing
+
+`apply` dispatches on *where the version lives*, and the failure mode that shaped it is precise:
+a pin whose version is a **field** rather than a substring of a spec needs its own round-tripping
+rewriter, and a pin kind without one produces a bump that is *offered, accepted, reported as
+successful, and never written* — that is exactly how agent pins (`_rewrite_agent_build_arg`) and
+`install.refs.<key>.ref` pins (`_rewrite_install_ref`) were both missed. The dispatch itself is an
+**allow-list, not an else-branch**: `.yaml/.yml` goes to the ruamel round-tripper, `extra-tools*`
+to the plain-text line rewriter, and anything else is skipped — a fallback would let the next
+resolvable pin kind inherit a naive line-edit of a file nobody chose. All YAML rewriters run with
+`width = 4096` and `indent(sequence=4, offset=2)` so a bump is a **one-line diff** (ruamel's
+defaults re-wrap 80-col scalars and re-indent every list), and `_match_v_prefix` rewrites
+`latest` to whatever `v`-prefix convention the pin itself already used — a GitHub release answers
+with its TAG, and `pulumi@3.251.0` must not become `pulumi@v3.254.0`.
+
+When anything was written, the launcher prints the **verify-before-commit block** (bd
+harnessed-czo): the bumped recipes, the affected stacks (`update.affected_stacks` — a stack lists
+its recipes flatly, so "rebuild the affected stacks" is a lookup, not a guess; a stack with no
+declared `harnesses:` still gets a line with a `<harness>` placeholder, because dropping it would
+hide a real dependency of the bump), and the literal commands, one per stack and harness:
+
+```
+harnessed build <stack> <harness> && harnessed test <stack> <harness>
+```
+
+The rationale is the repo's own rule: a bumped pin is a code change like any other, and an
+unverified bump is worse than a stale one — naming the stacks and printing the literal commands is
+the difference between a reminder and a task the user has to go research. The same reasoning puts
+the pin check in `tools/preflight.sh` as an **opt-in** gate (`--all`, network-bound and slow):
+irrelevant to most diffs, but the one to run before pushing a `catalog/` change.
 
 ```mermaid
 flowchart TD
@@ -218,7 +282,7 @@ flowchart TD
     U --> L["toollock merges per-recipe mise.lock blocks, verbatim, fail-closed on disagreement"]
     L --> MI["mise install enforces the merged checksums in MISE_CONFIG_DIR/mise.lock"]
     B --> SCAN["the scan layer sees what the pins actually installed"]
-    SW["harnessed update sweep: resolvable, opaque-reported, held"] -->|"apply + relock"| R
+    SW["harnessed update sweep: resolvable, opaque-reported, held, cooling under the 7-day min-age gate"] -->|"apply + relock"| R
     SW -->|"check, writes nothing"| CI["scheduled pin-check workflow, never on a PR diff"]
 ```
 
@@ -295,12 +359,20 @@ this sits among the build's stages:
    and a narrower scan that reports green is worse than a failing one.
 2. **Online archive scan** (`scan-image-online` → `scan.run_image_scan_online`) — the host `podman
    save`s the image to a temp tarball and a host subprocess runs
-   `uv run --no-project --quiet --with ruamel.yaml python -m harnessed.cli scan-image-online <tar>`
-   (the `harnessed-tools` CLI verb; `PYTHONPATH` pointed at the checkout, the tar unlinked in a
-   `finally`). osv-scanner scans the archive with the offline build-time DB flags dropped, so it
-   contacts **osv.dev** and sees advisories disclosed *since* the build. **Gates** on HIGH+.
+   `sys.executable -m harnessed.cli scan-image-online <tar>`
+   (the `harnessed-tools` CLI verb; the tar unlinked in a `finally`). osv-scanner scans the archive
+   with the offline build-time DB flags dropped, so it contacts **osv.dev** and sees advisories
+   disclosed *since* the build. **Gates** on HIGH+.
    No daemon-in-container, no API socket (design §15 / D-12) — the archive *is* the interface
    between the runtime and the scanner.
+
+   The invocation is `sys.executable`, not an interpreter resolved by name, for the same reason
+   `harnessed test` carries at length (#460): this process *is* harnessed, so its own interpreter
+   imports `harnessed.cli` by construction and already has every declared runtime dependency,
+   `ruamel.yaml` included. The old line spelled a checkout — `uv run --no-project` plus
+   `PYTHONPATH=<root>/src` — and died in every installed copy with
+   `ModuleNotFoundError: No module named 'harnessed'`, hidden on developer machines because
+   `--no-project` *borrows* an activated virtualenv (#493).
 
 ```mermaid
 flowchart TD
@@ -532,7 +604,7 @@ Each rung is bigger than the one below it, with a different reason:
 | per scanner call, in-image | 120s (`HARNESSED_SCAN_TIMEOUT`, `timeout -k 10`) | `harnessed-scan` | one wedged scanner costs its own result, not the other three; `-k 10` because a real scan container once ignored SIGTERM |
 | per scanner invocation, host-side gate | 300s (`scan._TIMEOUT`) | `run_image_scan_online` | source/image scans over a manifest set are fast; a stuck scanner must not hang the build (Project Constraint 6 / Pitfall 6) |
 | whole scan container | 900s (`_SCAN_CONTAINER_TIMEOUT`) | `_scan_image_in_container` | backstop for the script wedging *outside* the scanners — one container ran **71 hours** at 0% CPU with no timeout above it (bd harnessed-8px.28) |
-| online archive scan | 1800s (`_SCAN_ONLINE_TIMEOUT`) | `_scan_image` | network plus `uv run` dependency resolution; bounded **because nobody watches** — an unattended hang wedges the timer silently and looks exactly like a nightly that keeps finding nothing |
+| online archive scan | 1800s (`_SCAN_ONLINE_TIMEOUT`) | `_scan_image` | network plus interpreter/module startup; bounded **because nobody watches** — an unattended hang wedges the timer silently and looks exactly like a nightly that keeps finding nothing |
 
 ## Related pages
 
@@ -547,3 +619,7 @@ Each rung is bigger than the one below it, with a different reason:
 - `/openwiki/concepts/invariants.md` — the invariant catalog entry for the coverage ledger, and the
   catalog's other supply-chain surfaces (pin freshness via `harnessed update`, per-recipe
   `mise.lock` checksums via `toollock.py`).
+s via `toollock.py`).
+via `harnessed update`, per-recipe
+  `mise.lock` checksums via `toollock.py`).
+s via `toollock.py`).

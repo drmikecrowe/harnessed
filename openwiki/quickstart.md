@@ -40,10 +40,10 @@ sources:
     resource: repo://tools/preflight.sh
   - id: openwiki-source-bb9438d561f4cbb6d5d38c49
     resource: repo://tools/run-tests.sh
-generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-17T09:44:27.184Z
+    at: 2026-09-18T12:41:13.644Z
 ---
 
 # Quickstart: set up, build, launch, and where to read next
@@ -56,8 +56,7 @@ wiki page lives.
 
 Related: [what each gate proves](/openwiki/testing/verification-ladder.md),
 [the command surface](/openwiki/operations/cli.md),
-[wiki automation](/openwiki/operations/wiki-automation.md),
-[system overview](/openwiki/architecture/overview.md).
+[the build workflow](/openwiki/workflows/build.md).
 
 ## Prerequisites
 
@@ -125,12 +124,26 @@ pass.**
 
 The hermetic suite runs **no real podman** — no `podman build`, no `harnessed container-run`. The
 `HARNESSED_PODMAN`-gated tests skip on a podman-less machine, and `tests/conftest.py` prints a
-"live verification" section naming exactly what did not execute; **a skip is not a pass**. The
-gated layer has one home: `live.yml`, behind `HARNESSED_PODMAN=1`, on pushes to `main` and a
-nightly schedule — deliberately never on pull requests. When the gate is open, the run is
-fail-closed about it: if any `live_podman`-marked test skips anyway, the session refuses to exit
-green, and that decision keys on the marker rather than on skip wording, so a broken podman cannot
-masquerade as success.
+"live verification" section naming exactly what did not execute; **a skip is not a pass**. When the
+gate is open, the run is fail-closed about it: if any `live_podman`-marked test skips anyway, the
+session refuses to exit green, and that decision keys on the marker rather than on skip wording, so
+a broken podman cannot masquerade as success.
+
+The gated layer's home is `live.yml`, which now triggers on **pull requests as well as** pushes to
+`main`, a nightly cron (04:00 UTC), and manual `workflow_dispatch`. The PR case is filtered by a
+cheap `changes` job rather than by a `paths:` trigger (a paths-filtered workflow reports nothing at
+all on a filtered PR and would deadlock a required status check; a job skipped by an `if:` reports
+`skipped`): it fetches the PR's file list from the API and runs the live layer iff the diff touches
+one of the paths whose behavior exists only in a built image or running container — the catalog base
+Dockerfiles and `harnessed-start`, `src/harnessed/volumes.py`, `src/harnessed/launcher.py`,
+`src/harnessed/paths.py`, and `live.yml` itself. The filter fails **closed**: if the file list
+cannot be read, the layer runs. Non-PR events always run the layer. Each run builds the base image,
+runs `tools/run-tests.sh -v` under `HARNESSED_PODMAN=1`, and then — because a build that never
+launches proves nothing about launching — runs a real headless launch
+(`harnessed test livecheck claude --json --keep`, against the repo-only `livecheck` stack so no
+user-overlay recipe can reach a secret). A `live-docker` twin job runs the same gates against docker
+(`CONTAINER_RUNTIME=docker`, `HARNESSED_DOCKER=1`), gated by the same `changes` output, because
+harnessed claims both runtimes and "supported" must be continuously verified.
 
 The full ladder — what every gate proves and what it does not — is
 [the verification ladder](/openwiki/testing/verification-ladder.md).
@@ -189,9 +202,7 @@ deliberately `interactive = true` and routes the generator through `vars.openwik
 because that task talks to a model. `openwiki-init` and `openwiki-chat` are interactive sessions
 for the same reason (`openwiki-visualize` needs no credential, but only serves local Markdown).
 Run drift first: exit `0` and there is nothing a regeneration would fix; exit `1` and it names the
-Claims whose cited code changed or whose file is gone. How the update run, its retry patch, and the
-scheduled CI workflow that banks regenerated pages as a PR actually work is
-[wiki automation](/openwiki/operations/wiki-automation.md).
+Claims whose cited code changed or whose file is gone.
 
 Two placement rules for the family, both easy to trip over:
 
@@ -250,10 +261,13 @@ the rule and its rationale are stated at the top of
 [CLAUDE.md](https://github.com/drmikecrowe/harnessed/blob/main/CLAUDE.md).
 
 To reason about behavior, use `harnessed build`, `harnessed test`, `harnessed list`, or read the
-source. **`harnessed test <stack> <harness>` is the headless equivalent of a launch**: it launches
-`container-run <harness> <project> --stack <name> --fresh` under `HARNESSED_HEADLESS=true` — pod up,
-no interactive attach — introspects the live instance against the manifest oracle, and tears the
-instance down as part of the contract.
+source. **`harnessed test <stack> <harness>` is the headless equivalent of a launch**: the launcher
+verb first auto-assembles when the profile is missing or stale, then delegates to
+`harnessed-tools test` in a child process (`sys.executable -m harnessed.cli test …`, #460) — which
+runs `container-run <harness> <project> --stack <name> --fresh` under `HARNESSED_HEADLESS=true`
+(pod up, no interactive attach), introspects the live instance against the manifest-derived oracle,
+and tears the instance down as part of the contract (`--keep` preserves it for debugging; `--json`
+emits a machine-readable report).
 
 ## A safe first end-to-end slice
 
@@ -293,26 +307,16 @@ Route by task, not by directory. The index files under each directory list the s
 
 | Task or question | Page |
 | --- | --- |
-| What harnessed is; the module map; the precise vocabulary (agent, recipe, service, stack) | [architecture/overview](/openwiki/architecture/overview.md) |
-| What a backend is; the six-capability contract; what container vs host mode honors | [architecture/backends](/openwiki/architecture/backends.md) |
-| How catalog content is validated, resolved across roots, overlaid, and shipped in the wheel — plus the weekly pin sweep | [architecture/catalog-and-schema](/openwiki/architecture/catalog-and-schema.md) |
-| What lives where on disk; staleness detection; what each GC keys on | [architecture/state](/openwiki/architecture/state.md) |
-| How service sidecars get identity, ports, sockets, and guards | [architecture/services](/openwiki/architecture/services.md) |
-| The host secrets broker: the proxy per instance, the spawn/stop lifecycle, the pod's door | [architecture/secrets-broker](/openwiki/architecture/secrets-broker.md) |
-| How a stack + harness becomes a profile, images, and populated volumes — stage by stage | [workflows/build](/openwiki/workflows/build.md) |
-| The container launch sequence end to end, with the invariant each step upholds | [workflows/container-run](/openwiki/workflows/container-run.md) |
-| The host launch sequence end to end; what "configuration-only isolation" means | [workflows/host-run](/openwiki/workflows/host-run.md) |
-| How `--recipe`/`--extends` mints a real stack at launch time | [workflows/dynamic-stacks](/openwiki/workflows/dynamic-stacks.md) |
-| How `harnessed test` proves a build against the manifest oracle | [workflows/capability-test](/openwiki/workflows/capability-test.md) |
-| Who wins when two config sources conflict — one row per conflict | [concepts/precedence](/openwiki/concepts/precedence.md) |
-| Constraints that read like defects but are load-bearing — check before "fixing" | [concepts/invariants](/openwiki/concepts/invariants.md) |
-| The credential SOP: referenced, never replicated | [concepts/credentials](/openwiki/concepts/credentials.md) |
-| The credential-proxy vocabulary: four modes, the annotation gate, the readiness warning | [concepts/credential-proxy](/openwiki/concepts/credential-proxy.md) |
-| The folder-env and install-env contracts recipes may rely on | [concepts/env-contract](/openwiki/concepts/env-contract.md) |
+| What a backend is; the container/host asymmetry and shared invariants | [architecture/backends](/openwiki/architecture/backends.md) |
+| How service sidecars get identity, addressing, ports, and persistence | [architecture/services](/openwiki/architecture/services.md) |
+| What persists where on disk; project keying, persist dirs, XDG state, stable ports and passwords | [architecture/state](/openwiki/architecture/state.md) |
+| Where secrets enter, what resolves them, what is never written to disk or image layers | [concepts/credentials](/openwiki/concepts/credentials.md) |
+| The layered env contract: what the agent container and host process each see | [concepts/env-contract](/openwiki/concepts/env-contract.md) |
+| How `aoe` and the launch shims integrate with harnessed | [integrations/aoe-and-launch-scripts](/openwiki/integrations/aoe-and-launch-scripts.md) |
+| The full verb surface, each verb's gates, and the post-#460 delegation behavior of `test`/`new`/`install`/`uninstall` | [operations/cli](/openwiki/operations/cli.md) |
+| Recipe pinning, the `pin` bump flow, and where supply-chain verification happens | [operations/supply-chain](/openwiki/operations/supply-chain.md) |
 | What each verification gate proves and what it does not | [testing/verification-ladder](/openwiki/testing/verification-ladder.md) |
-| The full verb surface and the lifecycle each verb manages | [operations/cli](/openwiki/operations/cli.md) |
-| The image-scan layer: the CVSS severity gate, build-then-scan ordering, and the nightly online rescan | [operations/supply-chain](/openwiki/operations/supply-chain.md) |
-| How this wiki regenerates and validates itself: the mise `openwiki-*` tasks, the retry patch, and the CI update workflow that banks pages as a PR | [operations/wiki-automation](/openwiki/operations/wiki-automation.md) |
-| How the five harnesses read the one Claude-canonical profile | [integrations/harnesses](/openwiki/integrations/harnesses.md) |
-| The aoe tmux bridge and the per-project launch scripts a launch writes | [integrations/aoe-and-launch-scripts](/openwiki/integrations/aoe-and-launch-scripts.md) |
-| The openwiki recipe/stack pairing: this wiki's own generator as catalog content | [integrations/openwiki-recipe](/openwiki/integrations/openwiki-recipe.md) |
+| Stack + harness → profile → image → pod: stages and run order | [workflows/build](/openwiki/workflows/build.md) |
+| How `harnessed test` proves a build against the capability oracle | [workflows/capability-test](/openwiki/workflows/capability-test.md) |
+| The container launch path: pod creation, identity, mounts, invariants | [workflows/container-run](/openwiki/workflows/container-run.md) |
+| The host launch path: what is container-free and what still needs the runtime | [workflows/host-run](/openwiki/workflows/host-run.md) |

@@ -38,10 +38,10 @@ sources:
     resource: repo://tests/test_stable_port.py
   - id: openwiki-source-36d973bee5061a3d881fcef9
     resource: repo://tests/test_userns_mapping.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-17T13:01:59.112Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-17T13:01:59.112Z
+    at: 2026-09-18T12:41:13.644Z
 ---
 
 # Service sidecars: scopes, ports, sockets, and what persists
@@ -542,11 +542,6 @@ services, matching what a launch computes. Only a project-scoped service mirrors
 all, so the widening is skipped (and its `[INFO]` line suppressed) for global sidecars.
 
 That "both entry points start the same sidecars" is also what `capmatrix` records: the `services`
-primitive is SUPPORTED on both backends (`HostBackend.wire_services` → `_ensure_services`,
-bd harnessed-2sm) — the table exists because BACKENDS.md's prose version went stale claiming host
-did not support sidecars, and the conformance tests over `MATRIX` and `PRIMITIVES` are the
-anti-rot mechanism.
-ecords: the `services`
 primitive is SUPPORTED on both backends (`HostBackend.wire_services` → `_ensure_services`,
 bd harnessed-2sm) — the table exists because BACKENDS.md's prose version went stale claiming host
 did not support sidecars, and the conformance tests over `MATRIX` and `PRIMITIVES` are the

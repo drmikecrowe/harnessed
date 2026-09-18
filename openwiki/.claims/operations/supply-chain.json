@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:74eea9a525c7305875504243eaf8f972ddf32847c47c20cda7f4a4bb2b91aad8",
+  "pageVersion": "sha256:efa05fc3c724d6ecd69b24c9f892c3b2f90512f0761734691ac613ee62e4d902",
   "claims": [
     {
       "id": "claim_ff26409f53a94907a3855d0c14a03448",
@@ -70,7 +70,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py#L4731-L4755",
-          "version": "repo-lines-v1:sha256:40b740d19da8f9e41ebc3b748c29a7a4abb4d5e1ad3897f4395a3bf15586978b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlMzMxMDcyMzAxZGZjYTkwMTEyZTNhNTJkNmQ4NDZkZmY0MDZhYjRmNmIxMDI3N2YwYjA2NWIyOTA5YzA2ZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzOTgzMDkzMmI5NzYxNmEwYjM3NTM2ZDdmY2JhNWQzNTU1ZmU2YWNiZjc0MDA4M2FiY2I2NWI0MTdlOTdhM2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyNTQwOGMxOWYxNzc2NzE3NzFhYWU0Zjc2ODAzMWRiNTU4YzEwODgyOWIxZjQ1Nzk0YzIyMDFjZGM2MWIyNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ1OWI3MzBmNzFkNDk1ZTRjZjNiYmJhMzgwMjA3ZTZmNjQ0ZDEzMDdkOGY3OTMxNjhhMmExZmIwYWNkNjcwNzEifQ"
+          "version": "repo-lines-v1:sha256:57f2cc2f32294befd986f2ca1efe6b57e22e14af4b8a60219394c3bda9e72223:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlMzMxMDcyMzAxZGZjYTkwMTEyZTNhNTJkNmQ4NDZkZmY0MDZhYjRmNmIxMDI3N2YwYjA2NWIyOTA5YzA2ZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzOTgzMDkzMmI5NzYxNmEwYjM3NTM2ZDdmY2JhNWQzNTU1ZmU2YWNiZjc0MDA4M2FiY2I2NWI0MTdlOTdhM2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyNTQwOGMxOWYxNzc2NzE3NzFhYWU0Zjc2ODAzMWRiNTU4YzEwODgyOWIxZjQ1Nzk0YzIyMDFjZGM2MWIyNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ1OWI3MzBmNzFkNDk1ZTRjZjNiYmJhMzgwMjA3ZTZmNjQ0ZDEzMDdkOGY3OTMxNjhhMmExZmIwYWNkNjcwNzEifQ"
         }
       ]
     },
@@ -114,7 +114,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py#L4758-L4865",
-          "version": "repo-lines-v1:sha256:887f9ec1c102b55910f012937cff07dc39659845757c9f7b96fa38ae457d6ded:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4ZDgzN2I4ZjI4ZGYwMjg1ZWU3NDVlYTMzODQ3ZDgxZjEwOTllODU5YzU3MjkzMzc5YmY1ZTdiNDE4YWQ4ZWIwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2MzZiOTI1ZDE2ODE5ZDFmYWQzMzU5ZjE0NmE2ODM3ZGYyYjI0ZjFlZTc4Njg1MTY5N2Y4MzI0YjkwNzljNzlmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlNmRkZjgzODA2Njg3MjdjZjQ5YTkxOTQzNjQxZDg2NzNkNGQ4OTBhMDBmNzVlMTczMDZkOGU2YTZhMTUwMjk4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhYTI3MTQ0NjU1NWQ3ZWJjYWU0NjMxZmNkZmU0OGE0N2YwNjFkNGFhOTJjYWMxY2M5M2I5OTMxNGMyYTI3OWQ2In0"
+          "version": "repo-lines-v1:sha256:b880589fa2af2093bac4d85b1daa017deb96b651359461bdd2fde6edc13ca29c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4ZDgzN2I4ZjI4ZGYwMjg1ZWU3NDVlYTMzODQ3ZDgxZjEwOTllODU5YzU3MjkzMzc5YmY1ZTdiNDE4YWQ4ZWIwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2MzZiOTI1ZDE2ODE5ZDFmYWQzMzU5ZjE0NmE2ODM3ZGYyYjI0ZjFlZTc4Njg1MTY5N2Y4MzI0YjkwNzljNzlmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlNmRkZjgzODA2Njg3MjdjZjQ5YTkxOTQzNjQxZDg2NzNkNGQ4OTBhMDBmNzVlMTczMDZkOGU2YTZhMTUwMjk4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhYTI3MTQ0NjU1NWQ3ZWJjYWU0NjMxZmNkZmU0OGE0N2YwNjFkNGFhOTJjYWMxY2M5M2I5OTMxNGMyYTI3OWQ2In0"
         },
         {
           "resource": "repo://src/harnessed/launcher.py#L729-L739",
@@ -296,11 +296,11 @@
     },
     {
       "id": "claim_238e1e07e44b464c8f7183b1a7bee414",
-      "statement": "The gating online archive scan is executed HOST-side: `_scan_image` runs `podman save` and then a host subprocess `uv run --no-project --quiet --with ruamel.yaml python -m harnessed.cli scan-image-online <tar>` (the tar unlinked in a `finally`) — no daemon-in-container and no API socket — so the throwaway container the credentialed advisory pass creates is the only container involved in a rescan, and no scanner token is ever resolved from inside an image layer.",
+      "statement": "The gating online archive scan is executed HOST-side: `_scan_image` runs `podman save` and then a host subprocess `sys.executable -m harnessed.cli scan-image-online <tar>` (the tar unlinked in a `finally`) — deliberately never `uv run --no-project` with a `PYTHONPATH=<root>/src` checkout layout, which died in every installed copy with `ModuleNotFoundError: No module named 'harnessed'` while passing on developer machines because `--no-project` borrows an activated virtualenv (#460, #493). No daemon-in-container and no API socket — the throwaway container the credentialed advisory pass creates is the only container involved in a rescan, and no scanner token is ever resolved from inside an image layer.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L4741-L4755",
-          "version": "repo-lines-v1:sha256:abab0d76e8b2ad496b745ce6f10dd9ab55ec17bac1c2a31215e8cba39ab5797e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyZTVjYzg4YTIyYjdjZWUxZjY2OGE3MzdkMGFmNDA4NGQ5YjhlNzE0ZWM1MWYyODVjOTAwMDEyZjIyZmM4MjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzOTgzMDkzMmI5NzYxNmEwYjM3NTM2ZDdmY2JhNWQzNTU1ZmU2YWNiZjc0MDA4M2FiY2I2NWI0MTdlOTdhM2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3MTdjMzFjYjY4NTUyNGQ0YjIxMjY2ZDZiMmM3NTE1MzAxYmYzNGY5ZGY0OWMzZGE5OWU3NjMxNzdkZDA3NjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ1OWI3MzBmNzFkNDk1ZTRjZjNiYmJhMzgwMjA3ZTZmNjQ0ZDEzMDdkOGY3OTMxNjhhMmExZmIwYWNkNjcwNzEifQ"
+          "resource": "repo://src/harnessed/launcher.py#L4971-L5000",
+          "version": "repo-lines-v1:sha256:57f2cc2f32294befd986f2ca1efe6b57e22e14af4b8a60219394c3bda9e72223:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlMzMxMDcyMzAxZGZjYTkwMTEyZTNhNTJkNmQ4NDZkZmY0MDZhYjRmNmIxMDI3N2YwYjA2NWIyOTA5YzA2ZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzOTgzMDkzMmI5NzYxNmEwYjM3NTM2ZDdmY2JhNWQzNTU1ZmU2YWNiZjc0MDA4M2FiY2I2NWI0MTdlOTdhM2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyNTQwOGMxOWYxNzc2NzE3NzFhYWU0Zjc2ODAzMWRiNTU4YzEwODgyOWIxZjQ1Nzk0YzIyMDFjZGM2MWIyNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ1OWI3MzBmNzFkNDk1ZTRjZjNiYmJhMzgwMjA3ZTZmNjQ0ZDEzMDdkOGY3OTMxNjhhMmExZmIwYWNkNjcwNzEifQ"
         },
         {
           "resource": "repo://src/harnessed/scan.py#L165-L193",
@@ -511,10 +511,84 @@
           "version": "repo-lines-v1:sha256:a0fcb15032fd2788f39f8b431087855f6572aaf24815bc3c24f22e25c51ee1c2:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjA4ODQyZmU5YWRiOTcwMjVjMTcyN2ViZmQ1Y2I0MWFlMWM5ZWU0OGE4MjRmNDU4ODM0ZTI0MTgwZmZjZGNjYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTYxZGZhYWU4M2QxMzFhMDk0NzQxOGJiYTdkMDMxYzAzMWFmNTNjOGFiMTRmNDZlZjYzODBiNzU1YzE4ODVhZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTljNjUxZDA0NDI1ZTMwYjYwN2ZiMzg1YzZkYjZjNTA5NTFlYjQ0Mzc1MjhiZTkwMDcxMzVmZjBhYWVmNjg4OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2NkMWY0N2ZiNWE0NDNmYjQ3ZGQ0ZDE4YmE2NDQ0NTNjZGI4NWViYjRiYmZmZjM2MGUyNzBmODBiZDYxZjk0OSJ9"
         }
       ]
+    },
+    {
+      "id": "claim_0bbfb2f2cf524c7fa1b76230c003d4aa",
+      "statement": "`harnessed update` gates offered bumps on a minimum release age modelled on pnpm's `minimumReleaseAge`: `DEFAULT_MINIMUM_RELEASE_AGE_MINUTES = 10080` (7 days, measured 2026-07-25 when all five offered pins were younger than a week). A too-fresh newest release does not mean \"no update\" — the newest release that IS old enough is offered and the skipped newer one is named (`skipped_newer`); pins whose only newer candidates are too fresh land in a separate `cooling` bucket that `apply` refuses even if passed the wrong bucket, and a newer release with no publish date is classified `unresolved` (\"review it by hand\") because its age cannot be checked.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/update.py#L560-L603",
+          "version": "repo-lines-v1:sha256:afda72129ba41d4191cd593dd9675f405119ef197ba5e9dfc58458ed45188519:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2MmQ5YjA5OTc5NmZjMmQwMzMxMTYxYTNiMzMwYWFjMDY1ZjQzN2Y0YWZjNjI5MTk1NzY5ODU2YTY3NGQzZjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiNGIyZDI5MWQ4OWU0ZmZjNjliNjYwMTUxYWFmMmM5MGFmOTkxZDI4MDE3NWI5ZDRjZDAyNDgwMzBmMjVkMWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVmNzQ3MjE5MTlkNWQ3N2MzZDY3ZjE0MDYyYThkMzQ0ZmNjYjA0NDUxNDY3OTdlNzM1MDM0NDc1NmMzMjc2ZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwODRhNDg1YWQ5NTQzMmMzZjViOGI2MzhhOGFkYmNkYjI3YjA3YTIxMzM4OWU5ZTFkYTRmMTNhMmEyNWM5ODMifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L71-L79",
+          "version": "repo-lines-v1:sha256:f3c6e5ac3ae08e37fb31c726dc0204a6daa641f6bd83935b2ddd6f589a774f77:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzJmNjlkYTJhOGM2MjBmYzE0YzBjZjM0M2Q1ZmNmNWMyYWVhZDgyMGIwZjI4ZWEwZWVmNjRiY2Y5NTkwYjRjNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWY0MGQ1MzU5ZDcyZjUwNjJhYzA2YTM3YTQwOGQzNmY1NTI0YjUyZDI1OTAyYjg3OWQ4YjM2MWYwODY0NmVhNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmZkOTdiZDhjODQxYWI4MTkxZTVkZDJmOTQ4ZDMzMjRiOTI0Nzg2NTNmYWY5NDVjMDU0N2E5MDdhNDg1NzQ2MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjU0OWU5NjgzY2JlYjZiNzI1NWFjOTdhNWI4YzQ0NDQ3YWIxZWI5MTJhZDU0MTFiODk2Y2NmMjQyZDEzM2RlZSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L960-L977",
+          "version": "repo-lines-v1:sha256:579460180b1ecce916b047e9a4c5f5ae7d493ef767448eade8fff8da063dc4eb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkNTJkOTg5MDBhNzE2MzY4YTA5YjNiOTg4MGE2YzMyY2ZhMzRjY2VkNDQ1ZjI1N2ZjMDY3NWJjNWFmZWZlNjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2YWQwNTJjNDRiOTUzZjBkODMyODZhMmRkZGVjMjE4NWU3ZjE4OWRiMGU0ZjUwMmM2ZjA2ZjM0NzU4NDU0YTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJhODY4OTYzMDY2MTdiNTU5MzlhNTI5NWM5ODZlMTIwYjcxOWQ4ZDQ4ZTZhYTRmODUzNjYwOTg4NTg1NDMyMWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2a5b60f1f29649508eafda028e661fa4",
+      "statement": "The update sweep covers four sources on one classification path (same cooldown, hold semantics, and buckets, so no pin is reported differently): recipe `tools:`, agent manifests (`agent.yaml` pins live in `build_args.<KEY>.value`; A7 — agents used not to be swept at all, which is how three agents reached main with unpinned downloads), the TRACKED template `catalog/base/extra-tools.default.txt` (never the user's host `~/.config/harnessed/extra-tools.txt` — a bump must land as a reviewable diff; an unpinned entry is skipped entry-by-entry so one bad line cannot blind `--check` to the rest), and a declared `unpinnable` backend sorted into its own bucket before the resolvable check so \"cannot be pinned\" is never misread as a resolver failure.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L4650-L4675",
+          "version": "repo-lines-v1:sha256:bfd586fdc1e17da5f3da5df529dc7f79a2a6aa578f6cc02ab4ecd66cd7860340:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3MzM0ZmM1OTVmOWEyNjk3ODRiZTgyNDk0MGZiZDY5MDA1MDExNTI1YTdkNjMyYTdjZDg4MDA2MmJiYThjMTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMyODIzYjhiNGE4NzJlODBkNmUxYzJlNDBkMTY0MjgyMGYwNzUwMDAxOTZlMTY5NzEyMjNhODY2YWVhMWEwNzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI5YWYyYmFlZGY0ZGI3MzA0MTNkODQ2ZDg0YmUxOGIzNDJlMjRhODE5MWQ0YTc5MWMxMTM0Njc1NDFjNmIwMTcifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L606-L720",
+          "version": "repo-lines-v1:sha256:83972b40d987367570d3e767ecbb219722d336fbbcbc4caf9e60e0bdcdd34230:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyNTI3ODE4Njk0NDkxZGE1ZjMwZWY5NzU5NjA3MjY0MDI0NDA1ZDQ0MGUzYzRiOWNmYTMzZDU3NTVmNDdmM2ExIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJkNWUxYTE3M2Q1YjE0YTEzOTE3YWMwOGQ4ZTExYjY1YjZkOTBkOTU0YWUyNDY0ZWJiN2QxNjM3M2UxNTQ3OThlIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJiZDAxNDdhODcxMmI0YWM3NDUzODExOTFjMjQ5NzllMmJkZTQ3OTE5YjQ3MGNhZmMxYTk1ZDU2NWUzMGJkYzU2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4YWE1Yjk2ZWE0NDZmMzk4N2NiOWY5Y2NiMzNjMmQ2NzY1ZGI0NzIyNWVmNjE5M2QxZDJhZGFmN2M3YTQ3ZTc5In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_19e55e66fd294b9f8ef1f343c36e525b",
+      "statement": "`apply` dispatches each bump to a rewriter chosen by where the version lives, as an allow-list rather than an else-branch: `.yaml/.yml` to the ruamel round-tripper, `extra-tools*` to the plain-text line rewriter, anything else skipped. Field-valued pins (agent `build_args`, recipe `install.refs.<key>.ref`) each need their own round-tripping rewriter — a pin kind without one yields a bump that is offered, accepted, reported successful, and never written, which is exactly how both were originally missed. All YAML rewriters use width 4096 and sequence indent 4/offset 2 so a bump is a one-line diff, and `_match_v_prefix` rewrites `latest` to the pin's own `v`-prefix convention.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/update.py#L762-L902",
+          "version": "repo-lines-v1:sha256:84463251a85b193a88439ba36348e31dcd352f8965158e5eac4e8ec2b0261e4e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxOTE4Mzk2NzIyMWIzYzYwNTUwMDc2N2MyMmRmYWVlODBiNjc2NGYzYWJjODdkN2VkZGUwNjQyOWU4YmU5MGVhIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzMGUyYTQ2NTAwOTVmYTk1ZDBlMmJiNDFiMmRiMjkwOTRkMzQwNGQyOGNlMTIzMzllYzg4YmI0YjVjNWJlOGY2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJiMjY5ZmZlZWNiOWI2M2QwZmVlZWU4YWViZWMwMWJhODY0MGU4MDc0NDQwZDdhZTcxNGZiYzc5NWM5ZGY4OTUyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjMWY1Mzk2ZGM3N2YxYmU2OTE3MjZlZThjMGI0NDEzYTVmMThkNmZhZGJmMWFiZjZiMzEzZjlmYmJhZDExOTA4In0"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L960-L1019",
+          "version": "repo-lines-v1:sha256:0a4f44f347a3a479016d97b75f4e3a23f4e97395c194f1777fe287600a66f13b:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkNTJkOTg5MDBhNzE2MzY4YTA5YjNiOTg4MGE2YzMyY2ZhMzRjY2VkNDQ1ZjI1N2ZjMDY3NWJjNWFmZWZlNjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhNmE5YjFlMzk0OWNhMThmMWUyOGRlZGNiODM4MjRlY2NlZjEzYjQ0MGY2ZTM3MzdiMDg3MDc1NjUyODYyNWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_cc22f8c50803406192fcc37e09746195",
+      "statement": "When `apply` writes bumps, the launcher prints a verify-before-commit block (bd harnessed-czo): the bumped recipes, the affected stacks via `update.affected_stacks` (stack manifests list their recipes flatly, so this is a lookup; a stack with no declared `harnesses:` still gets a line with a `<harness>` placeholder), and the literal per-harness command `harnessed build <stack> <harness> && harnessed test <stack> <harness>` — because a bumped pin is a code change and an unverified bump is worse than a stale one.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L4703-L4719",
+          "version": "repo-lines-v1:sha256:c925543ed4f945ceb7ed1ac2cf0be361cdfa68ed397bb8e951fa017cc09ad0b5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5MTBhYzA0YzNmZThhY2RjYTM0MjI4Y2M1Yzg4YjkxNDA1ODcxNzM1NzA3Nzg5ZWI3MTA5MDgxNzE4ZTMwYmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDMyZTk2NGQwOTMyMzUxZTVkMTg1MjY5MjgxYjE3MWEzYTA5YjA4YjI4NmU2NjFlYTQ3MDMyM2M4MmViNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE0ODRkOWQyODlhZmUzOGI1YTZjYTdhM2QzZmY5NzY1MWM1YTBhNzEyZmU0YmJjMDhjMDAxYTllMDRjYWE3ZjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU4YWIxZTIyNDgzZGUyMDk2NmIzOWQ2MzFmYmY2ZWVlY2M0OGFlN2Y4ZDcwZGJlMjIxYjAxYjcwMGViOGE4ZDMifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L723-L759",
+          "version": "repo-lines-v1:sha256:8c277597dc58decbcd22e02f543f1521dd157bdb14dfd91a7dac15535198acfe:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYxZWRhMjRlMzI3ZDI2ZGRmNjc0MmY4N2U4MmFiODUwZjMxODU3ZTJjZmNjYjI3YWM1MWJjNGNhMDI4ZGNlZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjMGIzNmFmZGU0Y2NlNDQxNDYxYzZiNzQwMTFiZmFkNjI5NGUyZDZkZjcyZTM3ZDJiNmI1ZmE3MzRhNTFjMDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY0OWQ5NTBlYWZiMDYxYzQxYjcyZjQ5ZDg1MzcyM2Q3ODQ2NTI2N2ZmNzA1NThlZTJlODlhMmI4Mjc4YmZkMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjZDgzY2Q0ZjcxZDkwODNmNTRkYmJiM2E5NWFmY2I3MGU5MmIzNGU1YTg4Njg4YTViYjZjOWMxMzEzZDYyNDcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0171e4ff8b6b4673849193b197039bb5",
+      "statement": "Relocking after a bump runs `mise lock` against a COPY of the lockfile in a temp dir (because `mise lock` writes into its config root and a crash must not leave a stray `mise.toml` in `catalog/`, which ships inside the wheel) on a 900s budget (it downloads each platform's artifact to verify provenance), and relocks are collected in a set and executed only after the bump loop, once per manifest against the finished recipe — regenerating inside the loop would relock against half-bumped YAML and discard the work on the next entry.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/update.py#L1014-L1019",
+          "version": "repo-lines-v1:sha256:fe2de360ff51daca64d342dfd550be87de14d0d7b2d6551da0106fbff8865388:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWM4OGNjNThkZjNlN2Y3Y2ViZjM5YTc2OTZhNzhkMDc4NmVjMTBkNDk5MTk4ZmIzZGEzOGM2ZjYwNWNjNDY2MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGE2YTliMWUzOTQ5Y2ExOGYxZTI4ZGVkY2I4MzgyNGVjY2VmMTNiNDQwZjZlMzczN2IwODcwNzU2NTI4NjI1ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWU1Njg0YWZlZjYxNzI4ODY4ZjEyNDY2ZjU4NDNjOTI3MjI1MTZmOGQ4Yzg2OTQ0OTY4NzQ1OTViZmViMDYxYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L919-L957",
+          "version": "repo-lines-v1:sha256:a7b0fcb5b7636b66b80eededbe86bfd29de9bcc6959850f088ce20551bef3749:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyMDA3ZWFjYmRjMWU4NWQ2YWRiNmE5NjFhMGU4YTNiOTBiNTc3ODc0NTgwMTEwZTE2ZDNmOGUwYTI4YjE2ODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwZTJhNDY1MDA5NWZhOTVkMGUyYmI0MWIyZGIyOTA5NGQzNDA0ZDI4Y2UxMjMzOWVjODhiYjRiNWM1YmU4ZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY3NzQwODkwMGFmNDZhMjQ3MWQ5YTUwNzY5NWQwMzMwODc0MGRkZGI5MGZmNDkyNjA4ZjQxOTE0ZDMwYjBkZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkZjczNTFjNWE3MzU4MmZhNjVkMWI5ZGMzMjE5NWJmZDU5OGI0ZjI1MjVmMmM2ZjAyYTk5MDZjYTBiMzQzOTIifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-16T21:10:52.541Z"
+    "at": "2026-09-18T12:41:13.644Z"
   }
 }

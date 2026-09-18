@@ -34,10 +34,12 @@ sources:
     resource: repo://src/harnessed/update.py
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
     resource: repo://src/harnessed/volumes.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+  - id: openwiki-source-96344ae605b765bb4fd5800d
+    resource: repo://tests/test_launcher_test_command.py
+generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-16T21:10:52.541Z
+    at: 2026-09-18T12:41:13.644Z
 ---
 
 # Capability test: the manifest oracle versus the live instance
@@ -70,9 +72,14 @@ headless).
   (does `.mcp.json` exist in the profile) and `staleness.check_profile_fresh` (do the stack/recipe
   sources still match the assembled profile). If the profile is missing or stale it **assembles
   first** via `_build_stack`, so the test always runs against current source rather than a stale
-  artifact. It then delegates to the `harnessed-tools test` entrypoint in a **subprocess** (via `uv
-  run … python -m harnessed.cli test` when `uv` is available, else `python3 -m`), exporting
-  `PYTHONPATH`, `CONTAINER_RUNTIME`, and `HARNESSED_DIR`, and exits with the child's return code.
+  artifact. It then delegates to the `harnessed-tools test` entrypoint in a **subprocess** via
+  `sys.executable -m harnessed.cli test <stack> <harness> --root <root>` — the interpreter
+  already running `harnessed`, which can import `harnessed.cli` by construction and carries every
+  declared runtime dependency, so nothing is synthesized onto `PYTHONPATH` and an inherited one
+  survives (issue #460: the prior `uv run … python` form set `PYTHONPATH=<root>/src`, a checkout
+  layout — installed copies keep the package in site-packages and died with `ModuleNotFoundError`
+  before reaching a container). The wrapper exports only `CONTAINER_RUNTIME` and `HARNESSED_DIR`
+  and exits with the child's return code.
   The delegation is deliberately **unbounded**: the child bounds its own work
   (`capability.DEFAULT_TEST_TIMEOUT` per test script), and a second deadline outside it would only
   cut off a run that is legitimately still going. The wrapper forwards `--project`, `--keep` and
@@ -90,6 +97,12 @@ the production resolution *across the catalog roots* (user overlay first), and t
 subprocess is located through `--harnessed-bin` / `$HARNESSED_DIR` / `PATH`. Passing `--root` at a
 fixture tree does not point the oracle at that tree; the oracle always reads the overlay-resolved
 catalog.
+
+The delegation is pinned by `tests/test_launcher_test_command.py` (`TestDelegatedInterpreter`):
+its fixture monkeypatches `subprocess.run` but keeps the *real* spawn for an import probe, runs
+`harnessed.cli`'s import in a real child under the captured environment, and scrubs
+`VIRTUAL_ENV`/virtualenv `PATH` entries so the probe cannot pass on the old name-resolved form —
+it measures the chosen interpreter, not the test runner's shell.
 
 A third consumer is mechanical: `harnessed update` prints, per affected stack, the literal line
 `harnessed build <stack> <harness> && harnessed test <stack> <harness>` — the capability test is the

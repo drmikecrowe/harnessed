@@ -40,10 +40,10 @@ sources:
     resource: repo://systemd/harnessed-rescan.service
   - id: openwiki-source-7af162bd104477b196c3dcdd
     resource: repo://systemd/harnessed-rescan.timer
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-17T13:01:59.112Z
+    at: 2026-09-18T12:41:13.644Z
 ---
 
 # Operations: the command surface and lifecycle verbs
@@ -298,11 +298,20 @@ declare. The verb:
 1. Auto-assembles first when the stack is not built or its profile is stale
    (`staleness.check_profile_fresh`) — a test must run against a current build, and the rebuild
    here is the same fingerprint-gated `_build_stack` a launch uses.
-2. **Delegates to a subprocess**: `uv run` (or `python3`) `-m harnessed.cli test <stack>
-   <harness> --root …` with `PYTHONPATH`, `CONTAINER_RUNTIME`, and `HARNESSED_DIR` set. The
-   subprocess is deliberately **unbounded**: the child bounds its own work
-   (`capability.DEFAULT_TEST_TIMEOUT = 120` per test), and a second deadline out here would only
-   cut off a run that is legitimately still going. The child's return code becomes the exit code.
+2. **Delegates to a subprocess**: `sys.executable -m harnessed.cli test <stack> <harness>
+   --root …` with `CONTAINER_RUNTIME` and `HARNESSED_DIR` added to the inherited environment. The
+   interpreter is `sys.executable`, never one resolved by name: this process *is* harnessed, so its
+   own interpreter can import `harnessed.cli` by construction and already carries every declared
+   runtime dependency — nothing has to be synthesized onto `PYTHONPATH`, and an inherited `PYTHONPATH`
+   survives instead of being overwritten. This is the #460 fix: the delegation used to run
+   `uv run --no-project … python` with `PYTHONPATH=<root>/src`, a **checkout layout** — an installed
+   harnessed keeps the package in site-packages, so every installed copy died with
+   `ModuleNotFoundError: No module named 'harnessed'` before it reached a container. It went
+   unnoticed because `uv run --no-project` *borrows* an activated virtualenv: every developer on the
+   repo has one, and no installed user does. The subprocess is deliberately **unbounded**: the child
+   bounds its own work (`capability.DEFAULT_TEST_TIMEOUT = 120` per test), and a second deadline out
+   here would only cut off a run that is legitimately still going. The child's return code becomes
+   the exit code.
 
 The `harnessed.cli` side (`_run_test` → `capability.run_capability_test`) is the oracle proper:
 manifest oracle (`schema.expected_capabilities`) → launch `--fresh` headless (owning a scratch
@@ -385,8 +394,12 @@ Each image gets two complementary passes (`_scan_image`):
    report be surfaced in its place under a green verdict. Stack volumes are mounted so the report
    covers the whole stack, not just the image layers.
 2. **Online archive scan** — `podman save` the image and run `harnessed.cli scan-image-online` on
-   the tarball: osv-scanner against osv.dev with the offline-DB flags **dropped**, so it sees
-   advisories disclosed since the build. This pass **gates on HIGH+** (exit 1).
+   the tarball, delegated through `sys.executable -m harnessed.cli` for exactly the #460/#493
+   reason `test_stack` carries (the old `uv run --no-project` + `PYTHONPATH=<root>/src` line spelled
+   a checkout and died with `ModuleNotFoundError` in every installed copy): osv-scanner against
+   osv.dev with the offline-DB flags **dropped**, so it sees advisories disclosed since the build.
+   This pass **gates on HIGH+** (exit 1). `_scan_image` returns clean only when *both* passes are
+   clean.
 
 ```mermaid
 flowchart TD
@@ -507,7 +520,12 @@ token (0600) on first run, then runs `aws-sso ecs server` in the foreground (unb
 foreground daemon's "leave this running" is the feature). The default bind is `0.0.0.0` on purpose:
 containers reach the server via `host.containers.internal`, which `127.0.0.1` does not answer; the
 listener is gated by the bearer token, and `--bind-ip 127.0.0.1` turns it host-only at the cost of
-container reachability.
+container reachability. Note the address asymmetry: `host.containers.internal:<port>` is the
+**containerized-agent** address — a host-run client reaches the same published port at
+`127.0.0.1:<port>`. `svcstate.resolve_client_env` encodes exactly this duality for project-scoped
+services: `{host}` resolves to `127.0.0.1` in host mode and `host.containers.internal` in container
+mode, both meaning the same published port — which is also why `harnessed list`'s broker section
+prints `127.0.0.1:<port>` (its reader is on the host).
 
 ## The per-project launcher scripts (`launchscript.py`)
 
