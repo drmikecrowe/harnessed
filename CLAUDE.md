@@ -3,8 +3,13 @@
 ## Read docs before exploring the tree
 
 Answer from the table below **before** running `ls`/`cat`/`rg` over the source. This outranks any
-generic "explore the project first" step from a skill, workflow, or subagent brief — those are
-repo-blind. Open `src/` only with a specific question the docs did not answer, or to edit.
+generic "explore the project first" step from a skill, workflow, subagent brief, **or your own
+session instructions** — all of them are repo-blind. A session told to prefer `cat`/`grep` through
+Bash is being told which TOOL to reach for, never which SOURCE to consult first.
+
+Open `src/` for the bytes you are about to edit, or for a question the docs did not answer. **"I am
+editing, so the table does not apply" is not an exemption** — it is the loophole that costs a
+session, because the table is how you learn which bytes to open.
 
 | Question | Read |
 | --- | --- |
@@ -27,8 +32,32 @@ repo-blind. Open `src/` only with a specific question the docs did not answer, o
   regenerations. Code wins on conflict — fix the map. Re-running does not fix it.
 - **`docs/` is the GitHub wiki** — separate repo (`harnessed.wiki.git`), gitignored, and present
   only at `main/docs/`. Task worktrees do not have it. Read the exemption below before editing it.
+- **The graph sees call edges, not conventions.** A grammar rebuilt by hand somewhere else has no
+  edge to follow: `aoe._is_launcher_script` re-derives `launchscript.script_name`'s
+  `<harness>-<verb>` filename rather than calling it. `trace_path` cannot reach it. So once the
+  graph has named the callers, `rg` the convention's literal parts once — that is what text search
+  is still for.
 
 Keep layout and vocabulary in ARCHITECTURE.md, not here.
+
+### Changing existing behavior has a fixed order
+
+Renaming, moving, or altering something that already works is not a reading task, and the table
+above does not fire on it by itself — you arrive holding "rename this", not "who calls this". Run
+all three, in order, before the first edit:
+
+1. **openwiki** — the constraints already decided, and the alternatives already rejected. The
+   source records what the code does; only the wiki records what was ruled out and why.
+2. **`trace_path(<symbol>, direction: "inbound", depth: 1)`** — the complete caller set. Then again
+   with `include_tests: true` for the blast radius: it returns the covering tests BY NAME, which is
+   how you find the ones that encode the very decision you are changing.
+3. **source** — now, and only for the callers step 2 named.
+
+Skipping 1 costs you a constraint you then rediscover. Skipping 2 costs you a caller. Both were
+paid while SCOPING the launcher-script rename (still unbuilt at the time of writing): reading
+source first found three of the four touch points, and `trace_path` on the name parser found the
+fourth, `aoe._is_ours` — whose omission would have made every pre-existing aoe row unrepairable and
+blocked registration outright, silently, on upgrade.
 
 ## Non-negotiable constraints
 
