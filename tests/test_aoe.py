@@ -143,7 +143,7 @@ class TestSyncSession:
         [add] = rec.registrations()
         assert add[1] == str(tmp_path)
         assert _flag(add, "-p") == aoe.PROFILE
-        assert _flag(add, "--cmd-override") == f"{tmp_path}/claude-container --"
+        assert _flag(add, "--cmd-override") == f"{tmp_path}/claude-serena-container --"
 
     def test_uses_cmd_override_not_cmd(self, rec, tmp_path):
         # `--cmd` is validated against aoe's tool list and silently substitutes its configured
@@ -407,20 +407,23 @@ class TestComposedRecipesInTheTitle:
 
 
 class TestIdentity:
-    """(path, verb, harness) — the key that decides duplicate vs distinct.
+    """(path, verb, harness, stack) — the key that decides duplicate vs distinct.
 
-    The recorded command is `<project>/<harness>-<verb> --`, which names no STACK, so two stacks in
-    one folder still share a row: which one it starts is whatever the launcher script currently
-    says, and the launch rewrites that script. The VERB is named, so host and container launches no longer collapse
-    together (bd harnessed-7mt) — they did under `mise run <harness> --`, which named neither.
+    The recorded command is `<project>/<harness>-<stack>-<verb> --`, so all four are named. The
+    VERB was added first (bd harnessed-7mt): under `mise run <harness> --` host and container
+    launches shared a row whose meaning depended on which launch ran last, and one row cannot
+    restart two backends.
 
-    That collapse was not free: one row cannot restart two backends, so a folder used both ways had
-    a row whose meaning depended on which launch ran last. Naming the verb costs one extra row per
-    folder-used-both-ways and buys a row that restarts what it says it restarts.
+    The STACK is named now for the same reason, and it closes the same class of bug one level
+    down. While the name omitted it, two stacks in one folder shared a row: the launch rewrote
+    the single launcher script, the existing row matched on (command, path) and was left alone,
+    and the row then replayed the newcomer under the older stack's label. So a row's meaning
+    again depended on which launch ran last. Naming the stack costs one row per stack per folder
+    and buys a row that restarts what it says it restarts.
     """
 
     def _existing(self, tmp_path: Path, command: str | None = None) -> str:
-        command = command if command is not None else f"{tmp_path}/claude-container --"
+        command = command if command is not None else f"{tmp_path}/claude-serena-container --"
         return f'[{{"id": "s1", "path": "{tmp_path}", "command": "{command}"}}]'
 
     def test_relaunch_does_not_duplicate(self, monkeypatch, tmp_path):
@@ -436,13 +439,21 @@ class TestIdentity:
         aoe.sync_session("container-run", "serena", "omp", tmp_path)
         assert len(rec.registrations()) == 1
 
-    def test_a_second_stack_reuses_the_row(self, monkeypatch, tmp_path):
-        # The deliberate collapse: `mise run claude` is the same command whichever stack the task
-        # points at, so the row follows the task instead of multiplying beside it.
+    def test_a_second_stack_gets_its_own_row(self, monkeypatch, tmp_path):
+        """S8 — the inversion this change exists for.
+
+        This test asserted the opposite until now, and called the collapse deliberate. It was
+        deliberate about the FLAG: putting `--stack` back in the command would re-key every row
+        whenever the flag set changed. It was never deliberate about the outcome, which was a row
+        replaying a stack it did not name. The stack now lives in the filename, so the identity
+        key carries it without carrying a flag.
+        """
         rec = Recorder(sessions=self._existing(tmp_path))
         rec.install(monkeypatch)
         aoe.sync_session("container-run", "other-stack", "claude", tmp_path)
-        assert rec.added() == []
+        assert len(rec.registrations()) == 1
+        [add] = rec.registrations()
+        assert _flag(add, "--cmd-override") == f"{tmp_path}/claude-other-stack-container --"
 
     def test_each_verb_gets_its_own_row(self, monkeypatch, tmp_path):
         """The deliberate SPLIT (bd harnessed-7mt), and the one identity change of that switch.
@@ -458,7 +469,7 @@ class TestIdentity:
         aoe.sync_session("host-run", "serena", "claude", tmp_path)
         assert len(rec.registrations()) == 1
         [add] = rec.registrations()
-        assert _flag(add, "--cmd-override") == f"{tmp_path}/claude-host --"
+        assert _flag(add, "--cmd-override") == f"{tmp_path}/claude-serena-host --"
 
     def test_an_open_mcp_relaunch_does_not_duplicate(self, monkeypatch, tmp_path):
         rec = Recorder(sessions=self._existing(tmp_path))
@@ -667,19 +678,19 @@ class TestForgetStackReadsTheLauncherScript:
         assert rec.removed() == []
 
     def test_a_missing_script_is_left_alone(self, monkeypatch, tmp_path):
-        rec = self._rec(monkeypatch, self._row(tmp_path / "claude-container"))
+        rec = self._rec(monkeypatch, self._row(tmp_path / "claude-serena-container"))
         aoe.forget_stack("container-run", "serena")
         assert rec.removed() == []
 
     def test_a_script_with_no_exec_line_is_left_alone(self, monkeypatch, tmp_path):
-        script = tmp_path / "claude-container"
+        script = tmp_path / "claude-serena-container"
         script.write_text("#!/bin/sh\n# harnessed:launcher v1\n", encoding="utf-8")
         rec = self._rec(monkeypatch, self._row(script))
         aoe.forget_stack("container-run", "serena")
         assert rec.removed() == []
 
     def test_an_unbalanced_quote_in_the_script_is_left_alone(self, monkeypatch, tmp_path):
-        script = tmp_path / "claude-container"
+        script = tmp_path / "claude-serena-container"
         script.write_text("#!/bin/sh\nexec harnessed container-run claude --stack 'serena\n",
                           encoding="utf-8")
         rec = self._rec(monkeypatch, self._row(script))
@@ -691,7 +702,7 @@ class TestForgetStackReadsTheLauncherScript:
         # opens with `exec `", which is also what `str.find` returns for "not found", so the
         # not-found guard swallowed the branch and it never ran — the row survived `harnessed rm`
         # with its container gone.
-        script = tmp_path / "claude-container"
+        script = tmp_path / "claude-serena-container"
         script.write_text(
             'exec harnessed container-run claude /p --stack serena "$@"\n', encoding="utf-8"
         )
@@ -702,7 +713,7 @@ class TestForgetStackReadsTheLauncherScript:
     def test_a_script_whose_first_line_is_an_exec_for_another_stack_is_left_alone(
         self, monkeypatch, tmp_path
     ):
-        script = tmp_path / "claude-container"
+        script = tmp_path / "claude-serena-container"
         script.write_text(
             'exec harnessed container-run claude /p --stack other "$@"\n', encoding="utf-8"
         )
@@ -826,7 +837,7 @@ class TestWriteDispatch:
     def test_already_registered_is_success_without_writing(self, monkeypatch, tmp_path):
         rec = Recorder(
             sessions=f'[{{"id": "s1", "path": "{tmp_path}", '
-                     f'"command": "{tmp_path}/claude-container --"}}]'
+                     f'"command": "{tmp_path}/claude-serena-container --"}}]'
         ).install(monkeypatch)
         assert aoe.sync_session("container-run", "serena", "claude", tmp_path) is True
         assert rec.spawned == []
@@ -1125,7 +1136,7 @@ class TestCommandDrift:
     # Path-dependent since the row invokes the project's own launcher script, so it is derived per
     # test rather than a module constant.
     def _ours(self, proj: Path) -> str:
-        return f"{proj}/claude-host --"
+        return f"{proj}/claude-serena-host --"
 
     STALE_TITLE = "claude/host proj serena (stale abc123)"
 
@@ -1228,7 +1239,7 @@ class TestCommandDrift:
     def test_a_launcher_script_row_for_another_project_is_still_ours(self, monkeypatch, proj):
         # Ours is decided by the command's SHAPE, never by the file being present: a row whose
         # script was deleted is exactly the row that needs repairing.
-        rec = self._rec(monkeypatch, proj, "/gone/claude-host --")
+        rec = self._rec(monkeypatch, proj, "/gone/claude-serena-host --")
         self._sync(proj)
         assert len(self._renames(rec)) == 1
 
@@ -1457,7 +1468,7 @@ class TestForgetStackRefusesNonRegularPaths:
         return json.dumps([{"id": "s1", "path": str(path.parent), "command": command}])
 
     def test_a_fifo_row_returns_instead_of_blocking(self, monkeypatch, tmp_path):
-        fifo = tmp_path / "claude-container"
+        fifo = tmp_path / "claude-serena-container"
         os.mkfifo(fifo)
         try:
             rec = Recorder(sessions=self._row(fifo)).install(monkeypatch)
@@ -1467,7 +1478,7 @@ class TestForgetStackRefusesNonRegularPaths:
             fifo.unlink()
 
     def test_a_directory_in_place_of_the_script_is_left_alone(self, monkeypatch, tmp_path):
-        as_dir = tmp_path / "claude-container"
+        as_dir = tmp_path / "claude-serena-container"
         as_dir.mkdir()
         rec = Recorder(sessions=self._row(as_dir)).install(monkeypatch)
         aoe.forget_stack("container-run", "serena")
@@ -1501,7 +1512,7 @@ class TestTrashedRowsDoNotBlockRegistration:
             "id": sid,
             "title": "claude/host proj serena",
             "path": str(proj),
-            "command": f"{proj}/claude-host --",
+            "command": f"{proj}/claude-serena-host --",
         }])
 
     def _trash_line(self, sid: str = "abc123abc123abc1") -> str:
@@ -1570,7 +1581,7 @@ class TestARefusedDuplicateIsNotAFailure:
                 rec._sessions = json.dumps([{
                     "id": "abc123abc123abc1", "title": aoe.title_for(
                         "host-run", "serena", "claude", proj),
-                    "path": str(proj), "command": f"{proj}/claude-host --",
+                    "path": str(proj), "command": f"{proj}/claude-serena-host --",
                 }])
                 return _ok()
             return real(exe, args, timeout=timeout)

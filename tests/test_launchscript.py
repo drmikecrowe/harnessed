@@ -1,4 +1,4 @@
-"""`launchscript` — the `./claude-host` file a launch leaves behind, and its git exclude entry.
+"""`launchscript` — the `./claude-serena-host` file a launch leaves behind, and its git exclude entry.
 
 Replaces `lastrun`/`--last`. That record was correct and invisible: nothing printed it, so "what did
 I launch here" meant trawling shell history. The replacement is a readable, runnable file in the
@@ -89,21 +89,34 @@ def _git_init(path: Path) -> None:
 
 
 class TestWriting:
-    """S1 — a launch writes the script."""
+    """S1–S5 — a launch writes the script, and the name carries the stack."""
 
-    def test_host_verb_writes_claude_host(self, proj):
+    def test_host_verb_writes_the_host_suffix(self, proj):
         written = launchscript.write("host-run", "serena", "claude", proj)
         assert written is not None
-        assert written == proj / "claude-host"
+        assert written == proj / "claude-serena-host"
         assert written.exists(), "expected the launcher script on disk"
 
-    def test_container_verb_writes_claude_container(self, proj):
+    def test_container_verb_writes_the_container_suffix(self, proj):
         written = launchscript.write("container-run", "serena", "claude", proj)
-        assert written == proj / "claude-container"
+        assert written == proj / "claude-serena-container"
 
     def test_harness_leads_the_name(self, proj):
         written = launchscript.write("host-run", "serena", "codex", proj)
-        assert written == proj / "codex-host", "the harness is part of the filename, not just the verb"
+        assert written == proj / "codex-serena-host", \
+            "the harness leads the filename, then the stack, then the backend"
+
+    def test_a_derived_stack_name_with_dots_survives(self, proj):
+        """S4 — a dynamic stack name joins on `.` and may carry a digest suffix."""
+        written = launchscript.write(
+            "container-run", "default.serena.openbrain-a1b2c3d4", "claude", proj
+        )
+        assert written == proj / "claude-default.serena.openbrain-a1b2c3d4-container"
+
+    def test_an_authored_stack_name_with_an_underscore_survives(self, proj):
+        """S5 — `gsd-core_repowise` is a real authored stack name."""
+        written = launchscript.write("host-run", "gsd-core_repowise", "claude", proj)
+        assert written == proj / "claude-gsd-core_repowise-host"
 
     def test_the_script_is_executable(self, proj):
         written = launchscript.write("host-run", "serena", "claude", proj)
@@ -116,6 +129,30 @@ class TestWriting:
         lines = launchscript._read_as_the_shell_does(written).split("\n")
         assert lines[0] == "#!/bin/sh"
         assert lines[1] == launchscript.SENTINEL
+
+
+class TestTwoStacksDoNotCollide:
+    """S6 — the whole point of the rename.
+
+    Before this change one project plus one harness plus one backend yielded ONE file, so a
+    second stack silently overwrote the first and the aoe row replayed the newcomer under the
+    old label.
+    """
+
+    def test_each_stack_gets_its_own_file(self, proj):
+        first = launchscript.write("container-run", "alpha", "claude", proj)
+        second = launchscript.write("container-run", "beta", "claude", proj)
+        assert first != second, "two stacks must not share one launcher script"
+        assert first is not None and second is not None
+        assert first.exists() and second.exists(), "the first file must survive the second write"
+
+    def test_each_file_launches_its_own_stack(self, proj):
+        launchscript.write("container-run", "alpha", "claude", proj)
+        launchscript.write("container-run", "beta", "claude", proj)
+        alpha = launchscript._read_as_the_shell_does(proj / "claude-alpha-container")
+        beta = launchscript._read_as_the_shell_does(proj / "claude-beta-container")
+        assert "--stack alpha" in alpha and "--stack beta" not in alpha
+        assert "--stack beta" in beta and "--stack alpha" not in beta
 
 
 class TestParityWithCommandFor:
@@ -242,24 +279,33 @@ class TestClobberRefusal:
     """S6 — never overwrite a file harnessed did not write."""
 
     def test_refuses_a_file_without_the_sentinel(self, proj):
-        victim = proj / "claude-host"
+        victim = proj / "claude-serena-host"
         victim.write_text("#!/bin/sh\necho mine\n", encoding="utf-8")
         assert launchscript.write("host-run", "serena", "claude", proj) is None
         assert victim.read_text() == "#!/bin/sh\necho mine\n", "a foreign file must survive intact"
 
     def test_refuses_a_tracked_file_even_with_the_sentinel(self, proj):
         _git_init(proj)
-        victim = proj / "claude-host"
+        victim = proj / "claude-serena-host"
         victim.write_text(f"#!/bin/sh\n{launchscript.SENTINEL}\nexec true\n", encoding="utf-8")
-        subprocess.run(["git", "add", "claude-host"], cwd=proj, check=True, capture_output=True)
+        subprocess.run(["git", "add", "claude-serena-host"], cwd=proj, check=True, capture_output=True)
         assert launchscript.write("host-run", "serena", "claude", proj) is None
         assert launchscript.SENTINEL in victim.read_text()
 
     def test_rewrites_its_own_file(self, proj):
+        """A file carrying our sentinel is rewritten in place, never refused.
+
+        This used to prove it by writing two DIFFERENT stacks and asserting one file came back
+        twice. That mechanism died with the rename: two stacks are now two files, which is
+        `TestTwoStacksDoNotCollide`'s job. The property being checked here was never about two
+        stacks — it is that our own file is ours to overwrite — so the same stack twice states it
+        directly, and a changed flag proves the second write actually landed.
+        """
         first = launchscript.write("host-run", "serena", "claude", proj)
-        second = launchscript.write("host-run", "other-stack", "claude", proj)
+        second = launchscript.write("host-run", "serena", "claude", proj, no_strict_mcp=True)
         assert first is not None and second == first
-        assert "other-stack" in first.read_text()
+        assert "--no-strict-mcp-config" in first.read_text(), \
+            "the second write must have replaced the first file's contents"
 
 
 class TestNeverFatal:
@@ -297,7 +343,7 @@ class TestExcludeEntry:
     def test_appends_the_root_anchored_path(self, proj):
         _git_init(proj)
         launchscript.write("host-run", "serena", "claude", proj)
-        assert "/claude-host" in self._lines(self._exclude(proj))
+        assert "/claude-serena-host" in self._lines(self._exclude(proj))
 
     def test_a_nested_project_is_anchored_from_the_repo_root(self, tmp_path):
         repo = tmp_path / "repo"
@@ -306,13 +352,13 @@ class TestExcludeEntry:
         nested = repo / "sub" / "dir"
         nested.mkdir(parents=True)
         launchscript.write("host-run", "serena", "claude", nested)
-        assert "/sub/dir/claude-host" in self._lines(self._exclude(repo))
+        assert "/sub/dir/claude-serena-host" in self._lines(self._exclude(repo))
 
     def test_ten_launches_write_one_line(self, proj):
         _git_init(proj)
         for _ in range(10):
             launchscript.write("host-run", "serena", "claude", proj)
-        assert self._lines(self._exclude(proj)).count("/claude-host") == 1
+        assert self._lines(self._exclude(proj)).count("/claude-serena-host") == 1
 
     def test_existing_content_is_preserved(self, proj):
         _git_init(proj)
@@ -326,7 +372,7 @@ class TestExcludeEntry:
         exclude = self._exclude(proj)
         exclude.write_text("*.log", encoding="utf-8")
         launchscript.write("host-run", "serena", "claude", proj)
-        assert self._lines(exclude) == ["*.log", "/claude-host", ""]
+        assert self._lines(exclude) == ["*.log", "/claude-serena-host", ""]
 
     def test_info_dir_is_created_when_absent(self, proj):
         _git_init(proj)
@@ -335,7 +381,7 @@ class TestExcludeEntry:
             child.unlink()
         info.rmdir()
         launchscript.write("host-run", "serena", "claude", proj)
-        assert "/claude-host" in self._lines(self._exclude(proj))
+        assert "/claude-serena-host" in self._lines(self._exclude(proj))
 
     def test_a_non_git_folder_writes_no_exclude_and_still_writes_the_script(self, proj):
         assert launchscript.write("host-run", "serena", "claude", proj) is not None
@@ -346,7 +392,7 @@ class TestExcludeEntry:
         launchscript.write("host-run", "serena", "claude", proj)
         launchscript.write("container-run", "serena", "claude", proj)
         lines = self._lines(self._exclude(proj))
-        assert "/claude-host" in lines and "/claude-container" in lines
+        assert "/claude-serena-host" in lines and "/claude-serena-container" in lines
 
 
 # Property tests are MODULE-LEVEL functions, not methods. pytest builds a fresh class instance
@@ -384,7 +430,7 @@ def test_repeated_writes_never_grow_the_exclude_file(tmp_path_factory, times):
     for _ in range(times):
         launchscript.write("host-run", "serena", "claude", proj)
     lines = launchscript._read_as_the_shell_does(proj / ".git" / "info" / "exclude").split("\n")
-    assert lines.count("/claude-host") == 1
+    assert lines.count("/claude-serena-host") == 1
 
 @given(st.text(min_size=1).filter(lambda t: "\x00" not in t),
        st.text(min_size=1).filter(lambda t: "\x00" not in t))
@@ -475,10 +521,10 @@ class TestFailureBranches:
         monkeypatch.setattr(launchscript, "_git", lambda *_a, **_k: None)
         written = launchscript.write("host-run", "serena", "claude", proj)
         assert written is not None and written.exists(), "the script is written regardless"
-        assert "/claude-host" not in (proj / ".git" / "info" / "exclude").read_text()
+        assert "/claude-serena-host" not in (proj / ".git" / "info" / "exclude").read_text()
 
     def test_an_unreadable_existing_script_is_refused(self, proj, monkeypatch):
-        (proj / "claude-host").write_text("x", encoding="utf-8")
+        (proj / "claude-serena-host").write_text("x", encoding="utf-8")
 
         def boom(*_a, **_k):
             raise OSError("unreadable")
@@ -497,7 +543,7 @@ class TestFailureBranches:
 
         monkeypatch.setattr(launchscript, "_git", fail_toplevel)
         assert launchscript.write("host-run", "serena", "claude", proj) is not None
-        assert "/claude-host" not in (proj / ".git" / "info" / "exclude").read_text()
+        assert "/claude-serena-host" not in (proj / ".git" / "info" / "exclude").read_text()
 
     def test_an_empty_toplevel_writes_no_exclude_line(self, proj, monkeypatch):
         _git_init(proj)
@@ -510,7 +556,7 @@ class TestFailureBranches:
 
         monkeypatch.setattr(launchscript, "_git", empty_toplevel)
         assert launchscript.write("host-run", "serena", "claude", proj) is not None
-        assert "/claude-host" not in (proj / ".git" / "info" / "exclude").read_text()
+        assert "/claude-serena-host" not in (proj / ".git" / "info" / "exclude").read_text()
 
     def test_a_script_outside_the_toplevel_writes_no_exclude_line(self, proj, monkeypatch, tmp_path):
         # `relative_to` cannot express it, so there is no anchored pattern to write. Fails CLOSED:
@@ -527,7 +573,7 @@ class TestFailureBranches:
 
         monkeypatch.setattr(launchscript, "_git", other_toplevel)
         assert launchscript.write("host-run", "serena", "claude", proj) is not None
-        assert "/claude-host" not in (proj / ".git" / "info" / "exclude").read_text()
+        assert "/claude-serena-host" not in (proj / ".git" / "info" / "exclude").read_text()
 
     def test_an_unwritable_exclude_file_is_survivable(self, proj):
         _git_init(proj)
@@ -538,7 +584,7 @@ class TestFailureBranches:
             # shortcut even when the entry cannot be added.
             written = launchscript.write("host-run", "serena", "claude", proj)
             assert written is not None and written.exists()
-            assert "/claude-host" not in exclude.read_text(encoding="utf-8")
+            assert "/claude-serena-host" not in exclude.read_text(encoding="utf-8")
         finally:
             exclude.chmod(0o600)
 
@@ -591,7 +637,7 @@ class TestMutationGaps:
     def test_the_sentinel_is_only_honoured_on_line_two(self, proj):
         # Widening the window to three lines would accept a file whose second line is somebody
         # else's, which is not the format we write.
-        victim = proj / "claude-host"
+        victim = proj / "claude-serena-host"
         victim.write_text(
             f"#!/bin/sh\necho not ours\n{launchscript.SENTINEL}\n", encoding="utf-8"
         )
@@ -607,7 +653,7 @@ class TestMutationGaps:
     def test_undecodable_bytes_do_not_raise(self, proj):
         # `errors="replace"` is the reason. A script somebody else wrote can hold any bytes, and
         # the sentinel check must reach a verdict rather than a UnicodeDecodeError.
-        victim = proj / "claude-host"
+        victim = proj / "claude-serena-host"
         victim.write_bytes(b"#!/bin/sh\n\xff\xfe not utf-8\n")
         assert launchscript.write("host-run", "serena", "claude", proj) is None
         assert victim.read_bytes().startswith(b"#!/bin/sh\n\xff\xfe")
@@ -617,14 +663,14 @@ class TestMutationGaps:
         exclude = proj / ".git" / "info" / "exclude"
         exclude.unlink()
         launchscript.write("host-run", "serena", "claude", proj)
-        assert exclude.read_text(encoding="utf-8") == "/claude-host\n"
+        assert exclude.read_text(encoding="utf-8") == "/claude-serena-host\n"
 
     def test_appending_inserts_no_blank_line(self, proj):
         _git_init(proj)
         exclude = proj / ".git" / "info" / "exclude"
         exclude.write_text("*.log\n", encoding="utf-8")
         launchscript.write("host-run", "serena", "claude", proj)
-        assert exclude.read_text(encoding="utf-8") == "*.log\n/claude-host\n"
+        assert exclude.read_text(encoding="utf-8") == "*.log\n/claude-serena-host\n"
 
     def test_a_project_path_with_a_space_still_deduplicates(self, tmp_path):
         # The membership check splits on newlines. Splitting on WHITESPACE instead broke a pattern
@@ -637,7 +683,7 @@ class TestMutationGaps:
         for _ in range(3):
             launchscript.write("host-run", "serena", "claude", nested)
         lines = (repo / ".git" / "info" / "exclude").read_text(encoding="utf-8").split("\n")
-        assert lines.count("/a dir/claude-host") == 1
+        assert lines.count("/a dir/claude-serena-host") == 1
 
 
 class TestProvenanceCommentIsBounded:
@@ -697,7 +743,7 @@ class TestTheSentinelReadIsBounded:
     """
 
     def test_a_file_larger_than_the_limit_is_not_read_whole(self, proj, monkeypatch):
-        victim = proj / "claude-host"
+        victim = proj / "claude-serena-host"
         victim.write_text("#!/bin/sh\n" + launchscript.SENTINEL + "\n" + "x" * 200_000, "utf-8")
 
         reads: list[object] = []
@@ -714,7 +760,7 @@ class TestTheSentinelReadIsBounded:
     def test_a_giant_first_line_is_refused_rather_than_read(self, proj):
         # Truncation means the sentinel is not among the first two lines read, so the file is
         # treated as somebody else's and left alone — the safe direction.
-        victim = proj / "claude-host"
+        victim = proj / "claude-serena-host"
         original = "#" * (launchscript._SENTINEL_READ_LIMIT + 10) + "\n" + launchscript.SENTINEL + "\n"
         victim.write_text(original, encoding="utf-8")
         assert launchscript.write("host-run", "serena", "claude", proj) is None
@@ -753,7 +799,7 @@ class TestTheExcludeReadIsBounded:
         exclude.write_text("#" * (launchscript._EXCLUDE_READ_LIMIT + 1) + "\n", encoding="utf-8")
         for _ in range(3):
             launchscript.write("host-run", "serena", "claude", proj)
-        assert exclude.read_text(encoding="utf-8").count("/claude-host") == 0
+        assert exclude.read_text(encoding="utf-8").count("/claude-serena-host") == 0
 
     def test_a_file_just_under_the_cap_still_gets_its_entry(self, proj):
         # The bound must not break the case it sits in front of.
@@ -761,7 +807,7 @@ class TestTheExcludeReadIsBounded:
         exclude = proj / ".git" / "info" / "exclude"
         exclude.write_text("#" * (launchscript._EXCLUDE_READ_LIMIT - 100) + "\n", encoding="utf-8")
         launchscript.write("host-run", "serena", "claude", proj)
-        assert "/claude-host" in launchscript._read_as_the_shell_does(exclude).split("\n")
+        assert "/claude-serena-host" in launchscript._read_as_the_shell_does(exclude).split("\n")
 
     def test_a_fifo_in_place_of_the_exclude_file_does_not_block(self, proj):
         # A FIFO passes `exists()`. Reading one blocks until a writer appears — which would hang the
@@ -795,7 +841,7 @@ class TestTheExcludeReadIsBounded:
 
 
 class TestTheTargetPathIsCheckedForWhatItIs:
-    """A FIFO named `claude-host` in a project must not hang the launch.
+    """A FIFO named `claude-serena-host` in a project must not hang the launch.
 
     `exists()` is true for a FIFO, and opening one BLOCKS until a writer appears — so the sentinel
     check hung forever, and `except OSError` cannot catch a hang. Found by adversarial review round
@@ -826,17 +872,17 @@ class TestTheTargetPathIsCheckedForWhatItIs:
         return result[0]
 
     def test_a_fifo_at_the_target_does_not_hang_the_launch(self, proj):
-        os.mkfifo(proj / "claude-host")
+        os.mkfifo(proj / "claude-serena-host")
         try:
             assert self._write_within(proj) is None
-            assert (proj / "claude-host").is_fifo(), "the FIFO must be left exactly as it was"
+            assert (proj / "claude-serena-host").is_fifo(), "the FIFO must be left exactly as it was"
         finally:
-            (proj / "claude-host").unlink()
+            (proj / "claude-serena-host").unlink()
 
     def test_a_directory_at_the_target_is_refused(self, proj):
-        (proj / "claude-host").mkdir()
+        (proj / "claude-serena-host").mkdir()
         assert self._write_within(proj) is None
-        assert (proj / "claude-host").is_dir()
+        assert (proj / "claude-serena-host").is_dir()
 
     def test_a_regular_file_still_takes_the_normal_path(self, proj):
         # The guard must not break the case it sits in front of.

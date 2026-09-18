@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import aoe, paths
+from .schema import HARNESS_CONFIG_DIR
 
 # Line 2 of every script we write, and the licence to overwrite one. A file without it belongs to
 # somebody else — see `write`.
@@ -60,16 +61,94 @@ _SENTINEL_READ_LIMIT = 4096
 # per launch corrupts a file that every worktree of the checkout shares.
 _EXCLUDE_READ_LIMIT = 1024 * 1024
 
-# `host-run` -> `claude-host`. The verb is in the FILENAME rather than a flag, so the two backends
-# cannot collide in one folder and an aoe row cannot restart a backend it does not name.
+# `host-run` -> `claude-serena-host`. The verb AND the stack sit in the FILENAME rather than in
+# flags, so neither two backends nor two stacks can collide in one folder, and an aoe row cannot
+# restart something it does not name.
 _VERB_SUFFIX = {"host-run": "host", "container-run": "container"}
+
+# The closed set the LAST field of a name is checked against. Derived from `_VERB_SUFFIX` rather
+# than spelled out again, so a third backend cannot arrive in one and be missing from the other.
+_BACKENDS = frozenset(_VERB_SUFFIX.values())
 
 _GIT_TIMEOUT = 5
 
 
-def script_name(verb: str, harness: str) -> str:
-    """`claude-host` / `claude-container`. Harness first: `codex-host` is a different launcher."""
-    return f"{harness}-{_VERB_SUFFIX[verb]}"
+def script_name(verb: str, stack: str, harness: str) -> str:
+    """`claude-serena-host` / `claude-serena-container`.
+
+    THREE FIELDS, and the order is not cosmetic. The harness leads, because `codex-serena-host` is a
+    different launcher rather than a variant of this one. The stack follows, because within one
+    harness it is what the reader is choosing between. The backend is last and is a closed set,
+    which is what lets `parse_script_name` read the name from both ends.
+
+    THE STACK WAS ADDED AFTER THE VERB, and it closes the same class of bug one level down. While
+    the name omitted it, one project plus one harness plus one backend meant ONE file: a second
+    stack overwrote the first, and the aoe row pointing at that file went on replaying the newcomer
+    under the older stack's label. Only the FLAG was ever deliberately kept out of the identity key
+    (see `aoe.replay_command`); the collapse it caused was not.
+
+    Argument order follows this module's convention, `(verb, stack, harness, ...)`, rather than the
+    order the fields appear in the result. `write`, `aoe.command_for` and `aoe.title_for` all take
+    it that way.
+    """
+    return f"{harness}-{stack}-{_VERB_SUFFIX[verb]}"
+
+
+def parse_script_name(name: str) -> Optional[tuple[str, str, str]]:
+    """The inverse of `script_name`: `(harness, stack, backend)`, or None when `name` is not ours.
+
+    HERE, BESIDE `script_name`, deliberately. This grammar used to be written twice — once to build
+    a name, and once inside `aoe._is_launcher_script` to take one apart — and the second copy called
+    nothing in the first. No call edge joined them, so no tool could find them together and a change
+    to either was invisible from the other. One grammar, one place.
+
+    READ FROM BOTH ENDS, which is what makes a stack name containing `-` or `.` unambiguous:
+
+      * the harness is the field before the FIRST `-`, and no harness name contains one;
+      * the backend is the field after the LAST `-`, and neither `host` nor `container` does;
+      * the stack is everything between, and it must not be empty.
+
+    Both outer fields are checked against their closed sets, never merely required to be present —
+    the same narrowness `_is_launcher_script` already applied, for the same reason: a user's own
+    `./run-dev` must never read as ours.
+
+    RETURNS NONE FOR THE LEGACY TWO-PART NAME (`claude-host`), whose stack field comes back empty.
+    That is the point rather than an accident: the old name carries no stack, so nothing can
+    attribute it to one, and `harnessed rm` must not tear down containers it cannot name.
+    `aoe._is_ours` still recognises the legacy shape by other means, for the reason its own
+    docstring gives. The two functions answer different questions.
+    """
+    harness, _, rest = name.partition("-")
+    stack, _, backend = rest.rpartition("-")
+    if harness not in HARNESS_CONFIG_DIR or backend not in _BACKENDS or not stack:
+        return None
+    return harness, stack, backend
+
+
+def parse_legacy_script_name(name: str) -> Optional[tuple[str, str]]:
+    """The RETIRED two-part name — `(harness, backend)` for `claude-host`, else None.
+
+    NOTHING WRITES THIS SHAPE, and it is still read. That is the same rule `aoe._is_ours` already
+    applies to the `mise run <harness> --` shape it retired before this one, and it exists for the
+    same reason: drift against a row we do not recognise is only ever REPORTED, so forgetting a
+    shape we once wrote strands every row carrying it. A stranded row is worse than a stale one,
+    because one foreign row at the (title, path) key blocks the whole registration — the user
+    relaunches and gets no row at all, plus a warning that harnessed did not write their own row.
+    Retiring a shape means we stop WRITING it, never that we forget we wrote it.
+
+    HERE RATHER THAN IN `aoe`, so that all three name grammars — build, read, and read-the-old-one —
+    sit together and cannot drift apart. The previous arrangement kept the reader in `aoe` with no
+    call edge to the builder, which is exactly the coupling this module now refuses to repeat.
+
+    DELIBERATELY NOT REACHED BY `parse_script_name`, and the split is the contract. Attribution asks
+    "does this row start THIS stack", and a name carrying no stack can never answer it — so
+    `harnessed rm` must not see a legacy name and tear down containers it cannot name. Repair asks
+    "may I rename this row aside", and there the answer is yes. `aoe._is_ours` is the only caller.
+    """
+    harness, _, backend = name.rpartition("-")
+    if harness not in HARNESS_CONFIG_DIR or backend not in _BACKENDS:
+        return None
+    return harness, backend
 
 
 def _git(project_path: Path, *args: str) -> Optional[subprocess.CompletedProcess[str]]:
@@ -156,7 +235,7 @@ def write(
     """
     try:
         project_path = Path(project_path).resolve()
-        target = project_path / script_name(verb, harness)
+        target = project_path / script_name(verb, stack, harness)
 
         if target.exists():
             # NOT A REGULAR FILE: refuse before touching it. A FIFO passes `exists()` and BLOCKS on

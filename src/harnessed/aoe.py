@@ -220,7 +220,7 @@ def _apply(
     return True
 
 
-def replay_command(verb: str, harness: str, project_path: Path) -> str:
+def replay_command(verb: str, stack: str, harness: str, project_path: Path) -> str:
     """What the row runs: the launcher script that launch left in the project folder.
 
     The flags live in the script, not in this string, so this stays STABLE across launches — the
@@ -232,7 +232,15 @@ def replay_command(verb: str, harness: str, project_path: Path) -> str:
     (bd harnessed-7mt). Each step removed an indirection; this one also makes the record READABLE —
     the user can `cat claude-host` instead of reconstructing a launch from shell history.
 
-    NOT `--stack <name>`: naming the stack would put a launch flag back in the identity key.
+    NOT `--stack <name>`, though the stack IS now named. The distinction is the whole point: the
+    stack reaches the key through the script's FILENAME, never as a flag on this command. A flag
+    would re-key every existing row each time the flag set changed, which is the identity property
+    the switch away from `mise run` was protecting. A filename is not a flag, so adding a flag here
+    stays free while two stacks stop sharing one row.
+
+    Until the stack was in the name, they did share one. The launch rewrote the single script, this
+    command was unchanged, the existing row matched on (command, path) and was left alone, and the
+    row then replayed the newcomer under the older stack's label.
 
     ABSOLUTE, not `./claude-host`. Whether aoe runs a row's command with the working directory set
     to the row's path is aoe's business and not ours to depend on; an absolute path is correct under
@@ -252,7 +260,7 @@ def replay_command(verb: str, harness: str, project_path: Path) -> str:
     # that.
     from . import launchscript
 
-    script = Path(project_path) / launchscript.script_name(verb, harness)
+    script = Path(project_path) / launchscript.script_name(verb, stack, harness)
     return shlex.join([str(script), "--"])
 
 
@@ -522,6 +530,14 @@ def _is_ours(command: str) -> bool:
     launch would keep warning forever. Retiring the shape means we stop WRITING it, not that we
     forget we wrote it.
 
+    THE TWO-PART LAUNCHER NAME IS ACCEPTED FOR EXACTLY THAT REASON, and it is the second shape to
+    earn this treatment. `claude-host` predates the stack in the filename. `_is_launcher_script`
+    rightly refuses it, because a name with no stack cannot be attributed to one — but refusing it
+    HERE would be worse than stranding: one foreign row at the (title, path) key blocks the whole
+    registration, so the user would relaunch, get no row at all, and be told harnessed did not
+    write their own row. Accepting it means the first launch after the rename repairs each legacy
+    row by renaming it aside and registering the correct one beside it.
+
     THE THIRD TOKEN IS CHECKED AGAINST THE HARNESS REGISTRY, not merely present. `mise run` alone
     is not our shape — it is the prefix of every mise task anyone has ever written, so a user's own
     `mise run dev --` row would have been eligible for rewriting. Only a task named for a real
@@ -539,25 +555,48 @@ def _is_ours(command: str) -> bool:
         return True
     if _is_launcher_script(tokens):
         return True
+    if _is_legacy_launcher_script(tokens):
+        return True
     return tokens[:2] == ["mise", "run"] and len(tokens) > 2 and tokens[2] in HARNESS_CONFIG_DIR
 
 
-def _is_launcher_script(tokens: list[str]) -> bool:
-    """Whether these tokens are a `<path>/<harness>-<verb> --` row — what `replay_command` writes.
+def _is_legacy_launcher_script(tokens: list[str]) -> bool:
+    """A `<path>/<harness>-<verb> --` row: the two-part name, retired by the stack rename.
 
-    Matched on the BASENAME against the harness registry, never on the path existing. A row whose
-    script has been deleted is still ours and still repairable; requiring the file would strand it
-    at exactly the moment repair is what the user needs.
-
-    Narrow on purpose. Any single-token command ending in `--` would be far too broad — it would
-    make a user's own `./run-dev --` row eligible for rewriting. The basename must name a harness we
-    know and one of the two verbs, which no unrelated script does by accident.
+    `_is_ours` is the only caller, and that is the contract rather than an accident. See
+    `launchscript.parse_legacy_script_name` for why repair accepts a shape attribution must not.
     """
     if len(tokens) != 2 or tokens[1] != "--":
         return False
-    name = Path(tokens[0]).name
-    harness, _, suffix = name.rpartition("-")
-    return bool(harness) and harness in HARNESS_CONFIG_DIR and suffix in {"host", "container"}
+    from . import launchscript  # local, for the cycle reason in `replay_command`
+
+    return launchscript.parse_legacy_script_name(Path(tokens[0]).name) is not None
+
+
+def _is_launcher_script(tokens: list[str]) -> bool:
+    """Whether these tokens are a `<path>/<harness>-<stack>-<verb> --` row — `replay_command`'s shape.
+
+    Matched on the BASENAME, never on the path existing. A row whose script has been deleted is
+    still ours and still repairable; requiring the file would strand it at exactly the moment
+    repair is what the user needs.
+
+    THE GRAMMAR IS NOT RE-IMPLEMENTED HERE. It used to be: this function took a name apart with its
+    own `rpartition`, while `launchscript.script_name` put one together, and nothing connected the
+    two. `launchscript.parse_script_name` is now the single copy and this calls it, so the builder
+    and the reader cannot drift apart.
+
+    Narrow on purpose, and the narrowness lives in that parser: a bare two-token command ending in
+    `--` would make a user's own `./run-dev --` row eligible for rewriting, so the basename must
+    name a harness we know, one of the two backends, and a non-empty stack between them.
+
+    A LEGACY TWO-PART NAME IS NOT A MATCH, because it names no stack and so cannot be attributed to
+    one. `_is_ours` still accepts that shape — see its docstring. These two questions differ.
+    """
+    if len(tokens) != 2 or tokens[1] != "--":
+        return False
+    from . import launchscript  # local, for the cycle reason in `replay_command`
+
+    return launchscript.parse_script_name(Path(tokens[0]).name) is not None
 
 
 def _drifted_rows(sessions: list[dict], command: str, project_path: Path, title: str) -> list[dict]:
@@ -701,7 +740,7 @@ def sync_session(
         # Canonicalize once: the resolved path is both what we record and what we compare against,
         # so two routes to the same directory cannot register two rows.
         project_path = Path(project_path).resolve()
-        command = replay_command(verb, harness, project_path)
+        command = replay_command(verb, stack, harness, project_path)
         sessions = _sessions(exe)
         if _registered(sessions, command, project_path, group=group, title=title):
             return True
@@ -830,8 +869,8 @@ def _replays_stack(tokens: list[str], verb: str, stack: str) -> bool:
     # backend it must not touch.
     from . import launchscript  # local, for the cycle reason in `replay_command`
 
-    name = Path(tokens[0]).name
-    if name != launchscript.script_name(verb, name.rpartition("-")[0]):
+    parsed = launchscript.parse_script_name(Path(tokens[0]).name)
+    if parsed is None or parsed[2] != launchscript._VERB_SUFFIX[verb]:
         return False
     script = Path(tokens[0])
     try:
