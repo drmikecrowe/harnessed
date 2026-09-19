@@ -5,6 +5,9 @@ Per-file reports are in `.old-coder/audit/` (gitignored, local to the audit work
 
 **Coverage: 86 of 86 files, 76 findings, 27 reports.** Complete.
 
+Tracked as **#503**. The `harnessed-*` ids below are from the retired `bd` tracker and resolve to
+nothing — read each as a marker on the paragraph it sits in, not as a place to look something up.
+
 ## Why this was run
 
 `src/harnessed/aoe.py` shipped a repair that could not work, while 139 tests, full changed-line
@@ -16,9 +19,15 @@ the tool deduplicates on. Four tests that ran the real binary found it in second
 The question this audit asks of the whole suite: **where else is a belief doing the work of a
 test?**
 
-## The headline finding is not in the counts
+## The headline finding is not in the counts — CLOSED 2026-09
 
 **The live-verification layer already exists and runs nowhere.** Filed as **harnessed-3x1** (P1).
+
+> **This finding is closed.** `.github/workflows/live.yml` now runs the gated layer with
+> `HARNESSED_PODMAN=1` (and `HARNESSED_DOCKER=1`) on `pull_request`, triggered by a path filter over
+> the files the hermetic suite cannot see. The section is kept rather than deleted because the
+> reasoning below is what produced that workflow. The counts and file names in it are as observed on
+> 2026-08-05 and have moved since.
 
 Every run reports `2120 passed, 22 skipped`. Those 22 *are* the live layer — 12 in
 `test_recipes_integration.py`, plus `test_persist_mounts.py`, `test_live_verification_debt.py`
@@ -98,7 +107,8 @@ someone would use to violate it.
 
 ## Recommended order
 
-1. **Give the live layer a home** (harnessed-3x1). Highest value, lowest effort: the tests exist.
+1. ~~**Give the live layer a home** (harnessed-3x1). Highest value, lowest effort: the tests
+   exist.~~ Done — `live.yml`.
 2. **Make skips loud in aggregate.** "22 skipped" reads as fine; "nothing verified podman or
    varlock this run" reads as what it is.
 3. **Pin the contracts the gated tests do not reach** (harnessed-rwt), varlock first.
