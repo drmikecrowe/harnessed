@@ -36,10 +36,10 @@ sources:
     resource: repo://src/harnessed/volumes.py
   - id: openwiki-source-96344ae605b765bb4fd5800d
     resource: repo://tests/test_launcher_test_command.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-19T12:16:02.862Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-18T12:41:13.644Z
+    at: 2026-09-19T12:16:02.862Z
 ---
 
 # Capability test: the manifest oracle versus the live instance
@@ -437,15 +437,15 @@ leaves inert — today the only DEGRADED cell is `egress:` on the host backend, 
 table exists precisely because a prose version of it (`BACKENDS.md §4`) went stale without anyone
 noticing.
 
-## What this oracle does not prove
+## What this oracle does and does not prove
 
-The oracle is a **CONTAINER-backend** oracle, by explicit actor: `launch_headless` drives the
-launcher's `container-run` verb, which composes and starts an isolated pod through the
-`ContainerBackend` — nothing in this test ever touches the host backend (`host-run`,
-`HostBackend`). So a green report says nothing about the host path, its host-side installs, or the
-`egress:` gap the backend matrix records for it. It also proves nothing about interactive attach,
-and **anything a recipe did not declare and the assembler cannot see** — which is why the authoring
-rule ("declare what your Dockerfile delivers") and the recipe-test convention exist. It also proves
-presence-and-connection, not usefulness: a connected server whose tools are wrong is green here, and
-only a recipe-authored `tests/*.sh` can say otherwise. Finally, the MCP probe observes the *hub* —
-a `direct:` server is not the hub's child and can only ever come from the backstop.
+| | claim |
+|---|---|
+| **Proves** | Every capability the manifest + `expect:` declares is *visible in a live instance*: MCP servers connected through the hatago hub, skills/commands/plugins on the mounted profile filesystem, and every recipe-authored `tests/*.sh` exiting 0 inside that instance. |
+| **Does not prove — the host path.** | The oracle is a **container-backend** oracle, and the actor is explicit: `launch_headless` invokes the launcher's `container-run` verb with `HARNESSED_HEADLESS=true` (issue #445's correction — "the host backend (it launches a pod)" was ambiguous and readable as a misattribution), and `container-run` is the verb that composes and starts an isolated pod through `ContainerBackend`. Nothing in this test ever touches the host backend (`host-run` / `HostBackend`), so a green report says nothing about host-side installs or the `egress:` DEGRADED cell the backend matrix records for host isolation. |
+| **Does not prove — interactive attach.** | Headless is a launcher *mode*: the attach, re-attach and stale-recreate prompts this test never drives are unexercised. |
+| **Does not prove — undeclared capabilities.** | Anything a recipe did not declare via `expect:` and the assembler cannot see is invisible — hence the authoring rule ("declare what your Dockerfile delivers") and the recipe-test convention. |
+| **Does not prove — usefulness.** | The oracle proves presence-and-connection, not behavior: a connected server whose tools are wrong is green here, and only a recipe-authored `tests/*.sh` can say otherwise. |
+| **Does not prove — `direct:` servers.** | The MCP probe observes the *hub* (`hatago://servers`); a `direct:` server bypasses the hub by design and is not its child, so only the LLM backstop could ever report it connected. |
+
+The backend choice is pinned only by the launch argv itself (`[bin, "container-run", harness, project_path, "--stack", stack_name, "--fresh"]`) — no test asserts that argv. The closest coverage is `tests/test_launcher_test_command.py`, which pins the *delegation* (`harnessed test` → `sys.executable -m harnessed.cli test …`), not the backend the delegated run drives; the live layer that would notice a verb change (`test_persist_mounts.py`'s `@podman` tests calling `launch_headless`) is podman-gated, which is exactly how the earlier grammar drift broke every container-path `harnessed test` with nothing catching it.

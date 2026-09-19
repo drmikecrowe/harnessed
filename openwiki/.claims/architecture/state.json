@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:722ec1f10ed92a362e61b3ad2d092565433c05213e32ba2577d5d6ee8f6be8c5",
+  "pageVersion": "sha256:7488cc73fe89a36ea685a49a801f1a0d6d836e3301be7bc9a56f70a8b869f54c",
   "claims": [
     {
       "id": "claim_fecc1b6cffaf4d2896c5d385481552b5",
@@ -719,10 +719,32 @@
           "version": "repo-lines-v1:sha256:60655dda2302e688976aa1ab4edd60cc9f76ae367d738a6a368d703ac3190592:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzMGRiNTdhNDI2MmYyOGNjOTQ2OThiMzc1MWNjYTAxOGUxYjUwNjUwNTIzNjNjYjA3Y2NhODE1NTQ0NzVlNGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmZTFlZmQ3ZTFhYTJkN2IxZjRmNTU3MzNmZWUyYWQzMTUzOGU2NGQ1ZjZmMzAxM2I1YzQ1NjAyMDM3N2U2MzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU3NWU3ZjYwZjdhMWFkMmQwZjVlN2ZhM2YzNTU2ZmVkNjk3ODc0YzEyNmYyYTI3OTM3ZDAyMGMyNmM4ZDJlZTkifQ"
         }
       ]
+    },
+    {
+      "id": "claim_4ba975fa5de7494b8637e8ecc36bb154",
+      "statement": "Deletion safety of XDG state follows the persisted-vs-re-derived split: the XDG cache install/ root, profiles (via clean), host homes (fingerprint-gated rebuild), named volumes, and non-authored generated manifests can be deleted at a rebuild/re-fetch cost, while svc-ports.json, svc-secrets/, project-env/<hash>.env, a live broker's brokers/ record, and the persist dirs themselves must not be deleted because consumers outside harnessed (mise.local.toml, service clients, mise/direnv, the cleanup paths) already depend on them or they hold user data.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/paths.py#L649-L657",
+          "version": "repo-lines-v1:sha256:312a1b4253ae7a996c16ec9ed833ad992ec1a7656bd8f7f14796c7d53ee46781:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTY0ZjhiNDAyNzdhNTExNThkMjYzMWZkZWMyNWYyMmFhMjgzNDU0MjUwMmVhZGE5ZTljMWMwNGY1M2RmZjlmNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTQyMWVjOTNlNTk5NWQ2OWMzMjcyZGFmYTdhODljYzI2YTU3NTRkOTY1MTBlZmJkOWFiZDc0ZDFiN2VlYTViYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWYxOGI2MGU0NTI4NzAzZmYzMDcyNDYyZGYyMzA2NTJhNjk0N2JhYTRlYzAwZTExMmQ1ZjI4NjM0NzI2NTgyMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDBmNTRjNWMyMzY4NGRiYzM3ZDVkNjRlYTU1YzgzMWVmZjRjN2RmNjZjYjE2MzNkMmZhNjU2NjkzZjY1NDk1MyJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/persist.py#L1-L18",
+          "version": "repo-lines-v1:sha256:8fab18326966a1db4b4f6a8acbacfe70857e1b906f20c2abae94cbdd3b5d5609:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVjOThkNjhkMjA3NTExNjJhYmQ0OTEzMzJmZWVlMTRhNGJkM2RhOGQ5MzRhYmNhNTY1MDFiOWUwOWRiYTAzNzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1YjZlODcwNmI0MzA0N2YyYTZkYjY3ZjEzMjYzODU5NTYwNGU2N2YzNjk2Njg3NmNlMDE1OGYwMDUzZTZiZDEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/svcstate.py#L125-L147",
+          "version": "repo-lines-v1:sha256:ad187fefadfb4e145ddbad818a1f398dc0b490437a0eed526758763e1eedfc39:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxNWEwMTlhODUxZGJkOGNmMmFlZDBkZTZkMzU0NDk1NzkyZDJhMjUwZTI4ZjA4NzViMWNlYTVjNGE0NTZkMjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjNDE2ZDJmZGNiODY1MjQwOTdhNDU0M2M5MTFhMzQxZWFhMjJlZWI1ODFjODFhNjI2MjZmODM0YjkxNjU0ODUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFlYzIzZTJjMTE3YTU5Y2M2NzEwNzBiZDcwY2E0NzY1OWJkNzE4YTA1NTJkNDJlNWQ1ODlmOWQwNTBiMmE5ZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc5NzBiNzYzOGM2N2YzNzU2M2MwYmNhMGNjNTRmNjlmYzQ3Mjg1OTIzMmUwZTA5OTgwODEwOTFiNThkMzRjOWIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/svcstate.py#L166-L209",
+          "version": "repo-lines-v1:sha256:c61f68907f5ec85922d5b214738e610727d22485ed1bb17af9d8b4f5eba0eda2:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5ZTBkYzkyNDg2ZWJlYjVmZDMxN2VmMzc4YWE0MzQ2MDBhMTI4NWQ2NTc2MmM2OWMyZmUxZmRmNmU1YjgwZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiNzE2YjhhMTM3YTMxYjcyMDYxOGI2Y2MyYmY5YjU1YjY0MTE0ODQ1MDhiNmJhN2Q3ZjAwNGViMjJlZmY1Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUyMTEwZGJkNWRiNzNkODE0Yzk3NDc0MWJkZmY3YzFhODkyMjdhNWQxZTY0MTI1MmI3ZDFiOTA3OWNhMjA0ODYifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-18T12:41:13.644Z"
+    "at": "2026-09-19T12:16:02.862Z"
   }
 }

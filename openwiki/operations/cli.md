@@ -43,7 +43,7 @@ sources:
 generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-18T12:41:13.644Z
+    at: 2026-09-19T12:16:02.862Z
 ---
 
 # Operations: the command surface and lifecycle verbs

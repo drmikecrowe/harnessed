@@ -40,10 +40,10 @@ sources:
     resource: repo://tools/preflight.sh
   - id: openwiki-source-bb9438d561f4cbb6d5d38c49
     resource: repo://tools/run-tests.sh
-generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-19T12:16:02.862Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-18T12:41:13.644Z
+    at: 2026-09-19T12:16:02.862Z
 ---
 
 # Quickstart: set up, build, launch, and where to read next
@@ -51,8 +51,8 @@ verified:
 harnessed is a host-native Python CLI that assembles catalog content into profiles and launches
 composed coding-agent stacks. This page is the working entry point: what must be installed before
 anything runs, the sanctioned ways to run the verification entry points, the two console
-entrypoints, the launch verbs an agent must never invoke, a safe first slice, and where every other
-wiki page lives.
+entrypoints, the launch verbs an agent must never invoke, a safe first slice, and the task-routing
+table into the specialist pages.
 
 Related: [what each gate proves](/openwiki/testing/verification-ladder.md),
 [the command surface](/openwiki/operations/cli.md),
@@ -308,13 +308,9 @@ Route by task, not by directory. The index files under each directory list the s
 | Task or question | Page |
 | --- | --- |
 | What a backend is; the container/host asymmetry and shared invariants | [architecture/backends](/openwiki/architecture/backends.md) |
-| How service sidecars get identity, addressing, ports, and persistence | [architecture/services](/openwiki/architecture/services.md) |
 | What persists where on disk; project keying, persist dirs, XDG state, stable ports and passwords | [architecture/state](/openwiki/architecture/state.md) |
-| Where secrets enter, what resolves them, what is never written to disk or image layers | [concepts/credentials](/openwiki/concepts/credentials.md) |
-| The layered env contract: what the agent container and host process each see | [concepts/env-contract](/openwiki/concepts/env-contract.md) |
 | How `aoe` and the launch shims integrate with harnessed | [integrations/aoe-and-launch-scripts](/openwiki/integrations/aoe-and-launch-scripts.md) |
 | The full verb surface, each verb's gates, and the post-#460 delegation behavior of `test`/`new`/`install`/`uninstall` | [operations/cli](/openwiki/operations/cli.md) |
-| Recipe pinning, the `pin` bump flow, and where supply-chain verification happens | [operations/supply-chain](/openwiki/operations/supply-chain.md) |
 | What each verification gate proves and what it does not | [testing/verification-ladder](/openwiki/testing/verification-ladder.md) |
 | Stack + harness → profile → image → pod: stages and run order | [workflows/build](/openwiki/workflows/build.md) |
 | How `harnessed test` proves a build against the capability oracle | [workflows/capability-test](/openwiki/workflows/capability-test.md) |
