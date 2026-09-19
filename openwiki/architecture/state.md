@@ -46,10 +46,10 @@ sources:
     resource: repo://src/harnessed/volumes.py
   - id: openwiki-source-7b7c2d242869fee851828868
     resource: repo://tests/test_stable_port.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-19T12:16:02.862Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-18T12:41:13.644Z
+    at: 2026-09-19T12:16:02.862Z
 ---
 
 # State: what lives where on disk, staleness, and GC
@@ -243,6 +243,21 @@ systems already consume** are not. Container identity and ephemeral ports evapor
 container and nothing mourns them; the stable port and the password outlive every pod — and
 accordingly no GC targets them, because deleting them would *be* the failure rather than a
 reclamation.
+
+Spelled out as a deletion guide, grounded in that split:
+
+- **Safe to delete** (costs a rebuild or a re-fetch, never correctness): the `install/` cache under
+  XDG **cache** (the one genuinely disposable root — `persist.py`/`paths.py` never consult it
+  before re-populating), profiles (via `harnessed clean` — they are pure functions of the catalog),
+  host homes (the fingerprint gate rebuilds them wholesale; `--prune` scrubs credentials first),
+  named volumes (`volume-gc` — reinstall is expensive but correct), and `generated/stacks/`
+  manifests a launch did not author.
+- **Not safe to delete**: `svc-ports.json` (data, not cache — losing it re-allocates numbers
+  already written into projects' `mise.local.toml`), `svc-secrets/` (clients hold the old password;
+  a regenerated one locks them out), `project-env/<hash>.env` (consumed by mise/direnv outside any
+  harnessed process), the `brokers/` record of a live broker (the warning above), and — trivially
+  but fatally — the persist dirs themselves: they are the *user's data*, the only state harnessed
+  keeps that is not a function of anything.
 
 ## Persist entries: three scopes, two locations, one gate
 

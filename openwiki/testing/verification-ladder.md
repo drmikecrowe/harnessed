@@ -1,9 +1,11 @@
 ---
-type: "Reference"
+type: Reference
 title: "The verification ladder: what each gate proves and what it does not"
 description: "What each verification gate proves and what it does not — the hermetic pytest suite, the HARNESSED_PODMAN live layer, the lint layers, the pin check, the capability oracle, and the wiki's own drift gate with its regeneration path and retry patch."
 tags: [ci, testing, verification, supply-chain, openwiki, drift]
-openwiki_generated: true
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-19T12:16:02.862Z
 sources:
   - id: openwiki-source-2ab88915e37908e92fe8ef01
     resource: repo://.github/workflows/lint.yml
@@ -57,12 +59,8 @@ sources:
     resource: repo://tools/openwiki-retry-patch.py
   - id: openwiki-source-42360cb3e257ef7023d23d39
     resource: repo://tools/preflight.sh
-generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
-verified:
-  - by: openwiki/0.5.1
-    at: 2026-09-18T12:41:13.644Z
+generated: { by: "openwiki/0.5.1", at: "2026-09-19T12:16:02.862Z" }
 ---
-
 
 # The verification ladder
 

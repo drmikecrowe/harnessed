@@ -5,12 +5,14 @@ description: "The two launch backends that live in launcher.py — ContainerBack
 tags: [execution-backends, backend-contract, capability-set, sequencing, launchspec, provision-tools, apply-isolation, seed-auth, secrets-broker, capmatrix, module-boundaries, hostbackend, containerbackend, gating]
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-18T12:41:13.644Z
+    at: 2026-09-19T12:16:02.862Z
 sources:
   - id: openwiki-source-f2bd22307a3451ac2519580c
     resource: repo://BACKENDS.md
   - id: openwiki-source-f566bbdd90ebc6ec3b85626a
     resource: repo://src/harnessed/backend.py
+  - id: openwiki-source-0f0f277c40d34909acb07908
+    resource: repo://src/harnessed/capability.py
   - id: openwiki-source-9a53d80e292611f0100f90b1
     resource: repo://src/harnessed/capmatrix.py
   - id: openwiki-source-6f84913afc580e4d73fac66a
@@ -29,7 +31,7 @@ sources:
     resource: repo://tests/test_launch_parity.py
   - id: openwiki-source-bbf9cc1f144f5efff8ae1505
     resource: repo://tests/test_module_boundaries.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-19T12:16:02.862Z" }
 ---
 
 # Container and host backends: asymmetry, gating differences, shared invariants
@@ -410,6 +412,14 @@ The gap warning itself is emitted by `launcher._warn_capability_gaps` (bd harnes
 terminal-acknowledge gate counts the word WARNING and holds for a keypress, so a WARNING-level line
 would cost every `host-run` of an `egress:`-declaring stack an extra Enter, for a gap the user chose
 by typing `host-run` and cannot fix on that backend.
+
+The same asymmetry applies to the **per-stack capability test** ([`harnessed.capability`](repo://src/harnessed/capability.py),
+design §18): its manifest oracle diff is computed against a live instance launched through
+`container-run --fresh`, i.e. **through the container backend** — a pod is created by
+`ContainerBackend.apply_isolation(BOUNDARY)`, exactly as above, and never by the host path. A green
+capability test therefore proves the container backend delivers the stack's servers/skills/commands;
+it proves nothing about `HostBackend`, whose delivery is covered by the parity ledger and the
+capmatrix cells instead.
 
 ## The host backend is not claude-only
 

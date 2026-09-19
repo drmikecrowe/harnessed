@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:40de1a62d5535e069d1f5d84a46a209b39ab67997e981f162e2ca260153dae2a",
+  "pageVersion": "sha256:355240085e9dd87b4429fe5435399c6614b5558f180108f5a1b8fa45060d3bfe",
   "claims": [
     {
       "id": "claim_252d58a4136d4bab8deb980788528260",
@@ -813,10 +813,24 @@
           "version": "repo-lines-v1:sha256:2af5ede414ad37e96cf058b7960b2e78ac0500cdd1c7122c17496aa6f0f27c8f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3MmUxNGYwNTBmZGIwNjQyZGM4ZWQ1NmFkMTZjMzQxOTI0ODU0M2U2MzU3NmE0NmFkOTRlZTJjMjFmOWEwY2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YmNmNjNhMDM0MjcxNzMxMDE3NWUyNjI3YTYzNGMzYzRmYzM4ZmQzYzY3M2JmZTRkYzU5MTc5YjU1YWUxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0MTU5MzAyNzAxNjg5MjIyMjlhZmUzOTJkODMwNzJlMWQzZjFiYTQ4MmJiZGRmMzM0NGU1NWVkOTk2NzIzODIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1Mzc3MTkzODEzNmEzMGFkOTM2NDVlOGI2ZWFmYzZhZTNmM2Y1OWVkZjczY2UwYWViNjEwZjg4ZDk5MjY2ODkifQ"
         }
       ]
+    },
+    {
+      "id": "claim_09b5168852f34017a8dfdaa64989168e",
+      "statement": "The derived Dockerfile emitted by emit.write_derived_dockerfile contains no build-time scan layer; launcher.py still carries a stale comment and a log line claiming the derived image's final layer is a supply-chain scan, but the emitted Dockerfile is the source of truth and scanning happens only after the image build.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/emit.py#L1156-L1163",
+          "version": "repo-lines-v1:sha256:74aabecd1926c8629bba00f3b8be6a978fe844ac74951611fad4512fd0bd1463:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTM4ZTY5NzY5ZGI1YzZlYzdkZWU2ZDYzMzdlZDRlY2ZhMDNlNjdkZGI4ZmQwNzk4OThlODk5NGM4NjY5YjhjNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmFlNWNkYjY3MjY0MGQ1MmUwYzNiODU5MjBiNjZmZjNhODE0MzIzOWE0NTBhOTU5Y2IxN2UwYmMwYjc3YmY0MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDNhYzJiMWYzOTBmYTllMjg3OGMwOWVlMWM4MTY2NTk4ZmQ5Zjc4ZDg4OTcxMWMzNzVmYmY1NzNhZTZlZTY4YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTIxNzEzOWUyOWQxMDQ3YzViMTJiYzYwZDFhNDYyMGU5YjkzYWQ2MGUxMjQzYjJhNDg5ZDBkN2JjNTI5YzBkMiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L707-L713",
+          "version": "repo-lines-v1:sha256:6076bc2e2bac8b4ecf174f35042525d26235678b53c64a412e95e4c16bf0b724:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmFiMDE2NDVkM2Y0MzI4OWUyYjIwNTBhZWNmZjYxMDNiNzYxODY4ZDE1NzQ3ZDk1ZTEzOTMxYmY5ZDU0Y2U0OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzdjYThhYjI0ZmQyZjY0NGFmNTEwNzgxYWZiMDNmYWY2Njk3YmE5N2JkZDc4YmRiOGUzYjdkZWRkMTM3OTc1MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjU5MGJkMWJmNjcxZTIzODMwZjc2ZTQ2YzY4ZmRlNzhiNDMwMThiZTM1NWZiYTlmOTU4Mzk2N2QwODVmODE0NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGJmNGNjNmU2NDcxYmFmNWY0MzVjNDM0MjFlMjRlNjBmOTRiMmI4MWY5N2IxYTlkMTU2YzE0YzA3MGRjZTVjMiJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-18T12:41:13.644Z"
+    "at": "2026-09-19T12:16:02.862Z"
   }
 }

@@ -44,10 +44,10 @@ sources:
     resource: repo://tests/test_build_cache_mounts.py
   - id: openwiki-source-f725ea11f1806a58b06d7f3e
     resource: repo://tests/test_launch_parity.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-19T12:16:02.862Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-18T12:41:13.644Z
+    at: 2026-09-19T12:16:02.862Z
 ---
 
 # Build pipeline: from stack and harness to profile, images, and populated volumes
@@ -292,6 +292,11 @@ installs stopped being image layers it scanned an image containing no stack cont
 printed "no high/critical advisories" — off 1 of 4 scanners. A green-looking result covering almost
 nothing is worse than no result. The real scan is the
 [credentialed post-build pass](#stage-8--the-two-scan-passes).
+
+Do not be misled by the residue `launcher.py` still carries: the comment block above
+`_build_derived_image` ("its FINAL layer is the supply-chain scan (BLD-02)") and the build log line
+`Building derived image … (incl. supply-chain scan)` both pre-date the removal — the emitted
+Dockerfile is the source of truth, and it contains no scan layer.
 
 ## Stage 5 — images (`launcher.py`) and the image lineage
 

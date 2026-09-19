@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:22be4f8e25771a62b98708a019f817b80e47896b48e0fe26ab9214ef46e617fe",
+  "pageVersion": "sha256:1f7228f9a44dc994c389d80eda4c128f4e4e977426bc7477d3f4a34c3b671404",
   "claims": [
     {
       "id": "claim_2fb8a606a96a4476af1bfd3cee8955d2",
@@ -415,10 +415,24 @@
           "version": "repo-lines-v1:sha256:f6c3f3d7c37b8fd8ade3ba9a7dc3da3e163bc309ef5941edc7d3f2860206d1a5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxNzVmMDgwZjAwZjY1MGRiN2JiMThiNTMwMWVmNDVkODRlZDA1OWM2NWYxM2Q3ZTE1MzM1YTM4ODUwODljNzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU1NzVjOTQ4NDNkM2ZiZWE4OGY0NWU5YmI0ZTVjNzg1OGY3MzA3MmQ3M2ViMDk2NWQ3M2ExNTljMWE4OWExOTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkxZDgxNGU5NDk1NWE5OTQ5NGRkMWFmYjNiOGYyODQxNWEwNmRkMWFkZTZmZWE5YjY1MWRjNjMwMDAwNGQzYTYifQ"
         }
       ]
+    },
+    {
+      "id": "claim_23b3509f7e5447c9ac3d6e740b5db333",
+      "statement": "The capability oracle is a container-backend oracle with an explicit actor chain: launch_headless invokes the launcher's `container-run` verb with HARNESSED_HEADLESS=true (argv `[bin, \"container-run\", harness, project_path, \"--stack\", stack_name, \"--fresh\"]`), and container-run composes and starts an isolated pod through ContainerBackend; nothing in the capability test ever touches the host backend (host-run / HostBackend), so a green report says nothing about host-side installs or the egress DEGRADED cell capmatrix records for host isolation (issue #445's correction: the actor is the container backend, not the host backend). No test asserts this launch argv — the delegation test (tests/test_launcher_test_command.py) pins only the `sys.executable -m harnessed.cli` handoff, and the only coverage of the live layer (test_persist_mounts.py's @podman tests) is podman-gated, which is why a launch-grammar drift once broke every container-path `harnessed test` unnoticed.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/capability.py#L508-L557",
+          "version": "repo-lines-v1:sha256:49b7f83eb1623b5152b2918482cb52231417e9012196578bd0f583e52f20d190:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlMzJlOWI2ZDFkMmJhYWM3MjQ2ZDdkMDliMjQ4NTllODI3NjZiMzUzZTZlNjNmY2U4MTNlMjQyOTZkYTY5MGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4OTc4YjhhNzIxOGY5NGNlMjYxNTg3NDdjOWQxYzdiY2FiOTg4NTI3ZGI3YzFkZmQ0NmQyMGI2YTBkMmNmMDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3MDE0OWUwNjlhZDY3ZWNjZjQ3MzY0NmZmMWM3NTAwNTBkMzI5ZDExMDAxOGRjNTc2Njg3OGVhZmExZDYwN2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlmMTcwN2MzZjc5ZDc1M2UyZmMyOGZiNGNlMzEzZWI2ZTY4MjJjY2ZlOTE0NjVhNzM5YTg5YjQ1ZWViN2I0NTMifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3950-L3995",
+          "version": "repo-lines-v1:sha256:f779e53aed3855897c245b44062c3b90c181838594bdc0716a432aae96f56514:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3NDhhOTk1N2QwOTFjNWZlNzNjZDAwN2IyMDdkMGI3ZWU0NDBiMWQyMzgzZTRjNzk4MWYyZDgzOWY2ZDk2NWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0ZjZlMGQ1OGMzODkwMjAyNmVkYzhlYTUzZWZlMWZmMjZjMzc4ODE4ZmU1N2M0MDg5ODMwOGFjZDRhYjNjMjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQzOTE4MjViNGVhMjcwNDZiYzk5MTlkYzFmNzQ4NThhYWNmZDIxNDMzNzU0N2ZlZDlmMDdmMDhkYTJhOWJjMTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJiZDQ0YzgzNWFkMGE5NWVlM2NmYzY0MTI0ZDUwYjE0NmI0NzE0MGM1YTFkOTc1YzI2Yzk0NWY4MTY4ZDgxNTUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-18T12:41:13.644Z"
+    "at": "2026-09-19T12:16:02.862Z"
   }
 }

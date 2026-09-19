@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:97f3c760fd3c401cbd46676639f098e87726411f31c64877d796e230b1230694",
+  "pageVersion": "sha256:e281752261d2d372ef32aef3dac01fad00b80c7e9d97c80f60b4800dd3f88408",
   "claims": [
     {
       "id": "claim_bb6a98608e1546bdaa0420599c092f05",
@@ -615,10 +615,24 @@
           "version": "repo-lines-v1:sha256:c8c10fbe9718f430dc6ba3ae12bfb3717e618535c4700097fab03ea0e43f40fa:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5ZjkxMTcwMWI3ODUwNjBiN2VhY2MyMGUzZmY1NDk2ZDBmNDBmYzVmMzFlNzA3ODkxNTAyZDRiOWRmYzNiOTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1NWU2Njg3ODk2Y2M2MzQ2ZjEyOTcwNzRmOWM3NTViOGVkMzEzOTg1MzZlMWUzNGI3Yjc0M2EwMWFhOTJkNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIwYTJlMmE3Nzg4Y2UxMTZmMTU1NTA2NGZiNjc5NDMxMTRjMDg5ZjZiN2I3ZjA0MGEyYWJkOWI0ODQwODc3YjUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_0e675f4e30da45869c3acf197903c972",
+      "statement": "The per-stack capability test (harnessed.capability, design §18) launches its live instance via the container backend (`container-run --fresh`), so its manifest-oracle diff proves delivery by ContainerBackend only and nothing about HostBackend; the pod it creates comes from the container backend's apply_isolation(BOUNDARY), never from the host path.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/capability.py#L534-L541",
+          "version": "repo-lines-v1:sha256:200fd7343257a7094e8a4a2bdcd17af406dd7d735ba2baa5fdfa8bee052796b5:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjFkNjg0MjdlMjNiZGM4OGU3NGVhMDNiNWIzMDZjZWNjOTA0YjYyNzEwMDNiYTQyZTI1M2RhODkyZDk3NDVhNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjJkYzYzNjAyZjg2YTdmNGI3ZmZlYzgzZTRkMTdlOTc3ZGI5ZGYxZmIwYzY0YzQ0NGIyYzFhZDQ5OGYzYzcwOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODcxMDRjNzUyMTFkZDJkMTQ3NWVjMTcxZmZkNDdmNmVjNzM2MTNmYTExMzdlODdmYTg5ZDA0NzQxZTMwNWZlOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzM1Y2NkYjNkYTRjMTFkMTYxZDlhODY3MmZlMDEyODY3YTM1YWUwMmNiODRiNGJjNTY5NTA1NmZmM2FhYWI1MiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/capability.py#L893-L943",
+          "version": "repo-lines-v1:sha256:21bda8028ae01e8abd671e0a818277cafe527ca31ec193601810fd8999644935:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3YmFlYTg3NDZmYWNlNGNmMGYwYjZjMTEzZjA0MjNkM2Y0MDhmYmY5ZThhODM5N2EwYmRjOWVkMDY0OGE5MTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1ZTFhMTczZDViMTRhMTM5MTdhYzA4ZDhlMTFiNjViNmQ5MGQ5NTRhZTI0NjRlYmI3ZDE2MzczZTE1NDc5OGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-18T12:41:13.644Z"
+    "at": "2026-09-19T12:16:02.862Z"
   }
 }

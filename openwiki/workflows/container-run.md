@@ -38,6 +38,8 @@ sources:
     resource: repo://src/harnessed/schema.py
   - id: openwiki-source-2e234f8645cb88b1fd759f98
     resource: repo://src/harnessed/setupenv.py
+  - id: openwiki-source-5e89566b7a4e43a53be5c7b2
+    resource: repo://src/harnessed/svcstate.py
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
     resource: repo://src/harnessed/volumes.py
   - id: openwiki-source-40ea6de9292ca7a5603003bd
@@ -48,10 +50,10 @@ sources:
     resource: repo://tests/test_broker_pod_args.py
   - id: openwiki-source-f725ea11f1806a58b06d7f3e
     resource: repo://tests/test_launch_parity.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-19T12:16:02.862Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-18T12:41:13.644Z
+    at: 2026-09-19T12:16:02.862Z
 ---
 
 # Container launch: `container-run` end to end
@@ -286,10 +288,16 @@ only, every subsequent launch took the attach branch and never looked at service
 that died stayed dead for the life of the container. Reviving it is exactly what "idempotent"
 already promised.
 
-Global services are host-published and reached from the pod via
-`host.containers.internal:<port>`; project-scoped ones are git-common-dir keyed (one container per
-checkout, shared across worktrees), bind-mount this project's persist dir as `/data` and are reached
-through a unix socket inside it, which is why `wire_services` needs the project and mount context.
+Global services are host-published; the address a client dials depends on where that client runs:
+from inside the pod the agent reaches the same published port at `host.containers.internal:<port>`,
+while a host-run client (see [host-run](/openwiki/workflows/host-run.md)) reaches it at
+`127.0.0.1:<port>`. `svcstate.svc_client_env` resolves `{host}` per launch for exactly this reason —
+a baked address would be wrong for one of the two modes. This is the address form of the
+host/container split described in [`architecture/backends.md`](/openwiki/architecture/backends.md):
+one service, two dial strings, chosen by the client's side of the boundary. Project-scoped services
+are git-common-dir keyed (one container per checkout, shared across worktrees), bind-mount this
+project's persist dir as `/data` and are reached through a unix socket inside it, which is why
+`wire_services` needs the project and mount context.
 
 ## Lifecycle: `--fresh`, re-attach, stopped leftovers
 

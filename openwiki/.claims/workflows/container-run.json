@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b7b2ea4eabb35c4576d4f927bcaf0ee23be574e3c5e1829ec64c9c0551de7c74",
+  "pageVersion": "sha256:2161b48e1ba58d77f177b0eca0c2581fce563849ab87052bbcc9b4f6f5cf0532",
   "claims": [
     {
       "id": "claim_91765c50df1e490b8c0606beb2ad6089",
@@ -977,10 +977,20 @@
           "version": "repo-lines-v1:sha256:f21306643ced0d6f4c52213108dd57193303e41d21f534a8cba27ff37c6737c3:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwNTZiMzI2MmM3YTk5MjMyNGVlNTU5NGY4MjIyZGI1OTkzNDUxMWVlNmU1NWJmODgxYTkxZDkxZWY1ZDE3OTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFhMzExYWY2MTNmNzEwZDRmNmZhMzBiNDQwMTcxM2MzMjE1NmJjMDNjZDdhOTU4NzlmZmFjYWQwYjFhNDI5OGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3M2QxODc0ODQ4MDZiNmExOGJjMzYwNTQzYjllOGU4MDQxOTViY2UzMmUxNmQ1ZjEwYWYzMTY2MGFlOGIzYTAifQ"
         }
       ]
+    },
+    {
+      "id": "claim_32bc38f3abb842ed8d81a3647a88562f",
+      "statement": "The `{host}` value a service's `client_env` receives is resolved per launch by `svc_client_env` because the dial address differs by client mode: a containerized agent reaches a host-published service at `host.containers.internal:<port>`, while a host-run client reaches the same published port at `127.0.0.1:<port>`.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/svcstate.py#L243-L253",
+          "version": "repo-lines-v1:sha256:77feaec474382cbe462714c34466fd49b9bf76e3443d5561e7981b232944e3a1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1YzYyZjMzZWIwNGMxZTVhMGQ1ZTljMDA4MTY4MTFmNzZlNWI3YTU0YjM4MjcwNWYwMzdhNGE1ZjY5ZDgwZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1MjkyM2QwNmI5NWU3NmRjOGIyMDY0ZjJhYTE3NzM4Yjc0YWIzMjFjNzQ4ZTJmZjgwYzllNDY1ODVjNmFlMzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhMWI4M2Q2Y2I1NGUzYTFhMDQzNjhlYjBjOWY4ZDg0ZjM3NDZhNTIxNDZkMDlmNjVhN2Q4NmJlNjFjYzg0NTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYwMTQzZjdlYTExN2ZmZGY1YWRhODkzZTAyOTgyNjRiYzc4NWQ4MWQ4YTY5OGRlY2YyMmM4ZmFmNWJhNTc1OWEifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-18T12:41:13.644Z"
+    "at": "2026-09-19T12:16:02.862Z"
   }
 }
