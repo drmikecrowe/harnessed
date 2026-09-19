@@ -2475,6 +2475,29 @@ def _run_container_setups(
             raise typer.Exit(1)
 
 
+def _persist_this_launch(
+    stack: str, *, group: Optional[str], title: Optional[str], only: bool
+) -> bool:
+    """Whether this launch leaves anything behind: the launcher script AND the aoe row, or neither.
+
+    An ad-hoc stack (`dynstack.is_adhoc` — machine-minted, or named `test`/`test.*`) is a one-off.
+    The script is a file dropped into the user's repo naming a stack they were trying out, and the
+    row is the same dashboard noise `aoe._SKIP_STACKS` already suppresses for the `default`
+    baseline. Neither outlives what it describes.
+
+    ONE answer for both surfaces, not two. The row's recorded command IS that script, so writing
+    the row while skipping the script would register a row that is dead on arrival — precisely the
+    hazard both call sites are ORDERED to avoid.
+
+    Same escape hatch `_SKIP_STACKS` grants, for the same stated reason: `--aoe-group`/`--aoe-title`
+    name the row, and naming one is asking for it. `--create-aoe-only` is the stronger case —
+    registering IS the command the user typed, so it cannot be the thing that gets skipped.
+    """
+    if group is not None or title is not None or only:
+        return True
+    return not dynstack.is_adhoc(stack)
+
+
 def _aoe_register(
     verb: str, stack: str, harness: str, project_path: Path, *, only: bool,
     group: Optional[str] = None, title: Optional[str] = None, no_strict_mcp: bool = False,
@@ -2837,20 +2860,22 @@ def _launch_host(
     # `--create-aoe-only`, so writing afterwards would leave a row pointing at a file that does not
     # exist — dead on arrival, failing every time it is started from the dashboard. That is the same
     # class of dead row the comment above avoids by registering after assembly.
-    launchscript.write(
-        "host-run", stack, harness, project_path,
-        group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
-        argv=_typed_invocation("host-run"),
-    )
-    # AFTER assembly, not before. Assembly is this backend's real validation gate — the analogue of
-    # `launch`'s is_built/staleness checks — so registering ahead of it would leave a row behind for
-    # a launch that then died on a renamed recipe, and that row would fail identically every time it
-    # was started from the dashboard. It costs `--create-aoe-only` one assembly, which is
-    # sub-second, emit-only and container-free on this path.
-    _aoe_register(
-        "host-run", stack, harness, project_path, only=create_aoe_only,
-        group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
-    )
+    # Both or neither, and not at all for an ad-hoc stack — see `_persist_this_launch`.
+    if _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):
+        launchscript.write(
+            "host-run", stack, harness, project_path,
+            group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
+            argv=_typed_invocation("host-run"),
+        )
+        # AFTER assembly, not before. Assembly is this backend's real validation gate — the analogue
+        # of `launch`'s is_built/staleness checks — so registering ahead of it would leave a row
+        # behind for a launch that then died on a renamed recipe, and that row would fail
+        # identically every time it was started from the dashboard. It costs `--create-aoe-only` one
+        # assembly, which is sub-second, emit-only and container-free on this path.
+        _aoe_register(
+            "host-run", stack, harness, project_path, only=create_aoe_only,
+            group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
+        )
 
     # Launch-time secrets — the host half of the container path's `--env-file` (see
     # _resolve_launch_secrets). Set on THIS process for the same reason as the recipe env below:
@@ -3905,18 +3930,20 @@ def container_run(
     # BEFORE the row, for the reason spelled out at the host-run call site: the row's command IS
     # this script, `_aoe_register` EXITS under `--create-aoe-only`, and a row written afterwards
     # would point at a file that does not exist.
-    launchscript.write(
-        "container-run", stack, harness, project_path,
-        group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp_config,
-        argv=_typed_invocation("container-run"),
-    )
-    # Mirror into Agent of Empires if the user runs it. Placed after every validation above so a
-    # launch that is about to fail never leaves a row behind, and before the podman work so the row
-    # exists even if the container half goes wrong. No-op when aoe is absent; never raises.
-    _aoe_register(
-        "container-run", stack, harness, project_path, only=create_aoe_only,
-        group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp_config,
-    )
+    # Both or neither, and not at all for an ad-hoc stack — see `_persist_this_launch`.
+    if _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):
+        launchscript.write(
+            "container-run", stack, harness, project_path,
+            group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp_config,
+            argv=_typed_invocation("container-run"),
+        )
+        # Mirror into Agent of Empires if the user runs it. Placed after every validation above so a
+        # launch that is about to fail never leaves a row behind, and before the podman work so the
+        # row exists even if the container half goes wrong. No-op when aoe is absent; never raises.
+        _aoe_register(
+            "container-run", stack, harness, project_path, only=create_aoe_only,
+            group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp_config,
+        )
 
     try:
         stk = load_stack(stack_dir)

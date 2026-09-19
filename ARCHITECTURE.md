@@ -255,15 +255,20 @@ user's own overlay. That is correct rather than unfortunate: `ssh_keys` is per-s
 stack is shared across repos, so it cannot express "the key for *this* repo". Per-repo SSH
 identity comes from the forwarded agent plus your own `~/.ssh/config`.
 
-**Per-repo binding.** A launch leaves an executable behind — `<harness>-<verb>` in the project
-folder — and running it replays that launch:
+**Per-repo binding.** A launch leaves an executable behind — `<harness>-<stack>-<verb>` in the
+project folder — and running it replays that launch:
 
 ```console
-$ harnessed container-run claude --recipe superpowers --recipe serena   # once
-$ ./claude-container                                                    # thereafter
-$ ./claude-container --fresh                                            # ...with a flag for today
-$ cat claude-container                                                  # ...or just read it
+$ harnessed container-run claude --stack gsd-core_repowise   # once
+$ ./claude-gsd-core_repowise-container                       # thereafter
+$ ./claude-gsd-core_repowise-container --fresh               # ...with a flag for today
+$ cat claude-gsd-core_repowise-container                     # ...or just read it
 ```
+
+**An ad-hoc launch leaves nothing.** A stack that was machine-minted from a `--recipe` set, or one
+named `test`/`test.*`, writes no script and registers no aoe row: the launch is a one-off, and both
+artifacts would outlive what they describe. The same three flags that overrule the `default` skip
+below overrule this one.
 
 No env var, no discovery, no precedence rules. The file is the record, which is the point: the
 launch it replays is legible without a flag to print it, and the earlier `--last` design kept the
@@ -309,7 +314,7 @@ detached write path, that failure is invisible.
 | identity | (project path, stack, harness, verb, MCP mode) | a stack has an assembled profile **per harness**, the same stack host-native vs containerized is two different things to run, and `--no-strict-mcp-config` changes the agent's MCP surface |
 | identity, overridden | (group, title), with `--aoe-group` **and** `--aoe-title` | the only key that can adopt a row harnessed did not write |
 | group | the git **common** dir's repo, or `--aoe-group` | every worktree of one checkout shares a group instead of each spawning its own |
-| skipped | the `default` stack | the baseline every dynamic stack extends, not something the user composed |
+| skipped | the `default` stack; every ad-hoc stack — machine-minted, or named `test`/`test.*` | the baseline every dynamic stack extends is not something the user composed, and an ad-hoc launch is a one-off whose row would outlive it. `--aoe-group`/`--aoe-title`/`--create-aoe-only` overrule both: naming a row is asking for one |
 | removed by | `harnessed rm <stack>` | container rows only — `rm` tears down containers, and a host-native session owns none |
 
 **A row never outlives its launch.** Each backend registers only after its last validation gate —

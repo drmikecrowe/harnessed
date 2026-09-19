@@ -182,3 +182,30 @@ def mint(
     if not manifest.is_file() or manifest.read_text(encoding="utf-8") != content:
         manifest.write_text(content, encoding="utf-8")
     return name, stack_dir
+
+
+# A stack whose NAME says it is being tried out. There is no location to read for these — a test
+# stack is authored like any other — so the name is the whole signal. `test` alone counts: dropping
+# the dot is the obvious slip, and a stack actually meant to persist does not get called that.
+_TEST_NAMES = ("test",)
+_TEST_PREFIX = "test."
+
+
+def is_adhoc(stack: str) -> bool:
+    """Whether this stack is a throwaway: machine-minted, or named as a test.
+
+    Minted is recognised by LOCATION, the same rule `mint` writes into the manifest header. The
+    caller's `minted_dir` cannot serve here: minting is idempotent, so the SECOND launch of one
+    recipe set mints nothing and would persist exactly what the first launch did not.
+
+    Resolution decides which manifest is meant, so an authored stack that shadows a generated name
+    is correctly NOT ad-hoc — the authored one is what launches. `catalog_roots` puts the generated
+    root last and `mint` refuses to shadow, so the two agree.
+
+    A name that resolves nowhere is not ad-hoc: `find_in_catalog` falls back to the highest-
+    precedence root, which is never the generated one. Nothing launches under such a name anyway.
+    """
+    if stack in _TEST_NAMES or stack.startswith(_TEST_PREFIX):
+        return True
+    stack_dir = paths.find_in_catalog("stacks", stack)
+    return stack_dir.resolve().is_relative_to(paths.generated_catalog_root().resolve())
