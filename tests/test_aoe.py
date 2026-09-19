@@ -659,6 +659,48 @@ class TestForgetStackReadsTheLauncherScript:
         aoe.forget_stack("container-run", "serena")
         assert rec.removed() == []
 
+    def test_a_legacy_named_script_is_still_attributable(self, monkeypatch, tmp_path):
+        """A pre-rename row must still be removable by `harnessed rm`.
+
+        Found by adversarial review, and it falsified the reasoning I had written into
+        `parse_script_name`: "the old name carries no stack, so nothing can attribute it to one".
+        That is false HERE, because attribution on this path reads the script's exec line, never its
+        filename. Refusing the legacy name at the shape gate therefore did not make a row
+        unattributable, it made it UNREMOVABLE: `harnessed rm` tore the containers down and left the
+        dashboard row behind, and clicking that row relaunched the stack just removed.
+        """
+        script = tmp_path / "claude-container"
+        script.write_text(
+            f"#!/bin/sh\n{launchscript.SENTINEL}\n"
+            f"exec harnessed container-run claude {tmp_path} --stack serena \"$@\"\n",
+            encoding="utf-8",
+        )
+        rec = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "serena")
+        assert rec.removed() == ["s1"], "a legacy-named script still names its stack in the file"
+
+    def test_a_legacy_named_script_for_another_stack_is_left_alone(self, monkeypatch, tmp_path):
+        script = tmp_path / "claude-container"
+        script.write_text(
+            f"#!/bin/sh\n{launchscript.SENTINEL}\n"
+            f"exec harnessed container-run claude {tmp_path} --stack alpha \"$@\"\n",
+            encoding="utf-8",
+        )
+        rec = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "beta")
+        assert rec.removed() == [], "attribution must still be per-stack for a legacy name"
+
+    def test_a_legacy_host_script_survives_the_container_verb(self, monkeypatch, tmp_path):
+        script = tmp_path / "claude-host"
+        script.write_text(
+            f"#!/bin/sh\n{launchscript.SENTINEL}\n"
+            f"exec harnessed host-run claude {tmp_path} --stack serena \"$@\"\n",
+            encoding="utf-8",
+        )
+        rec = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "serena")
+        assert rec.removed() == [], "verb agreement must hold for the legacy name too"
+
     def test_the_exec_line_wins_when_the_name_disagrees(self, monkeypatch, tmp_path):
         """S18 — a renamed file is torn down by what it LAUNCHES, not by what it is called.
 

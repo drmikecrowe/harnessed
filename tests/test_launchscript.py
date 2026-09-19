@@ -294,27 +294,50 @@ def test_every_name_we_write_is_recognised_as_a_row(harness, verb, stack):
     assert aoe._is_launcher_script([f"/p/{name}", "--"]) is True
 
 
-@given(stack=st.text(min_size=1).filter(lambda s: "\x00" not in s))
-@settings(max_examples=100, deadline=None,
+# The traversal shapes an unconstrained `st.text()` will never generate. Hypothesis explores the
+# alphabet, not the grammar: over a hundred examples it produced no `..` sequence at all, so the
+# containment property below passed while containment was BROKEN. Adversarial review found that;
+# these are the cases that make the property mean something.
+_ESCAPE_ATTEMPTS = [
+    "x/../../evil",       # the demonstrated escape: resolves above the project
+    "../evil",
+    "..",
+    ".",
+    "",
+    "a/b",
+    "/absolute",
+    "sub/dir",
+]
+
+
+@given(stack=st.one_of(
+    st.sampled_from(_ESCAPE_ATTEMPTS),
+    st.text(min_size=1).filter(lambda s: "\x00" not in s),
+))
+@settings(max_examples=150, deadline=None,
           suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_a_stack_name_never_escapes_the_project(tmp_path_factory, stack):
-    """P3 — containment, by the contract that ALREADY exists. No guard was added.
+    """P3 — whatever the stack name, a written launcher lives inside the project folder.
 
-    The stack name reaches a filesystem path for the first time in this change, so containment
-    needs stating. It does not need enforcing, and this asserts why:
+    THE INTERMEDIATE DIRECTORY IS CREATED ON PURPOSE. Without it a traversing name fails on a
+    missing parent and the test passes for the wrong reason — which is precisely how the first
+    version of this property, plus a docstring claiming containment was structural, reported a hole
+    as covered. The escape needs `<project>/claude-<first segment>` to exist, so the test makes it
+    exist.
 
-      * `script_name` always prefixes `{harness}-`, so the result can never be absolute and the
-        join can never be replaced;
-      * a separator still targets something INSIDE the project folder;
-      * a missing parent lands on `write`'s existing blanket `except OSError`, which returns None.
-
-    If this ever fails, the answer is a guard and a spec revision, not a weaker property.
+    Containment is enforced, not inherited: `write` refuses a stack name that is not one path
+    component. The `{harness}-` prefix does stop the join being replaced by an absolute path, but a
+    relative traversal never needed one.
     """
     proj = tmp_path_factory.mktemp("p")
+    first = stack.split("/")[0]
+    if first:
+        (proj / f"claude-{first}").mkdir(exist_ok=True)
+
     written = launchscript.write("host-run", stack, "claude", proj)
     if written is not None:
-        assert proj.resolve() in written.resolve().parents or written.parent == proj, \
-            "a written launcher must live inside the project folder"
+        assert written.resolve().parent == proj.resolve(), \
+            f"a launcher for stack {stack!r} escaped to {written.resolve()}"
 
 
 class TestParityWithCommandFor:

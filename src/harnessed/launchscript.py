@@ -113,10 +113,15 @@ def parse_script_name(name: str) -> Optional[tuple[str, str, str]]:
     `./run-dev` must never read as ours.
 
     RETURNS NONE FOR THE LEGACY TWO-PART NAME (`claude-host`), whose stack field comes back empty.
-    That is the point rather than an accident: the old name carries no stack, so nothing can
-    attribute it to one, and `harnessed rm` must not tear down containers it cannot name.
-    `aoe._is_ours` still recognises the legacy shape by other means, for the reason its own
-    docstring gives. The two functions answer different questions.
+    This function reads the THREE-part grammar only; `parse_legacy_script_name` reads the other one,
+    and `aoe._is_launcher_script` accepts either.
+
+    AN EARLIER REVISION JUSTIFIED THAT SPLIT WRONGLY, and the wrong reason is worth recording because
+    it is the plausible one. It read: the old name carries no stack, so nothing can attribute it to
+    one. That is false. Attribution never came from the filename — `aoe._replays_stack` reads the
+    `--stack` value out of the script's exec line, so a legacy-named file is perfectly attributable.
+    Acting on the wrong reason made every pre-rename row un-removable by `harnessed rm`, which
+    adversarial review caught. The split is a grammar boundary, not an attribution rule.
     """
     harness, _, rest = name.partition("-")
     stack, _, backend = rest.rpartition("-")
@@ -140,15 +145,40 @@ def parse_legacy_script_name(name: str) -> Optional[tuple[str, str]]:
     sit together and cannot drift apart. The previous arrangement kept the reader in `aoe` with no
     call edge to the builder, which is exactly the coupling this module now refuses to repeat.
 
-    DELIBERATELY NOT REACHED BY `parse_script_name`, and the split is the contract. Attribution asks
-    "does this row start THIS stack", and a name carrying no stack can never answer it — so
-    `harnessed rm` must not see a legacy name and tear down containers it cannot name. Repair asks
-    "may I rename this row aside", and there the answer is yes. `aoe._is_ours` is the only caller.
+    SEPARATE FROM `parse_script_name` AS A GRAMMAR, not as a policy. Two shapes, two readers, so that
+    neither has to branch. Callers decide what to do with each: `aoe._is_launcher_script` accepts
+    either, because both a repair and a teardown reach a launcher row the same way, and the stack
+    comes from the script's exec line in both cases.
+
+    An earlier revision made this a POLICY boundary — legacy names readable for repair and refused
+    for teardown — on the reasoning that a name with no stack cannot be attributed to one. The
+    reasoning was wrong (see `parse_script_name`) and the effect was pre-rename rows that
+    `harnessed rm` could never clean up.
     """
     harness, _, backend = name.rpartition("-")
     if harness not in HARNESS_CONFIG_DIR or backend not in _BACKENDS:
         return None
     return harness, backend
+
+
+def script_backend(name: str) -> Optional[str]:
+    """The backend field of EITHER launcher-name shape, or None when the name is not one of ours.
+
+    The one question both aoe callers actually ask. `_is_launcher_script` asks "is this a launcher
+    row at all" (is this not None), and `_replays_stack` asks "does it name the backend I am tearing
+    down" (does this equal the verb's suffix). Neither needs the harness or the stack.
+
+    ONE FUNCTION BECAUSE TWO LEFT DEAD CODE. Written as a branch inside `_replays_stack` — try the
+    three-part parse, else the legacy one, else bail — the final bail was unreachable: its caller had
+    already accepted one of the two grammars, so the third case could not happen. Changed-line
+    coverage caught it as one uncovered line. Returning None here instead means an unrecognised name
+    simply fails the equality check at the call site, with no branch to leave untested.
+    """
+    parsed = parse_script_name(name)
+    if parsed is not None:
+        return parsed[2]
+    legacy = parse_legacy_script_name(name)
+    return legacy[1] if legacy is not None else None
 
 
 def _git(project_path: Path, *args: str) -> Optional[subprocess.CompletedProcess[str]]:
@@ -227,7 +257,7 @@ def write(
     *, group: Optional[str] = None, title: Optional[str] = None, no_strict_mcp: bool = False,
     argv: Optional[list[str]] = None,
 ) -> Optional[Path]:
-    """Write `<project>/<harness>-<verb>` and ensure its git exclude entry. Never raises.
+    """Write `<project>/<harness>-<stack>-<verb>` and ensure its git exclude entry. Never raises.
 
     Returns the path written, or None when nothing was written — a foreign file in the way, a
     read-only folder, any OSError. None is not an error the caller should act on; the launch
@@ -235,6 +265,23 @@ def write(
     """
     try:
         project_path = Path(project_path).resolve()
+
+        # ONE PATH COMPONENT, or nothing is written. The stack name reaches a filesystem path here
+        # and nowhere else in this module, and `write` is a plain function taking a `str`.
+        #
+        # An earlier revision of this change argued that no check was needed, because `script_name`
+        # always prefixes `{harness}-` so the result can never be absolute and the join can never be
+        # replaced. Both halves are true and neither is containment: a RELATIVE traversal needs no
+        # absolute path. Adversarial review demonstrated it — with `<project>/claude-x` present, a
+        # stack of `x/../../evil` writes `<project>/claude-x/../../evil-host`, which resolves ABOVE
+        # the project folder. Reachability upstream (`paths.catalog_relpath` refuses `.`, `..` and a
+        # third component) is a reason the bug is not live today, never a reason this is correct.
+        #
+        # Returns None like every other refusal here: never fatal, and a launch that cannot get a
+        # safe filename is better off without the shortcut.
+        if not stack or stack in (".", "..") or stack != Path(stack).name:
+            return None
+
         target = project_path / script_name(verb, stack, harness)
 
         if target.exists():

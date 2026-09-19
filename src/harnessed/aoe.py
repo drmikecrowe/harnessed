@@ -529,10 +529,16 @@ def _same_title(a: str | None, b: str | None) -> bool:
 def _is_ours(command: str) -> bool:
     """Whether a stored command is a shape THIS module emits — the licence to rewrite the row.
 
-    Every shape harnessed has ever written: the raw invocation `command_for` produces, the
-    `harnessed <verb>-run <harness> --last --` replay `replay_command` records now, and the
-    `mise run <harness> --` task that preceded it (bd harnessed-7mt). Everything else belongs to
-    somebody else and is reported without being touched.
+    Every shape harnessed has ever written, and it is worth being explicit about which are LIVE and
+    which are only tolerated, because the list reads as current otherwise:
+
+      * LIVE — the raw invocation `command_for` produces, and the launcher-script replay
+        `replay_command` records (`<path>/<harness>-<stack>-<verb> --`).
+      * TOLERATED, never written — the two-part launcher name that predates the stack in the
+        filename, the `harnessed <verb>-run <harness> --last --` replay that predates the script
+        entirely, and the `mise run <harness> --` task before that.
+
+    Everything else belongs to somebody else and is reported without being touched.
 
     THE MISE SHAPE IS STILL ACCEPTED THOUGH NOTHING WRITES IT. Rows created before the switch are
     ours, and reading them as foreign would strand every one of them: drift against a foreign row is
@@ -565,22 +571,7 @@ def _is_ours(command: str) -> bool:
         return True
     if _is_launcher_script(tokens):
         return True
-    if _is_legacy_launcher_script(tokens):
-        return True
     return tokens[:2] == ["mise", "run"] and len(tokens) > 2 and tokens[2] in HARNESS_CONFIG_DIR
-
-
-def _is_legacy_launcher_script(tokens: list[str]) -> bool:
-    """A `<path>/<harness>-<verb> --` row: the two-part name, retired by the stack rename.
-
-    `_is_ours` is the only caller, and that is the contract rather than an accident. See
-    `launchscript.parse_legacy_script_name` for why repair accepts a shape attribution must not.
-    """
-    if len(tokens) != 2 or tokens[1] != "--":
-        return False
-    from . import launchscript  # local, for the cycle reason in `replay_command`
-
-    return launchscript.parse_legacy_script_name(Path(tokens[0]).name) is not None
 
 
 def _is_launcher_script(tokens: list[str]) -> bool:
@@ -595,18 +586,23 @@ def _is_launcher_script(tokens: list[str]) -> bool:
     two. `launchscript.parse_script_name` is now the single copy and this calls it, so the builder
     and the reader cannot drift apart.
 
-    Narrow on purpose, and the narrowness lives in that parser: a bare two-token command ending in
-    `--` would make a user's own `./run-dev --` row eligible for rewriting, so the basename must
-    name a harness we know, one of the two backends, and a non-empty stack between them.
+    Narrow on purpose, and the narrowness lives in those parsers: a bare two-token command ending in
+    `--` would make a user's own `./run-dev --` row eligible for rewriting, so the basename must name
+    a harness we know and one of the two backends.
 
-    A LEGACY TWO-PART NAME IS NOT A MATCH, because it names no stack and so cannot be attributed to
-    one. `_is_ours` still accepts that shape — see its docstring. These two questions differ.
+    BOTH NAME SHAPES ARE A MATCH — the three-part name and the retired two-part one. An earlier
+    revision of this change refused the legacy shape here, reasoning that a name carrying no stack
+    could not be attributed to one. Adversarial review falsified that: attribution on every path that
+    matters reads the script's EXEC LINE, never its filename (see `_replays_stack`), so refusing the
+    old name did not make a row unattributable, it made it UNREMOVABLE. `harnessed rm` tore the
+    containers down and left the dashboard row behind, and starting that row relaunched the stack the
+    user had just removed.
     """
     if len(tokens) != 2 or tokens[1] != "--":
         return False
     from . import launchscript  # local, for the cycle reason in `replay_command`
 
-    return launchscript.parse_script_name(Path(tokens[0]).name) is not None
+    return launchscript.script_backend(Path(tokens[0]).name) is not None
 
 
 def _drifted_rows(sessions: list[dict], command: str, project_path: Path, title: str) -> list[dict]:
@@ -858,16 +854,22 @@ def sync_session(
 
 
 def _replays_stack(tokens: list[str], verb: str, stack: str) -> bool:
-    """Whether a launcher-script row would start `stack` — the stack a replay row does not carry.
+    """Whether a launcher-script row would start `stack`, read from the script rather than its name.
 
-    Only for the shape `replay_command` writes (`<path>/<harness>-<verb> --`); the caller handles
-    the older `--stack <name>` shape itself. Everything is guarded because this runs inside
-    `harnessed rm`'s best-effort cleanup, over aoe's JSON, which is not our schema to trust.
+    For both launcher-script shapes — `<path>/<harness>-<stack>-<verb> --` and the retired
+    `<path>/<harness>-<verb> --`; the caller handles the raw `--stack <name>` command itself.
+    Everything is guarded because this runs inside `harnessed rm`'s best-effort cleanup, over aoe's
+    JSON, which is not our schema to trust.
 
-    READS THE SCRIPT the row points at, rather than a side record. The script IS the record now, and
-    it carries the resolved `--stack <name>` in its exec line — so the file that would run and the
-    file we attribute the row by are the same file, and cannot disagree. The `--last` shape this
-    replaced had to consult `lastrun` for the same answer.
+    READS THE SCRIPT the row points at, rather than its filename or a side record. The script IS the
+    record: it carries the resolved `--stack <name>` in its exec line, so the file that would run and
+    the file we attribute the row by are the same file.
+
+    THE NAME IS NOT THE AUTHORITY, even though it now carries the stack too. A human can rename or
+    edit the file, `rm` destroys containers, and the two can therefore disagree — so the stack acted
+    on is the one the file would actually LAUNCH. The name is checked only for BACKEND agreement, and
+    that check accepts either shape: a pre-rename row still names its stack inside the file, and
+    refusing its name here made those rows un-removable.
 
     Returns False when the script is missing, unreadable, or names another stack — see `forget_stack`
     on why an unattributable row is left alone rather than removed. Bounded read: a row can point
@@ -879,8 +881,10 @@ def _replays_stack(tokens: list[str], verb: str, stack: str) -> bool:
     # backend it must not touch.
     from . import launchscript  # local, for the cycle reason in `replay_command`
 
-    parsed = launchscript.parse_script_name(Path(tokens[0]).name)
-    if parsed is None or parsed[2] != launchscript._VERB_SUFFIX[verb]:
+    # EITHER NAME SHAPE, because a pre-rename row is still removable: the stack comes from the exec
+    # line below, so the name only has to agree about the BACKEND. Refusing the legacy shape here
+    # left those rows permanently un-removable (found by adversarial review).
+    if launchscript.script_backend(Path(tokens[0]).name) != launchscript._VERB_SUFFIX[verb]:
         return False
     script = Path(tokens[0])
     try:
@@ -932,11 +936,18 @@ def forget_stack(verb: str, stack: str, *, background: bool = True) -> None:
         index: the stack used to be the third token, which a prefix compare could check; it is a
         flag value sitting after the harness and path, so its position varies with whether a project
         path was recorded.
-      * `<path>/<harness>-<verb> --` — what `replay_command` writes now. It names NO stack,
-        deliberately: putting one back would re-key every row whenever the flag set changed, which
-        is the identity property the switch away from `mise run` was protecting. The stack is
-        instead read out of the launcher script the row points at — the same file the row runs, so a
-        row matches this cleanup exactly when it would have started the stack being removed.
+      * `<path>/<harness>-<stack>-<verb> --` — what `replay_command` writes now, plus the retired
+        `<path>/<harness>-<verb> --` that predates the stack in the filename. Either way the stack is
+        read out of the launcher SCRIPT the row points at, not out of its name: the same file the row
+        runs, so a row matches this cleanup exactly when it would have started the stack being
+        removed. That is why the legacy shape is still attributable, and why refusing it here made
+        pre-rename rows un-removable until adversarial review caught it.
+
+        The filename carrying the stack does not change the authority. A human can `mv` the file or
+        edit it, and `rm` destroys containers, so the stack it acts on is the one the file would
+        actually LAUNCH. What the name is still for is the identity key: naming the stack there keeps
+        two stacks from sharing one row, without putting a FLAG in the command — a flag would re-key
+        every row whenever the flag set changed.
 
     NOT matched by title. `--aoe-title` overrides the derived title, so a titled row would escape
     cleanup and a coincidentally-titled foreign row could be caught by it.
