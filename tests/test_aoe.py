@@ -143,7 +143,7 @@ class TestSyncSession:
         [add] = rec.registrations()
         assert add[1] == str(tmp_path)
         assert _flag(add, "-p") == aoe.PROFILE
-        assert _flag(add, "--cmd-override") == f"{tmp_path}/claude-container --"
+        assert _flag(add, "--cmd-override") == f"{tmp_path}/claude-serena-container --"
 
     def test_uses_cmd_override_not_cmd(self, rec, tmp_path):
         # `--cmd` is validated against aoe's tool list and silently substitutes its configured
@@ -371,14 +371,64 @@ class TestComposedRecipesInTheTitle:
             "claude/host main default"
         )
 
-    def test_two_baselines_do_not_collide(self, monkeypatch, tmp_path):
+    def test_two_bare_baselines_do_not_collide(self, monkeypatch, tmp_path):
         # Both compose nothing. Falling back to the stack name is what keeps them apart.
-        monkeypatch.setattr(aoe, "_composed_recipes", lambda stack: [])
+        #
+        # NARROW, AND THE NARROWNESS MATTERED: forcing the empty delta means this only ever covered
+        # BARE baselines, so it passed while `default.serena` and `isolated.serena` collided. The
+        # test below covers the case this one cannot reach.
+        monkeypatch.setattr(aoe, "_composed_recipes", lambda stack: (None, []))
         project = tmp_path / "main"
         project.mkdir()
         assert aoe.title_for(
             "container-run", "default", "claude", project
         ) != aoe.title_for("container-run", "isolated", "claude", project)
+
+    def test_two_baselines_sharing_a_recipe_delta_do_not_collide(self, monkeypatch, tmp_path):
+        """The title must stay injective over the STACK, now that the stack is in the command.
+
+        Found by adversarial review. `default.serena` and `isolated.serena` have the same recipe
+        delta, so the delta-only title rendered both as `claude/container main serena`.
+
+        That was harmless while the recorded command named no stack: both stacks shared one command
+        AND one title, `_registered` matched, and no second row was ever attempted. Putting the stack
+        in the command made the commands differ while the titles still collided, which is the
+        module's two-key hazard exactly: `_registered` misses, `_drifted_rows` finds the other
+        stack's row at the same (title, path), classifies it as ours, renames it aside and adds its
+        own. Alternating launches then ping-pong forever, one stale row and one warning per launch.
+
+        The sibling test above monkeypatches `_composed_recipes` to `[]`, so it only ever exercised
+        BARE baselines and passed whatever this did.
+        """
+        root = tmp_path / "generated"
+        for name, base in (("default.serena", "default"), ("isolated.serena", "isolated")):
+            (root / "stacks" / name).mkdir(parents=True)
+            (root / "stacks" / name / "stack.yaml").write_text(
+                f"name: {name}\nextends: {base}\nrecipes:\n  - serena\n", encoding="utf-8",
+            )
+        monkeypatch.setattr(aoe.paths, "generated_catalog_root", lambda: root)
+        monkeypatch.setattr(aoe.paths, "find_in_catalog", lambda kind, n: root / kind / n)
+        project = tmp_path / "main"
+        project.mkdir()
+
+        assert aoe.title_for("container-run", "default.serena", "claude", project) != \
+            aoe.title_for("container-run", "isolated.serena", "claude", project)
+
+    def test_the_default_baseline_is_still_hidden(self, monkeypatch, tmp_path):
+        """Fixing the collision must not put `default.` back on every row.
+
+        Restating the baseline on every title is what the delta-only rendering removed, and the
+        overwhelmingly common baseline is `default`. So `default` stays invisible and only a
+        non-default baseline is shown.
+        """
+        self._mint(
+            monkeypatch, tmp_path, "default.serena",
+            "name: default.serena\nextends: default\nrecipes:\n  - serena\n",
+        )
+        project = tmp_path / "main"
+        project.mkdir()
+        assert aoe.title_for("container-run", "default.serena", "claude", project) == \
+            "claude/container main serena"
 
     def test_an_unreadable_manifest_falls_back_to_the_stack_name(self, monkeypatch, tmp_path):
         def boom(kind, n):
@@ -407,20 +457,23 @@ class TestComposedRecipesInTheTitle:
 
 
 class TestIdentity:
-    """(path, verb, harness) — the key that decides duplicate vs distinct.
+    """(path, verb, harness, stack) — the key that decides duplicate vs distinct.
 
-    The recorded command is `<project>/<harness>-<verb> --`, which names no STACK, so two stacks in
-    one folder still share a row: which one it starts is whatever the launcher script currently
-    says, and the launch rewrites that script. The VERB is named, so host and container launches no longer collapse
-    together (bd harnessed-7mt) — they did under `mise run <harness> --`, which named neither.
+    The recorded command is `<project>/<harness>-<stack>-<verb> --`, so all four are named. The
+    VERB was added first (bd harnessed-7mt): under `mise run <harness> --` host and container
+    launches shared a row whose meaning depended on which launch ran last, and one row cannot
+    restart two backends.
 
-    That collapse was not free: one row cannot restart two backends, so a folder used both ways had
-    a row whose meaning depended on which launch ran last. Naming the verb costs one extra row per
-    folder-used-both-ways and buys a row that restarts what it says it restarts.
+    The STACK is named now for the same reason, and it closes the same class of bug one level
+    down. While the name omitted it, two stacks in one folder shared a row: the launch rewrote
+    the single launcher script, the existing row matched on (command, path) and was left alone,
+    and the row then replayed the newcomer under the older stack's label. So a row's meaning
+    again depended on which launch ran last. Naming the stack costs one row per stack per folder
+    and buys a row that restarts what it says it restarts.
     """
 
     def _existing(self, tmp_path: Path, command: str | None = None) -> str:
-        command = command if command is not None else f"{tmp_path}/claude-container --"
+        command = command if command is not None else f"{tmp_path}/claude-serena-container --"
         return f'[{{"id": "s1", "path": "{tmp_path}", "command": "{command}"}}]'
 
     def test_relaunch_does_not_duplicate(self, monkeypatch, tmp_path):
@@ -436,13 +489,21 @@ class TestIdentity:
         aoe.sync_session("container-run", "serena", "omp", tmp_path)
         assert len(rec.registrations()) == 1
 
-    def test_a_second_stack_reuses_the_row(self, monkeypatch, tmp_path):
-        # The deliberate collapse: `mise run claude` is the same command whichever stack the task
-        # points at, so the row follows the task instead of multiplying beside it.
+    def test_a_second_stack_gets_its_own_row(self, monkeypatch, tmp_path):
+        """S8 — the inversion this change exists for.
+
+        This test asserted the opposite until now, and called the collapse deliberate. It was
+        deliberate about the FLAG: putting `--stack` back in the command would re-key every row
+        whenever the flag set changed. It was never deliberate about the outcome, which was a row
+        replaying a stack it did not name. The stack now lives in the filename, so the identity
+        key carries it without carrying a flag.
+        """
         rec = Recorder(sessions=self._existing(tmp_path))
         rec.install(monkeypatch)
         aoe.sync_session("container-run", "other-stack", "claude", tmp_path)
-        assert rec.added() == []
+        assert len(rec.registrations()) == 1
+        [add] = rec.registrations()
+        assert _flag(add, "--cmd-override") == f"{tmp_path}/claude-other-stack-container --"
 
     def test_each_verb_gets_its_own_row(self, monkeypatch, tmp_path):
         """The deliberate SPLIT (bd harnessed-7mt), and the one identity change of that switch.
@@ -458,7 +519,7 @@ class TestIdentity:
         aoe.sync_session("host-run", "serena", "claude", tmp_path)
         assert len(rec.registrations()) == 1
         [add] = rec.registrations()
-        assert _flag(add, "--cmd-override") == f"{tmp_path}/claude-host --"
+        assert _flag(add, "--cmd-override") == f"{tmp_path}/claude-serena-host --"
 
     def test_an_open_mcp_relaunch_does_not_duplicate(self, monkeypatch, tmp_path):
         rec = Recorder(sessions=self._existing(tmp_path))
@@ -619,9 +680,13 @@ class TestForgetStack:
 class TestForgetStackReadsTheLauncherScript:
     """`harnessed rm <stack>` must attribute a script row to its stack — by reading the script.
 
-    The row's command names no stack (that is the identity property), so the only place the stack
-    can be read from is the file the row would run. Same file, so the two cannot disagree — the
-    `--last` shape this replaced had to consult a side record for the same answer.
+    THE SCRIPT REMAINS THE AUTHORITY, even now that the filename also carries the stack. The two
+    can disagree, because a human may rename or hand-edit the file, and `rm` tears down containers:
+    so the stack it acts on is the one the file would actually LAUNCH, never the one its name
+    advertises. See `test_the_exec_line_wins_when_the_name_disagrees`.
+
+    Before the rename the command named no stack at all, so reading the file was the only option.
+    It is now a choice, and this is the reason for it.
 
     UNATTRIBUTABLE ROWS ARE LEFT ALONE. `rm` is destructive and unattended, so a missing or
     unreadable script means "not mine to remove", never "remove it anyway".
@@ -643,6 +708,69 @@ class TestForgetStackReadsTheLauncherScript:
         rec = Recorder(sessions=rows).install(monkeypatch)
         aoe.forget_stack("container-run", "serena")
         assert rec.removed() == []
+
+    def test_a_legacy_named_script_is_still_attributable(self, monkeypatch, tmp_path):
+        """A pre-rename row must still be removable by `harnessed rm`.
+
+        Found by adversarial review, and it falsified the reasoning I had written into
+        `parse_script_name`: "the old name carries no stack, so nothing can attribute it to one".
+        That is false HERE, because attribution on this path reads the script's exec line, never its
+        filename. Refusing the legacy name at the shape gate therefore did not make a row
+        unattributable, it made it UNREMOVABLE: `harnessed rm` tore the containers down and left the
+        dashboard row behind, and clicking that row relaunched the stack just removed.
+        """
+        script = tmp_path / "claude-container"
+        script.write_text(
+            f"#!/bin/sh\n{launchscript.SENTINEL}\n"
+            f"exec harnessed container-run claude {tmp_path} --stack serena \"$@\"\n",
+            encoding="utf-8",
+        )
+        rec = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "serena")
+        assert rec.removed() == ["s1"], "a legacy-named script still names its stack in the file"
+
+    def test_a_legacy_named_script_for_another_stack_is_left_alone(self, monkeypatch, tmp_path):
+        script = tmp_path / "claude-container"
+        script.write_text(
+            f"#!/bin/sh\n{launchscript.SENTINEL}\n"
+            f"exec harnessed container-run claude {tmp_path} --stack alpha \"$@\"\n",
+            encoding="utf-8",
+        )
+        rec = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "beta")
+        assert rec.removed() == [], "attribution must still be per-stack for a legacy name"
+
+    def test_a_legacy_host_script_survives_the_container_verb(self, monkeypatch, tmp_path):
+        script = tmp_path / "claude-host"
+        script.write_text(
+            f"#!/bin/sh\n{launchscript.SENTINEL}\n"
+            f"exec harnessed host-run claude {tmp_path} --stack serena \"$@\"\n",
+            encoding="utf-8",
+        )
+        rec = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "serena")
+        assert rec.removed() == [], "verb agreement must hold for the legacy name too"
+
+    def test_the_exec_line_wins_when_the_name_disagrees(self, monkeypatch, tmp_path):
+        """S18 — a renamed file is torn down by what it LAUNCHES, not by what it is called.
+
+        Written by hand rather than through `write`, because `write` cannot produce this state: it
+        is what a human leaves behind after `mv`. `rm` is destructive, so the stack it acts on has
+        to be the one the file would really start.
+        """
+        script = tmp_path / "claude-alpha-container"
+        script.write_text(
+            f"#!/bin/sh\n{launchscript.SENTINEL}\n"
+            f"exec harnessed container-run claude {tmp_path} --stack beta \"$@\"\n",
+            encoding="utf-8",
+        )
+        rec = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "beta")
+        assert rec.removed() == ["s1"], "the exec line names beta, so beta's teardown claims it"
+
+        rec2 = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "alpha")
+        assert rec2.removed() == [], "the filename says alpha, and the filename is not the record"
 
     def test_a_row_whose_script_names_the_stack_is_removed(self, monkeypatch, tmp_path):
         script = launchscript.write("container-run", "serena", "claude", tmp_path)
@@ -667,19 +795,19 @@ class TestForgetStackReadsTheLauncherScript:
         assert rec.removed() == []
 
     def test_a_missing_script_is_left_alone(self, monkeypatch, tmp_path):
-        rec = self._rec(monkeypatch, self._row(tmp_path / "claude-container"))
+        rec = self._rec(monkeypatch, self._row(tmp_path / "claude-serena-container"))
         aoe.forget_stack("container-run", "serena")
         assert rec.removed() == []
 
     def test_a_script_with_no_exec_line_is_left_alone(self, monkeypatch, tmp_path):
-        script = tmp_path / "claude-container"
+        script = tmp_path / "claude-serena-container"
         script.write_text("#!/bin/sh\n# harnessed:launcher v1\n", encoding="utf-8")
         rec = self._rec(monkeypatch, self._row(script))
         aoe.forget_stack("container-run", "serena")
         assert rec.removed() == []
 
     def test_an_unbalanced_quote_in_the_script_is_left_alone(self, monkeypatch, tmp_path):
-        script = tmp_path / "claude-container"
+        script = tmp_path / "claude-serena-container"
         script.write_text("#!/bin/sh\nexec harnessed container-run claude --stack 'serena\n",
                           encoding="utf-8")
         rec = self._rec(monkeypatch, self._row(script))
@@ -691,7 +819,7 @@ class TestForgetStackReadsTheLauncherScript:
         # opens with `exec `", which is also what `str.find` returns for "not found", so the
         # not-found guard swallowed the branch and it never ran — the row survived `harnessed rm`
         # with its container gone.
-        script = tmp_path / "claude-container"
+        script = tmp_path / "claude-serena-container"
         script.write_text(
             'exec harnessed container-run claude /p --stack serena "$@"\n', encoding="utf-8"
         )
@@ -702,7 +830,7 @@ class TestForgetStackReadsTheLauncherScript:
     def test_a_script_whose_first_line_is_an_exec_for_another_stack_is_left_alone(
         self, monkeypatch, tmp_path
     ):
-        script = tmp_path / "claude-container"
+        script = tmp_path / "claude-serena-container"
         script.write_text(
             'exec harnessed container-run claude /p --stack other "$@"\n', encoding="utf-8"
         )
@@ -826,7 +954,7 @@ class TestWriteDispatch:
     def test_already_registered_is_success_without_writing(self, monkeypatch, tmp_path):
         rec = Recorder(
             sessions=f'[{{"id": "s1", "path": "{tmp_path}", '
-                     f'"command": "{tmp_path}/claude-container --"}}]'
+                     f'"command": "{tmp_path}/claude-serena-container --"}}]'
         ).install(monkeypatch)
         assert aoe.sync_session("container-run", "serena", "claude", tmp_path) is True
         assert rec.spawned == []
@@ -1125,7 +1253,7 @@ class TestCommandDrift:
     # Path-dependent since the row invokes the project's own launcher script, so it is derived per
     # test rather than a module constant.
     def _ours(self, proj: Path) -> str:
-        return f"{proj}/claude-host --"
+        return f"{proj}/claude-serena-host --"
 
     STALE_TITLE = "claude/host proj serena (stale abc123)"
 
@@ -1153,6 +1281,31 @@ class TestCommandDrift:
         p = tmp_path / "proj"
         p.mkdir()
         return p
+
+    # ---- the launcher rename: a legacy row must END as a correct row ----
+
+    def test_a_legacy_two_part_row_ends_as_one_correct_new_row(self, monkeypatch, proj):
+        """S20 — the END STATE, which is the only thing that matters to a user upgrading.
+
+        Asserting that `_is_ours` returns True for a legacy name would pass while this path stayed
+        broken, so this drives the real `sync_session` and checks what the dashboard is left
+        holding: the stale row renamed aside, and a row whose command is the three-part name.
+
+        The failure this guards is not a stale row. It is NO row: one foreign row at the
+        (title, path) key sets `blocked` and suppresses the whole registration, so a user would
+        relaunch, get nothing, and be told harnessed did not write their own row.
+        """
+        rec = self._rec(monkeypatch, proj, f"{proj}/claude-host --")
+        assert self._sync(proj) is not False, "registration must not be blocked by a legacy row"
+        assert len(self._renames(rec)) == 1, "the legacy row is renamed aside, never deleted"
+        [add] = rec.registrations()
+        assert _flag(add, "--cmd-override") == f"{proj}/claude-serena-host --"
+
+    def test_a_legacy_row_for_a_deleted_script_is_still_repaired(self, monkeypatch, proj):
+        """S20a — ours is decided by the command's SHAPE, never by the file existing."""
+        rec = self._rec(monkeypatch, proj, "/gone/claude-container --")
+        self._sync(proj)
+        assert len(self._renames(rec)) == 1
 
     # ---- repair path: the stored command is one harnessed writes ----
 
@@ -1228,7 +1381,7 @@ class TestCommandDrift:
     def test_a_launcher_script_row_for_another_project_is_still_ours(self, monkeypatch, proj):
         # Ours is decided by the command's SHAPE, never by the file being present: a row whose
         # script was deleted is exactly the row that needs repairing.
-        rec = self._rec(monkeypatch, proj, "/gone/claude-host --")
+        rec = self._rec(monkeypatch, proj, "/gone/claude-serena-host --")
         self._sync(proj)
         assert len(self._renames(rec)) == 1
 
@@ -1457,7 +1610,7 @@ class TestForgetStackRefusesNonRegularPaths:
         return json.dumps([{"id": "s1", "path": str(path.parent), "command": command}])
 
     def test_a_fifo_row_returns_instead_of_blocking(self, monkeypatch, tmp_path):
-        fifo = tmp_path / "claude-container"
+        fifo = tmp_path / "claude-serena-container"
         os.mkfifo(fifo)
         try:
             rec = Recorder(sessions=self._row(fifo)).install(monkeypatch)
@@ -1467,7 +1620,7 @@ class TestForgetStackRefusesNonRegularPaths:
             fifo.unlink()
 
     def test_a_directory_in_place_of_the_script_is_left_alone(self, monkeypatch, tmp_path):
-        as_dir = tmp_path / "claude-container"
+        as_dir = tmp_path / "claude-serena-container"
         as_dir.mkdir()
         rec = Recorder(sessions=self._row(as_dir)).install(monkeypatch)
         aoe.forget_stack("container-run", "serena")
@@ -1501,7 +1654,7 @@ class TestTrashedRowsDoNotBlockRegistration:
             "id": sid,
             "title": "claude/host proj serena",
             "path": str(proj),
-            "command": f"{proj}/claude-host --",
+            "command": f"{proj}/claude-serena-host --",
         }])
 
     def _trash_line(self, sid: str = "abc123abc123abc1") -> str:
@@ -1570,7 +1723,7 @@ class TestARefusedDuplicateIsNotAFailure:
                 rec._sessions = json.dumps([{
                     "id": "abc123abc123abc1", "title": aoe.title_for(
                         "host-run", "serena", "claude", proj),
-                    "path": str(proj), "command": f"{proj}/claude-host --",
+                    "path": str(proj), "command": f"{proj}/claude-serena-host --",
                 }])
                 return _ok()
             return real(exe, args, timeout=timeout)

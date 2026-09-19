@@ -81,7 +81,7 @@ def test_aoe_refuses_a_duplicate_title_and_path(drifted):
     """
     project, title, profile = drifted
     result = _aoe("add", str(project), "-p", profile, "-g", "grp", "-t", title,
-                  "--cmd-override", aoe.replay_command("host-run", "claude", project))
+                  "--cmd-override", aoe.replay_command("host-run", "serena", "claude", project))
     assert "already exists" in result.stdout + result.stderr
     assert [r["command"] for r in _rows(profile)] == [STALE_COMMAND], "the stale row survived"
 
@@ -94,7 +94,7 @@ def test_repair_registers_the_correct_row_and_keeps_the_old_one(drifted):
     assert len(reports) == 1 and reports[0][1] is True
 
     commands = [r["command"] for r in _rows(profile)]
-    assert commands.count(aoe.replay_command("host-run", "claude", project)) == 1, "the correct row was registered"
+    assert commands.count(aoe.replay_command("host-run", "serena", "claude", project)) == 1, "the correct row was registered"
     assert commands.count(STALE_COMMAND) == 1, "the stale row was kept, not deleted"
     assert any(r["command"] == STALE_COMMAND and r["title"] != title for r in _rows(profile)), \
         "the stale row was renamed aside rather than removed"
@@ -128,7 +128,7 @@ def test_remove_would_not_have_worked(drifted):
     assert any(r["id"] == row_id for r in _rows(profile)), "a trashed row still comes back from list --json"
 
     refused = _aoe("add", str(project), "-p", profile, "-g", "grp", "-t", title,
-                   "--cmd-override", aoe.replay_command("host-run", "claude", project))
+                   "--cmd-override", aoe.replay_command("host-run", "serena", "claude", project))
     assert "already exists" in refused.stdout + refused.stderr, \
         "a trashed row still holds the (title, path) key, so remove+add loses the row entirely"
 
@@ -155,7 +155,7 @@ def test_a_deleted_row_can_be_registered_again(drifted):
     project, _, profile = drifted
     reports: list[tuple[str, bool]] = []
     assert _sync(project, reports) is True
-    ours = aoe.replay_command("host-run", "claude", project)
+    ours = aoe.replay_command("host-run", "serena", "claude", project)
     mine = [r for r in _rows(profile) if r["command"] == ours]
     assert len(mine) == 1
 
