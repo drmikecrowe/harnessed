@@ -46,7 +46,14 @@ from typing import Callable
 from ruamel.yaml import YAML
 
 from . import paths, toollock
-from .schema import SchemaError, load_agent, load_recipe, load_stack, valid_extra_tools
+from .schema import (
+    SchemaError,
+    _require_immutable_build_arg,
+    load_agent,
+    load_recipe,
+    load_stack,
+    valid_extra_tools,
+)
 
 __all__ = [
     "DEFAULT_MINIMUM_RELEASE_AGE_MINUTES",
@@ -856,6 +863,22 @@ def _rewrite_agent_build_arg(manifest: Path, key: str, new_value: str) -> bool:
 
     Handles both declared shapes, since either may be the one carrying the pin.
     """
+    # Validate BEFORE writing. `load_agent` gates the value on the way IN, but a pin invariant
+    # enforced only where values are READ is not enforced: without this, a resolver returning a
+    # channel ("nightly" as the newest release) persisted it here, and the manifest that had been
+    # valid a moment ago now fails at the NEXT build with a schema error instead of this update
+    # simply declining. Declining is `False`, the same "not applied" answer this function already
+    # gives when the key is absent, so `apply` does not list the finding among those it rewrote.
+    #
+    # Precise about what that does and does not buy, because the overclaiming version of this
+    # sentence was itself a review finding: the bad value never reaches disk, and the bump is not
+    # reported as applied — but the caller cannot tell a REFUSED value from an absent key, so no
+    # reason is surfaced. Distinguishing them means changing `apply`'s return contract, which is a
+    # wider change than this gate.
+    try:
+        _require_immutable_build_arg(key, new_value, manifest)
+    except SchemaError:
+        return False
     yaml = YAML()  # round-trip — agent manifests are mostly comment, same as recipes
     yaml.preserve_quotes = True
     yaml.width = 4096

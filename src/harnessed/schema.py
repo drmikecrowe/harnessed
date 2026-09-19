@@ -811,7 +811,10 @@ def _parse_install_refs(raw_refs, manifest_label: str) -> dict[str, InstallRef]:
                 f"git clone to a tarball fetch needs no manifest change."
             )
         ref = str(spec.get("ref") or "").strip()
-        if not _IMMUTABLE_REF_RE.match(ref):
+        # Length cap BEFORE the regex, for the same reason the agent surface has one: the shared
+        # `_IMMUTABLE_REF_RE` backtracks quadratically on a long FAILING input, and a ref arrives
+        # from a catalog overlay just as a build_arg does. No git tag or SHA approaches this.
+        if len(ref) > _MAX_PIN_LENGTH or not _IMMUTABLE_REF_RE.match(ref):
             raise SchemaError(
                 f"recipe '{manifest_label}.refs' {key!r} has ref {ref!r}, which is not immutable — "
                 f"use a version tag (v1.2.3) or a FULL 40-character commit SHA. A branch moves, and "
@@ -2351,6 +2354,56 @@ class Agent:
 _ARG_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
+# Longest plausible pin: a 40-hex SHA is 40, the longest real version tag is well under this. Set
+# where no legitimate value can reach it, so the cap only ever fires on input that was never a pin.
+#
+# Shared by BOTH surfaces that feed `_IMMUTABLE_REF_RE`. It was first added to the agent side only,
+# and adversarial review pointed out that `install.refs[].ref` reaches the same regex with no bound
+# — the quadratic backtracking the cap exists to prevent was still reachable there. A cap on one of
+# two callers of the same pattern is not a cap.
+_MAX_PIN_LENGTH = 128
+
+
+def _require_immutable_build_arg(key: str, value: str, manifest: Path) -> str:
+    """A build_arg value must be an IMMUTABLE pin — a version-like tag or a full SHA. Returns it.
+
+    `--build-arg NAME=latest` produces an image that is whatever `latest` meant on build day, and
+    nothing downstream can catch it: `validate_agent_pin` reads Dockerfile TEXT, where the line is
+    `bun@${NAME}` — a shell variable, which reads as pinned precisely because the pin is supposed to
+    live here. This is the only place the VALUE is ever seen.
+
+    Stated POSITIVELY, sharing `_IMMUTABLE_REF_RE` with `install.refs[].ref` rather than blocking a
+    list of channel names. A deny-list was tried on this codebase and found insufficient — bd
+    harnessed-1t4.6, where `--branch feat/…` walked through a gate built to stop exactly that — and
+    an enumeration of channels does not converge either: the seven-name list that guards
+    `install.cache` has no `nightly`, `canary`, `stable`, `beta`, `alpha` or `lts`, and plan
+    REVISION 15 measured claude publishing a `stable` channel. An unrecognised shape fails CLOSED.
+
+    `hold:` and `spec:` do NOT excuse a failure here. A hold freezes a pin and a spec explains where
+    one resolves from; neither creates one. `validate_agent_pin` states the same rule for its own
+    escape hatch: a declared exception suppresses the ABSENT error and nothing else.
+    """
+    pin = value.strip()
+    # Length cap BEFORE the regex. `(?:\.[0-9]+)*` and `(?:[-+.][0-9A-Za-z.]+)?` both match dots, so
+    # a long FAILING input makes the engine try every split — measured quadratic (4002 chars → 96 ms).
+    # A version is never this long, so the cap costs nothing real and the pathological input never
+    # reaches the matcher.
+    if len(pin) > _MAX_PIN_LENGTH:
+        raise SchemaError(
+            f"{manifest}: build_args {key!r} is {len(pin)} characters — a pinned version is a tag "
+            f"or a 40-character SHA, not a document."
+        )
+    if not _IMMUTABLE_REF_RE.match(pin):
+        raise SchemaError(
+            f"{manifest}: build_args {key!r} is {value!r}, which is not a pinned version — a "
+            f"channel is a thing you RESOLVE ONCE to get a value, it is never the value. Use a "
+            f"version tag (1.2.3, v1.2.3) or a FULL 40-character commit SHA. A 'hold' or 'spec' "
+            f"does not excuse this; an agent with no version selector at all belongs in the "
+            f"top-level 'unpinnable:' mapping."
+        )
+    return pin
+
+
 def _parse_agent_build_args(raw_args, manifest: Path
                             ) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
     """Split `build_args` into (values, specs, holds), accepting a scalar or a mapping per key."""
@@ -2374,7 +2427,7 @@ def _parse_agent_build_args(raw_args, manifest: Path
                     f"{manifest}: build_args {key!r} has no value — a build_arg must carry the "
                     f"version it pins (got {val!r})"
                 )
-            values[key] = str(val)
+            values[key] = _require_immutable_build_arg(key, str(val), manifest)
             continue
         if "unpinnable" in val:
             raise SchemaError(
@@ -2387,7 +2440,7 @@ def _parse_agent_build_args(raw_args, manifest: Path
                 f"{manifest}: build_args {key!r} is a mapping without a 'value' — a 'hold' or "
                 f"'spec' freezes or explains a pin, neither replaces one"
             )
-        values[key] = str(val["value"])
+        values[key] = _require_immutable_build_arg(key, str(val["value"]), manifest)
         if "spec" in val:
             spec = str(val["spec"] or "")
             if not spec:
@@ -2486,7 +2539,24 @@ _FLOATING_REF_RE = re.compile(
 _CLONE_REF_RE = re.compile(r'--branch(?:=|\s+)(?P<ref>"[^"]*"|\'[^\']*\'|\S+)')
 # v6.0.3, 1.2.3, 0.1.2, v2.0.0-rc.1 — and a full commit SHA. Deliberately narrow: an unrecognised
 # shape fails closed rather than being guessed at.
-_IMMUTABLE_REF_RE = re.compile(r'^(?:[0-9a-fA-F]{40}|v?\d+(?:\.\d+)*(?:[-+.][0-9A-Za-z.]+)?)$')
+#
+# `[0-9]`, NOT `\d`: Python's `\d` is Unicode-aware, so a version written in Arabic-Indic digits
+# (U+0660..U+0669) or full-width digits (U+FF10..U+FF19) matched and was accepted as a version.
+# (The glyphs are named by codepoint rather than spelled here — ruff RUF003 rejects ambiguous
+# characters in comments, and it is right to.) No registry, tag or installer resolves those,
+# so accepting one is the gate failing open on exactly the unrecognised shape it promises to fail
+# closed on. Found by the hostile-input pass on #329 unit 7; it affected this constant, so it
+# affected BOTH surfaces that share it (`install.refs[].ref` and agent `build_args`).
+#
+# The suffix is TWO independent optional groups — a prerelease/`.postN` tail and a `+build` tail —
+# not one. As a single `[-+.]…` group, `1.2.3-rc1+build.5` matched `-rc1`, left `+build.5`
+# unconsumed, and failed: valid SemVer, wrongly rejected (found by adversarial review). The obvious
+# repair, making that one group repeat with `*`, was MEASURED and rejected — it is the classic
+# `(X+)*` shape and went exponential, hanging outright on a 480-character failing input where this
+# form stays at 0.006 ms.
+_IMMUTABLE_REF_RE = re.compile(
+    r'^(?:[0-9a-fA-F]{40}|v?[0-9]+(?:\.[0-9]+)*(?:[-.][0-9A-Za-z.]+)?(?:\+[0-9A-Za-z.]+)?)$'
+)
 # `"$FOO"` / `${FOO}` — catalog scripts pin via `FOO_REF="v6.0.3"` and clone `--branch "$FOO_REF"`,
 # so the gate follows exactly one hop to the literal assignment in the same body.
 _SHELL_VAR_REF_RE = re.compile(r'^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$')
