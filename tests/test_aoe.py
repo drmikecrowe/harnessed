@@ -371,14 +371,64 @@ class TestComposedRecipesInTheTitle:
             "claude/host main default"
         )
 
-    def test_two_baselines_do_not_collide(self, monkeypatch, tmp_path):
+    def test_two_bare_baselines_do_not_collide(self, monkeypatch, tmp_path):
         # Both compose nothing. Falling back to the stack name is what keeps them apart.
-        monkeypatch.setattr(aoe, "_composed_recipes", lambda stack: [])
+        #
+        # NARROW, AND THE NARROWNESS MATTERED: forcing the empty delta means this only ever covered
+        # BARE baselines, so it passed while `default.serena` and `isolated.serena` collided. The
+        # test below covers the case this one cannot reach.
+        monkeypatch.setattr(aoe, "_composed_recipes", lambda stack: (None, []))
         project = tmp_path / "main"
         project.mkdir()
         assert aoe.title_for(
             "container-run", "default", "claude", project
         ) != aoe.title_for("container-run", "isolated", "claude", project)
+
+    def test_two_baselines_sharing_a_recipe_delta_do_not_collide(self, monkeypatch, tmp_path):
+        """The title must stay injective over the STACK, now that the stack is in the command.
+
+        Found by adversarial review. `default.serena` and `isolated.serena` have the same recipe
+        delta, so the delta-only title rendered both as `claude/container main serena`.
+
+        That was harmless while the recorded command named no stack: both stacks shared one command
+        AND one title, `_registered` matched, and no second row was ever attempted. Putting the stack
+        in the command made the commands differ while the titles still collided, which is the
+        module's two-key hazard exactly: `_registered` misses, `_drifted_rows` finds the other
+        stack's row at the same (title, path), classifies it as ours, renames it aside and adds its
+        own. Alternating launches then ping-pong forever, one stale row and one warning per launch.
+
+        The sibling test above monkeypatches `_composed_recipes` to `[]`, so it only ever exercised
+        BARE baselines and passed whatever this did.
+        """
+        root = tmp_path / "generated"
+        for name, base in (("default.serena", "default"), ("isolated.serena", "isolated")):
+            (root / "stacks" / name).mkdir(parents=True)
+            (root / "stacks" / name / "stack.yaml").write_text(
+                f"name: {name}\nextends: {base}\nrecipes:\n  - serena\n", encoding="utf-8",
+            )
+        monkeypatch.setattr(aoe.paths, "generated_catalog_root", lambda: root)
+        monkeypatch.setattr(aoe.paths, "find_in_catalog", lambda kind, n: root / kind / n)
+        project = tmp_path / "main"
+        project.mkdir()
+
+        assert aoe.title_for("container-run", "default.serena", "claude", project) != \
+            aoe.title_for("container-run", "isolated.serena", "claude", project)
+
+    def test_the_default_baseline_is_still_hidden(self, monkeypatch, tmp_path):
+        """Fixing the collision must not put `default.` back on every row.
+
+        Restating the baseline on every title is what the delta-only rendering removed, and the
+        overwhelmingly common baseline is `default`. So `default` stays invisible and only a
+        non-default baseline is shown.
+        """
+        self._mint(
+            monkeypatch, tmp_path, "default.serena",
+            "name: default.serena\nextends: default\nrecipes:\n  - serena\n",
+        )
+        project = tmp_path / "main"
+        project.mkdir()
+        assert aoe.title_for("container-run", "default.serena", "claude", project) == \
+            "claude/container main serena"
 
     def test_an_unreadable_manifest_falls_back_to_the_stack_name(self, monkeypatch, tmp_path):
         def boom(kind, n):

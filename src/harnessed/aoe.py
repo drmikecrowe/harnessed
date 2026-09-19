@@ -151,6 +151,14 @@ _TRASH_ID = re.compile(r"\b[0-9a-f]{16}\b")
 # not `-`.
 _RECIPE_JOIN = "+"
 
+# The baseline nearly every dynamic stack extends. Hidden in a title for that reason; any OTHER
+# baseline is shown, because the recipe delta alone is not injective over the stack (see `title_for`).
+_DEFAULT_BASELINE = "default"
+
+# `/`, not `+` or `.`: it separates a baseline from the delta it is applied to, which is a different
+# relationship from the `+` that joins two sibling recipes, and a reader should see that at a glance.
+_BASELINE_JOIN = "/"
+
 
 def _bin() -> str | None:
     """Path to a usable `aoe`, or None when the integration must stay silent.
@@ -363,15 +371,32 @@ def title_for(
         return title
     backend = "host" if verb == "host-run" else "container"
     mcp = " +open-mcp" if no_strict_mcp else ""
-    recipes = _composed_recipes(stack)
+    base, recipes = _composed_recipes(stack)
     # `+`, not `-`: recipe names contain `-` themselves (`codebase-memory-mcp`, `gh-issue-tracker`),
     # so a `-` join has no visible seam between two of them.
     composed = _RECIPE_JOIN.join(recipes) if recipes else stack
+    # A NON-DEFAULT BASELINE IS SHOWN; `default` stays hidden. The delta alone is not injective over
+    # the stack: `default.serena` and `isolated.serena` share the recipe `serena` and rendered
+    # identically. That was invisible while the recorded command named no stack — both stacks shared
+    # one command and one title, so `_registered` matched and no second row was attempted. Once the
+    # stack entered the command the titles still collided, which is this module's two-key hazard:
+    # every launch drifted, renamed the other stack's row aside, and alternating launches ping-ponged
+    # forever. Found by adversarial review.
+    #
+    # Only a non-default baseline is prefixed, because restating `default.` on every row is exactly
+    # the noise the delta-only rendering removed, and `default` is the baseline nearly every stack
+    # extends.
+    if base and base != _DEFAULT_BASELINE and recipes:
+        composed = f"{base}{_BASELINE_JOIN}{composed}"
     return f"{harness}/{backend} {project_path.name} {composed}{mcp}"
 
 
-def _composed_recipes(stack: str) -> list[str]:
-    """The recipes a stack composes ON TOP of its baseline, or [] when it composes nothing.
+def _composed_recipes(stack: str) -> tuple[str | None, list[str]]:
+    """The baseline a stack extends and the recipes it composes on top, or `(None, [])` for neither.
+
+    RETURNS THE BASELINE TOO, which it did not until adversarial review found that the delta alone
+    cannot tell `default.serena` from `isolated.serena`. `title_for` shows the baseline only when it
+    is not `default`; this function just reports what the manifest says.
 
     THE RAW MANIFEST, never `load_stack`. That resolves the `extends:` chain, which would hand back
     the baseline's recipes merged in — the very thing this exists to leave out.
@@ -394,13 +419,17 @@ def _composed_recipes(stack: str) -> list[str]:
         stack_dir = paths.find_in_catalog("stacks", stack).resolve()
         generated = (paths.generated_catalog_root() / "stacks").resolve()
         if not stack_dir.is_relative_to(generated):
-            return []
+            return None, []
         yaml = YAML(typ="safe", pure=True)
         with (stack_dir / "stack.yaml").open(encoding="utf-8") as fh:
             raw = yaml.load(fh)
-        return [r for r in (raw.get("recipes") or []) if isinstance(r, str)]
+        base = raw.get("extends")
+        return (
+            base if isinstance(base, str) else None,
+            [r for r in (raw.get("recipes") or []) if isinstance(r, str)],
+        )
     except Exception:  # noqa: BLE001 — an optional dashboard must never break a launch.
-        return []
+        return None, []
 
 
 def group_for(project_path: Path, *, group: str | None = None) -> str:
