@@ -182,6 +182,30 @@ class TestTheExcludeSurfaceGrowsPerStack:
         assert lines.count("/claude-alpha-container") == 1, "idempotence must survive the rename"
 
 
+def test_no_harness_name_contains_a_name_separator():
+    """The unstated invariant BOTH parsers rest on, made explicit.
+
+    `parse_script_name` reads the harness from before the FIRST `-`, and `parse_legacy_script_name`
+    reads the backend from after the LAST one. Each is correct only while no harness name contains a
+    `-` itself. Add a harness called `claude-code` and both parsers start misreading every name that
+    mentions it, silently: attribution would hand `harnessed rm` the wrong stack.
+
+    Found by mutation. Swapping `rpartition` for `partition` in the legacy parser survives, and it
+    survives BECAUSE of this invariant — with a dashed harness name the two would disagree. The
+    mutant is equivalent today; this is the assumption that makes it so, so it is pinned here rather
+    than described in a comment.
+
+    `.` is included for the same reason one step removed: a derived stack name joins on `.`, so a
+    harness carrying one would make the human-readable split ambiguous even where the parse is not.
+    """
+    for harness in launchscript.HARNESS_CONFIG_DIR:
+        assert "-" not in harness, (
+            f"harness {harness!r} contains '-', which breaks both launcher-name parsers. "
+            "Either rename it or give the name grammar an explicit separator."
+        )
+        assert "." not in harness, f"harness {harness!r} contains '.', reserved by derived names"
+
+
 class TestTheNameGrammar:
     """S10 to S14 — `parse_script_name` is the single reader of the name `script_name` builds."""
 
