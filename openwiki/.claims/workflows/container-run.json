@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2161b48e1ba58d77f177b0eca0c2581fce563849ab87052bbcc9b4f6f5cf0532",
+  "pageVersion": "sha256:6f1e204720e9c356d1b78642c41d204c32e59b5551feea0889d42e15dbd9b0b9",
   "claims": [
     {
       "id": "claim_91765c50df1e490b8c0606beb2ad6089",
@@ -888,7 +888,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py#L3865-L3914",
-          "version": "repo-lines-v1:sha256:e945a917474e112d9026d2e6c98fb3685a4abc02b54698280e728f01a4341d2c:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjMWNhNzM0MTBhOWIxZmI5Y2FiZGJmZjNjNDUyMWI2NjMyODhmOGUxMmU0MDQ4ZjQxNDY5MzViOGJhMGY2ODMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkODFiM2ZiMWI0YmEwYjY2YWVjYjE1NzM0ZjU5MDYwZGQ0ZjQ0NTNjNTJhYmYxMWIzMzBjMzcyMTQ1MWQ0N2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM5ZjliYTZjMTJjNWVkY2ZhMjRjYTA5YzRiNWM3NjU1Y2IxNzliMjY3ZjkwMDY2ZDFmODYzODNhODBlZTQ2YTYifQ"
+          "version": "repo-lines-v1:sha256:44791a051daa541e5d076d0b2870482fdbb6e681f2ccf001b8010addddbda0a7:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjMWNhNzM0MTBhOWIxZmI5Y2FiZGJmZjNjNDUyMWI2NjMyODhmOGUxMmU0MDQ4ZjQxNDY5MzViOGJhMGY2ODMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkODFiM2ZiMWI0YmEwYjY2YWVjYjE1NzM0ZjU5MDYwZGQ0ZjQ0NTNjNTJhYmYxMWIzMzBjMzcyMTQ1MWQ0N2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM5ZjliYTZjMTJjNWVkY2ZhMjRjYTA5YzRiNWM3NjU1Y2IxNzliMjY3ZjkwMDY2ZDFmODYzODNhODBlZTQ2YTYifQ"
         }
       ]
     },
@@ -898,7 +898,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launchscript.py#L146-L195",
-          "version": "repo-lines-v1:sha256:e81d72f770293c7d7e7124af1a1bbeeb6510a171f24f9d10664366335122a15b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2NzhmNmJjMTE2NGYzZDA2NjQwYjEwZmQ2ZTJiYmIyYTkyM2U1ZmFlNDMxY2M1YWQ5MDRkZjBiMmUyNWQyYjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlN2M5NTdiY2I0NGZiNjczYzk4YjAwNTBhNzVkMzgwODJkYjgxZDkxOGRlMzEzYTNmMDdjMTIzNTMwNmQ3ZWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY3NzQwODkwMGFmNDZhMjQ3MWQ5YTUwNzY5NWQwMzMwODc0MGRkZGI5MGZmNDkyNjA4ZjQxOTE0ZDMwYjBkZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg1YzVmOWY4NGI5MjkyN2MzMTcyNTdhNTA4YWQ1MWM5ZDcyYmM1ZDFhNWMzMDAxMDk4ZTdjNjViYTQxZmZiMzQifQ"
+          "version": "repo-lines-v1:sha256:db53a5d350316d4ce58817211de9fd00bbf2e245d94302a03f8ea71dfa3fa82b:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2NzhmNmJjMTE2NGYzZDA2NjQwYjEwZmQ2ZTJiYmIyYTkyM2U1ZmFlNDMxY2M1YWQ5MDRkZjBiMmUyNWQyYjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlN2M5NTdiY2I0NGZiNjczYzk4YjAwNTBhNzVkMzgwODJkYjgxZDkxOGRlMzEzYTNmMDdjMTIzNTMwNmQ3ZWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY3NzQwODkwMGFmNDZhMjQ3MWQ5YTUwNzY5NWQwMzMwODc0MGRkZGI5MGZmNDkyNjA4ZjQxOTE0ZDMwYjBkZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg1YzVmOWY4NGI5MjkyN2MzMTcyNTdhNTA4YWQ1MWM5ZDcyYmM1ZDFhNWMzMDAxMDk4ZTdjNjViYTQxZmZiMzQifQ"
         },
         {
           "resource": "repo://src/harnessed/launchscript.py#L33-L54",
@@ -987,10 +987,34 @@
           "version": "repo-lines-v1:sha256:77feaec474382cbe462714c34466fd49b9bf76e3443d5561e7981b232944e3a1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1YzYyZjMzZWIwNGMxZTVhMGQ1ZTljMDA4MTY4MTFmNzZlNWI3YTU0YjM4MjcwNWYwMzdhNGE1ZjY5ZDgwZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1MjkyM2QwNmI5NWU3NmRjOGIyMDY0ZjJhYTE3NzM4Yjc0YWIzMjFjNzQ4ZTJmZjgwYzllNDY1ODVjNmFlMzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhMWI4M2Q2Y2I1NGUzYTFhMDQzNjhlYjBjOWY4ZDg0ZjM3NDZhNTIxNDZkMDlmNjVhN2Q4NmJlNjFjYzg0NTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYwMTQzZjdlYTExN2ZmZGY1YWRhODkzZTAyOTgyNjRiYzc4NWQ4MWQ4YTY5OGRlY2YyMmM4ZmFmNWJhNTc1OWEifQ"
         }
       ]
+    },
+    {
+      "id": "claim_3e8f599ff8804985a4a28706e9b25319",
+      "statement": "In `container_run`, the launcher-script/aoe-row pair runs only when `_persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only)` accepts — an ad-hoc minted recipe stack gets neither script nor row. The script filename is three-part `<harness>-<stack>-<host|container>` (launchscript.script_name), so two stacks over one project cannot overwrite each other's launcher, while `parse_legacy_script_name` still recognises the retired two-part shape.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3930-L3946",
+          "version": "repo-lines-v1:sha256:8cb48a16a0719df3b7d9c8386d285fb26a93be60ae45371c9fa598ca24c4da3a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc0ZDM5NjY0ZGU4YzE0YjkxMmM3NDAwMjdhODhjYWZlMDQ0ZjhiMWU1Y2JmNTFhNzNjMGVjYmQ1YWFhMjEzNWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5ZjFmZmQzNTRiMjRiNTBlOTk4YWMxNGE5NmZmYmE3MWY3MDU0ZmUwOTg5OTNmMjczMzJkODZmNTQ1NWI0ZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM5ZjliYTZjMTJjNWVkY2ZhMjRjYTA5YzRiNWM3NjU1Y2IxNzliMjY3ZjkwMDY2ZDFmODYzODNhODBlZTQ2YTYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launchscript.py#L64-L94",
+          "version": "repo-lines-v1:sha256:49db3111e132f2234e27ad3762c049fcb6585c7a4e197d4a8c63ae0be647cb9d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1YWNlNTRkMzcwYTUyMDg2ZWMwZDM3Nzc5ZTQ0MDFjNWNiMGJhMjI2M2VkZjdjYTdjMGE0Y2QxMWM3YmVhYjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExZWVkMDM1OTVmODU0NmY4NDBmMDVlZTVmMmY1ZmUxNWQ3Y2I2NmYyZTBmOWFlZGNiOTA2MTM1MDliN2I2OTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjZjhjZmE0NmQ2ZTNkNjE4ZDdlODRhZGYyOTJjZWI1MDEyY2Y1MDc5NzJhZGYyOThmOTY1MDhhZTJiNDgzYTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0NTE4MDk2NzJhMzEzODdkMWNiNmVkN2I3YTNhMzFmM2FmODBkZDhhMmY2ZDUwODU1NTYyNDNmYTI0YmY0YzEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9ef19b12848b468887d5129999504f8a",
+      "statement": "`launchscript.write` requires the stack name to be a single filesystem path component (rejecting `.`/`..` and any embedded separator) and returns None otherwise, so a traversal-style stack name cannot write outside the project folder.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launchscript.py#L269-L283",
+          "version": "repo-lines-v1:sha256:6ed35baaa88456920d6234986e5ffcf1026648d26fc5dbaaac1321ae56489e4e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyOWY1YmU3MGM4ZTNjZWNjNDY3M2Q2YjVhZmRmNzA3YjVkODA0NGUwZTIwN2Y2Njc4MzUyZjBkYzkyNDk4M2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyMDc4MzkyZmZlOTM1MTNhNGNlYzA2MjQ2ODZhOTcyM2Y4MzgxYjM4YTNjNjBmYWQ0NmYzYjEwYTc2NjVlN2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxY2I3ZmUxMWZhYTJmY2U5NWU0ZGNiZTc1YjczNTI1NjE3MGUyMzU1YWIzNjlhYTYxMjhiZGNmYWE0ZTQ1NTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0M2ZjNzUyZmRmODFkYWIwZmIzNDU3Yzk2YjIwYjYxMWI2Njk2ODE1N2VjOWFkYzg4MWIzZGY2ZWM5NTU5MzUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-19T12:16:02.862Z"
+    "at": "2026-09-20T12:51:12.657Z"
   }
 }

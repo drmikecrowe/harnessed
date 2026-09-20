@@ -16,10 +16,12 @@ sources:
     resource: repo://tools/openwiki-drift.py
   - id: openwiki-source-d1f45dd4433e3f1723ccd204
     resource: repo://tools/openwiki-retry-patch.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-17T13:01:59.112Z" }
+  - id: openwiki-source-bb9438d561f4cbb6d5d38c49
+    resource: repo://tools/run-tests.sh
+generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-17T13:01:59.112Z
+    at: 2026-09-20T12:51:12.657Z
 ---
 
 # Wiki automation: mise tasks, the retry patch, and the CI update workflow
@@ -94,6 +96,15 @@ default output capture a prompt draws but cannot be answered, so it re-prompts f
 Run these tasks **from `main/`, not from a worktree**. `docs/` is a gitignored live clone of the
 GitHub wiki, so a worktree checkout does not have it and the generated wiki would be written from an
 incomplete view of the project's own documentation.
+
+If you do need to run the test suite from a worktree (e.g. to check a page's focused tests while
+reviewing a wiki PR), use `tools/run-tests.sh [pytest args...]` rather than raw `uv run pytest`: it
+handles the three ways a worktree differs from `main/` — per-branch venvs under
+`UV_PROJECT_ENVIRONMENT` mean a fresh worktree has no venv at all, pytest lives in the optional
+`dev` extra so a plain `uv sync` falls through to a system pytest that cannot import the project,
+and mise refuses an untrusted config in a new worktree. The script `mise trust`s, syncs with
+`--extra dev`, and `exec`s pytest; `FORCE_COLOR` is deliberately *not* handled there because only
+`tests/conftest.py` pops it early enough to matter.
 
 ### The environment guard: schema beats shell
 

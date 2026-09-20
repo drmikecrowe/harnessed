@@ -1,11 +1,8 @@
 ---
 type: workflow
 title: "Dynamic stacks: minting, the derived name, and the generated root"
-description: "How --recipe/--extends/--service composition becomes a real stack at launch time: dynstack's content-derived name (sanitize, lossy-detection digest, OCI tag grammar), mint's idempotence and authored-collision refusal, the mint lock and the preexisting-stack shortcut, and why a manifest is minted rather than teaching five subsystems a new kind of thing."
-tags: [dynamic-stacks, dynstack, minting, derived-name, generated-catalog, extends, oci-tag, collisions, locking, launch]
-verified:
-  - by: openwiki/0.5.1
-    at: 2026-09-16T21:10:52.541Z
+description: "How --recipe/--extends/--service composition becomes a real stack at launch time: dynstack's content-derived name and minting, the ad-hoc-launch persistence rule (no script, no row), and how shared service sidecars derive their identity, detect drift, and are revived."
+tags: [dynamic-stacks, dynstack, minting, derived-name, generated-catalog, extends, oci-tag, collisions, locking, launch, adhoc, services, svcstate, sidecars]
 sources:
   - id: openwiki-source-e9cc6c20ea9b111b6ff0861e
     resource: repo://catalog/stacks/default/stack.yaml
@@ -25,19 +22,28 @@ sources:
     resource: repo://src/harnessed/paths.py
   - id: openwiki-source-7536da5c015fc2813c7693c5
     resource: repo://src/harnessed/schema.py
+  - id: openwiki-source-5e89566b7a4e43a53be5c7b2
+    resource: repo://src/harnessed/svcstate.py
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
     resource: repo://src/harnessed/volumes.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+  - id: openwiki-source-b6cbeb51c17468767e7244b0
+    resource: repo://tests/test_adhoc_launch_is_not_persisted.py
+generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-20T12:51:12.657Z
 ---
 
-# Dynamic stacks: minting, the derived name, and the generated root
+# Dynamic stacks: minting, the derived name, ad-hoc persistence, and service sidecars
 
 `harnessed container-run claude --recipe serena --recipe superpowers` composes a stack without
 anyone authoring a `stack.yaml`. The composition has to become a *real* stack anyway — one that
 resolves in the catalog like any other — because everything downstream of resolution already keys on
 "a stack that resolves in the catalog". This page is about that transformation: the flags, the name
-`dynstack` derives from them, the manifest it mints, the lock that serializes the write, and the
-refusals that keep the machine-made copy from ever silently replacing one you wrote.
+`dynstack` derives from them, the manifest it mints, the lock that serializes the write, the
+refusals that keep the machine-made copy from ever silently replacing one you wrote — plus two
+behaviors that ride on the same identity: why an ad-hoc launch leaves no launcher script and no aoe
+row, and how the services a stack requires are derived, revived, and kept from drifting.
 
 The load-bearing property is stated in the module's first docstring: **the name is derived from the
 CONTENT of the recipe set**, so the same set resolves to the same stack in every repo that asks for
@@ -402,7 +408,7 @@ adds a constraint the naming machine had to satisfy:
 
 ### The name is not parseable
 
-`aoe._composed_recipes` — which renders the dashboard title as the stack's *delta over its
+`aoe._composed_recipes` — which feeds the dashboard title with the stack's *delta over its
 baseline* — reads the **raw manifest**, never `load_stack`, and its docstring explains why the name
 cannot be used instead: `derive_name` joins on `.` after sanitizing each ref and appends a digest
 when the join is lossy or over-long, so the single recipe `beads/team` mints as
@@ -410,10 +416,145 @@ when the join is lossy or over-long, so the single recipe `beads/team` mints as
 the recipe nor recoverable. The manifest carries `recipes: [beads/team]` verbatim.
 
 The same function guards on location: only a stack whose directory sits under the generated root is
-machine-made, so an authored stack returns `[]` (its `recipes:` key is its whole content, not a
-delta — `default` lists eight recipes and reading it would produce a title several times longer
-than the name it replaced). A missing, unreadable or malformed manifest costs the delta and falls
-back to the stack name, never a failed launch.
+machine-made, so an authored stack returns `(None, [])` (its `recipes:` key is its whole content,
+not a delta — `default` lists eight recipes and reading it would produce a title several times
+longer than the name it replaced). A missing, unreadable or malformed manifest costs the delta and
+falls back to the stack name, never a failed launch.
+
+The function returns the **baseline alongside** the delta — a change prompted by adversarial review.
+The delta alone cannot tell `default.serena` from `isolated.serena`: they share the recipe `serena`
+and rendered identically, and once the stack entered the recorded command the two colliding titles
+made every launch *drift* — each one renamed the other stack's row aside, and alternating launches
+ping-ponged forever. `aoe.title_for` therefore prefixes the join with the baseline — but **only when
+it is not `default`**, because restating `default.` on every row is exactly the noise the delta-only
+rendering removed, and `default` is the baseline nearly every stack extends. Recipes are joined with
+`+`, not `-`, because recipe names contain `-` themselves, so a `-` join has no visible seam.
+
+---
+
+## Ad-hoc launches persist nothing
+
+A launch leaves two surfaces behind: a `<harness>-<stack>-<verb>` launcher script dropped into the
+user's repo, and an aoe dashboard row. **For an ad-hoc stack it leaves neither** — they describe a
+stack the user was trying out, and a dashboard row for one is the same noise `aoe._SKIP_STACKS`
+already suppresses for the `default` baseline. This is pinned by
+`tests/test_adhoc_launch_is_not_persisted.py`.
+
+`dynstack.is_adhoc(stack)` recognizes two kinds, by two different signals:
+
+- **A minted stack is known by WHERE it resolves.** The stack dir under the generated root is the
+  same rule `mint` writes into every manifest header. Crucially it is *not* the caller's
+  `minted_dir`: minting is idempotent, so the second launch of one recipe set mints nothing and
+  would persist a script and row just one launch late — the exact regression the location rule
+  exists for.
+- **A test stack is known by name** — `test` or any `test.*` — because a test stack is authored
+  like any other and has no location to read.
+
+Resolution decides, so an authored stack shadowing a generated name is correctly **not** ad-hoc
+(the authored one is what launches), and a name that resolves nowhere is not either
+(`find_in_catalog` falls back to the highest-precedence root, which is never the generated one).
+
+`launcher._persist_this_launch` turns that into **one answer for both surfaces, not two**. The
+row's recorded command IS the script, so writing the row while skipping the script would register a
+row that is dead on arrival — precisely the hazard both call sites are ordered to avoid. The same
+escape hatch `_SKIP_STACKS` grants applies, for the same reason: `--aoe-group`/`--aoe-title` name
+the row and naming one is asking for it, and `--create-aoe-only` is the stronger case — registering
+*is* the command the user typed.
+
+```python
+if group is not None or title is not None or only:
+    return True
+return not dynstack.is_adhoc(stack)
+```
+
+---
+
+## Service sidecars: identity, revival, and drift
+
+A service is a sidecar shared across the stacks of one project. `svcstate.py` derives everything
+about it that can be **computed** — container name, project key, data dir, port, password, client
+env, and whether a running container has drifted — from the manifest plus the project path;
+starting, stopping and health-checking stay in `launcher.py`. Deriving rather than storing is what
+lets a second launch *find* the same service instead of starting a duplicate: the name and port
+fall out of the same inputs every time.
+
+### Which services a stack requires
+
+`svcstate._service_refs` unions three sources, in first-seen order, de-duped: (1) recipe `service:`
+MCP-server refs (the assembler proxies these by URL), (2) recipe `services:` — sidecars a *recipe*
+requires that have no MCP surface — and (3) the stack's own `services:` list. Source (2) is what
+lets a bare recipe list describe a working stack: a `dolt sql-server` speaks MySQL, not MCP, so it
+can never be an MCP ref, and before it existed only a stack could attach one. All three feed the
+launcher's ensure-and-start path, which starts each idempotently at launch.
+
+### Identity and data placement
+
+- **Container name.** `harnessed-svc-<name>`, plus `-{project_key}` for a project-scoped service.
+  The project key is hashed from the **git common dir**, so every worktree of one checkout shares
+  ONE server container (which is the point: a dolt server holds an exclusive lock on its data dir,
+  and the worktrees all resolve to the same in-repo `.beads`).
+- **Data dir follows the recipe, not the service.** The service names a persist entry
+  (`data.persist`); `_service_data_dir` finds the recipe in the stack that declares it and follows
+  that entry's placement — `in_repo` means the checkout-anchored dir mounted path-preserving,
+  `host` means the per-scope persist dir with agents seeing `$CONTAINER_HOME/<name>` in a container
+  but the real dir on a host launch. A service declaring a persist entry no recipe provides is a
+  `SchemaError`.
+- **Ports.** `publish: stable` gets a permanent host port from one machine-wide registry
+  (`paths.svc_ports_file`), allocated once under an exclusive flock from the 20000–59999 range and
+  kept even while our own sidecar holds it — persistence is what lets the project's own
+  `mise.local.toml` carry a config that survives a reboot or `--fresh`. `publish: ephemeral` is
+  re-read from `podman port` at every launch and deliberately never written down.
+- **Password.** For a published service, a `token_urlsafe` secret created once under XDG state —
+  never in the service's data dir, because for `in_repo` that dir is the user's repo and a secret
+  there is one `git add -A` from the remote. 0600, parent dir 0700.
+- **Client env.** `svc_client_env` fills the service's declared templates (`{host}`, `{port}`,
+  `{password}`, `{socket}`) per launch; `{host}` is 127.0.0.1 for a host agent and
+  `host.containers.internal` for a containerized one. Socket-backed services export
+  `HARNESSED_<NAME>_SOCKET` for the attach shell instead.
+
+### Revival and drift
+
+```mermaid
+stateDiagram-v2
+    [*] --> Missing: not created yet
+    Missing --> Running: run new container with config-hash label
+    Running --> Running: drift check passes each launch
+    Running --> Stale: image rebuilt under it or config hash mismatch
+    Stale --> Running: confirm then rm -f and recreate
+    note right of Stale
+        restart cannot fix it - mounts, ports and env
+        are frozen at create time
+    end note
+```
+
+*Sidecar lifecycle as seen at launch (`launcher`'s ensure-and-start, `svcstate._svc_drift_reason`).*
+
+At launch, each required service is built if missing and started if not running. If it IS running,
+it is compared against what the current code *would* create: the create-time argv is hashed
+(`_svc_config_hash`, SHA-256 over the `podman run` command) and stamped on the container as
+`harnessed.svc-config-hash`. A running sidecar is stale when its image was rebuilt under it
+(`_container_stale`) or the hash no longer matches — and **a missing label counts as stale**, since
+the container predates the stamping and cannot be shown to match. Without this, a sidecar drifts
+arbitrarily far from the code that would create it today, which is exactly how five beads-servers
+once ran for days without the mount that made backups work, each failing silently.
+
+Recreation must go through the same create path — `harnessed svc recreate` calls it with
+`force_recreate` — because `podman restart` reuses the existing container and reports success while
+changing nothing. Data (named volume or bind mount) is always preserved. The recreate prompt uses
+`_can_prompt`, not a bare isatty: an `-exec` launch has a real TTY and nobody at it, and this
+confirm once hung a scripted launch (#450). Headless mode (`HARNESSED_HEADLESS=true`) proceeds
+automatically.
+
+A `scope: project` container also carries `harnessed.svc-stack`, the stack that created it — the
+data dir is chosen by the stack, so rebuilding needs the exact stack, and nothing else on the
+machine records project → stack for a service. For sidecars created before the label existed,
+`_svc_stacks_from_instances` falls back to reading stack names out of agent instance container
+names, longest-harness-prefix first (stack names contain dashes, so a naive split truncates), with
+running instances winning over stopped ones.
+
+**A healthcheck that never passes aborts the launch** — it used to warn and continue, which let an
+agent come up attached to a service it could not talk to. There is no `required:` flag: a stack
+does not attach a sidecar whose health it is indifferent to.
 
 ---
 

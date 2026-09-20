@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5b92efa8237209483089ee1591b78d0231824bb6f8f7e44af45d0715baaa97b6",
+  "pageVersion": "sha256:d6f69b9452255910bb10de2f8565f850e8c134da8b4789648003262e118e68b1",
   "claims": [
     {
       "id": "claim_3ca3ab952a3b430ab7661735d2c1498d",
@@ -402,7 +402,7 @@
     },
     {
       "id": "claim_66aa9b711dd14fb1a8690388cdff4712",
-      "statement": "Each harness's agent image is defined by a manifest catalog/agents/<harness>/agent.yaml, parsed by schema.load_agent into an Agent: `harness` and `image` are required; `dockerfile` defaults to catalog/base/Dockerfile.harnessed-<harness>; `build_args` entries (scalar or mapping) are flattened to NAME->value strings, with a mapping lacking `value`, a null/bool scalar, or a reason-less `hold` all SchemaErrors; and `unpinnable:` (NAME -> reason, same ARG-name namespace as build_args) records conceded non-pins — a key declared in both is an error, and unpinnable entries never reach --build-arg.",
+      "statement": "Each harness's agent image is defined by a manifest catalog/agents/<harness>/agent.yaml, parsed by schema.load_agent into an Agent: `harness` and `image` are required; an unset `dockerfile` defaults to catalog/base/Dockerfile.harnessed-<harness> at the consuming build/lint sites (assemble.validate_agent_image and launcher._build_agent_image), not in load_agent itself; `build_args` entries (scalar or mapping) are flattened to NAME->value strings, with a mapping lacking `value`, a null/bool scalar, or a reason-less `hold` all SchemaErrors; and `unpinnable:` (NAME -> reason, same ARG-name namespace as build_args) records conceded non-pins — a key declared in both is an error, and unpinnable entries never reach --build-arg.",
       "evidence": [
         {
           "resource": "repo://catalog/agents/antigravity/agent.yaml#L9-L14",
@@ -413,12 +413,16 @@
           "version": "repo-lines-v1:sha256:e23c779be8d734b9456d85edd8da5f376fea294ec015c2746ab7f9ae5888e990:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTIzNjJlMDBkZDliNTQ5YjQwYjE3MTY1ZThhZGJmOTIyMjEwM2FiMDBhODNjYWQyYzE4YWY2OTgwMjFjNDEyNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGRlZjJhZjZiNTYyYjE2NzczZjcwN2Y5NzVjY2ViMjcwYjI3ZjExZjM5YTZlMGY0ZWI1NTVhNzE5ZmViMDM1NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDY0MDMzZmE5OTgyZGM1ZmM5YTc5ZDA2NjQwOWVjZTY4NzYwOTRmYTUyM2EyN2EzNTEzODRkMTZiNWI2NGY2MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2E3MmQ1YjJlNDFkMTEwOTk0N2I4NjBhMDBjZGQ4YzA3N2JjZmMzY2VkYzZkMWQzNDE0MDljZGY4MmJhZjU4MSJ9"
         },
         {
+          "resource": "repo://src/harnessed/assemble.py#L189-L203",
+          "version": "repo-lines-v1:sha256:f0ada1e1c597e0f1e45d6894dc3e13617fcd0a7aa7f171ccedf602026d3198dd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0ZjRkYWU3NGVkZGM3MGU2M2FjOGNhN2ZjZTljNzVjMTBjMzg0MWZiMWEzYTcwMzhlZWI2OGU2NTJjNTY5YmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY1ZDhkOTI2MDcxOWJkNjkxMzQ2OGU2YjIzNWExOTYyZWFlN2U4ZDI2MWZiOTAzYjQyNjdkYmQ0Mjc1ZmJiYzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxNmRhZjI0M2ZjZTJiZDI2MmNhOTcxZDI1NmVjODhjZTBhMDA4NjkzYmY5MzFkZmI3NDkyZjBkN2U0NzQ0ZTUifQ"
+        },
+        {
           "resource": "repo://src/harnessed/layout.py#L31-L34",
           "version": "repo-lines-v1:sha256:2a5a278e19feddedc32017063da0970e5ee7ca08c69a5a14912c683c9418eedd:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODE0NDk5MDBhMmQ1OTUwNmY1NzVjZGJjYzFmZmY0NDIzZWJmOTIxZWY1NTc0ZTk1MGVmOGRiYWE4MjY5NzdiNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWQ4MzMzYjkwYzdkYTYyMzI3NTZhNWRhZjI0NTNjNzY2MTE5ZWRjMWU1MzlkYzVkYWRmNzNlZDJkMzk4MDQwYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjJkMGJlYzkyMjcyMmNkZjM0OTE0Y2VkOGM2YzE0ODVhYWE3OWMxYzA3NjQyNGQ4YWU2ZDg0OTFkZTE2NzY1ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzdjOWE1OGM4MWI4NTA3MTY3YmVmNGVkMGM4NzZlMzhmNjZlMzQ1NDQ5MmNhYTMyNzc4MDdiNmI5MzVhODMxZSJ9"
         },
         {
-          "resource": "repo://src/harnessed/schema.py#L2321-L2461",
-          "version": "repo-lines-v1:sha256:7645a5e0fc439f1dbc6b5625995dce47d9887dac81e0a1186d01af84dc437e06:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiNmZiYWUwYjkxZDQ0ZmMwZDQ5ZjVkZTY5MWRhNmZjNDMxZjI2MDEzNGJmNzMxZTBlMjFmNzY0ODA5NDMzNGNiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzMGMxZjE4OGYxNDJlZDdhODI0NjgwYjIwNzE3MmM1NTE5YmM2MTRhNDhmZGE3Y2YxNjdlZGI4ZGRmNzk5NTZjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkN2IyNGVlYmViMjE5MWFmNWYxYWMzYWIzZDQyZDcyZTMwNzRhOTBmYzBiNzcyNGQ5NWU4ZTJlMGE1NDEyZjdjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4MWJjNGQ2YmNjYjcwNTRiM2Y4NzZhODg4MTA1YTBmYjllYWUwMWRhNmQyZjZlN2YzODBiYTc1MmJiYmI5MzNkIn0"
+          "resource": "repo://src/harnessed/schema.py#L2407-L2514",
+          "version": "repo-lines-v1:sha256:aa0040292526a2b4cf1eb5c6907ebf6502c6ef4906c9ee0cf94f75339a3e82a3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiODY1OWQ5MGY3NzFmYjk2ZDY3MDQxNDJjM2U3ZTFlOTIyYmRiMGI4ZGVjZDVmMGUxMGE3YmI0NDZhYTliZWVkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzMGMxZjE4OGYxNDJlZDdhODI0NjgwYjIwNzE3MmM1NTE5YmM2MTRhNDhmZGE3Y2YxNjdlZGI4ZGRmNzk5NTZjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI5YTc3YTdhOTMzNzI4MWMxZDUyMWZhODhjZWUwMWNmMmYyYjZjMDNhNWZjNTI4NDcyM2U4NzMyNTRmNDYwZTIyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4MWJjNGQ2YmNjYjcwNTRiM2Y4NzZhODg4MTA1YTBmYjllYWUwMWRhNmQyZjZlN2YzODBiYTc1MmJiYmI5MzNkIn0"
         }
       ]
     },
@@ -438,7 +442,7 @@
     },
     {
       "id": "claim_28eb9c7d9c3c4899819087cea25a92cc",
-      "statement": "The agent Dockerfile is linted by assemble.validate_agent_image (fail-closed on an unreadable Dockerfile) at both build sites plus assemble(), so a manifest pin must match the Dockerfile's unversioned acquisitions or an unpinnable reason covers each one; and `harnessed update` bumps a pin via update._rewrite_agent_build_arg, which rewrites build_args.<KEY>.value (or the scalar) in place with a round-tripping YAML writer so spec, hold and comments survive the bump.",
+      "statement": "The agent Dockerfile is linted by assemble.validate_agent_image (fail-closed on an unreadable Dockerfile) at both build sites plus assemble(), so a manifest pin must match the Dockerfile's unversioned acquisitions or an unpinnable reason covers each one; and `harnessed update` bumps a pin via update._rewrite_agent_build_arg, which validates the new value against the immutable-pin rule before writing, then rewrites build_args.<KEY>.value (or the scalar) in place with a round-tripping YAML writer so spec, hold and comments survive the bump.",
       "evidence": [
         {
           "resource": "repo://src/harnessed/assemble.py#L175-L203",
@@ -453,14 +457,14 @@
           "version": "repo-lines-v1:sha256:65c7b5d15ae43c817cacf05d2b6856cff57b0affa7f637445408d4bd6f505e55:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGQ5MWQ1OWM1ODY3ZjdjNjVjZGU3OGNlNGY1MzgzNmIyOTkwNzI3YjIxYjhiZWZhOTA1YTAwODE4ZTExYWEzZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzZmYWJkOTBlNGU5NDE2NGE5Mzc4ZGRkNGRiNDM5NWQ5ZGNhYjU2MGVhNDJhNzAzY2Q5OWMwMDc5ZGQ3NWY3MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWFiNzQzZDdhYzdhMzc1NWE1MmNiYzJhMTU2MDQ2MTBhY2M1YjUzNTcyYTBmOGIyMDA2NDU4MzZmNTg5YmRlMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjUzNDAzNmUxNWQ0NmIxMzQ1OWYxMDA1MDU0OWQ1MjA1NTk5MjZlNThiYjFiNjRkMmNlZDhiZmUyZGVkMzQ2NSJ9"
         },
         {
-          "resource": "repo://src/harnessed/update.py#L847-L875",
-          "version": "repo-lines-v1:sha256:ef51d48d82905d31b364f4e7a55503541acf9f5478328f9ab97f997dc9f7aea4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3NmI2ZjgyMDc1YjdhMTlmY2Q2ODQ2Y2Y5YjBkOWM0NTdjMGE2YWYzNmVlMGEzZDEyMTkyNmU0MjQ1YmY0NDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwZTJhNDY1MDA5NWZhOTVkMGUyYmI0MWIyZGIyOTA5NGQzNDA0ZDI4Y2UxMjMzOWVjODhiYjRiNWM1YmU4ZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg4YjJiOTRlMjcyZTMxZGFiZTdmNTIzMjcxODg0ZjBiZmQ1OWVjNGRkMWU3NzU1ZDg3ZmViOTIwYjgyNzhmMWIifQ"
+          "resource": "repo://src/harnessed/update.py#L854-L898",
+          "version": "repo-lines-v1:sha256:431c4d01122113799b3db5065bc6e8d59ff05044d1831372fcea9963843d7fc5:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3NmI2ZjgyMDc1YjdhMTlmY2Q2ODQ2Y2Y5YjBkOWM0NTdjMGE2YWYzNmVlMGEzZDEyMTkyNmU0MjQ1YmY0NDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwZTJhNDY1MDA5NWZhOTVkMGUyYmI0MWIyZGIyOTA5NGQzNDA0ZDI4Y2UxMjMzOWVjODhiYjRiNWM1YmU4ZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg4YjJiOTRlMjcyZTMxZGFiZTdmNTIzMjcxODg0ZjBiZmQ1OWVjNGRkMWU3NzU1ZDg3ZmViOTIwYjgyNzhmMWIifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-16T21:10:52.541Z"
+    "at": "2026-09-20T12:51:12.657Z"
   }
 }

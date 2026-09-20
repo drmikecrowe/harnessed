@@ -3,9 +3,6 @@ type: concept
 title: "Catalog: schema, roots, resolution, and packaging"
 description: "How authored catalog content (agents, recipes, services, stacks) is parsed and validated by schema.py, resolved across the three catalog roots with user-overlay precedence, composed via stack extends and recipe families, and shipped inside the wheel through the src/harnessed/catalog symlink."
 tags: [catalog, schema, catalog-roots, resolution, overlay, extends, recipe-families, pin-validation, packaging, wheel, dynstack]
-verified:
-  - by: openwiki/0.5.1
-    at: 2026-09-17T09:44:27.184Z
 sources:
   - id: openwiki-source-4e2e2b93eeb15847052a26fb
     resource: repo://.github/workflows/pin-check.yml
@@ -52,6 +49,9 @@ sources:
   - id: openwiki-source-a488585d132d26b93d838e43
     resource: repo://tests/test_tools_field_parity.py
 generated: { by: "openwiki/0.5.1", at: "2026-09-17T09:44:27.184Z" }
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-20T12:51:12.657Z
 ---
 
 # Catalog: schema, roots, resolution, and packaging

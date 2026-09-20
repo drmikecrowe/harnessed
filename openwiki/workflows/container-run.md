@@ -50,10 +50,10 @@ sources:
     resource: repo://tests/test_broker_pod_args.py
   - id: openwiki-source-f725ea11f1806a58b06d7f3e
     resource: repo://tests/test_launch_parity.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-19T12:16:02.862Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-19T12:16:02.862Z
+    at: 2026-09-20T12:51:12.657Z
 ---
 
 # Container launch: `container-run` end to end
@@ -257,15 +257,19 @@ for a launch that then died on a renamed recipe — a row that fails identically
 started from the dashboard. (The host path's analogue is assembly, its backend's real validation
 gate.) Within that pair the order is fixed too: the script **precedes** the row, because the row's
 command *is* that script, and `_aoe_register` exits under `--create-aoe-only` — a row written
-afterwards would point at a file that does not exist.
+afterwards would point at a file that does not exist. The pair runs only when
+`_persist_this_launch` accepts — an ad-hoc minted recipe stack gets neither script nor row, so the
+shortcut cannot outlive the stack that produced it.
 
-`launchscript.write` never takes over a file harnessed did not write. An existing
-`<harness>-container` target must carry the sentinel `# harnessed:launcher v1` in its first two
+`launchscript.write` never takes over a file harnessed did not write. The target is
+`<harness>-<stack>-container` (three fields; the stack was added to the name so two stacks over one
+project cannot overwrite each other's script). An existing target must carry the sentinel `# harnessed:launcher v1` in its first two
 lines **and** be untracked by git — even a sentinel-bearing tracked file is refused, because
 committing a generated launcher is a choice a repo is allowed to make and rewriting it per launch
 would dirty a tree nobody asked for. A non-regular file (a FIFO would block the sentinel read
 forever) is refused before it is read, and every failure path returns `None`: the launch proceeds
-whether or not the shortcut was written.
+whether or not the shortcut was written. The stack name must be a single path component — a
+traversal such as `x/../../evil` is refused the same way, never escaping the project folder.
 
 ## `wire_services` — idempotent revival, before the re-attach branch
 

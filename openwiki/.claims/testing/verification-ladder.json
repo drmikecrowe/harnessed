@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9c529109dbc212845c14bae228e1e95e96e09dc934b9cbe697765d229cbf0e96",
+  "pageVersion": "sha256:87ca868bab2dafd8b1e091746bae5f0c478fa2829dcc4ebde0b1dfa51319a368",
   "claims": [
     {
       "id": "claim_53d617e673d544d78bcddfca751dbff6",
@@ -509,10 +509,24 @@
           "version": "repo-lines-v1:sha256:1a9843b0ad386fc30d1f337ad56a6db75a6f8c9c9b821e8ad8b1b7f6f9ff0ef8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2ODUzYWVhMGU2MTkyOTQxYzY2ZjE1YWQ3YzUwNzFlNTlmMGZmMzEzYjQyMTMxMDU5NDk5OTBjMzgyNTA4NWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhNDExN2Q0ODJmMjI1ZGUwMjY2MDMwZjYyNTQ3MGNiMjZjMWExZmRkNzY2MzAxY2IwYTMyM2RmMzg0ZTU1YTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5YTIwNzMzMzdjNTgyYWM5ZGJkYTVhNTAxZjIwOTIyZjAzMDBkNzJlYWQ5YTc5MTUwOTY0NGU3ZDdmZWIwYmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJiMTRiZWYxNjY1YjNkZDg0OGI3NWJlNGQ5M2MyNTMxNDc5OGIxNjQ0OGI4MTYzOGFmMTEwZjZhYWIxZDlhMmIifQ"
         }
       ]
+    },
+    {
+      "id": "claim_6f1a1e3ce53e4432a3f22d38324611e0",
+      "statement": "tools/preflight.sh's skip message for the omitted pin check claims \"CI runs it regardless\", but .github/workflows/pin-check.yml has no pull_request trigger at all (weekly cron and workflow_dispatch only), so relying on CI to catch a catalog pin regression before merge relies on a gate that never runs on PRs; preflight --all is the only local path to it.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/pin-check.yml#L14-L19",
+          "version": "repo-lines-v1:sha256:4f4ed4a027f807e218aeca4bebd3b8dcb5fa7b9b2be2f3770c69a931ecc78fd0:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTk2ZGM0ODE0OWY1YTgzZDFlZDZkYmIzOWJiYzdlMmI5MDJhYTNkMzRkNmJkNWFlNGIyOTFiNjhkZjBjYTc5YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2YyZmE3M2YwNzA0ODlkOTcyNGEwMjlkZmI1MDJhYTA4ODUwN2QwODU3OWJiYmNjOTRlZDkzNWMxYTA1MzMxNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGFjZDBlNGQxYjJlNzcwYTQ1OTRmNmFhOGYzYWJiYTkzMmU5MWQxMDFiODY5YTdkMTlmNGFiNDBkMGExMDk5OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTliODMwZjhmM2Q3ODg3ODdmZDI2MTNlMGY0ZDE5ZTc5ZjM4MDMwMmMzODNiNDYzYTc0MWUyM2NhN2Q3MTg3YSJ9"
+        },
+        {
+          "resource": "repo://tools/preflight.sh#L108-L112",
+          "version": "repo-lines-v1:sha256:5b994e0696afea2f82ada86dd6cccbd93dbe11a91bbd458d297650e3df8675b3:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzYyMzMxNWY2OTdiZDhkMjJkYjc4N2MzNDM0N2QxYjg0ZjFhMzgwYzY3Y2VhZWUwM2Q4Njk4YTFiODgyOTFhMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzc2OWQyMzdjZDQyMGI5ZDM4Yjk4MWEwYTRmNjc3MDE5MGE0YTgzZGNhMWZlNTZjNGY1YmExZTJjYmMwZWY3NiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjBiN2Q5NTIxODVmZGQwZTFiY2FiY2U1OWQ1YjdlZmE0Y2QxYWNmNWY1MmFjNWE5NDM1NWIzMjUyZDc2ZGJkZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDdiNzhkMWUzM2M4ZTJlMGYzOTYzYzQyMDU5OTA0ODU3ZWQ5NGI4ZThlN2FjOTJmOWYxZTA4YjczOGNiYjgxMCJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-19T12:16:02.862Z"
+    "at": "2026-09-20T12:51:12.657Z"
   }
 }

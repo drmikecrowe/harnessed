@@ -40,10 +40,10 @@ sources:
     resource: repo://tools/preflight.sh
   - id: openwiki-source-bb9438d561f4cbb6d5d38c49
     resource: repo://tools/run-tests.sh
-generated: { by: "openwiki/0.5.1", at: "2026-09-19T12:16:02.862Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-19T12:16:02.862Z
+    at: 2026-09-20T12:51:12.657Z
 ---
 
 # Quickstart: set up, build, launch, and where to read next
@@ -54,7 +54,8 @@ anything runs, the sanctioned ways to run the verification entry points, the two
 entrypoints, the launch verbs an agent must never invoke, a safe first slice, and the task-routing
 table into the specialist pages.
 
-Related: [what each gate proves](/openwiki/testing/verification-ladder.md),
+Related: [the system overview](/openwiki/architecture/overview.md),
+[what each gate proves](/openwiki/testing/verification-ladder.md),
 [the command surface](/openwiki/operations/cli.md),
 [the build workflow](/openwiki/workflows/build.md).
 
@@ -305,14 +306,50 @@ flowchart TD
 
 Route by task, not by directory. The index files under each directory list the same pages.
 
+### Architecture
+
 | Task or question | Page |
 | --- | --- |
+| The build-and-launch pipeline end to end, and which module owns each stage | [architecture/overview](/openwiki/architecture/overview.md) |
 | What a backend is; the container/host asymmetry and shared invariants | [architecture/backends](/openwiki/architecture/backends.md) |
-| What persists where on disk; project keying, persist dirs, XDG state, stable ports and passwords | [architecture/state](/openwiki/architecture/state.md) |
-| How `aoe` and the launch shims integrate with harnessed | [integrations/aoe-and-launch-scripts](/openwiki/integrations/aoe-and-launch-scripts.md) |
-| The full verb surface, each verb's gates, and the post-#460 delegation behavior of `test`/`new`/`install`/`uninstall` | [operations/cli](/openwiki/operations/cli.md) |
-| What each verification gate proves and what it does not | [testing/verification-ladder](/openwiki/testing/verification-ladder.md) |
+| How authored `catalog/` content is validated and consumed (schema.py, the derived seed, entry schema) | [architecture/catalog-and-schema](/openwiki/architecture/catalog-and-schema.md) |
+| Where secrets enter, what resolves them, what never touches disk or an image layer | [architecture/secrets-broker](/openwiki/architecture/secrets-broker.md) |
+| Service containers: identity, allocation, lifecycle via svcstate/svcguards | [architecture/services](/openwiki/architecture/services.md) |
+| What persists where on disk; project keying, persist dirs, XDG state | [architecture/state](/openwiki/architecture/state.md) |
+
+### Concepts
+
+| Task or question | Page |
+| --- | --- |
+| Credential lifecycle across the stack: entry, resolution, mounting, disposal | [concepts/credentials](/openwiki/concepts/credentials.md) |
+| The credential-proxy migration model and the `_schema_declares_proxy` gate | [concepts/credential-proxy](/openwiki/concepts/credential-proxy.md) |
+| The env contract between harnessed, the stack, and the agent; layered env files | [concepts/env-contract](/openwiki/concepts/env-contract.md) |
+| Deliberate deviations that read like defects and must not be cleaned up | [concepts/invariants](/openwiki/concepts/invariants.md) |
+| One row per conflict across env layers, recipe vs harnessed values, global vs project overrides | [concepts/precedence](/openwiki/concepts/precedence.md) |
+
+### Workflows
+
+| Task or question | Page |
+| --- | --- |
 | Stack + harness → profile → image → pod: stages and run order | [workflows/build](/openwiki/workflows/build.md) |
-| How `harnessed test` proves a build against the capability oracle | [workflows/capability-test](/openwiki/workflows/capability-test.md) |
 | The container launch path: pod creation, identity, mounts, invariants | [workflows/container-run](/openwiki/workflows/container-run.md) |
 | The host launch path: what is container-free and what still needs the runtime | [workflows/host-run](/openwiki/workflows/host-run.md) |
+| How `harnessed test` proves a build against the capability oracle | [workflows/capability-test](/openwiki/workflows/capability-test.md) |
+| Ad-hoc and dynamic stack assembly (dynstack.py, aoe.py) and service revival | [workflows/dynamic-stacks](/openwiki/workflows/dynamic-stacks.md) |
+
+### Operations
+
+| Task or question | Page |
+| --- | --- |
+| The full verb surface, each verb's gates, and post-#460 delegation behavior | [operations/cli](/openwiki/operations/cli.md) |
+| Pinned dependency strategy, the pin check, and `harnessed update`'s flow | [operations/supply-chain](/openwiki/operations/supply-chain.md) |
+| How the wiki is generated and drift-checked from within the repo's own tooling | [operations/wiki-automation](/openwiki/operations/wiki-automation.md) |
+
+### Integrations and testing
+
+| Task or question | Page |
+| --- | --- |
+| How harness integrations are defined in the catalog and consumed by update.py | [integrations/harnesses](/openwiki/integrations/harnesses.md) |
+| How this repository dogfoods itself to regenerate this wiki | [integrations/openwiki-recipe](/openwiki/integrations/openwiki-recipe.md) |
+| The `aoe` trash/lifecycle surface and launchscript.py's container-side contract | [integrations/aoe-and-launch-scripts](/openwiki/integrations/aoe-and-launch-scripts.md) |
+| What each verification gate proves and what it does not | [testing/verification-ladder](/openwiki/testing/verification-ladder.md) |

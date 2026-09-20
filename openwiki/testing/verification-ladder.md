@@ -5,7 +5,7 @@ description: "What each verification gate proves and what it does not — the he
 tags: [ci, testing, verification, supply-chain, openwiki, drift]
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-19T12:16:02.862Z
+    at: 2026-09-20T12:51:12.657Z
 sources:
   - id: openwiki-source-2ab88915e37908e92fe8ef01
     resource: repo://.github/workflows/lint.yml
@@ -59,7 +59,7 @@ sources:
     resource: repo://tools/openwiki-retry-patch.py
   - id: openwiki-source-42360cb3e257ef7023d23d39
     resource: repo://tools/preflight.sh
-generated: { by: "openwiki/0.5.1", at: "2026-09-19T12:16:02.862Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
 ---
 
 # The verification ladder
@@ -805,7 +805,10 @@ pass.** Supports one file, filters, `-x`; the suite is small and fast enough to 
 **`tools/preflight.sh` — every gate, in CI's order.** Run it before every PR. `uv run pytest -q`
 alone covers **one gate of four**; a green suite is not a green CI. It runs pytest, then `ruff` →
 `pyright` → `shellcheck` — CI's exact order and CI's exact lint argv — with two flags: `--all` adds
-the catalog pin check, `--no-tests` runs the lint layers only.
+the catalog pin check, `--no-tests` runs the lint layers only. One label in its own output
+overstates: the pin check's skip line says "CI runs it regardless", but `pin-check.yml` deliberately
+has no `pull_request` trigger at all (see [Rung 4](#rung-4--the-pin-check)) — running `--all`
+before a `catalog/` change is on you, not on CI.
 
 A tooling nuance the identical argv hides: pytest and ruff run through `mise exec` from the
 `dev` extra, but **pyright and shellcheck are looked up on the ambient PATH** — `mise.toml` pins

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d5178e12ed99b56c1d4fe49bf38b38293a4afe0e931c56bd0a6d4a183b5a6ae8",
+  "pageVersion": "sha256:a735ffd15a0daa7e19805ac291f86c9a60f1445d8c7e36ada8f2e91530c4d83b",
   "claims": [
     {
       "id": "claim_b90a0ef34e7e4e1d815bf6dd523d7df3",
@@ -385,10 +385,24 @@
           "version": "repo-lines-v1:sha256:8d2390a3d31615e674d66eb0fef53733a5eb693bc0dbd41afd9f6d97c703a64f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzZDAwY2YyNzA5NjRkNDRhMTNkZmFjODc1MmIwOWZjYzQzNWIwZjE5YjMxNmFiY2Y4MWE3YWE2NGJiMTIyZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViNjFhYjY3YTFmOWM4ZmM0YmEyY2U2YmQ5NDY1ZWUzYjI4N2UzZjlkMGI2NTBmNTM5OGZjODgyOWVhMDQwNzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhZTZlNDRjNWQzYWExZmEwNTFiMzdjOTVhYzNmMjA2M2FkMzI4ZTk1NGJkNjBlOGY3YmIxMDY0N2QxNjAzNWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxYTI2ZDNkNzE0MjMyNzcyNWQ2ZTdlMTE0YjUwZTlhZWJkMzFlN2ZjNjg1ODNiNjc0ZjM1MWFiOGFlZGEwNzQifQ"
         }
       ]
+    },
+    {
+      "id": "claim_914edac17cb0426a8e7afc21853b7c86",
+      "statement": "tools/run-tests.sh runs the test suite correctly from any worktree by handling three local-only failure modes: it runs `mise trust` (a no-op once trusted), syncs the per-branch venv with `--extra dev` because pytest is an optional dev extra that a plain `uv sync` omits, and then `exec`s `uv run pytest` with any passed args (defaulting to `-q`). It deliberately does not strip FORCE_COLOR — tests/conftest.py pops it at import, the only place early enough before rich Consoles are constructed at module import.",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L29-L44",
+          "version": "repo-lines-v1:sha256:b68591a1e0b7eedaa815d34fe41ef47ab603f7d92e8d80a6d62158b6e899cf6b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlNjAwZDY2YjhhOTE2ZWM4NGU4ZjY1ZGRhZDcwMTBjN2VkNjUxMzc1OGQ3M2EyYzRhNmYzYzA3MDU2NmI4ZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5N2RiNmI2Mzk5NGIzMTVlNGExZDQwMWI5NTY5MmM3ODBiYTNlYzhjZTc4OTZjNzEwOTNjMDY5YWRmZWY5MmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgyY2M0YzJjNTllMWI4Y2UwOWYxYjc2NTBkYWExYWExYzQwYWUxYTFiNzM4OTlhNWRiZjk0Y2QzNjk5N2NlNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJhNGYxZjU0MjY3MTgxMjZiYzAyZjEwMWRjMzQxNWVlYzUzM2UyOWU4NWU2ZDcyMWViODEwNzVmNzZmZmUwMzkifQ"
+        },
+        {
+          "resource": "repo://tools/run-tests.sh#L1-L39",
+          "version": "repo-lines-v1:sha256:f6c4426132e5b26226c1fb2d115b36ab853cb2d8554686767415bf47dcf1c22e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkOTVmYzA0YTgwYzk1MmY0OWNlNDE4ODYyN2M1M2IwZmJlOGM0NDA0MWI5NTJkNTkyYWNkMWRlOTk4NjE0NjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjY2JjNzA5MTk1NzgyMjg5YmYyNWQyMGRjN2QwMjYyYTk1NmRhODgxYTgwMGU4M2UzOGFmZjkxMGZmMDViOWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-17T13:01:59.112Z"
+    "at": "2026-09-20T12:51:12.657Z"
   }
 }

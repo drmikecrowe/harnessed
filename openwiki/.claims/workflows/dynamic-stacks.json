@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:50e10c2702e06cefefe0f37e738ffb0bfb0d079e6af5f307bfbc4c81ffb501b3",
+  "pageVersion": "sha256:5eebd4d99618c23fa1559a9f26d71c354adc92f8ec9a445632733e4afc87669f",
   "claims": [
     {
       "id": "claim_1eb0f66fba014692a026a6fb1af5170b",
@@ -434,11 +434,15 @@
     },
     {
       "id": "claim_3e7647cb97ad440eabd2f94f69fd1793",
-      "statement": "The derived name is NOT parseable back into recipe refs, and `aoe._composed_recipes` therefore reads the RAW manifest rather than `load_stack` or the name: `derive_name` joins on `.` after sanitizing and appends a digest when lossy or over-long, so the single recipe `beads/team` mints as `default.beads-team-55bfd6ac`, and splitting that on `.` yields `beads-team-55bfd6ac`, which is neither the recipe nor recoverable. It also uses location (under the generated root) to decide a stack is machine-made — an authored stack returns `[]` — and a missing, unreadable or malformed manifest costs only the delta, never a failed launch.",
+      "statement": "The derived name is NOT parseable back into recipe refs, so aoe._composed_recipes reads the RAW manifest rather than load_stack or the name: derive_name joins on `.` after sanitizing and appends a digest when lossy or over-long, so the single recipe `beads/team` mints as `default.beads-team-55bfd6ac`, and splitting that on `.` yields `beads-team-55bfd6ac`, which is neither the recipe nor recoverable. The function returns the baseline alongside the delta (the delta alone cannot tell `default.serena` from `isolated.serena`, which made titles collide and rows drift), location under the generated root decides a stack is machine-made (an authored stack returns (None, [])), and a missing, unreadable or malformed manifest costs only the delta, never a failed launch. title_for prefixes a non-default baseline and joins recipes with `+`.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/aoe.py#L355-L385",
-          "version": "repo-lines-v1:sha256:49f5139f744937cba7036a9b17b425d494452c4b3ed20e97704ec893a0bb8fd2:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ODMyZmYzYzE0N2I4NmFhNzk5NDVlNTE5ZDUyMmY3NDE4ODc1MTUyNzE1NmQ1Mjg3OWJjZGI1YmEyZjllMTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiMWJmOTJmNWMwNDFkN2FkNzcxNGUwMDM5ZGI5NzBjMmU4ZDViY2ZmZjFmN2RiMTIwY2YzNDkzODJmNWNlY2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhmMzZhOTIyYjY3MDM4YjE1NWQ0NzI0OThlNGYwMDQ5YmY2ZWEwNzEzNzMwOWFhYTY3MjBkYzYwYzc3ZjRlYzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhNzM3YjVlZWM0NmI1ZDUxYzNjNTdjNmY5MTJiOTNlMWFjODhjZjllZmFkMDNjMzM0MDEwNmQ1YWM4NjIxMDgifQ"
+          "resource": "repo://src/harnessed/aoe.py#L374-L391",
+          "version": "repo-lines-v1:sha256:31e746b76cd2ef213058083a6b8a94760dbc418050ee2dae5ed74c21f0c4d625:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNGYzZmNlMmMwYzAzOGUyN2EyMDNiNWQzMmY0NjQyNmNlMjg5YTMzNDAwY2M3OGQwYjcwYmI1YmY4YmE5NWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhZjM1YmUzYzNmZjBmMzZiMzdjMDk4MzI4ZGQ2ZDEwYzllZGZmYjYyYTIwZmY5MGM3MDIwOTIyMjg1MzMwMzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4NTYxZWE2N2VmYmE3ZDQxNTJmODA4NTU4YWU5OTMwMmM2ZjBiODhhY2NiZjYyM2FiMDNhMTAwMmU2NTk5ZDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzZDY0N2I4NmY2MDc5NDAwMDBkMTJhZDNiMmRlN2JmN2QxMGViZjU0MmI1NDRiY2JhZDdiNzNhNjVjNTlhNzIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/aoe.py#L394-L432",
+          "version": "repo-lines-v1:sha256:07e4df53a0ad946141e01de158a516f4c050c25c20826e9a6ac7c7252e6bd883:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmNGYyNjBkNWQ3ZWU3NmYxMzQyNGYyYzE4MWVmZWFkOTAwNTI5ZGQxNWJiZDEwMTg2MWI1MDE3MWIwYTMyYWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiOGY1ZjBjNDVjMTlhMzViOWZmODQ1NjUwZmM0NTFkYjVlYmM4Y2Y4OTkyY2ZkNGZlYTdlYjAzNTY5NmI4NjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhmMzZhOTIyYjY3MDM4YjE1NWQ0NzI0OThlNGYwMDQ5YmY2ZWEwNzEzNzMwOWFhYTY3MjBkYzYwYzc3ZjRlYzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhNzM3YjVlZWM0NmI1ZDUxYzNjNTdjNmY5MTJiOTNlMWFjODhjZjllZmFkMDNjMzM0MDEwNmQ1YWM4NjIxMDgifQ"
         }
       ]
     },
@@ -493,10 +497,116 @@
           "version": "repo-lines-v1:sha256:e5b0489a5619871dec43129d2f3f80482e26024c342ae0a40c9c801886514057:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhMjdhZmZhOWZhNTI5ZTVkMzg0NTJkNjMxZTIyOTczZGY0NTA4YTNlMTUxMDZmNDdlNDU3NWUzZTAxNmNlMzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1M2FhZTk5ZDc5Y2VkYWU3NjFjNDU3YjQ0MzI3M2NiM2MwZjNkMDZmMjNjODRjYTg2MjA5NmVjZmUzMzJlZGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2MmFjNmM5ZjlhZDA0ODU2YWJjMGQ5ZGJlOTVhYTFkYWFlNjJkZTQ2YmViYzA4MzIxZmY5NDkwMTdjNDYyODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ5ZWY2NmExN2FmZTBiNjE5YWVmOTkwZTYxNmM0MDFmMWJkYjMzMDEzZDZkOWQzM2RkZmZiMzRhYTczNTA1ZmUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_a67aef91bd37455280804ad3dd398dfd",
+      "statement": "An ad-hoc launch persists nothing: no launcher script and no aoe row. dynstack.is_adhoc recognizes a minted stack by LOCATION under the generated catalog root (never the caller's minted_dir — mint is idempotent, so the second launch of one recipe set mints nothing and reading minted_dir would persist one launch late), and a test stack by name (`test` or `test.*`). Resolution decides: an authored stack shadowing a generated name is NOT ad-hoc, and a name resolving nowhere is not either (find_in_catalog falls back to the highest-precedence root, never the generated one).",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L187-L211",
+          "version": "repo-lines-v1:sha256:27b85d7534675dc3a2e610e1b6afffdb95717d0326eaa01a29ab98720094bdb3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2ZjM0NmY3ZDM1Yjk0OWZhMThhYTk4MGYxNjhmNGNkZGQyNzI0MGMxODc1YjllMDdjYjU0OTgyYzIxZDQ0NTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUyOTA0NGZhNTQ4NjE4ODcwNTdhNjAyZjc1NzQ1MjZkMzhiMjE0MzZiMmVmZmNmNjRkZjgzN2Q2OGNmOTY4YjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyNWExMjg3NGVmM2MyNmU3YzVmNGRmYzA4NmY3MzZhNTYwYzg4OGJiYzk2YjEyNjc3NTViYzk4YTk4NjQ2Y2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://tests/test_adhoc_launch_is_not_persisted.py#L39-L99",
+          "version": "repo-lines-v1:sha256:85115f566cfef814e47ea5d43c33d8ad8b23196ee45ae621e657b4d64dd27aed:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2ZjNiNGY3OTU4NTY5ZmY3NDUyYjllMzYzNDExNjdiY2VkMTBkYzNhMGRkYzYwZWQ1YjViOTI2N2U5MTJlZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhNGQ2MzYyMzNiYWRiOWUzZTdlMzY5NmEzYTBjMzY2N2IwZmM1YjZlOWE1N2Y2MjdiZDk2NTNlNmNiOGQ4ZjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1YzZkZWI0NmIxYWZlMTViYTUxYmQ3ZWRhMGFhNDc0MTBiOWVlMzQ0NGE1ZjU0MThmOGMyYjdhMGYxOGQyOWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY3NWY2ZTEyNzliNDE3Njg5MmFlZTM2ZjQzZmI0ZTc1MDVlZWRiOTkyNjZhN2I4M2E1NTM5MTJmN2ZhODg3YjgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_38400e5a6e344c3aac7f97ab4afd4e01",
+      "statement": "launcher._persist_this_launch gives ONE answer for both persistence surfaces (script and aoe row), because the row's recorded command IS the script — writing the row while skipping the script would register a dead-on-arrival row. It returns True when --aoe-group/--aoe-title is given (naming a row is asking for it) or under --create-aoe-only (registering is the command), else not dynstack.is_adhoc(stack).",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2478-L2498",
+          "version": "repo-lines-v1:sha256:5939605b99fa5aae119c85320bb1192d672bb3eecdd78071710dc118f3abf069:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkYTM4YTI2MGNhYjlmNDlmMDQ0NWIxNDZiYWFlODVmZDJiY2E4ZDYzYzM3NjE5NTdiZWFhMGExMGJiYjRhNDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1NmU0OTJmZmVmN2QwYzJmZDI4NWMwNGE1NTYxOWI5YjRmZDllNWNjMGViMDliMGIwYWYxYmMyYmM5MzM2NjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhmY2E5OTFjMWExZjEyNTc5M2YwZDA4Mzc0ZGExMzU0ODZiOTE1NjdkNTFlZWI5NzM4ZmY3NTk3ZmNhMDllZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZkYjZmYzE1ZTUzMzAwNDBmZThkMmM2MzRjMDg5NjJkODZkMmI4OGQ0MTBmODk0NTM0ODA2NmUzOTM3NDlmZDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f3f19ce74eeb47d5b4744c9c72921e6a",
+      "statement": "svcstate._service_refs unions THREE sources of required sidecar services, first-seen de-duped: recipe `service:` MCP-server refs, recipe `services:` (sidecars with no MCP surface — what lets a bare recipe list attach e.g. a dolt sql-server), and the stack's own `services:` list; all feed the launcher's idempotent ensure-and-start at launch.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/svcstate.py#L282-L304",
+          "version": "repo-lines-v1:sha256:9d167194bed8d2f311c9b45b5cefaa27fbb9b44349b1c9e9dc779444055dc17a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1NDgyOGVkY2I3YTYzMWU4NDk2Y2I2MzZmNGFlNTRmMGExYWIxMzk3YTcwMzI4YjdhMTVjOGQ1OGI2NTEwYWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5Yjg3NTY2ODEwZmU3YTA1ODA4YmRkNDc1Y2RhNDNkNzcyZWMxYzU3YjE2MWEyNmRhYmY1Zjk5YmI5ZWVlNWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFlYzIzZTJjMTE3YTU5Y2M2NzEwNzBiZDcwY2E0NzY1OWJkNzE4YTA1NTJkNDJlNWQ1ODlmOWQwNTBiMmE5ZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhkMDQxZTc3OGZlOTYzYWIxNDVkOGMyNDkxOTIzN2VlNzVmYmI5N2I4ZjIxYzc2ZGM4ZjgwYTIwNWNiNGJkZTgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9839d7e9416b40f58b687e7e92a68b66",
+      "statement": "A project-scoped sidecar's identity is derived, not stored: container name harnessed-svc-<name>-<project_key> where the key is hashed from the git COMMON dir (so all worktrees of one checkout share one server container), and its data dir is chosen by the RECIPE that declares the persist entry the service names (in_repo → checkout-anchored path-preserving; host → per-scope persist dir, agent-visible as $CONTAINER_HOME/<name> in a container but the real dir on a host launch; a persist entry no recipe declares is a SchemaError). client_env is resolved per launch with {host} = 127.0.0.1 on host and host.containers.internal in a container.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/svcstate.py#L235-L279",
+          "version": "repo-lines-v1:sha256:fb8a78d07724a1e23121c57e61090ae1ad98b2f518b1eb63d83bae4e176be620:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlZWY1ZTA4MDIxMTk4MDg2ZWU5ZDMxNDg5OTMzMzM1NTJlOWEwNTNjYTM0YTMyZmNhZDQyODFhZDdmZDk3ODQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwNmZlNGE4Zjk2NjEyZGE3ZTE1N2UwODAwMGZjNjY1MjBjYjlmMWI2NDBkMzNlYTI4ODcyOTc1M2NlYWMwNjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1NzIyYjhjNGYyODMxYTA4YTZmZjE2OGQxNjUxMTRiNmZkYmFjZjk4NDIxNTM2NjI3NzY5M2JkY2IzYmQwMjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU3YmZhN2U1MjhkOWU2MTAxMGNiZDY3Yjg4YTI4NWM1MjIyZTczYzYwYWYzNjFlODAwNGQyYjM2YWZiMDE0ZTEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/svcstate.py#L41-L102",
+          "version": "repo-lines-v1:sha256:8c2ec16db5856b96f146456054faa4a07a32f70c3b03586a78f13a03beeb88bb:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiMjI3YjRmMGQ1MzlmMTVhMThiY2RkY2YwZjc3N2Q1NWM2NmQ0NmM2NGI3OGU1YTM5NzI4MGE1YjcxOGQ3M2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxNDcxMTA3Nzc2ZmE3MTJiNDYxMGE1MGQyZThjNzlhZGJjZjUyMTAwYTExMGEwM2ViZDYzMzM3N2U4Nzg3YTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhYWI1MTczNjc2NTM1YjczNDkzZThmZjY1MzA5MDY4MTYzOTYzMjMxMWZhZWQ1ZTQ5YmVkZGQ5MmRiMDM0N2MifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_abacb0fd75c74f6b93c4d975c31f6a52",
+      "statement": "Ports: `publish: stable` gets a permanent host port from one machine-wide registry (paths.svc_ports_file), allocated once under an exclusive flock from 20000-59999 and persisted even while our own sidecar holds it — so project config like mise.local.toml stays correct across reboots. `publish: ephemeral` is re-read from `podman port` at every launch and deliberately never cached; when unreadable there is no silent fallback and clients are simply not configured.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/svcstate.py#L150-L232",
+          "version": "repo-lines-v1:sha256:b8fe2b3c39f48d52a1ff5b618339a4a40203c24fa30ab3112fb241cd75fab2da:eyJzZWxlY3RlZExpbmVDb3VudCI6ODMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiMDkwNmEzOTU1NThiNTA3NjgwZjQ5NWU0Y2RiMGU0MmIwMzk5MWY5MWFkMjIwYjc3NzUxYTVmYThiZTU5NDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2MjMzYjNmZmVhMzJhMjNkZjUzMDY1MzQzNDhmMmRlZTc3NmE1YTZmNzRmYjUzMzE3NWRkYzUzOWE4ZmU0NjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2NjRlZTNiYzBiZDNmNWU3ZjRlZWVjZTlkZWMxZDFjNGYzNDUyZWZkMGE2YzRkZTc2ZTNiYWI4MmJlMmViZTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ5NjE0NDc2MGYyYWZiMWY0ZmM3M2VhNTQ4MzExMGVkYTQ3MGQxM2Y3NGY0YmEzNGI4ZDg3NmE4MzdmODBlMjgifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/svcstate.py#L259-L276",
+          "version": "repo-lines-v1:sha256:e8b44554f017da00e80d59e13e8a8298dd03bd689b6e2397467935a89da915bd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmYzNlNjI2NzI4YjU0Y2M5MTkwZGIyNmJlNjQ2OTQ3MGQyOTk4MzMwNTdjMjdlZTExMmEwMjZlODBhNTAyMTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5Y2MyOWM3Y2MwYmI4ZTVlMzZjM2JlZDBkMWVmOTU0NWQwODQwY2IwYzc0ZDVjYmVmYTFmYWU5MmEwZmY2ODYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhmMDk1YWFmYjRmYWY3OWIxNDdjNWY5ZDg1YjdlNzg1MGQ4YTNkOWFlZDE4MGJkMTE0OThlYzk0OTcwOWZkYjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJmZmFiN2RkMDk0ZTVhMzI3OWEyYWMzYmM1NmZiYWI2MzE0ZDgyODhkYjQ5MGM4MzQzNzY2YmNkZjYzZDQyNjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0967f32d43644dea89253468d5fd2887",
+      "statement": "A published service's password is a token_urlsafe secret created once under XDG state — never in the service's data dir, because an in_repo data dir is the user's repo and a secret there is one `git add -A` from the remote. File 0600, parent dir 0700.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/svcstate.py#L125-L147",
+          "version": "repo-lines-v1:sha256:ad187fefadfb4e145ddbad818a1f398dc0b490437a0eed526758763e1eedfc39:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxNWEwMTlhODUxZGJkOGNmMmFlZDBkZTZkMzU0NDk1NzkyZDJhMjUwZTI4ZjA4NzViMWNlYTVjNGE0NTZkMjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjNDE2ZDJmZGNiODY1MjQwOTdhNDU0M2M5MTFhMzQxZWFhMjJlZWI1ODFjODFhNjI2MjZmODM0YjkxNjU0ODUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFlYzIzZTJjMTE3YTU5Y2M2NzEwNzBiZDcwY2E0NzY1OWJkNzE4YTA1NTJkNDJlNWQ1ODlmOWQwNTBiMmE5ZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc5NzBiNzYzOGM2N2YzNzU2M2MwYmNhMGNjNTRmNjlmYzQ3Mjg1OTIzMmUwZTA5OTgwODEwOTFiNThkMzRjOWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_556cada099294bb58efdb3da90b8bbb5",
+      "statement": "Sidecar drift detection and revival: the create-time argv is hashed and stamped as the harnessed.svc-config-hash label; a running sidecar is stale if its image was rebuilt under it, the hash mismatches, or the label is absent (container predates stamping). Recreation goes through the same create path (`harnessed svc recreate`, force_recreate) because `podman restart` reuses the existing container and changes nothing; data is always preserved. The recreate prompt uses _can_prompt (an -exec launch has a real TTY and nobody at it, #450); HARNESSED_HEADLESS=true proceeds automatically.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1960-L2062",
+          "version": "repo-lines-v1:sha256:aca310e933ed84e168ab5e829632edbf40c71aaad97fd5ed809513f04e9de38c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2NGJkYWIxY2EzOTE2YjlmNWNiMzQ0YjdhY2ZkMDdjM2NjZjE2Nzk4ZTdjNTgyNzgxZjdiYWJjOTQxZmIyZDZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyZjljNWUzMWIxYmQ5NDgyMzBlMDYzMjRjOTZjMGRmNjY1YWQ3NmM5NThiYjBlZWIyODlkYmM4ZmM5MzU2ZTYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIxZDU0NDJiYTE4MTNhYThmMTZhNmFmMTllZDM1OTYxMGVlZDI1OWRiOWRjMjc0NTE1MzUyNWM4YzQ4MzUxNWYyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI2YTNjZjUxOTIzNTRmNzE2MTVhYzUxMDM0YjNlOTdjMjBlZGE5OTY0M2ZjYWY1YmJlNmQ0MWFkNTliZDEyMTY3In0"
+        },
+        {
+          "resource": "repo://src/harnessed/svcstate.py#L313-L451",
+          "version": "repo-lines-v1:sha256:e84e8b281eb8b06d983743c42190fa8b79bac467374158fc28cbc3ca0ab543b9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTM5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4NmYzN2RlNjA0ZGQ3NjYzOTNiMzExYWVlYjdlOTFiZjZiM2E3ZjAwNjI1YzY0ZWVhMmVhYjE2Njc0MWNiOTM3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODk2MDBhNzNkMmUwMmYzNTJiOTBmZWYxZDhkNjM4MTFiYTRhOGVlMGMxYmVhYTdhZTQ2NThmMzZhYTJlMTk4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3MmMwNWI4ZWY4MTg4NTZiNDFjYTkzYzhiNGRlOWVkMWRkMWI5ZjQyMjYxNDdlNTNjYWUzMWU5ZWFlMjhlZGJhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_f6dc786570764ccc93b2eb4f5d7918ae",
+      "statement": "A scope:project sidecar carries harnessed.svc-stack, the stack that created it (the data dir is stack-chosen, and nothing else records project → stack). For pre-label containers, _svc_stacks_from_instances falls back to reading stacks out of agent instance names — longest harness prefix first because stack names contain dashes — with running instances winning over stopped ones.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/svcstate.py#L341-L430",
+          "version": "repo-lines-v1:sha256:80a87aea2d9e9cd38710475bb008c7d67b401b3cf671c0f5d4662d7ab3710683:eyJzZWxlY3RlZExpbmVDb3VudCI6OTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViMmVkNDNiNjRmODQ4ZGY3YjEzMDkzODE1ZmY4N2M0MmMwYjQ0ZmRjODdjMzgyNzg5NTIxYTNjYjk4Mjg2YTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiZGJlYTY3Njc0OTI2ZDE3MDI5ZGQ1MGVkMWZkNjc5YTMwNTE4NzRkOWViZjM1ZjA4MjQ5YmJkYTE2OThiZDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjNTdjMjdmNmJhODQxNjIxOWI3MjE5ZTVlZTZhZTIxNTZhNzVhNTA2MzNkZGE2NDdhYzVmYTg2NzM1MThlY2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4MWExZjM3Y2VkN2FkZWQ2NGY3M2JjYWY4NzUxNjFlOTgxYjlkNjYzZWVhYWM4NWM4NTFhNzI5MmQ2ZDg1YjEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6dbfbfb0d69344dc872977d65d6c2617",
+      "statement": "A service healthcheck that never passes ABORTS the launch (two-phase readiness: raw TCP then the service's own healthcheck; socket-backed services use the in-container healthcheck as the readiness signal). There is no `required:` flag — a stack does not attach a sidecar whose health it is indifferent to.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2066-L2100",
+          "version": "repo-lines-v1:sha256:a65783e28bbbeb2e0136f37abf04a6fde55175d034c6bbe03377f2e6c7033030:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzMjRlM2UxY2M3MGRhZmE4MDczODkxNjczZDg2Mjk2MzNlMDJkN2U4NWEwZjI5ZTcxMGQ0MzA5ZDQxY2E1MWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwNWU3ZjNhMmIxNGIzZmM0OTM3OTk2ZmViMjk5ODFkOTg5NWIxMzZjYmIzMjg5ZThmYmM1OTg1ZWU3NWVmNmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhM2NmNTE5MjM1NGY3MTYxNWFjNTEwMzRiM2U5N2MyMGVkYTk5NjQzZmNhZjViYmU2ZDQxYWQ1OWJkMTIxNjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZkZmNkY2E0MTgzZjg1NDRlNGI5YTFhODhhMWY4NDc3NDAyYmFjMzNmNDJlY2EzMjZmOWE1YTI5OTE4NTEyZDEifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-16T21:10:52.541Z"
+    "at": "2026-09-20T12:51:12.657Z"
   }
 }

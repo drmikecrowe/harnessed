@@ -42,10 +42,10 @@ sources:
     resource: repo://src/harnessed/volumes.py
   - id: openwiki-source-568f82b2292ea5e02ccb4db8
     resource: repo://tests/test_install_script.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-09T09:34:57.295Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-16T21:10:52.541Z
+    at: 2026-09-20T12:51:12.657Z
 ---
 
 # Precedence: who wins when sources conflict
@@ -184,8 +184,9 @@ catalog-authored values beat whatever the process inherited.**
 harness owns. That matches host mode, where `_recipe_env` is applied to `os.environ` and the
 folder-env contract overwrites it afterwards. Reversing the pair silently inverts precedence between
 the modes — the drift was caught while merging two changes that were each self-consistent alone
-(harnessed-0tk.7 and harnessed-8px.2), and is pinned by a test that asserts the ORDER of the argv,
-not its values.
+(harnessed-0tk.7 and harnessed-8px.2); the call site states the rule outright ("ORDER IS
+PRECEDENCE"), and the same winner for the install contract is pinned by
+`tests/test_install_script.py::TestPrecedence` (below).
 
 **The host launch.** `os.environ` is the box, and `_launch_host` updates it in a deliberate order:
 launch secrets first, recipe `env:` second, the folder-env contract last. Each layer overrides the
@@ -201,10 +202,15 @@ inside a session."
 
 Container mode gets this from `{**resolve_recipe_env(...), **install_env}` passed as inline
 `-e VAR=…` assignments, which beat the image's preceding `ENV` lines; host mode from
-`env.update(recipe_env)` followed by `env.update(emit.install_env(...))`. Same winner both ways —
-the exact defect the harnessed-8px.2 merge exposed — and the precedence is asserted as *order*,
-not values (`tests/test_install_script.py::TestPrecedence`), so tightening a value cannot pass while
-breaking the ordering.
+`env.update(recipe_env)` followed by `env.update(emit.install_env(...))`. Same winner both ways — the exact defect the harnessed-8px.2
+merge exposed — and `tests/test_install_script.py::TestPrecedence` pins the rule from both ends.
+The host test asserts the ORDER: it reads `inspect.getsource(launcher._host_run_installs)` and
+requires `env.update(recipe_env)` to index before `emit.install_env(`, so a reorder fails however
+correct the values look. Since bd harnessed-8px.21.4 merged the container executor into a single
+`{**recipe_env, **contract}` dict, the container test can assert the VALUE itself — the contract's
+`HARNESSED_MODE=container` appears in the podman argv while the recipe's competing
+`recipe-tried-to-win` does not — a stricter check than the emitted-text ordering it replaced, and
+a third test runs the real host script to confirm the contract's value actually wins at runtime.
 
 Two host-only layers sit *after* the contract and are precedence rules in their own right:
 

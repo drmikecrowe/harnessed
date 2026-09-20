@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3e2b963bd43795ccf5858f0712008ed79b02afbea3725d4a178796e0a41e62ac",
+  "pageVersion": "sha256:aa0b7a00ea599eb03bd958f761ce1105741130c0aa08f597ac5eb89b18e2dcf3",
   "claims": [
     {
       "id": "claim_795dd2676b53423fb922233f27342e50",
@@ -427,10 +427,68 @@
           "version": "repo-lines-v1:sha256:a4a49147ae331a06294d6064642c67b51f373982eaf43dce0e8a07faab5c78f0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4ZjkzOTg2YWFhYTBjN2FmOGVlZjJkMTAxZjg3MWFhZWQ5YmY1NDMxZTVjZGUwMGMxNjk1ZjI3ZDY0OTE1NTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFhNzdjOWY5NTVhMWVjMTBjYTUzYjJiZjQyYmIyMDZkYWU4ZmFiZGU3ZTA0MDk2ZTU1ZDQ3NTZkYmVhNWU3MWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_ceda6a99664b4506b49f88b17b7e4401",
+      "statement": "openwiki-drift verifies only line-ranged evidence anchors whose recorded version uses the repo-lines-v1 scheme; whole-file evidence (no #L range) and unknown version schemes are skipped and reported on a separate 'skipped' count rather than guessed at.",
+      "evidence": [
+        {
+          "resource": "repo://tools/openwiki-drift.py#L139-L154",
+          "version": "repo-lines-v1:sha256:b566100cd08a225c895b824a6d92a902e157c12fd7369c16060f6e551720fd3f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRiY2I1OTNmM2YxMTM1MGQ5YjIxOWNhNDllOTBjZGQ5MGU4ZWNmNTcwMDJlNDAxYWU1ZjJmMjUyOTRiOWIzNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3Mjc4ODdlYjcyMjVmNWE3MGM3YmMxODdlMzFlNmIxYTMyNTc1OGI3MDQyZjFmMzM3OWQ5OTYyMzczNjMxMjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2MmY3MWEwNzQ0ZWJjYmJkN2E2YjdkN2MzNDE2ZmUwNWRhOGE2Y2RjZTJjZmU3YjQ1OTkyOWZiNDZkMzA0NzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5MzljYjgyMzk0N2I2M2I2ODM0ZmM3ZTFlYzdjZDlmOTg5YWYyYWUzMGU3NmI3NDY4OTVmZjhkYzAzNWJmYzAifQ"
+        },
+        {
+          "resource": "repo://tools/openwiki-drift.py#L51-L57",
+          "version": "repo-lines-v1:sha256:5c924df424a73d522c3f27db173f825c7dd13bd46db08eb9116c66fde1adbb43:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWM0YmEzYWE3YWMzYzczMzczN2M0ODQxM2UwOGE0ZjkzYTQ1MzdhOWUyMGMzNmNiYTI4ZDZiNzA5ODQ1OTkwNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNThhOWIzY2Q4YTkzNGEzNzExZDZkYmY1N2JiYTkxZWNlMWYwMGNmMWZhM2ZiYzU1YTNlOGFmOTIyZjIxNzVhYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGJjMzQxZjE3MWZmMmZlNmYyNjZjM2UzMjU5MDg4OGU2NThkYmQyMWVhNWViZjFmZTMzZmQ4ZjgzN2M1MDA0MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzBjZTNmMjRhYjQ3YzJmNWE5ZDMzN2YzNzdlZDg1NzNmYTU2NTg0MDc2NDAyZjFhZjA1NGEzZGVkNjE5NDYyZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_4f15267d05f446d8aff0fcdf0773345f",
+      "statement": "In the drift gate the base64 version payload's selectedLineCount is authoritative for the digest's block length because openwiki does not rewrite the #Lx-Ly resource URI when it relocates a block; the per-line hashes in that payload are deliberately not reproduced.",
+      "evidence": [
+        {
+          "resource": "repo://tools/openwiki-drift.py#L73-L114",
+          "version": "repo-lines-v1:sha256:7cd745c4a212d00dbffd011be2b354392e362dc514fd796a085a699e22b94756:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzZDAwY2YyNzA5NjRkNDRhMTNkZmFjODc1MmIwOWZjYzQzNWIwZjE5YjMxNmFiY2Y4MWE3YWE2NGJiMTIyZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkZjA1NWYyZTVkZmQwMGMzMjIwOGYzYjE3ODQ5M2FmMTBlNDRhY2ZlN2UzMWZhNDM1NTczNmMxY2FhZDY2OTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhZTZlNDRjNWQzYWExZmEwNTFiMzdjOTVhYzNmMjA2M2FkMzI4ZTk1NGJkNjBlOGY3YmIxMDY0N2QxNjAzNWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZlN2Q0NGJkODQxYmRmZGQwNzY1MzU5ZDQzNzQ2YzdhM2NhOWY2Y2FiYjExNzhmNjRkNWM0NzY3NWUxOTM3NjcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6b6d48bd733c4eeea08d3f01621b054c",
+      "statement": "openwiki-drift separates moved from changed: after a failed exact-digest check, one window scan per (file, length) pair re-finds identical blocks anywhere in the file; moved-but-identical evidence is not drift (27.5% moved vs 4.7% changed measured on a one-week window), --strict-lines collapses the distinction, and exit status is 0 unchanged / 1 changed-or-missing / 2 unreadable wiki or Claims.",
+      "evidence": [
+        {
+          "resource": "repo://tools/openwiki-drift.py#L187-L275",
+          "version": "repo-lines-v1:sha256:eb8c5d06f16d637e0f05f747ca75164bf5186ef05784a76115816663b852571f:eyJzZWxlY3RlZExpbmVDb3VudCI6ODksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2MmZhZTBiNDJkZDZmNGJlZTczYjk3MmRhNDgxYTRhYzNiMmMyOWM3N2ViODZlNDVhM2JmMjljMTg3ZTIzODgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3YTc3NzNkODMyOWZmYWM1MDc5MmFlZmZkNWJmMDY5Zjg2MzZlZjU3Zjg5YTQ2OGY1NTA1YzA2ZWVhNzE3NzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyNjY0ZWEzMWUxMzdlMjkyODNkMjk1OTU5MGQ0MDdlYzk3YWVlMDFiNDRhNmI4MjFmMWI3M2U5NjYyNWQxZTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkNDEzNDBjYzIzOWExNTljZTliNjAyMmU5ZjYzMjI4MzJlMmVhZDc2Y2FlOWU0NzU0ZDIxMGViOGZiNmQ1ZTgifQ"
+        },
+        {
+          "resource": "repo://tools/openwiki-drift.py#L20-L36",
+          "version": "repo-lines-v1:sha256:1bf147d4a456d367e1892e4032cd8d07de69e87f295102e99372a3c92a197cab:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmYzQ0ZWE5NDEzNWM0OGNkOWY1NTNmMGM0MzUwMjVkZWVmZDU0N2VmZjU0Y2VkOTRhYmJhNmZkYzUyZjQ4NmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMzhkMTVhODU0MTNkNjNlNTgwZjIwNTY3OTI4MDA4NmQ1MWQ2ZGQ4NGEwODlmNThmYTcxODI1NTVlNGM4NTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2MDJiZWJmOTEzNjQ1NzgzZGRjMzVmNjFhYTI0YjFjNDA4OTM0Y2VhY2JmNWVkNDJjMzA1NzFmOTM4MDQ5ZDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhYWY3NjM3Y2I2ZTdlNWRiODVkNjM0Mjc0NjAxNGRmMDQxY2NkNTU4YTkyMGIyOWViNmFjNzE5ZDdiYWY1YzIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_15ed391127a04727bc6d20d40b4d102b",
+      "statement": "The mise openwiki-update task runs tools/openwiki-retry-patch.py first and then openwiki code --update --print under a varlock environment that env -u-unsets the whole provider surface before re-injecting schema-declared values; --update also handles the first run, unlike --init which unconditionally walks the setup wizard.",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L106-L134",
+          "version": "repo-lines-v1:sha256:072db701365180872d70c7925c52ff2473bec2c2556ebbb4a2c1a4d046b5f833:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlZDRhZDNmYTg0NTU1ZTczNzQ3YWM3NmNlNjVhMDVhZTk0OGMyNDc2NzUyNDRmNjE2NDQ2ZGZhZTdlNmFkMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1ODkyMjAzY2U5MWI1NzhhZDVmNmIyNTQ3N2VhODI2NWM1NjEyN2U2MGJhZDA2ZDg3NWVmMTkyZTMyNTY0MDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdhN2NmZmFlMTU5NmY5ZjczOTc3YzllOTU5NzI2M2YwYWRiZGI0MDVlMDRhYjJlMzE2NzEzODBlNTA1NTU2MTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEyZDkwMTc5MjE0ODZiNGRlMTg5Y2EwZDA5MjFiZGYxZDMyN2U2YTUxNGMxODE3YTIyYzQwMTY3MjkwYmRiOTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a3ee9e25cb4648bfa8d35b5242a5d322",
+      "statement": "The scheduled openwiki-update workflow opens its PR with if: always() (not !cancelled(), so a timeout does not discard completed pages), the PR body instructs the reviewer to run mise run openwiki-drift before merging, and a failed update still fails the job.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L119-L163",
+          "version": "repo-lines-v1:sha256:a52cca2ddd985260367075117d96631a0017e812e361dcb300aa94ef13cf22a2:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxY2ZmNGFkMzNiYTkxYjE0OGUxYjFiODI5MGI4ZmZmMjdiMjAzZmFiZmVlNTg3MDI4MmRlMzY3MzgzYjFiZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2NzE4ZjA2N2I1ZTVjMWYwOTkxYTZlNzQ3MjZmZTJhMjNkMjY0MzQ1ZTA4ZTRlYWQwNGZhZjczYzI3ZWQ0NDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0MTRhZTc3N2Q2ZGIzNjY1MjVkNTFhNjdiZWJmNmY5OWM3ZDUwYTE0ZTNlOGU3YmIwOGI5YWZjYjU1MmFiNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-16T21:10:52.541Z"
+    "at": "2026-09-20T12:51:12.657Z"
   }
 }

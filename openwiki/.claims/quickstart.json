@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7743fa805001603aecbd9ea0b2a59d0dc97cd7bf6848c8b459475543a6b03cf9",
+  "pageVersion": "sha256:f733c4dcf45ae7114a21765537bc50176744501c6d35bd6d9c685100c96a1509",
   "claims": [
     {
       "id": "claim_f72064555dd644cb92b79992ff4435c3",
@@ -371,10 +371,24 @@
           "version": "repo-lines-v1:sha256:0f21583e853762bf136114815cf32191d9dbca01d3eef8576f9745ddf6ef60c5:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTZlYzI5NTJhODkxNGM5ZDRiMDhlYzU3NDFiNTQ3ZTNiYWFjMmQ4OWViYmNlOTFkOWUxYzk0MzRjNTFkMzhmZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTMwZjMxM2E3ZDRlMjQxZTJhZWUxNDk4MzAxNmM4ZDhjZmI3YWM5NDk0NjA0ZWE0ZjYwZjIzYWY1OTA3MGJkNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODBiNTY3M2ZhNGM0ZTI4ZTU3YWM5MGFkMWEwOWVkZDNiNzVlYzgxMzY5ZDQwZTg0NmNiZmY5MjY3N2ViOWEwNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2ZkYzgwZmQ4NjQ3MjljNDEwZGZmYmViMWQ2N2U0YWRjNWNhZDg2M2VmNzI5ODNjMjg5NDNjMGQyZjNkZjEyOSJ9"
         }
       ]
+    },
+    {
+      "id": "claim_799d8d89835545e1b9d742fbcc6aaa93",
+      "statement": "The quickstart's task-routing table links to every page in the wiki hierarchy, grouped by architecture, concepts, workflows, operations, and integrations/testing.",
+      "evidence": [
+        {
+          "resource": "repo://AGENTS.md",
+          "version": "repo-file-v1:sha256:a89018a02351b08f0c7e91fb648c0e8b0b5a7c601cf2b376be683bad300a11e5"
+        },
+        {
+          "resource": "repo://mise.toml",
+          "version": "repo-file-v1:sha256:26d17af73d3209698a61826000f63877ad6befbc670d9ec86eeddedce6162a46"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-19T12:16:02.862Z"
+    "at": "2026-09-20T12:51:12.657Z"
   }
 }

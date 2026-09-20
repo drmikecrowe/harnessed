@@ -1,7 +1,7 @@
 ---
 type: Integration
 title: "Agent of Empires mirror and per-project launch scripts"
-description: "The optional register-only aoe tmux bridge and the per-project launcher scripts a launch writes into the repo: identity and the two-key drift hazard, detached writes, the flags aoe add accepts, the sentinel licence, and the trailing `--` that routes human flags to harnessed and aoe resume flags to the agent."
+description: "The optional register-only aoe tmux bridge and the per-project launcher scripts a launch writes into the repo: identity carried by the stack-bearing script filename, the two-key drift hazard, detached writes, the flags aoe add accepts, the sentinel licence, and the trailing `--` that routes human flags to harnessed and aoe resume flags to the agent."
 tags: [aoe, agent-of-empires, launch-script, register-only, drift-repair, tmux, git-exclude, launcher-script]
 sources:
   - id: openwiki-source-3b6f61ac560f049f559456d0
@@ -12,6 +12,8 @@ sources:
     resource: repo://src/harnessed/aoe.py
   - id: openwiki-source-0852603a38d760a77db2bc8a
     resource: repo://src/harnessed/cli.py
+  - id: openwiki-source-fda34f6ee97382e9146f13b4
+    resource: repo://src/harnessed/dynstack.py
   - id: openwiki-source-ecbe6256d6933ca2c8c9678f
     resource: repo://src/harnessed/launcher.py
   - id: openwiki-source-7fc060691d30bff2ff4f6979
@@ -30,18 +32,18 @@ sources:
     resource: repo://tests/test_host_run_recipes.py
   - id: openwiki-source-6f7f4425dbef3a1cec350922
     resource: repo://tools/gauntlet-456.sh
-generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-19T12:16:02.862Z
+    at: 2026-09-20T12:51:12.657Z
 ---
 
 # Agent of Empires mirror and per-project launch scripts
 
 A launch leaves two records behind, and they are one mechanism:
 
-- a **launcher script** in the project folder — `<harness>-<verb>` (e.g. `claude-container`) —
-  that replays the launch when run (`src/harnessed/launchscript.py`);
+- a **launcher script** in the project folder — `<harness>-<stack>-<verb>` (e.g.
+  `claude-serena-host`) — that replays the launch when run (`src/harnessed/launchscript.py`);
 - an **aoe row** in the `harnessed` profile of Agent of Empires, a tmux session coordinator some
   users run in front of their agents (`src/harnessed/aoe.py`).
 
@@ -100,12 +102,21 @@ load-bearing in both directions:
   not exist — the same dead-on-arrival class the validation-gate ordering avoids.
 - **Before `--create-aoe-only` exits**, because registering *is* that command (below).
 
+Both records are also gated together by `launcher._persist_this_launch`: an **ad-hoc stack**
+(`dynstack.is_adhoc` — machine-minted, or named `test`/`test.*`) is a one-off whose script and row
+would outlive what they describe, so *neither* is written — writing the row while skipping the
+script would register exactly the dead-on-arrival row the ordering above exists to avoid. The
+`--aoe-group`/`--aoe-title` overrides and `--create-aoe-only` overrule the gate: naming a row is
+asking for it.
+
 ```mermaid
 flowchart TD
     V["container-run / host-run"] --> G["backend validation gate"]
     G --> GQ{"gate passed?"}
     GQ -->|no| DIE["launch dies - no script, no row"]
-    GQ -->|yes| W["launchscript.write: write script + exclude entry, never fatal"]
+    GQ -->|yes| P{"persist this launch? default or ad-hoc stack, no overrides"}
+    P -->|no| NEXT2["proceed to launch - no script, no row"]
+    P -->|yes| W["launchscript.write: write script + exclude entry, never fatal"]
     W --> R["_aoe_register: mirror into the harnessed profile"]
     R --> RQ{"--create-aoe-only?"}
     RQ -->|yes| EXIT["block, print the row, exit 0 or 1"]
@@ -158,18 +169,22 @@ Two deliberate details of the detached batch:
 
 | property | value | why |
 | --- | --- | --- |
-| recorded command | `<project>/<harness>-<verb> --` (absolute path) | the launcher script carries the flags, so the string stays stable across launches |
-| identity (harnessed's match key) | (recorded command, resolved project path) — or (group, title) when both overrides are given | the script *name* carries harness and verb: a stack has an assembled profile per harness, and host-native vs containerized are two different things to run. The stack and the MCP mode are NOT in the key — they live in the script the row points at |
+| recorded command | `<project>/<harness>-<stack>-<verb> --` (absolute path) | the launcher script carries the flags, so the string stays stable across launches |
+| identity (harnessed's match key) | (recorded command, resolved project path) — or (group, title) when both overrides are given | the script *name* carries harness, stack and verb: a stack has an assembled profile per harness, the same stack host-native vs containerized are two different things to run, and two stacks over one folder are two different launches. The MCP mode is NOT in the key — it lives in the script the row points at and in the title |
 | identity (aoe's accept key) | (title, path), duplicate refused at **exit 0** | the two-key hazard below |
 | group | the git **common dir**'s repo name, or `--aoe-group` | every worktree of one checkout shares a group instead of each spawning its own |
-| title | `<harness>/<backend> <folder> <composed recipes>[ +open-mcp]`, or `--aoe-title` | must be injective over everything harnessed treats as identity (below) |
-| skipped | the `default` stack, unless `--aoe-group`/`--aoe-title` name the row | the baseline every dynamic stack extends is not something the user composed |
+| title | `<harness>/<backend> <folder> <stack-delta>[ +open-mcp]`, or `--aoe-title` | must be injective over everything harnessed treats as identity (below) |
+| skipped | the `default` stack and every ad-hoc stack (machine-minted, or named `test`/`test.*`), unless `--aoe-group`/`--aoe-title` name the row | the baseline every dynamic stack extends is not something the user composed, and an ad-hoc launch is a one-off whose row would outlive it |
 | removed by | `harnessed rm <stack>` (container verb only) | `rm` tears down containers; a host-native session owns none |
 
-Because the key is the script's path, a project holds **one row per harness+verb**: relaunching the
-same folder against a *different* stack (or with `--no-strict-mcp-config`) finds the existing row on
-(command, path) and returns without adding one, while `launchscript.write` has just rewritten the
-script it points at. The row starts whatever the last launch wrote; its derived title can lag behind
+Because the key is the script's path and the path names the stack, a project holds **one row per
+harness+stack+verb**: relaunching the same folder with `--no-strict-mcp-config` finds the existing
+row on (command, path) and returns without adding one, while `launchscript.write` has just
+rewritten the script it points at. A *different* stack writes a different script and registers a
+different row — the stack was moved into the filename precisely because while it was absent, one
+folder + one harness + one backend meant one file: a second stack overwrote the first, the
+existing row matched and was left alone, and the row then replayed the newcomer under the older
+stack's label. The row starts whatever the last launch wrote; its derived title can lag behind
 that content, because a matched row is never retitled — and aoe offers no verb that rewrites a
 session's stored command anyway. This is exactly why `harnessed rm` attributes rows by reading the
 script rather than the command (see "Cleanup: `harnessed rm`" below).
@@ -179,7 +194,7 @@ script rather than the command (see "Cleanup: `harnessed rm`" below).
 canonical shape whether the user typed `--stack` or a recipe list), the echoed
 `--aoe-group`/`--aoe-title` overrides, `--no-strict-mcp-config` when set, and a trailing `--`.
 `aoe.replay_command` builds the row's command instead: the absolute script path plus `--`.
-Absolute, not `./claude-container`, because whether aoe sets the working directory to the row's
+Absolute, not `./claude-serena-host`, because whether aoe sets the working directory to the row's
 path is aoe's business; an absolute path is correct under either behavior.
 
 ### The two keys are not the same key — the drift hazard
@@ -196,8 +211,15 @@ registered with, with no signal anywhere. This asymmetry, not the registration i
    store or a half-landed repair can leave two.
 2. Each drifted row is reported through the `on_drift` callback (the launcher escapes it past
    rich and prints a warning). A row is repaired **only when its stored command is a shape this
-   module emits** (`_is_ours`); a foreign row is reported with the exact `aoe session rename`
-   command to run by hand.
+   module emits** (`_is_ours`): the raw `harnessed …` invocation, a launcher-script row whose
+   basename parses as one of ours (`launchscript.script_backend`, via the shared
+   `parse_script_name` grammar — both the live `<harness>-<stack>-<verb>` name and the retired
+   two-part `<harness>-<verb>` one, since rows written before the stack entered the filename are
+   still ours), or the historical `mise run <harness> --` task whose third token names a real
+   harness. Retired shapes are never written again but must stay recognised: drift against an
+   unrecognised row is only reported, and one foreign row at the (title, path) key blocks the
+   registration outright — forgetting a shape we once wrote would strand every row carrying it. A
+   foreign row is reported with the exact `aoe session rename` command to run by hand.
 3. **One row we may not touch blocks the registration outright** — it keeps the (title, path) key
    whatever we do to its neighbours, so the `add` cannot land. Verdicts are decided for every row
    *before* any is reported: announcing a rename for an owned row and then writing nothing when a
@@ -312,12 +334,16 @@ three hard-won invariants:
   one checkout shares a group. Drop the folder and two worktrees running the same stack, harness
   and backend collide on that key: the second launch reads as already-registered and never gets a
   row, silently.
-- **The stack is shown as its delta over the baseline.** A dynamic stack's name restates
-  `default.` on every row, so the title shows the composed recipes (joined with `+`, because
-  recipe names contain `-` themselves), read from the raw generated manifest — never from
-  `load_stack`, whose `extends:` resolution would merge the baseline's recipes back in, and never
-  by parsing the name, whose digest suffix makes the join lossy. An authored stack falls back to
-  its own name.
+- **The stack is shown as its delta over the baseline, with a non-default baseline named.** A
+  dynamic stack's name restates `default.` on every row, so the title shows the composed recipes
+  (joined with `+`, because recipe names contain `-` themselves). The delta alone is not injective
+  over the stack — `default.serena` and `isolated.serena` share the recipe `serena` and rendered
+  identically, which ping-ponged alternating launches through the two-key hazard until adversarial
+  review caught it — so a **non-default** baseline is prefixed (`isolated/serena`), while `default`
+  stays hidden as the baseline nearly every stack extends. The recipes are read from the raw
+  generated manifest — never from `load_stack`, whose `extends:` resolution would merge the
+  baseline's recipes back in, and never by parsing the name, whose digest suffix makes the join
+  lossy. An authored stack falls back to its own name.
 
 ## The flags `aoe add` is given
 
@@ -345,12 +371,18 @@ accept: `-p`, `-g`, `-t`, `--cmd-override`, and `--tool`.
 
 ## The launcher script
 
-`launchscript.write` leaves `<harness>-<verb>` in the project folder — `claude-host` /
-`claude-container`. The verb is in the **filename** rather than a flag, so the two backends cannot
-collide in one folder and an aoe row cannot restart a backend it does not name. It is the *only*
-file harnessed puts in a project (the project tool env a launch computes goes to a 0600 dotenv
-under `$XDG_STATE_HOME`, keyed on the git common dir — referenced, never copied into the repo) —
-the `mise.local.toml` alternative was removed precisely because
+`launchscript.write` leaves `<harness>-<stack>-<verb>` in the project folder —
+`claude-serena-host` / `claude-serena-container`. The verb **and the stack** sit in the
+**filename** rather than in flags, so neither two backends nor two stacks can collide in one
+folder, and an aoe row cannot restart something it does not name. The stack was added to the name
+after the verb: while it was absent, a second stack overwrote the first script and the existing
+row replayed the newcomer under the older stack's label. The name grammar has one implementation —
+`launchscript.parse_script_name` builds and reads the three-part name, `parse_legacy_script_name`
+reads the retired two-part one, and `aoe` asks both through `script_backend` — because a grammar
+written twice (once to build, once to take apart) drifts with no call edge joining the copies. It
+is the *only* file harnessed puts in a project (the project tool env a launch computes goes to a
+0600 dotenv under `$XDG_STATE_HOME`, keyed on the git common dir — referenced, never copied into
+the repo) — the `mise.local.toml` alternative was removed precisely because
 a mise config file re-prompts for trust in every new worktree and can carry `_.source`, so
 trusting one grants code execution; a script needs no trust decision because nothing but the user
 executes it. The file it writes:
@@ -364,7 +396,10 @@ exec harnessed container-run claude /abs/project --stack my-stack "$@"
 
 **Never fatal.** Every failure path returns `None` and the launch proceeds — inherited from the
 `lastrun`/`--last` record this file replaced: a launch that got this far has already done the
-useful work, and losing the shortcut is not worth killing it.
+useful work, and losing the shortcut is not worth killing it. One more refusal belongs with them:
+a stack name that is not a **single path component** (`.`/`..` or any name containing a separator)
+writes nothing, because the stack reaches a filesystem path here and nowhere else in the module —
+a relative traversal such as `x/../../evil` needs no absolute path to escape the project folder.
 
 ### The trailing `--` lives on the aoe row, not in the file
 
@@ -373,7 +408,7 @@ The script ends with `"$@"`, and the separator lives on the **row**
 resume flags to the row's command when it restarts a session, and those have to reach the *agent*
 past harnessed's own option parsing (`_extract_passthrough` splits argv at the first standalone
 `--` and forwards everything after it). Put the separator in the file instead and the failure
-inverts: a human's `./claude-container --fresh` would sail past harnessed too and reach the agent
+inverts: a human's `./claude-serena-container --fresh` would sail past harnessed too and reach the agent
 — flags silently swallowed, no error anywhere.
 
 ```mermaid
@@ -381,16 +416,16 @@ sequenceDiagram
     autonumber
     participant AOE as aoe row
     participant HUM as human
-    participant SCR as claude-container script
+    participant SCR as claude-serena-container script
     participant HRN as harnessed CLI
     participant AGT as agent
 
     Note over AOE: the row stores the script path plus --
-    AOE->>SCR: claude-container -- --resume id
+    AOE->>SCR: claude-serena-container -- --resume id
     SCR->>HRN: exec harnessed ... --stack S -- --resume id
     HRN->>AGT: everything after the first -- is passthrough
 
-    HUM->>SCR: ./claude-container --fresh
+    HUM->>SCR: ./claude-serena-container --fresh
     SCR->>HRN: exec harnessed ... --stack S --fresh
     HRN->>HRN: no -- in argv so --fresh stays harnessed's own flag
 ```
@@ -445,7 +480,7 @@ The script is added once to the git **common dir**'s `info/exclude` — one file
 worktree of the checkout, so it is written once and covers all of them, and needs no trust
 decision because nothing but the user executes the file. Details that matter:
 
-- **Root-anchored pattern** (`/claude-host`), derived from `git rev-parse --show-toplevel`.
+- **Root-anchored pattern** (`/claude-serena-host`), derived from `git rev-parse --show-toplevel`.
   `info/exclude` lives in the common dir, but git matches its patterns against the top of
   whichever working tree it is processing — so a root-anchored pattern written from one worktree
   covers the same-named file at every sibling worktree's root, while a pattern anchored from the
@@ -480,9 +515,14 @@ it). Two command shapes match, because the stack is no longer in the recorded co
 - the raw `harnessed <verb> ... --stack <name> --` shape, matched on the `--stack`/name *pair*
   (its position varies with whether a project path was recorded);
 - launcher-script rows, whose stack is read out of the script the row points at
-  (`_replays_stack`: verb must agree, the `exec` statement is taken from the first `exec ` to the
-  **end of the file** because a quoted flag value may span lines, and the whole thing is
-  `.get`-guarded because aoe's JSON is not harnessed's schema).
+  (`_replays_stack`: the name is checked only for **backend agreement** — accepting both the
+  live `<harness>-<stack>-<verb>` name and the retired two-part one, since refusing legacy names
+  made pre-rename rows permanently un-removable — because the filename is not the authority even
+  now that it carries the stack: a human can rename or edit the file, and `rm` destroys
+  containers, so the stack acted on is the one the file would actually **launch**. The `exec`
+  statement is taken from the first `exec ` to the **end of the file** because a quoted flag
+  value may span lines, and the whole thing is `.get`-guarded because aoe's JSON is not
+  harnessed's schema).
 
 A replay row whose record is missing or names another stack is **left alone**: removing rows
 harnessed cannot positively attribute to this stack is the one failure mode worse than leaving a

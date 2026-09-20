@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:efab59aa8ec4764b5573981af9bd500a5e6074feb707f59226f8a25c0754ebc6",
+  "pageVersion": "sha256:69e0f809abb6b1f5e6dee8522366993c56471971b2de9e722f114330e0009794",
   "claims": [
     {
       "id": "claim_73d761a2d54d4334a3547ee28ca9061d",
@@ -100,23 +100,19 @@
     },
     {
       "id": "claim_98bf7f01b5fd46eea96b474a928fee07",
-      "statement": "The install-script env contract wins in BOTH modes as inherited environment → recipe `env:` → harnessed-owned install vars applied LAST: container mode via `{**resolve_recipe_env(...), **install_env}` passed as inline `-e VAR=...` assignments that beat preceding image ENV lines, host mode via `env.update(recipe_env)` followed by `env.update(emit.install_env(...))` — asserted as order, not values (tests/test_install_script.py::TestPrecedence), fixing the winner drift the harnessed-8px.2 merge exposed.",
+      "statement": "The install-script env contract wins in BOTH modes as inherited environment → recipe `env:` → harnessed-owned install vars applied LAST: container mode via `{**resolve_recipe_env(...), **install_env}` passed as inline `-e VAR=...` assignments that beat preceding image ENV lines, host mode via `env.update(recipe_env)` followed by `env.update(emit.install_env(...))`, fixing the winner drift the harnessed-8px.2 merge exposed. tests/test_install_script.py::TestPrecedence pins the rule from both ends: the host test asserts the ORDER (inspect.getsource of _host_run_installs requires env.update(recipe_env) to index before emit.install_env(), so a reorder fails however correct the values look), while since bd harnessed-8px.21.4 merged the container executor into one dict the container test asserts the VALUE itself — the contract's HARNESSED_MODE=container appears in the podman argv and the recipe's competing value does not — and a third test runs the real host script to confirm the contract's value wins at runtime.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/emit.py#L1010-L1015",
-          "version": "repo-lines-v1:sha256:7fd05362ee0b765a742daa4b9d0f7867b76291c34a7c8ab4c9c5f3782633627e:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDQ4NDAyYTdlMTQ0NTMzYjE3Y2ViOThlMWIyOTIxMDNlNWVjNDc1ZjE2Y2NiYWZjZTZmZTRhNTA0YzYzNWJmZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTZhNzE1MjU3MmVlODRmMTA5MDZjNzRiOWYyYTkyNDM0ZGRhYjBlM2M0MjgxM2IwNGU1OTdlZmNlYzk1MWIyNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTcwMWI0Mzg2MjJkMzBkYjlhNTcwZmNkZTc0OGYyNmVmMDc0YjU1ZGUxNTdlYWM1MmQ4MDY2YzY0YWFmYmUzOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjNiY2FhYjEzNTVhMmYwNTNjYzE1MjllNWJiN2I5N2Q1ZWU1M2E2YWZlMWM4ZTY5MTdjOTA5NmE4ZGFmZDM3NiJ9"
-        },
-        {
-          "resource": "repo://src/harnessed/hostrun.py#L417-L425",
+          "resource": "repo://src/harnessed/hostrun.py#L648-L656",
           "version": "repo-lines-v1:sha256:4ac933104436af029466f1217475ed15f7a75fd3639034fd4cc2bf688a69a2b1:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmU2NGU0YTRhMWI5MzM0NDg4ZTdlZDUyOThjNDk5OWFmNjE1ZGE3MmUyZjYyZjc4M2M5ZDg3NTdiM2I2NWZmMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODhiOGQ0ZWVjYWY0ZDY3MDc1ZGVkNGIzNmE2MDVkOGJlNTg5MGM1ZWVmNDczYzM0YzE5YjU1ZDE2YzIzZTJiZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTI4MDQzZmJjYjA5YWQ5M2I2ZWQyOTIwYTg1NTUyM2UzOGE0NTRmY2Y5MjYwYTUxMTE3Y2I3NmU3YWRkZWM5OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzQ3ZWI4ODBmY2I1MGJjMGE3MTkzYjdjZDRhZTg5NTUwMjU2NDg0OTkyNzk5Y2Y2OGRiZjVlNTQ0OWIyNmI4YSJ9"
         },
         {
-          "resource": "repo://src/harnessed/volumes.py#L325-L327",
-          "version": "repo-lines-v1:sha256:0a6988f9a7210da899cc7b40cae6dcc16abedbec00839a8f785070158af002b8:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWM3ODRkODU3OWUzMjczYjZjMGUyOTE3NzQxNDM5OTRiN2MzZDQ3ZTRlZTljYmRiMDM1OGZkMGNhMWI1MzlmZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDhjYTA5ZDRjZDI4MTQyZGU0ZjA1MGY3OTBlNzFmMGIzOWE1MDY4ODNlY2NlYzZiY2RjYjI4ZWQzMjlmNjZmMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzA4YzQxNWMzMmMyMGFhMjhiOWE4YjAyMWFkMDcwZGJmNWMwMWQ1ZjcyNDQ4ZDU4NmIyNTkxMjljM2M2ZWZlOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzRjNjQ5NzliYzE4NDNmMTgxMmUwN2ZmYmQ5NDE0ZGE0NTE0YTQyNzJmODI3OGIwMTQzNWYwZmZmMmVjZDFkNyJ9"
+          "resource": "repo://src/harnessed/volumes.py#L402-L429",
+          "version": "repo-lines-v1:sha256:3114b7b12ef2486909b477d4b75b330a4ae5f6e264b231bb3b75756e67f31c5c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1YmFmNGNlZjdlMGZkNjQxNzRkOTFlMjVlNzY5MWExM2RmZGQ4OGE1ZjU3MWVjODQ3NThkZWY1Y2EyYzNjMzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmZDI5NjEyNjJmMzAxM2UxNzM3Nzc2MDY1MTU0YmI1MDZkMjc5MzY4MzhlYmYzZWY3NWQxOWEwZjQ3MTBlNTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBlYTNkNzQxMTQyNmJlMjdiMTAzMmEyOTcwOTIwNjlmNjk3NjVkMWJhMmM2ZDUwNGFkZTg1OTQyMjljZDE0ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzZjQ0YzQ5M2NhOTFhMGM0NDZmYjIxOTEwY2QyYjM0NDc5ZDliNTQwNThhZDBmYzU1MDM5Mzg3ZDQ4MzUzMGYifQ"
         },
         {
-          "resource": "repo://tests/test_install_script.py#L603-L631",
-          "version": "repo-lines-v1:sha256:d39c96b2c23b96bd899658c6b385835c1862a3b5cab296e6cc81a154f6514873:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjODY3YTdlZDg0NjY5NWI2YTJmMGVjNTAwMzE1ODhjYWU0ZTI4NTUxZTdjYzVhYzE4Y2EzYzViNDhkMzkwNWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3YjEyNzdlNjU4NjlkYTk3NWJmMDVhNTZkNGI0OGNkMDY1YTgwMzZjZWM5ZGUyNWJhZmYyZmM2ZWQxYTU3Y2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg3MWY0NzNjNDA5NTI4MzhjZmM5ODA3YmFiM2U5ZDc3NDdhMmVlMzgzMzk4YzE1YjZiMjkzNmQ1ZDU1MDkzYmYifQ"
+          "resource": "repo://tests/test_install_script.py#L603-L650",
+          "version": "repo-lines-v1:sha256:e9342891f9682fc87cc2a19566f36687d9d598abdaa6391f7ceca9eb7405a861:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjODY3YTdlZDg0NjY5NWI2YTJmMGVjNTAwMzE1ODhjYWU0ZTI4NTUxZTdjYzVhYzE4Y2EzYzViNDhkMzkwNWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxNTQ2ZTJhNGRlM2VjMmI5ZjEwOTk3YjE2NjExYzFjYjBjNjY1YmMyMTViM2I0ZmM5MWZmMmY5Y2FkMjYyNTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3YjEyNzdlNjU4NjlkYTk3NWJmMDVhNTZkNGI0OGNkMDY1YTgwMzZjZWM5ZGUyNWJhZmYyZmM2ZWQxYTU3Y2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjNmMzMGFlZjk1Zjc3NTdjMWUyOTVjZjkwYjRhODkwN2E5OWRhMmFkMTBkYTRkOWJkNjIzNWI1N2FmMTk2MjkifQ"
         }
       ]
     },
@@ -453,6 +449,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-16T21:10:52.541Z"
+    "at": "2026-09-20T12:51:12.657Z"
   }
 }
