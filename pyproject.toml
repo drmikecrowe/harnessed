@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "harnessed"
 version = "0.1.0"
-description = "harnessed — composable AI-coding-harness stacks (host Python CLI driving podman)"
+description = "harnessed: composable, on-demand configuration for agentic harnesses (host Python CLI driving podman)"
 requires-python = ">=3.12"
 dependencies = [
     "ruamel.yaml>=0.18,<0.19",
