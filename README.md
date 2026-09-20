@@ -2,7 +2,7 @@
   <img src=".github/README/banner.png" alt="Banner" />
 </p>
 
-#### harnessed: one AI coding harness configuration per project or per task, kept apart
+#### Composable, on-demand configuration for agentic harnesses: managed stacks, isolation, controlled upgrades, and security scanning in a repeatable host or container environment
 
 > [!WARNING]
 > **Alpha software.** harnessed is under active development and the field of agentic AI security
