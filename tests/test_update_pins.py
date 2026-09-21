@@ -248,6 +248,49 @@ class TestCheckMode:
         assert report.unresolved and report.check_exit_code() == 0
 
 
+class TestMajorClassification:
+    """The leading numeric run decides; every shape the catalog pins must classify."""
+
+    def test_the_leading_numeric_component_decides(self):
+        assert update.is_major_bump("1.13.0", "1.14.0") is False
+        assert update.is_major_bump("0.153.4", "0.154.0") is False
+        assert update.is_major_bump("18.1.13", "18.1.21") is False
+        assert update.is_major_bump("1.9.0", "1.10.0") is False
+        assert update.is_major_bump("2.1.2", "3.0.0") is True
+        assert update.is_major_bump("v2.1.2", "v3.0.0") is True
+        assert update.is_major_bump("1.0.0", "1.0.0") is False
+
+    def test_a_calendar_major_reports_as_major(self):
+        """2024.1 -> 2025.1 changes the tool wholesale; the conservative reading gates on it."""
+        assert update.is_major_bump("2024.1", "2025.1") is True
+
+    def test_a_prerelease_suffix_hides_nothing(self):
+        assert update.is_major_bump("1.9.0", "2.0.0-rc.1") is True
+
+
+class TestFailOnThreshold:
+    """`--fail-on major` narrows the EXIT, never the report (#469): minor drift is still found
+    and listed, it just no longer turns the weekly check red."""
+
+    def test_a_major_bump_fails_under_both_settings(self, tmp_path):
+        d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.0.0\n")
+        report = update.build_report([d], resolve=_fake_resolver({("npm", "x"): "2.0.0"}))
+        assert report.check_exit_code("major") == 1
+        assert report.check_exit_code() == 1
+
+    def test_minor_drift_is_reported_but_does_not_fail_under_major(self, tmp_path):
+        d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.9.0\n")
+        report = update.build_report([d], resolve=_fake_resolver({("npm", "x"): "1.10.0"}))
+        assert report.stale, "narrowing the exit must not narrow the report"
+        assert report.check_exit_code("major") == 0
+        assert report.check_exit_code() == 1
+
+    def test_a_calendar_major_gates_under_fail_on_major(self, tmp_path):
+        d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@2024.1\n")
+        report = update.build_report([d], resolve=_fake_resolver({("npm", "x"): "2025.1"}))
+        assert report.check_exit_code("major") == 1
+
+
 class TestRewrite:
     """On accept, the pin is rewritten so a subsequent build picks up the new version."""
 

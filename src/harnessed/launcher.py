@@ -4659,6 +4659,11 @@ def update_pins(
         help="Minutes a release must have existed before it is offered (default 10080 = 7 days, "
              "pnpm's `minimumReleaseAge` unit). 0 disables the gate.",
     ),
+    fail_on: str = typer.Option(
+        "any", "--fail-on",
+        help="What `--check` fails on: `any` outdated pin (default), or only bumps that cross a "
+             "major version boundary — drift short of a major is still reported, just not fatal.",
+    ),
 ) -> None:
     """Find outdated pins across the catalog and offer to bump them.
 
@@ -4672,6 +4677,9 @@ def update_pins(
     that does not mean "no update" — the newest version that IS old enough is offered instead, and
     the newer one it passed over is named.
     """
+    if fail_on not in ("any", "major"):
+        raise typer.BadParameter("--fail-on must be 'any' or 'major'")
+
     from . import update as pinupdate
 
     dirs = _update_recipe_dirs()
@@ -4703,12 +4711,14 @@ def update_pins(
     _print_update_report(report)
 
     if check:
-        if report.stale:
+        failing = [f for f in report.stale if fail_on == "any" or f.major]
+        if failing:
+            label = "outdated" if fail_on == "any" else "failing outdated"
             _err.print(
-                f"[bold red]error:[/bold red] {len(report.stale)} outdated pin(s) — "
+                f"[bold red]error:[/bold red] {len(failing)} {label} pin(s) — "
                 "run `harnessed update` to bump them"
             )
-        raise typer.Exit(report.check_exit_code())
+        raise typer.Exit(report.check_exit_code(fail_on))
 
     if not report.stale:
         _out.print("[green]All resolvable pins are up to date.[/green]")

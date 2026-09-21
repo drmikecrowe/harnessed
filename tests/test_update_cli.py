@@ -110,6 +110,29 @@ class TestCheckMode:
         assert result.exit_code == 0
         assert "frozen" in _plain(result.output), "a held pin is still LISTED, just not fatal"
 
+    def test_fail_on_major_lets_minor_drift_pass_but_still_reports_it(self, catalog):
+        """The fixture's stale pin is 1.0.0 -> 1.5.0 — a minor. The scheduled check's setting:
+        red is reserved for majors, but the drift stays visible in the run's output."""
+        result = runner.invoke(launcher.app, ["update", "--check", "--fail-on", "major"])
+        assert result.exit_code == 0
+        assert "stale" in _plain(result.output), "reported, just not fatal"
+
+    def test_fail_on_major_still_fails_on_a_major(self, catalog, monkeypatch):
+        monkeypatch.setattr(update, "resolve_releases", lambda backend, name, **kw: _table({"x": "2.0.0", "y": "9.9.9"}, name))
+        result = runner.invoke(launcher.app, ["update", "--check", "--fail-on", "major"])
+        assert result.exit_code != 0
+        assert "1 failing outdated pin(s)" in _plain(result.output), (
+            "under --fail-on major the count names the FAILING pins — the report above may "
+            "list more stale ones"
+        )
+
+    def test_fail_on_rejects_an_unknown_value(self, catalog):
+        assert runner.invoke(launcher.app, ["update", "--check", "--fail-on", "bogus"]).exit_code != 0
+
+    def test_the_default_keeps_failing_on_any_drift(self, catalog):
+        """1.0.0 -> 1.5.0 is a minor; without --fail-on the historical contract holds."""
+        assert runner.invoke(launcher.app, ["update", "--check"]).exit_code != 0
+
 
 class TestReporting:
     def test_held_pins_are_shown_with_their_reason(self, catalog):
