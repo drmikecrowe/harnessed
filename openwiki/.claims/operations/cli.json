@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d60486a1c01ade28ec714d40d7fe93ddbe130067d75bdcfe8cfa08db467a9ea2",
+  "pageVersion": "sha256:d76e08a06315cf14d917c5edcd049afdb4b65e13a158b566fbcc342d0e53a7f4",
   "claims": [
     {
       "id": "claim_884ca4508fb040328ba5ba629d13b020",
@@ -506,15 +506,19 @@
     },
     {
       "id": "claim_60cd45f35e5849129f915c37540eb2ad",
-      "statement": "Each successful launch writes <project>/<harness>-<verb> (claude-host / claude-container), a replayable shell script that REPLACES the retired lastrun/--last state file — the file is the record, something you can cat and run, and there is no --last flag or state file to drift from it. The verb is in the filename so the two backends cannot collide in one folder and an aoe row cannot restart a backend it does not name.",
+      "statement": "Each successful launch writes <project>/<harness>-<stack>-<backend> (claude-serena-host / claude-serena-container), a replayable shell script that REPLACES the retired lastrun/--last state file — the file is the record, something you can cat and run, and there is no --last flag or state file to drift from it. The name is three fields read from both ends: harness before the first '-', backend (a closed set derived from the same _VERB_SUFFIX map that builds the name) after the last '-', stack between — so two backends or two stacks cannot collide in one folder, an aoe row cannot restart something it does not name, and a stack name containing '-' or '.' stays unambiguous. The retired two-part name (claude-host) is no longer written but is still read, so pre-rename aoe rows are not stranded.",
       "evidence": [
         {
           "resource": "repo://src/harnessed/launchscript.py#L1-L22",
-          "version": "repo-lines-v1:sha256:982261be383faa7561f1a8c64f02a02b50de4cb0ca13884afad4921129bfa42a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmNzU3ZDc4ODg5NWVmODFjYjkwYWY1ZmY2MGRlODE0MjdlY2EyOTUwZDZkODUzNjZhNmQ0YWM0YTIyYjFlOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1YjZlODcwNmI0MzA0N2YyYTZkYjY3ZjEzMjYzODU5NTYwNGU2N2YzNjk2Njg3NmNlMDE1OGYwMDUzZTZiZDEifQ"
+          "version": "repo-lines-v1:sha256:71281fc16904cedf6dd9ce2b396dcb378e28d8b2f3ef841192fdea032b49824d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmNzU3ZDc4ODg5NWVmODFjYjkwYWY1ZmY2MGRlODE0MjdlY2EyOTUwZDZkODUzNjZhNmQ0YWM0YTIyYjFlOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1YjZlODcwNmI0MzA0N2YyYTZkYjY3ZjEzMjYzODU5NTYwNGU2N2YzNjk2Njg3NmNlMDE1OGYwMDUzZTZiZDEifQ"
         },
         {
-          "resource": "repo://src/harnessed/launchscript.py#L63-L72",
-          "version": "repo-lines-v1:sha256:b5f97b9d18ddd8c52e370661121377840e2336c71dcc92f2d79291448b49f8bd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0Y2ZiYWIzNDliNDFiMWJmMzRhYWQ3MmRjMDEyZDc4MmIwYzI3N2Y0MzQ0NDdiNDgxOGRjNGQzZWU2NjM1YTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1YWVhYmYwZDc3ZGQ4MjFjMTE3ZWI0M2Y2NWRmNjhiZmI2YzJkYTFkYWVhYWZkNTUzOGQ2NTEwMzc1M2Q5NTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjZjhjZmE0NmQ2ZTNkNjE4ZDdlODRhZGYyOTJjZWI1MDEyY2Y1MDc5NzJhZGYyOThmOTY1MDhhZTJiNDgzYTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkyNzJjZjA0M2IwNmNmMWJmMjIwOTQzYzUzYTFjMWQyYjU2MzEwODNlN2ZkZDBhYTNjMzU2MTc0ZTc4NTRiMjQifQ"
+          "resource": "repo://src/harnessed/launchscript.py#L63-L94",
+          "version": "repo-lines-v1:sha256:1c442fc895b6797354c96f0849e3bc6461d1f55c6b82bd110fc68434fe32563c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExZWVkMDM1OTVmODU0NmY4NDBmMDVlZTVmMmY1ZmUxNWQ3Y2I2NmYyZTBmOWFlZGNiOTA2MTM1MDliN2I2OTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEwODk5MjEwZmNmNjgyYzU1ZTI0N2VjMjgyMGI1Zjc3ZWMyNDk3YmVmZWE4OTQzYjRjYTU5NmVhZjIwNjgzYzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0NTE4MDk2NzJhMzEzODdkMWNiNmVkN2I3YTNhMzFmM2FmODBkZDhhMmY2ZDUwODU1NTYyNDNmYTI0YmY0YzEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launchscript.py#L97-L161",
+          "version": "repo-lines-v1:sha256:b5e6344e64a6b07caca950f6ba8b177c08d137ab6da33589f7a825f9587cd1d0:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmYWM4ZDQ1ZmJlNjg4MjUyMDhkMmM3MzliMTcyMDNhMjkyYTU5M2ZmMTYzMzlhN2FlNzllMTU0M2YyNDI2NGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1YmQxNmJhMzNjNjAzMDY4ZGUxODU0OTcwMzdhMDdiOGRiMmNkYjA4OGY4YjQ1ZGE0NWRmNTg3ZmM1OGNiNTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFmMzZhZTM4Zjc2NTQ5MzVlNTE0OGNlYTkxN2Q1YWU1NjY0NWYyYmU4MGFmOGVhMmJkY2U4YWRmMzgzODBlNmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImViZGZkOTQ4OGIxODI0MjIyNDNmZTM1OGI0MDBiMzc4NjI1MThiZDQ2Yzc2NTcwZGEyMWRjMzcyYjM0ZjIxMmMifQ"
         }
       ]
     },
@@ -524,7 +528,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launchscript.py#L146-L195",
-          "version": "repo-lines-v1:sha256:e81d72f770293c7d7e7124af1a1bbeeb6510a171f24f9d10664366335122a15b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2NzhmNmJjMTE2NGYzZDA2NjQwYjEwZmQ2ZTJiYmIyYTkyM2U1ZmFlNDMxY2M1YWQ5MDRkZjBiMmUyNWQyYjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlN2M5NTdiY2I0NGZiNjczYzk4YjAwNTBhNzVkMzgwODJkYjgxZDkxOGRlMzEzYTNmMDdjMTIzNTMwNmQ3ZWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY3NzQwODkwMGFmNDZhMjQ3MWQ5YTUwNzY5NWQwMzMwODc0MGRkZGI5MGZmNDkyNjA4ZjQxOTE0ZDMwYjBkZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg1YzVmOWY4NGI5MjkyN2MzMTcyNTdhNTA4YWQ1MWM5ZDcyYmM1ZDFhNWMzMDAxMDk4ZTdjNjViYTQxZmZiMzQifQ"
+          "version": "repo-lines-v1:sha256:db53a5d350316d4ce58817211de9fd00bbf2e245d94302a03f8ea71dfa3fa82b:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2NzhmNmJjMTE2NGYzZDA2NjQwYjEwZmQ2ZTJiYmIyYTkyM2U1ZmFlNDMxY2M1YWQ5MDRkZjBiMmUyNWQyYjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlN2M5NTdiY2I0NGZiNjczYzk4YjAwNTBhNzVkMzgwODJkYjgxZDkxOGRlMzEzYTNmMDdjMTIzNTMwNmQ3ZWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY3NzQwODkwMGFmNDZhMjQ3MWQ5YTUwNzY5NWQwMzMwODc0MGRkZGI5MGZmNDkyNjA4ZjQxOTE0ZDMwYjBkZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg1YzVmOWY4NGI5MjkyN2MzMTcyNTdhNTA4YWQ1MWM5ZDcyYmM1ZDFhNWMzMDAxMDk4ZTdjNjViYTQxZmZiMzQifQ"
         },
         {
           "resource": "repo://src/harnessed/launchscript.py#L33-L61",
@@ -542,7 +546,7 @@
         },
         {
           "resource": "repo://src/harnessed/launchscript.py#L4-L18",
-          "version": "repo-lines-v1:sha256:6dd49f7712cf98f8dd3b82c2e5c4ff66bf9801e13b06a1e6840045c1d595c7b0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5YjU0ZmI4MDJjNTAyODU1ZGM5ZmNlMjY3NzJkYzUyNzdlYjVjNGI4YzRmYTM4ZjE2YmY5MzJjMzRmMzdlMjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2MTNiMDE1ZDFiYjMzMzJjY2EyMGFhODcwZjUxOTY3ZjA3ZmU1MGZmMjczOGU2NWNjZDk3NzZhY2VkNzdmNjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIwZjIzZTk0ODZlYWIxOWE4NGIxNTE5NzFiMWRiNjNkM2U4Njg1NjRiNTg3MTc4MjFlYzQ0ZjlhN2Y2MmZmODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM5ODNkNjY2ZmJjZDQ3ZmU0MTNmZmMyZWRiZmZjMDI3NDZkODc5MjhkNzNiYjkzODhmNTY4YjJiYzQ4N2JiN2EifQ"
+          "version": "repo-lines-v1:sha256:fe40375451de11d0274aa350c1f0ce3500cdfc49dc20cddb4525df30834d3bc8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5YjU0ZmI4MDJjNTAyODU1ZGM5ZmNlMjY3NzJkYzUyNzdlYjVjNGI4YzRmYTM4ZjE2YmY5MzJjMzRmMzdlMjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2MTNiMDE1ZDFiYjMzMzJjY2EyMGFhODcwZjUxOTY3ZjA3ZmU1MGZmMjczOGU2NWNjZDk3NzZhY2VkNzdmNjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIwZjIzZTk0ODZlYWIxOWE4NGIxNTE5NzFiMWRiNjNkM2U4Njg1NjRiNTg3MTc4MjFlYzQ0ZjlhN2Y2MmZmODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM5ODNkNjY2ZmJjZDQ3ZmU0MTNmZmMyZWRiZmZjMDI3NDZkODc5MjhkNzNiYjkzODhmNTY4YjJiYzQ4N2JiN2EifQ"
         }
       ]
     },
@@ -751,10 +755,20 @@
           "version": "repo-lines-v1:sha256:8d635ff43899400f347a64e1088a3ae679c233d043029e888646964a02ac8de9:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1YzYyZjMzZWIwNGMxZTVhMGQ1ZTljMDA4MTY4MTFmNzZlNWI3YTU0YjM4MjcwNWYwMzdhNGE1ZjY5ZDgwZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmMmYwZjBmOGNiYmNkN2UzODFiYTU2ZmExMDcyYTY4MDIwNGUyMjYyZGIxYmUzOTRhNGQ5ZTc0OWE5Y2YxNGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhMWI4M2Q2Y2I1NGUzYTFhMDQzNjhlYjBjOWY4ZDg0ZjM3NDZhNTIxNDZkMDlmNjVhN2Q4NmJlNjFjYzg0NTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA5N2NlZDFhNzA0NTI4YWI4NWI0ZjIyN2M0NjI3NmM5ODQ2MzA4YWY3ZDY1YzljOTJhYWIxMzgyYjU5NWU3M2IifQ"
         }
       ]
+    },
+    {
+      "id": "claim_851e0465e1cc4533bcfaef042322f6d1",
+      "statement": "write() contains the stack name before it becomes a path component: the module takes stack as a plain str and the name is joined under the project folder, so a relative traversal (stack 'x/../../evil') could otherwise write outside the project; write refuses anything that is not exactly one path component, returning None like every other refusal so the never-fatal contract holds.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launchscript.py#L269-L285",
+          "version": "repo-lines-v1:sha256:7df99edac664bb48653800631c3634c8f26ee709986df40fc564f478396be115:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyOWY1YmU3MGM4ZTNjZWNjNDY3M2Q2YjVhZmRmNzA3YjVkODA0NGUwZTIwN2Y2Njc4MzUyZjBkYzkyNDk4M2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhNWVkZTExNjhkNThlZDcxOGM4MTU4NThkMmViNjMzM2RkNzA1ZmZhNzZhMmJlY2M1YmZlOWQ4MWEzNDI4ODgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxY2I3ZmUxMWZhYTJmY2U5NWU0ZGNiZTc1YjczNTI1NjE3MGUyMzU1YWIzNjlhYTYxMjhiZGNmYWE0ZTQ1NTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ3M2RmNzBmNzJjMDQzMzMyMzRiMGU0MmFjMDEyNGE2NzI4NWY0MDQ3OGE4ZGQwMGRkNmQ4MjdhMjNmODBmMzAifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-19T12:16:02.862Z"
+    "at": "2026-09-20T12:51:12.657Z"
   }
 }

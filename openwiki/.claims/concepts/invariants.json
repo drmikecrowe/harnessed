@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:384952910cd197c339e24112879dd2b441adfcc88effad941071361dba6e3f00",
+  "pageVersion": "sha256:fcd56f78155bc4f384a1fd608a6b358387b6b0cbfc6b463a02bbe238b59e8183",
   "claims": [
     {
       "id": "claim_6ddd0ca903ef45e3bb6a4c2ae0ab3120",
@@ -371,20 +371,16 @@
       "statement": "The aoe replay row is `<script> --` and launchscript's written file ends `exec … \"$@\"` with the separator popped: aoe's auto-resume appends the recorded tool's flags (`--resume <id>` / `--fork-session --session-id <uuid>`) to the row and the `--` routes them past harnessed's Click parsing to the agent (without it: `No such option: --session-id`, on restart only — it cost a respawn loop to learn). Moving the `--` into the file inverts the failure: every invocation would pass the separator to harnessed, so a human's `./claude-container --fresh` would sail past harnessed to the agent. Quoting stays `command_for`'s (one shlex.join implementation), never a second escaper in launchscript.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/aoe.py#L223-L256",
-          "version": "repo-lines-v1:sha256:294babe552ad0b38f94a8e4fee5cf1e2bf0f98b80771ff7a930ed4be313200aa:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2YTcxM2RmOTIxNDZiMzk4OGZhODZhNzc3Nzk0NWZhOWYyNzYyODBmOWE2ODUxYTI4NzY1OGM2ZGMzN2JlYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4Yjg3ZGU0MDhkZTYwZjFmZDBmMGNjYzY2NGE2NjBjZDU4OTc2ZGI1YTM2ZmQxM2EyZTI4YmQxNWI4MjVkYWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1ZjhlZDA1MTZiYzVhZmRlNDA0ZDA0YzZlNGZlYWQ2YjNiNTQxMjc2NjIwMzBhNjQyZjExNzVhNjIwZjVkYjcifQ"
+          "resource": "repo://src/harnessed/aoe.py#L253-L282",
+          "version": "repo-lines-v1:sha256:e51e20bfa352c4b04601b9f2a75fe3c96a2f9249801d82ded77492ac55f47549:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwNjEzYzAwMWU2ZDllMDI1ZTkyYmVkMmU1ODgxMjRkMzUzMmZkMzhhZTE4MjQwNmVhODU2ZWQzN2ZjODlhODYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4Yjg3ZGU0MDhkZTYwZjFmZDBmMGNjYzY2NGE2NjBjZDU4OTc2ZGI1YTM2ZmQxM2EyZTI4YmQxNWI4MjVkYWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY2YTc4NjJjNWRiYWI0MzI4MzE0ODA3NzU1NzllODI3MGIwMGE5ZjcxYzQxN2Y1OGZkNzZjZDgwZDkzMjAyZDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1ZjhlZDA1MTZiYzVhZmRlNDA0ZDA0YzZlNGZlYWQ2YjNiNTQxMjc2NjIwMzBhNjQyZjExNzVhNjIwZjVkYjcifQ"
         },
         {
-          "resource": "repo://src/harnessed/aoe.py#L259-L301",
-          "version": "repo-lines-v1:sha256:57c7e7d46f41ec16dec7b7943414618a052c5701e56d5e992f3edbd198094692:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1NjNiMDk0ODQ5ZmRhOWZjYWFjNWI4MGZhYWY2Zjg2OWY2MzRiNjQ3NzhkZjIxMTQxZGU4MGNiNmZhOWUyZTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkMWM1NTNjZDdlZmMwODJhZjE3MDUwMWI2Y2U2OWE5NmIwMDYxNGIxNzhiNDI3ZGM1YmExN2Q4YTY3MjM4NjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhkNWI4MzVhY2JiNmNiNzQ2NmMyMjcxYTlhYzRhNmNhMzlmNzRkNGYyNDk5MTlmZjlmNTg0ZmFkZTdlYzA2ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjOTliZjhhMTU5ZDc1MTg4YmU3MDRkZjExNGY4MzI1ZmQyOWMzOThkY2I4NjJlMWRiYWMzMzcyOGUzYjgwOGEifQ"
+          "resource": "repo://src/harnessed/aoe.py#L297-L310",
+          "version": "repo-lines-v1:sha256:7ff536fc90200eccd74100fde77f291977355455dc2dd86783947619db9e479f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyYWE0NWU0YmMzZTg1YmJhZmNjZDQyYzQyM2NkNmY3NjQ3YTM5NTU1NTYwYzU3ZWVkYzcxNzVmNGJlMWIyMTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1ZTVmYzEyYjdjOWVlN2JkYTFjMGMzM2Q5YzQ1NWZjOTQ1MmM5Nzg2MzMzYWRlNGM5ZDFiYzNiMTQzNTJiZWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFmNzJjN2VjYzgwNzgzYTkwNGZiOTU5NDVhMzU1YjFlOWQxNjA4N2ZkY2Y4NGQ5MjkyMjYzOGZhYWNjODhiOWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkYmVjYzczNDY1NzgzNTE5ZTgwYTM0M2YxMjYzMzJlODU0OGRjOGY0MjVlZDY3ODQxOWM2NjgzMmNlZWNmYzQifQ"
         },
         {
           "resource": "repo://src/harnessed/launchscript.py#L1-L23",
-          "version": "repo-lines-v1:sha256:27353b141b922715a6852a7b8fc0e5b68818bab08d72279c0b7804bcd373d78b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmNzU3ZDc4ODg5NWVmODFjYjkwYWY1ZmY2MGRlODE0MjdlY2EyOTUwZDZkODUzNjZhNmQ0YWM0YTIyYjFlOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU4NmJmYWFhZTQxM2U0ODVmNDRjZTI2NDUwZDAwZTdmMjFmNThhNDJkNzE4OTc3OGUxNjk4YzlhZGQ5N2I0NzgifQ"
-        },
-        {
-          "resource": "repo://src/harnessed/launchscript.py#L121-L143",
-          "version": "repo-lines-v1:sha256:64712fdc5be03e10746edcef6c0411bf9cfbe7844c1c6d33aec0f47807c612e2:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1NjYzMDI2ZDA2YTRlYTlkZTNlMjczOTViYmJkMWQ2NGYyNzZiMzZlZGY3OGY4ZDUxYWI1YjdiNDE3MTFhMzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkNzBiYjg4NWNiOTJiMWQxMGJlYTVmYTExNWU1ZWYxNzgxZmQ5Y2ZjOWY3NjE4M2ZlM2FhMTg0ZTllMmIxMmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjczOGViZDZhNjY4NmU0MGQ0NmJmNzA0YjJkNmFhYzY2Zjg5MTQ3ZTM2NmNiZjljNWU2ODdlZTgzMzMxMzJmODMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc1NTA3YmIwZDMyZDgzNWRiZTEwZDY3MGE3YTZmNGFiZWMzNDU5ZmUyODc5NWE3NTEwMDg1MjE1Y2ZjYTlmZTQifQ"
+          "version": "repo-lines-v1:sha256:4230719b13ac7bca0273f7f1a8dd5cd7faae1b9daf74881f2b5110564b5f8858:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmNzU3ZDc4ODg5NWVmODFjYjkwYWY1ZmY2MGRlODE0MjdlY2EyOTUwZDZkODUzNjZhNmQ0YWM0YTIyYjFlOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU4NmJmYWFhZTQxM2U0ODVmNDRjZTI2NDUwZDAwZTdmMjFmNThhNDJkNzE4OTc3OGUxNjk4YzlhZGQ5N2I0NzgifQ"
         }
       ]
     },
@@ -739,6 +735,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-16T21:10:52.541Z"
+    "at": "2026-09-20T12:51:12.657Z"
   }
 }

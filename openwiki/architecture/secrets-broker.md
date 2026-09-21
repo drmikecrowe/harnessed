@@ -1,13 +1,15 @@
 ---
 type: architecture
 title: "The host secrets broker: one varlock proxy per instance (Topology B)"
-description: "The host-side secrets broker (Epic #388 Phase 1, Topology B): why a host process holds the real credentials, the @proxy plus --no-secrets launch gate, the spawn/poll/record/stop/reconcile lifecycle, the pod's pasta door at 169.254.1.1, fail-fatal and fail-safe teardown semantics, and the five-field state record that leaks no secret by construction."
-tags: [secrets-broker, varlock, credential-proxy, topology-b, pasta, egress-firewall, teardown, reconcile, no-secrets, pod]
+description: "The two places host credentials enter a launch: the varlock secrets broker (Epic #388 Phase 1, Topology B) with its @proxy plus --no-secrets gate, pasta door at 169.254.1.1 and no-leak lifecycle record; and credmounts.py, which references the host's live credential stores (1Password agent, gpg-agent, YubiKey, gh, git identity) into the container as -v/-e/--device args without ever copying secret material."
+tags: [secrets-broker, varlock, credential-proxy, topology-b, pasta, egress-firewall, teardown, reconcile, no-secrets, pod, credmounts, ssh-agent-forwarding, yubikey]
 sources:
   - id: openwiki-source-f82224b7b5b27300d9ecc2dc
     resource: repo://catalog/base/egress-firewall.sh
   - id: openwiki-source-085f2349c58adb4062c2803f
     resource: repo://src/harnessed/broker.py
+  - id: openwiki-source-f4d814d300a98515115546bb
+    resource: repo://src/harnessed/credmounts.py
   - id: openwiki-source-2b85b44d9f80bbb3b6ce747d
     resource: repo://src/harnessed/launchenv.py
   - id: openwiki-source-ecbe6256d6933ca2c8c9678f
@@ -22,16 +24,18 @@ sources:
     resource: repo://tests/test_broker_lifecycle.py
   - id: openwiki-source-4d3b84558965c7b5921b9989
     resource: repo://tests/test_broker_pod_args.py
+  - id: openwiki-source-e656f8016d334cfa6d2e1c9b
+    resource: repo://tests/test_credmounts.py
   - id: openwiki-source-b87236a7fed3f3be339e6eea
     resource: repo://tests/test_egress_firewall_broker_door.py
   - id: openwiki-source-f725ea11f1806a58b06d7f3e
     resource: repo://tests/test_launch_parity.py
   - id: openwiki-source-bbf9cc1f144f5efff8ae1505
     resource: repo://tests/test_module_boundaries.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-16T21:10:52.541Z
+    at: 2026-09-20T12:51:12.657Z
 ---
 
 # The host secrets broker: one varlock proxy per instance (Topology B)
@@ -43,10 +47,14 @@ broker through pasta's `--map-host-loopback,169.254.1.1`, which the egress firew
 (**#436**). Nothing off-host can reach the broker, so there is **no `--expose` and no data-plane
 token** — Topology B deleted both, along with the WebSocket tunnel. Do not reintroduce them.
 
-`src/harnessed/broker.py` is the source of record for this subsystem. `launcher.py` consumes it
-through three seams (`_broker_start_for`, `_broker_stop_for`, `_broker_report`); `launchenv.proxy_schema_dirs`
-decides whether a launch wants one at all; `mounts._mcp_remote_pasta_net_args` delivers the pod's
-route to it; `catalog/base/egress-firewall.sh` leaves the door open. Related:
+Secrets enter a launch through two host-side modules. `src/harnessed/broker.py` is the source of
+record for the varlock proxy subsystem: `launcher.py` consumes it through three seams
+(`_broker_start_for`, `_broker_stop_for`, `_broker_report`); `launchenv.proxy_schema_dirs` decides
+whether a launch wants one at all; `mounts._mcp_remote_pasta_net_args` delivers the pod's route to
+it; `catalog/base/egress-firewall.sh` leaves the door open. `src/harnessed/credmounts.py` is the
+other entry: it derives podman `-v`/`-e`/`--device` arguments that **reference** the host's live
+credential stores (SSH agents, gpg public surface, gh config, git identity) rather than copying any
+secret into the container or an image layer. Related:
 [execution backends](backends.md) (where in the launch sequence the broker starts),
 [the credential proxy model](../concepts/credential-proxy.md) (the `@proxy` vocabulary the gate
 reads), [invariants](../concepts/invariants.md) (the firewall's fail-closed rules).
@@ -331,6 +339,93 @@ The pod-less runtime case is handled as a *note*, not a half-wired broker: the d
 option on `pod create`, so a runtime with no pods has no way to deliver `169.254.1.1` into the
 container. Starting a broker there would produce exactly the half-wired state `--no-secrets` exists
 to avoid, so the launch says so and resolves secrets into the container env as before.
+
+## The second entry: `credmounts.py` — reference the live store, never replicate it
+
+`credmounts.py` answers one question: given what is present on this host, what arguments make a
+credential reachable inside the container **without copying the secret in**? Every builder is a
+**pure derivation from host state** — it inspects the host filesystem (and, for the YubiKey and
+gpg-agent paths, shells out to `lsusb`/`gpgconf`) and returns podman `-v`/`-e`/`--device` args.
+Nothing in the module runs a container, and nothing decides **whether** to forward: the opt-in
+gating lives with the caller in `launcher.py`. The whole module is host-only by nature — it reads
+`Path.home()` and host sockets at launch time, before the container exists.
+
+### What is forwarded, and what never is
+
+- **SSH signing/auth agent** (`_ssh_agent_args`): the 1Password SSH agent socket is primary
+  (per-OS path), mounted read-only into the container with `SSH_AUTH_SOCK` pointing at the
+  in-container path; the gpg-agent SSH socket (the YubiKey path, located via
+  `gpgconf --list-dirs agent-ssh-socket` with a Linux default fallback) is mounted when present but
+  only claims `SSH_AUTH_SOCK` when 1Password's socket is absent — a machine with both keeps
+  1Password as the active signer. Private keys never leave the agents.
+- **`~/.ssh`, file-by-file — never the whole directory** (`_ssh_dir_mounts`): `config`,
+  `known_hosts` and every `*.pub` are always forwarded read-only when present; private keys **only**
+  when the stack's `ssh_keys:` opts them in by basename. Names are re-checked to resolve to a
+  regular file directly under `~/.ssh` (symlinks that escape it — e.g. `config ->
+  ~/.aws/credentials` — are rejected), and names containing `:` are skipped so the `-v src:dst`
+  spec cannot be reparsed.
+- **Private-key opt-in is trusted only from the user's own overlay** (`_trusted_ssh_keys`,
+  `_stack_from_overlay`): a stack.yaml can come from a shared repo catalog, and mounting a real
+  private key is the key owner's decision, not a third-party stack author's — so `ssh_keys` from
+  anywhere but `~/.config/harnessed/catalog` is dropped with a warning, and a stack that cannot be
+  resolved at all fails **closed** (an unresolvable stack is not "yours"). Only this private-key
+  gate is overlay-scoped; the non-secret surface is unaffected.
+- **GnuPG public/config surface only** (`_gnupg_mounts`): `pubring.kbx`, `trustdb.gpg`,
+  `gpg.conf`, `gpg-agent.conf`, `sshcontrol` — and **never `private-keys-v1.d/`**. The bash
+  launcher mounted all of `~/.gnupg`, which drags in the real secret key material for software
+  openpgp keys; `ro` does not help, because readable means exfiltratable by an autonomous agent in
+  the container.
+- **gh auth** (in `mounts._credential_forward_args`): `~/.config/gh/hosts.yml` and `config.yml`,
+  read-only. When hosts.yml has real entries but no plaintext `oauth_token` anywhere
+  (`_gh_hosts_missing_plaintext_token`), modern `gh` is storing the token in the host's OS
+  credential store, which the container cannot reach — the launch warns and names the remediation
+  (`gh auth login --insecure-storage` on the host) rather than shipping a silently broken `gh`.
+- **git identity config** (`_git_identity_config_mount`): `~/.config/git` (else legacy
+  `~/.gitconfig`) read-only — it carries `user.signingkey`, `gpg.format=ssh`,
+  `gpg.ssh.program=op-ssh-sign`, `commit.gpgsign`, a public signing-key reference, not a secret.
+- **YubiKey USB passthrough** (`_yubikey_device_args`): a `--device /dev/bus/usb/...` arg parsed
+  from `lsusb` for Yubico vendor id 1050, **Linux only** — on macOS the container runs inside a
+  Linux VM with no `/dev/bus/usb`, and the YubiKey reaches the container through the gpg-agent SSH
+  socket relay instead.
+
+### The gate: `forward_git_credentials`, and the safe default
+
+`launcher.py` composes these at mount-assembly time: a stack with
+`forward_git_credentials: true` gets the full bundle (`_credential_forward_args` — agent, gpg
+surface, YubiKey, git config, gh, ssh dir with overlay-trusted private keys). **Without the
+opt-in**, the launch still auto-forwards the SSH agent socket plus the ro git identity config
+whenever an agent socket is live on the host (`_ssh_agent_auto_forward_args`) — safe as a default
+because the agent socket exposes no key material and gates every sign/auth behind a host-side
+1Password approval or YubiKey touch. The genuinely-secret surface (the gh oauth token in
+hosts.yml, opt-in private SSH keys) stays behind `forward_git_credentials`. Both paths are clean
+no-ops when no agent is configured.
+
+### Host-only details worth knowing
+
+- **macOS 1Password relay is unverified by design note**: a host unix socket does not traverse the
+  host→VM file share under podman machine, so `_macos_op_socket_mount_source` reverse-forwards the
+  socket into the VM (`podman machine ssh -R`, `StreamLocalBindUnlink=yes` so a stale socket cannot
+  wedge a second launch, `ExitOnForwardFailure=yes` so a failed forward never returns a path
+  pointing at nothing). It is explicitly **pending verification on real hardware**; on failure the
+  caller falls back to the raw host path plus a note, and it never raises or blocks the launch.
+  Docker Desktop's different relay is not wired.
+- **AWS SSO takes the same shape** (`mounts._aws_sso_ecs_forward_args`, opt-in
+  `forward_aws_sso`): the host reads its own bearer token file and injects only the SDK's
+  ECS-task-role endpoint plus `AWS_CONTAINER_AUTHORIZATION_TOKEN` as **env** — no aws-sso binary,
+  credential store, or token file enters the container. `_aws_sso_server_reachable` probes the
+  host loopback `127.0.0.1` healthcheck at launch time (host-only, before the container exists);
+  a stack that opted in against a dead server warns and, non-interactively, aborts rather than
+  wiring an endpoint that would fail only on the SDK's first AWS call.
+
+### The test contract
+
+`tests/test_credmounts.py` pins what the extraction put at risk — the security properties, by
+asserting what is **absent** from the generated args: `private-keys-v1.d/` and key material never
+appear in the gpg mounts; the `~/.ssh` allow-list never mounts an undeclared private file; a
+symlinked `config` escaping `~/.ssh` is refused; the module-boundary rule is checked over the
+parsed import AST (dependencies point into `credmounts`, never back out to `launcher`). Per-builder
+behaviour (1Password-vs-gpg precedence, vendor-id matching) still lives in
+`tests/test_launcher_install.py::TestCredentialForwarding`.
 
 ## The three test modules as contracts
 

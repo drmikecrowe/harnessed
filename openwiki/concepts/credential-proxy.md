@@ -29,7 +29,7 @@ sources:
 generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-16T21:10:52.541Z
+    at: 2026-09-20T12:51:12.657Z
 ---
 
 # The credential proxy model: four modes, the cheap annotation gate, and the readiness warning

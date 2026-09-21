@@ -40,10 +40,10 @@ sources:
     resource: repo://systemd/harnessed-rescan.service
   - id: openwiki-source-7af162bd104477b196c3dcdd
     resource: repo://systemd/harnessed-rescan.timer
-generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-19T12:16:02.862Z
+    at: 2026-09-20T12:51:12.657Z
 ---
 
 # Operations: the command surface and lifecycle verbs
@@ -529,20 +529,37 @@ prints `127.0.0.1:<port>` (its reader is on the host).
 
 ## The per-project launcher scripts (`launchscript.py`)
 
-Every successful launch writes `<project>/<harness>-<verb>` — `claude-host` or
-`claude-container` — a shell script that **replays the launch** when run
-(`./claude-container --fresh`). The verb is in the **filename** rather than a flag, so the two
-backends cannot collide in one folder and an aoe row cannot restart a backend it does not name.
-This mechanism **replaces the retired `lastrun`/`--last` state file** (bd harnessed-7mt): that
-record held the same facts invisibly, so "what did I launch here" meant reading shell history —
-**the file is the record**, something you can `cat`, run, and extend. There is no `--last`
-flag and no state file to drift from it.
+Every successful launch writes `<project>/<harness>-<stack>-<backend>` — `claude-serena-host` or
+`claude-serena-container` — a shell script that **replays the launch** when run
+(`./claude-serena-container --fresh`). This mechanism **replaces the retired `lastrun`/`--last`
+state file** (bd harnessed-7mt): that record held the same facts invisibly, so "what did I launch
+here" meant reading shell history — **the file is the record**, something you can `cat`, run, and
+extend. There is no `--last` flag and no state file to drift from it.
+
+The name is **three fields, and the order is not cosmetic** (`script_name`): the harness leads
+(because `codex-serena-host` is a different launcher, not a variant), the stack follows (it is what
+the reader is choosing between within one harness), and the backend suffix (`host-run` → `host`,
+`container-run` → `container`) is last and a **closed set** derived from the same map that builds
+the name — so neither two backends nor two stacks can collide in one folder, and an aoe row cannot
+restart something it does not name. The stack was added to the identity key after the verb: while
+the name omitted it, one project + harness + backend meant ONE file, and a second stack silently
+overwrote the first while the aoe row kept replaying the newcomer under the older stack's label.
+`parse_script_name` is the inverse, defined **beside** `script_name` so the grammar exists once
+(one earlier split — builder here, reader in `aoe` with no call edge between them — let the two
+copies drift invisibly); it reads the name **from both ends** (harness = field before the first
+`-`, backend = field after the last `-`, stack = everything between, checked against closed sets so
+a user's own `./run-dev` never reads as ours), which is what makes a stack name containing `-` or
+`.` unambiguous. The **retired two-part name** (`claude-host`) is no longer written but is still
+read (`parse_legacy_script_name`, accepted alongside the new shape by `aoe._is_launcher_script`):
+attribution never came from the filename — `aoe._replays_stack` reads the `--stack` value out of
+the exec line — so forgetting the old shape would strand every pre-rename aoe row, and one foreign
+row at a (title, path) key blocks the whole registration.
 
 ```sh
 #!/bin/sh
 # harnessed:launcher v1
-# as typed: harnessed container-run claude . --stack my-stack
-exec harnessed container-run claude /abs/project --stack my-stack "$@"
+# as typed: harnessed container-run claude . --stack serena
+exec harnessed container-run claude /abs/project --stack serena "$@"
 ```
 
 Its contract:
@@ -585,7 +602,7 @@ Its contract:
   scripts for several projects). A provenance comment that misreports the launch beneath it is
   worse than no comment.
 - **The git exclude entry.** After writing, `_ensure_excluded` adds a **root-anchored** pattern
-  (`/claude-host`) to the git **common dir**'s `info/exclude` — one file shared by every worktree,
+  (`/claude-serena-host`) to the git **common dir**'s `info/exclude` — one file shared by every worktree,
   written once and covering all of them (git matches exclude patterns against the top of whichever
   worktree it processes, which is why the pattern anchors on `--show-toplevel` and would match
   nowhere if anchored from the common dir's parent). It is idempotent by exact-line match (ten
@@ -593,6 +610,11 @@ Its contract:
   cap the membership check cannot be trusted, and a duplicate per launch would corrupt a shared
   file), and **fails closed**: no pattern rather than a wrong one. A non-git folder gets no
   warning.
+- **The stack name is contained before it reaches the filesystem.** It is the one value in this
+  module that becomes a path component, and `write` is a plain function taking a `str`: a stack
+  of `x/../../evil` would write outside the project folder through a *relative* traversal (no
+  absolute path needed). `write` refuses anything that is not exactly one path component — and
+  returns None like every other refusal, because never-fatal applies here too.
 - **Files are read the way the shell reads them.** `_read_as_the_shell_does` uses `newline=""` and
   callers split on `"\n"`: Python's universal-newline mode would translate a lone `\r` inside a
   quoted value into `\n`, and `str.splitlines()` breaks on eight characters `/bin/sh` does not —

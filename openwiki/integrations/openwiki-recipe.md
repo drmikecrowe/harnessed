@@ -1,9 +1,11 @@
 ---
 type: concept
 title: "The openwiki recipe: this wiki generator as catalog content"
-description: "What a launch of the openwiki stack delivers — the host-driven integration of langchain-ai/openwiki — and why the install is a project-scoped pnpm install with a one-entry build allowlist instead of a tools: pin, why it needs no credential and no egress, and what the authored stack records by listing default explicitly."
-tags: [openwiki, recipe, stack, catalog, mcp, hatago, pnpm, strict-dep-builds, persist, host-driven, install-script]
+description: "What a launch of the openwiki stack delivers — the host-driven integration of langchain-ai/openwiki — plus the dogfooding loop (mise openwiki-update, the openwiki-drift gate, the scheduled PR workflow) that regenerates this wiki with the recipe's own package."
+tags: [openwiki, recipe, stack, catalog, mcp, hatago, pnpm, strict-dep-builds, persist, host-driven, install-script, drift, dogfooding]
 sources:
+  - id: openwiki-source-6d4b4e707b8d60b6ccfa3425
+    resource: repo://.github/workflows/openwiki-update.yml
   - id: openwiki-source-f82224b7b5b27300d9ecc2dc
     resource: repo://catalog/base/egress-firewall.sh
   - id: openwiki-source-567b7c36cfe22d7cb6bb18fc
@@ -18,6 +20,8 @@ sources:
     resource: repo://catalog/recipes/openwiki/recipe.yaml
   - id: openwiki-source-aa0d39e1756605ac6d53964f
     resource: repo://catalog/stacks/openwiki/stack.yaml
+  - id: openwiki-source-72b5d686f860ea86c8592080
+    resource: repo://mise.toml
   - id: openwiki-source-0f0f277c40d34909acb07908
     resource: repo://src/harnessed/capability.py
   - id: openwiki-source-0852603a38d760a77db2bc8a
@@ -40,10 +44,12 @@ sources:
     resource: repo://src/harnessed/volumes.py
   - id: openwiki-source-fbc6a5a8a732add3df9e162f
     resource: repo://tests/test_prose_lint.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
+  - id: openwiki-source-6b70da595cfd5823cd7cabe6
+    resource: repo://tools/openwiki-drift.py
+generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-16T21:10:52.541Z
+    at: 2026-09-20T12:51:12.657Z
 ---
 
 # The openwiki recipe: this wiki generator as catalog content
@@ -296,6 +302,90 @@ capabilities the parser cannot see. `expected_capabilities` unions these declara
 everything parsed from the manifests, and the capability test launches the stack headless,
 introspects the live instance (filesystem listing for skills, `hatago://servers` for MCP), and
 diffs expected against live.
+
+## The dogfooding loop: how this wiki is regenerated
+
+The recipe above packages the generator; this repository drives it with two `mise` tasks and a
+scheduled workflow, and this section is the dogfooding half of the story — the package under
+`catalog/recipes/openwiki/` installing the same tooling that produces `openwiki/` itself.
+
+**`mise run openwiki-update` is the entry point — including for the very first run.** Upstream's
+own CI example notes that `--update` "also handles the first run for code docs when env vars are
+set", and unlike `openwiki --init` it does not force the setup wizard (dist/cli/app/app.js gates the
+wizard on `needsCredentialSetup(...) || (isInitCommand && !initWizardConsumed)`, so `--init` walks
+every step even in a fully configured environment). The task runs
+`python3 tools/openwiki-retry-patch.py` **first**, then
+`openwiki code --update --print` under a `varlock run` environment. The retry patch exists because
+no upstream release through 0.5.1 retries a skipped page: a page worker that ends without calling
+`submit_page` (seen with glm-5.3-flash, PR #445 run 6) is marked skipped and the run finalizes
+"interrupted" without advancing the diff base. The patch re-applies itself after any
+`mise install` that restores the stock runner, and fails loudly on version drift rather than
+patching blind. 0.5.0's durable page manifest (`openwiki/.page-manifest.json`) means a skip no
+longer costs a full regeneration, only a clean finalize.
+
+The `openwiki_env` variable deliberately `env -u`-unsets the whole provider surface
+(`OPENWIKI_PROVIDER`, `OPENWIKI_MODEL_ID`, `OPENWIKI_MAX_OUTPUT_TOKENS`,
+`OPENWIKI_OPENAI_COMPATIBLE_STREAMING`, the OpenAI-compatible and Anthropic pairs) before varlock
+re-injects the schema-declared values. That is the same stance harnessed's host launcher takes — the
+schema is the declared source of truth and a shell export must not outrank it — and it is measured,
+not paranoid: on 2026-09-04 leftover exports repointed a 13-hour run at the wrong provider, and on
+2026-09-08 a shell export of `OPENWIKI_MAX_OUTPUT_TOKENS=32768` beat the schema's 20000 and made the
+@anthropic-ai/sdk client guard refuse the planner's one non-streaming call
+(`3600 * maxTokens / 128000 > 600s` rejects any cap above 21,333) — the only failures in an
+otherwise clean 1.7h update.
+
+**`mise run openwiki-drift` is the cheap check that answers "which pages are lying."** It is not
+interactive, makes no model call and no network access (tools/openwiki-drift.py): it recomputes each
+Claim's recorded content digest against the working tree (or `--rev <git-rev>` via `git show`, never
+a checkout) and exits non-zero when cited code actually changed. That makes drift a check rather
+than a regeneration — the thing to run before deciding to run `openwiki-update`.
+
+What the gate verifies is deliberately narrower than "every Claim": it checks **line-ranged evidence
+anchors only** — resources matching `repo://<path>#L<a>` or `#L<a>-L<b>` whose recorded version uses
+the known `repo-lines-v1` scheme. Whole-file evidence (no `#L`) has nothing to hash against, and an
+unknown future scheme (`repo-lines-v2`) must be reported as unverifiable rather than silently
+checked with v1 rules; both are counted and reported on a separate `skipped` line, never guessed at.
+
+The heart of the gate is separating **moved** from **changed**. Ordinary development shifts line
+numbers constantly; a check that treats a shifted-but-identical block as drift reports ~30% of
+Claims stale after a week of normal work — noise that trains you to ignore it. Separating the two on
+a one-week window measured 27.5% moved against 4.7% genuinely changed, and only the second number is
+a review queue. Mechanically, openwiki leaves the `#Lx-Ly` in the resource **stale** when it
+relocates a block, so the authoritative block length is the `selectedLineCount` read out of the
+base64 version payload (the per-line hashes in that payload are deliberately not reproduced — their
+inputs are undocumented, and guessing them would make the check unfalsifiable). A failed exact-digest
+check triggers one window scan per `(file, length)` pair: any window of that length anywhere in the
+file whose digest matches makes the anchor `moved`, otherwise `changed`.
+
+```mermaid
+flowchart TD
+    A["Claim evidence anchor - repo path with Lx-Ly range"] --> SCHEME{"repo-lines-v1 version?"}
+    SCHEME -->|no or no L range| SKIP["skipped - counted, not guessed"]
+    SCHEME -->|yes| LEN["block length from selectedLineCount - the Lx-Ly span is only a hint"]
+    LEN --> FILE{"cited file exists?"}
+    FILE -->|gone| MISSING["missing - stale"]
+    FILE -->|present| DIGEST{"sha256 digest of those lines matches?"}
+    DIGEST -->|yes| EXACT["exact - unchanged"]
+    DIGEST -->|no| WIN{"same digest found in any window of that length?"}
+    WIN -->|yes| MOVED["moved - not drift, URI span is stale"]
+    WIN -->|no| CHANGED["changed - stale, review queue"]
+```
+
+*How `tools/openwiki-drift.py` buckets one anchored evidence item. `--strict-lines` collapses the
+window scan: any non-exact anchor counts as `changed`. Exit 0 = nothing changed, 1 = at least one
+`changed`/`missing`, 2 = the wiki or its Claims are unreadable.*
+
+`moved` anchors also surface as a `staleURI` count when the recorded length disagrees with the URI
+span: not drift — the digest still matches real code — but a reader-facing accuracy problem, because
+the published page cites line numbers that no longer contain the block. Both unreadable-input paths
+print and exit 2 explicitly, because a bare `SystemExit(str)` would exit 1 and collide with the
+"Claim went stale" status a caller gates on.
+
+The scheduled workflow (`.github/workflows/openwiki-update.yml`) closes the loop: it runs the update
+task, then opens a PR with `if: always()` — not `!cancelled()` — so a timeout (which kills the job
+with `cancelled() == true`) does not discard every page the durable queue just wrote. The PR body
+tells the reviewer to run `mise run openwiki-drift` before merging, and a failed run still fails the
+job so a partial PR is visible rather than green.
 
 ## Related pages
 

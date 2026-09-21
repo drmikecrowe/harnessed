@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:efa05fc3c724d6ecd69b24c9f892c3b2f90512f0761734691ac613ee62e4d902",
+  "pageVersion": "sha256:7b51809df48ca12f8d3cdb4edc20febc74b87018cfe37f4cd5a327a592c15fcb",
   "claims": [
     {
       "id": "claim_ff26409f53a94907a3855d0c14a03448",
@@ -546,14 +546,14 @@
     },
     {
       "id": "claim_19e55e66fd294b9f8ef1f343c36e525b",
-      "statement": "`apply` dispatches each bump to a rewriter chosen by where the version lives, as an allow-list rather than an else-branch: `.yaml/.yml` to the ruamel round-tripper, `extra-tools*` to the plain-text line rewriter, anything else skipped. Field-valued pins (agent `build_args`, recipe `install.refs.<key>.ref`) each need their own round-tripping rewriter — a pin kind without one yields a bump that is offered, accepted, reported successful, and never written, which is exactly how both were originally missed. All YAML rewriters use width 4096 and sequence indent 4/offset 2 so a bump is a one-line diff, and `_match_v_prefix` rewrites `latest` to the pin's own `v`-prefix convention.",
+      "statement": "`apply` dispatches each bump to a rewriter chosen by where the version lives, as an allow-list rather than an else-branch: field-valued pins (anything with a `pin.key` in `agent.yaml` or `recipe.yaml`) are dispatched first to their own round-tripping rewriter (`_rewrite_agent_build_arg` for agent `build_args`, `_rewrite_install_ref` for `install.refs.<key>.ref`); among spec-string pins, `.yaml/.yml` goes to the ruamel round-tripper, `extra-tools*` to the plain-text line rewriter, anything else skipped. A pin kind without a rewriter yields a bump that is offered, accepted, reported successful, and never written — exactly how both field pin kinds were originally missed. All YAML rewriters use width 4096 and indent(sequence=4, offset=2) so a bump is a one-line diff, and `_match_v_prefix` rewrites `latest` to the pin's own `v`-prefix convention.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/update.py#L762-L902",
-          "version": "repo-lines-v1:sha256:84463251a85b193a88439ba36348e31dcd352f8965158e5eac4e8ec2b0261e4e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxOTE4Mzk2NzIyMWIzYzYwNTUwMDc2N2MyMmRmYWVlODBiNjc2NGYzYWJjODdkN2VkZGUwNjQyOWU4YmU5MGVhIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzMGUyYTQ2NTAwOTVmYTk1ZDBlMmJiNDFiMmRiMjkwOTRkMzQwNGQyOGNlMTIzMzllYzg4YmI0YjVjNWJlOGY2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJiMjY5ZmZlZWNiOWI2M2QwZmVlZWU4YWViZWMwMWJhODY0MGU4MDc0NDQwZDdhZTcxNGZiYzc5NWM5ZGY4OTUyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjMWY1Mzk2ZGM3N2YxYmU2OTE3MjZlZThjMGI0NDEzYTVmMThkNmZhZGJmMWFiZjZiMzEzZjlmYmJhZDExOTA4In0"
+          "resource": "repo://src/harnessed/update.py#L788-L925",
+          "version": "repo-lines-v1:sha256:94de78988d7dcba4f58690b2ddc1d08fdfd0984201751855f37a6fcb0f6f6ebd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTM4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyZjBhOTU4MTgxNTQ4MzEwMzgxYjRhYjk3YjhjOTM3MjcwMDQ1MDBhZjlkYWY4YWI0ZjZmNmZmMDg4MzMwODljIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzMGUyYTQ2NTAwOTVmYTk1ZDBlMmJiNDFiMmRiMjkwOTRkMzQwNGQyOGNlMTIzMzllYzg4YmI0YjVjNWJlOGY2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJiNWU2MjU2NGJjYmNhZTYwMzUwMTkwODg0OGY1OGFjMmNiYjk0MzNkZjIyMWJhMDhkMmQ0ODllNmZiMzVjNjk2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjMWY1Mzk2ZGM3N2YxYmU2OTE3MjZlZThjMGI0NDEzYTVmMThkNmZhZGJmMWFiZjZiMzEzZjlmYmJhZDExOTA4In0"
         },
         {
-          "resource": "repo://src/harnessed/update.py#L960-L1019",
+          "resource": "repo://src/harnessed/update.py#L983-L1042",
           "version": "repo-lines-v1:sha256:0a4f44f347a3a479016d97b75f4e3a23f4e97395c194f1777fe287600a66f13b:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkNTJkOTg5MDBhNzE2MzY4YTA5YjNiOTg4MGE2YzMyY2ZhMzRjY2VkNDQ1ZjI1N2ZjMDY3NWJjNWFmZWZlNjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhNmE5YjFlMzk0OWNhMThmMWUyOGRlZGNiODM4MjRlY2NlZjEzYjQ0MGY2ZTM3MzdiMDg3MDc1NjUyODYyNWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
@@ -585,10 +585,20 @@
           "version": "repo-lines-v1:sha256:a7b0fcb5b7636b66b80eededbe86bfd29de9bcc6959850f088ce20551bef3749:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyMDA3ZWFjYmRjMWU4NWQ2YWRiNmE5NjFhMGU4YTNiOTBiNTc3ODc0NTgwMTEwZTE2ZDNmOGUwYTI4YjE2ODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwZTJhNDY1MDA5NWZhOTVkMGUyYmI0MWIyZGIyOTA5NGQzNDA0ZDI4Y2UxMjMzOWVjODhiYjRiNWM1YmU4ZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY3NzQwODkwMGFmNDZhMjQ3MWQ5YTUwNzY5NWQwMzMwODc0MGRkZGI5MGZmNDkyNjA4ZjQxOTE0ZDMwYjBkZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkZjczNTFjNWE3MzU4MmZhNjVkMWI5ZGMzMjE5NWJmZDU5OGI0ZjI1MjVmMmM2ZjAyYTk5MDZjYTBiMzQzOTIifQ"
         }
       ]
+    },
+    {
+      "id": "claim_636992dccafa49dc8aa3a0d38bf3ad2e",
+      "statement": "`_rewrite_agent_build_arg` validates the incoming value with `_require_immutable_build_arg` before writing: a resolver answer that is not an immutable version (e.g. the channel \"nightly\") is declined by returning False rather than persisted, so the manifest never fails at the next build's schema gate; the refusal is indistinguishable to the caller from an absent key.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/update.py#L854-L898",
+          "version": "repo-lines-v1:sha256:431c4d01122113799b3db5065bc6e8d59ff05044d1831372fcea9963843d7fc5:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3NmI2ZjgyMDc1YjdhMTlmY2Q2ODQ2Y2Y5YjBkOWM0NTdjMGE2YWYzNmVlMGEzZDEyMTkyNmU0MjQ1YmY0NDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwZTJhNDY1MDA5NWZhOTVkMGUyYmI0MWIyZGIyOTA5NGQzNDA0ZDI4Y2UxMjMzOWVjODhiYjRiNWM1YmU4ZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg4YjJiOTRlMjcyZTMxZGFiZTdmNTIzMjcxODg0ZjBiZmQ1OWVjNGRkMWU3NzU1ZDg3ZmViOTIwYjgyNzhmMWIifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-18T12:41:13.644Z"
+    "at": "2026-09-20T12:51:12.657Z"
   }
 }

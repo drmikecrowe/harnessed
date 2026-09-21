@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:487653f09714a31f215c16941c82d80e9b8e445e7d3ab9302b7e1d0955f71e29",
+  "pageVersion": "sha256:22b07b002de80355bc8eb0e643694abbe7f10681ed693bfe073d34d2040d62c2",
   "claims": [
     {
       "id": "claim_16f91e01a46d46c696c7c62db5057ced",
@@ -149,15 +149,15 @@
       "statement": "Pin validation states its rule positively: a ref is acceptable only if it can be SHOWN immutable (_IMMUTABLE_REF_RE: a version-like tag or a full 40-hex SHA), so unrecognized shapes fail closed. validate_pin rejects --branch main/master/HEAD, :latest and @latest (comment lines stripped first), plus moving refs reached through git clone --branch, GitHub/codeload archive URLs, and git fetch <remote> <ref> — three scanners, each walking a different acquisition spelling, each resolving shell variables exactly one hop with install.refs: first and literal assignments second (the shell's own precedence).",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/schema.py#L2471-L2540",
-          "version": "repo-lines-v1:sha256:6394f6b8993740058c1aa8f8d0997dbcc59524b553133928ccadc8bde2efea5d:eyJzZWxlY3RlZExpbmVDb3VudCI6NzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxYTNlMGU0ZWRjMzQ2OTI3NGVjNTkyMDBkNzE5MmU0YWJjOWExYjU3NGJmZTc5M2YxM2VlNGMzNWZkYjZiNzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc0MTY5YTExYzQ0ZDRkODNiOGU5YjMwYzhkYWNlMDM2NzdmZDg3MjVkNzdiOTE3MTI2YWQ5NGZjNDcxNzVhMDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUwZDc4YWI5Njg3YWUyNTMyMDgzNDhkNzI4NjU0M2E5YWRiMWRkNjczNjRiNWVhNTRmNTk1YWNkMDJlMTMxODQifQ"
+          "resource": "repo://src/harnessed/schema.py#L2677-L2769",
+          "version": "repo-lines-v1:sha256:2ff5181715932a85c8fd6559f3137298f8aac66acfba28e3dc130a3aa8dc87d4:eyJzZWxlY3RlZExpbmVDb3VudCI6OTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViMDJhYTRjZDQ4MjBjNmI3MWRlZGRhMzI2YjNmMjFjMGQ0ZTQzOGMxMTBkYzYyMTQ5MGVmZGFkZmVkN2U4Y2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTYwMGE3M2QyZTAyZjM1MmI5MGZlZjFkOGQ2MzgxMWJhNGE4ZWUwYzFiZWFhN2FlNDY1OGYzNmFhMmUxOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg5YWQ2ODA3YjA5NWI2YjIzMDI4Njg0ZDI2MzRiN2NjMTU1NjYyYzFhMDQzZTE4MWJiMzIxY2VlNWNhOTA1Y2EifQ"
         },
         {
-          "resource": "repo://src/harnessed/schema.py#L2633-L2700",
-          "version": "repo-lines-v1:sha256:f9b8f8b9092357c4045ad4f30c1c93466d098354b8de348c3f050e43622b6989:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhMjJiMDg5NjBlNDllODk4MTM4M2FiMjA1ZTRjZmI1ZmZmMWE2YzcyYWU0MjQ3NmEwOTY0NzAzZGRkOTYwZjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ5N2JlOGI1ZWZkNDRkZjdjZDBlMGQ4NTdjODY2ZDdlMTE0NDQ4ZTZiYjk1NTA1YjAzNTRiM2U4NTc3MGIzNjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE5NWJmNGUzZWQ2YTFlMGYxMTNkZWIwNzExN2ZhMTBjODlkNjkyMGZhYWFmZGY2MTQ0MWI1MDcwYTViY2MxMDQifQ"
+          "resource": "repo://src/harnessed/schema.py#L2782-L2924",
+          "version": "repo-lines-v1:sha256:2e8a7a61b9b20851b4916dabe90d2a2e295fbb8c0dfae16ff25a6c5b1bf0d72f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmMTFlYjBiYWJhMjEzZTUwZTAyNjhmYzYwMWZkODMyZjY4NTEwYjBlNGIxZDA2ZGY5YjVlOTk5OGYzNDk2NmU5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODk2MDBhNzNkMmUwMmYzNTJiOTBmZWYxZDhkNjM4MTFiYTRhOGVlMGMxYmVhYTdhZTQ2NThmMzZhYTJlMTk4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkYmZjMjEzZTE4YzA4NjkxNWQwNzNhYmJhMjFkY2ZjYjZjOTU0N2E1YmVmNzFjOTg2MGY5ZTUwZDc2ZTk3Mzk4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiY2MzZGM2NDVjNWVlMTA2MzBhNDE4MTBkZGRhYjM2NGM5ZTNmMDg0OGM4M2Q0NDY5OGVmY2MwYWYxMGU5M2MyIn0"
         },
         {
-          "resource": "repo://src/harnessed/schema.py#L2857-L2893",
+          "resource": "repo://src/harnessed/schema.py#L2927-L2963",
           "version": "repo-lines-v1:sha256:148da2163db640bccbd107d4583fe8f7c9efcc7f7b49e3186a5a3e5ea35be2e5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1YjcwNjFiMDZjM2FiMmVmOTI3OGM5NzkyYjVlZjNlMmUxYmE2YmRhNTAzMjEwMjQ2ZGI2NDE2YTYxYWFhNzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3MDE0OWUwNjlhZDY3ZWNjZjQ3MzY0NmZmMWM3NTAwNTBkMzI5ZDExMDAxOGRjNTc2Njg3OGVhZmExZDYwN2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwZDUyZDYyM2RlMjA3YzE0NDA3NzViNWM3ODBmN2U1N2U1ZDU0YWVhOWVmNTRkM2M0OGZlZmZlNzlmYzBiYTUifQ"
         }
       ]
@@ -227,11 +227,11 @@
       "statement": "install.refs entries are validated against the immutable-ref grammar at schema time; _parse_install rejects a hand-written install.cache alongside refs (the cache key is derived from them, so keeping both leaves one silently dead), a floating cache value, refs without a script, cache without a script, hold without a script, and an install: with neither script nor system.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/schema.py#L787-L827",
-          "version": "repo-lines-v1:sha256:1236b9cac4c46f1867318bdfd8c9d56e64733f3f41e5abac7220cb94c3abbebe:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzZDMzNjJjMWZhNGFhZmViNzYyZThkNmVlODYzZDI2MTg2OWE1NGIzNTE5NTJjOTJhNjczMGZiY2MwMTJkMWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0NTI2YWZkNzhlMmJiZGM0N2QwODZmNjliOTdhZjYwZTQ5MjAzZDNjNDlhMTAwMDNmNTQxNzEyODlmOTYxZTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM5MDYzMTY3MjdmY2IwYWMzZTk3MDhjZDA4Mzc4ZmQ4MDg4MTlmZjU4NGFmMmRiNDhjYzk4OWI5YjhiYjc3N2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjMWYwMmZkN2VjMWQ0NjJjMGNiODE4Yjk0OGZmZTRmNzE1YjJjMmM0MzI2MzBjMjMyZGZlMzRkNDI3NDNmYTkifQ"
+          "resource": "repo://src/harnessed/schema.py#L787-L830",
+          "version": "repo-lines-v1:sha256:9dcebab14d6e6239529678e9b58892363d82248e8ba7e4fd8a54bed04db849fa:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzZDMzNjJjMWZhNGFhZmViNzYyZThkNmVlODYzZDI2MTg2OWE1NGIzNTE5NTJjOTJhNjczMGZiY2MwMTJkMWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0NTI2YWZkNzhlMmJiZGM0N2QwODZmNjliOTdhZjYwZTQ5MjAzZDNjNDlhMTAwMDNmNTQxNzEyODlmOTYxZTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM5MDYzMTY3MjdmY2IwYWMzZTk3MDhjZDA4Mzc4ZmQ4MDg4MTlmZjU4NGFmMmRiNDhjYzk4OWI5YjhiYjc3N2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjMWYwMmZkN2VjMWQ0NjJjMGNiODE4Yjk0OGZmZTRmNzE1YjJjMmM0MzI2MzBjMjMyZGZlMzRkNDI3NDNmYTkifQ"
         },
         {
-          "resource": "repo://src/harnessed/schema.py#L888-L981",
+          "resource": "repo://src/harnessed/schema.py#L891-L984",
           "version": "repo-lines-v1:sha256:9f88cf6736cd3342ef62da16c4ab1d0a1ef1e4dcd9839c5ee94afb83d5d53c4f:eyJzZWxlY3RlZExpbmVDb3VudCI6OTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwMjRmZDU3MjcxMjY1MzVmZDg0ZDA5NjkzMzI1OGZiNGYzODUwNDgyMjY1M2M0NGIyODI3ZjVhYjRhOGM0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwOWVkYWE0ODA1Mjg2M2FlMmMyYjZkZjVlM2Y1N2IxMGIwMTJjNjBlZjcxZTYxNmU2ODExNzkyMGZkMTZiODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4MmU2ZDc2N2RmYjA3ZTAwOWFmZmU1MGU0ZWUyYzBjODM2MjU2MTYxMzM2MWJjMTU2MGNhN2IwMTE5MGIxM2IifQ"
         }
       ]
@@ -597,8 +597,12 @@
       "statement": "load_agent requires harness and image, splits build_args into (values, specs, holds) accepting a scalar or a mapping per key (a mapping must carry 'value'; a value-less or null scalar is rejected because str(None) would have shipped as --build-arg X=None), and rejects a key declared in BOTH build_args and unpinnable — an agent is either pinned or conceded unpinnable, never both.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/schema.py#L2354-L2461",
-          "version": "repo-lines-v1:sha256:676b75e02e66bdc7da4bf0de30d76fb78de198e3864113642ae19dfef0499b86:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiODY1OWQ5MGY3NzFmYjk2ZDY3MDQxNDJjM2U3ZTFlOTIyYmRiMGI4ZGVjZDVmMGUxMGE3YmI0NDZhYTliZWVkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzMGMxZjE4OGYxNDJlZDdhODI0NjgwYjIwNzE3MmM1NTE5YmM2MTRhNDhmZGE3Y2YxNjdlZGI4ZGRmNzk5NTZjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjYTRlNDE1OGQxNDZiMThjZDAwYzk3MWFkYzAyODM3ZmU1M2I4ZTNhZTllMDNkZTMwNTMyZjUyMjIxYjMwN2Y0IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4MWJjNGQ2YmNjYjcwNTRiM2Y4NzZhODg4MTA1YTBmYjllYWUwMWRhNmQyZjZlN2YzODBiYTc1MmJiYmI5MzNkIn0"
+          "resource": "repo://src/harnessed/schema.py#L2407-L2457",
+          "version": "repo-lines-v1:sha256:0163d1e4f853cd002bb4bf6c40a7e49719034ee80249117b0b10d07962f50a60:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4NjU5ZDkwZjc3MWZiOTZkNjcwNDE0MmMzZTdlMWU5MjJiZGIwYjhkZWNkNWYwZTEwYTdiYjQ0NmFhOWJlZWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0N2ZhMjMxMGYxYzdkOTBhN2U3OWQxZmQyOTAzYTliMjAzYjE2MTEyNGFhMWFjMzRlZTk0YjNjY2Y1ODY5ODEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhNzdhN2E5MzM3MjgxYzFkNTIxZmE4OGNlZTAxY2YyZjJiNmMwM2E1ZmM1Mjg0NzIzZTg3MzI1NGY0NjBlMjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY5MTkzOGRiNmYyYzFlMmIzY2M1OGZhMjY0YTQyODhiNmE3MzJlNGEwNzI5MzhlNjJmYmRlY2ZiNGIxODMzZjMifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py#L2481-L2514",
+          "version": "repo-lines-v1:sha256:77474c11cc0034857ad0a80d9484fab2544389b54bcb95286e1eb01d127cc7db:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzZjAwNTRhYWYxMmZlNDc4ZjNhYjI4ODY5YWYwOTU0NDBkYTk3MDIyMzkxYmRkNGNhZTEzMGNhYjI2MTRiMTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBiNDY4YWQwYWJkNWRmODYyMGJiOTRiZGZmZTg1ZjQyMTEwZWNkYThhZjc2NGE0ZDVjM2JhMDZiYWE1Zjc3M2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxYmM0ZDZiY2NiNzA1NGIzZjg3NmE4ODgxMDVhMGZiOWVhZTAxZGE2ZDJmNmU3ZjM4MGJhNzUyYmJiYjkzM2QifQ"
         }
       ]
     },
@@ -627,16 +631,16 @@
       "statement": "`install.refs` entries may each carry a `hold:` reason and `install.hold` is a recipe-wide manual-upgrade-only floor; holds are non-empty reason strings shown to whoever decides to lift them, and `harnessed update` lists held pins but never offers them for bumping and never fails `--check` on them. The motivating case is skill content (a skill runs with the agent's full tool permissions, so a compromised upgrade is prompt injection).",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/schema.py#L786-L827",
-          "version": "repo-lines-v1:sha256:91a619af813644cd77d02ddbe8a758066a1dde21d1a0683f54e670e3d692cfcb:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0NTI2YWZkNzhlMmJiZGM0N2QwODZmNjliOTdhZjYwZTQ5MjAzZDNjNDlhMTAwMDNmNTQxNzEyODlmOTYxZTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlkYTFjZGUyMjE3ZjgzYWE0NmQxNTM0MDM1MDk4ODBlNmFlMzU4NjJmMTFkMWU4YzdhYTE4MzQzYTNlMGYxOGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjMWYwMmZkN2VjMWQ0NjJjMGNiODE4Yjk0OGZmZTRmNzE1YjJjMmM0MzI2MzBjMjMyZGZlMzRkNDI3NDNmYTkifQ"
+          "resource": "repo://src/harnessed/schema.py#L823-L830",
+          "version": "repo-lines-v1:sha256:023cb00e17bae0afae9091885417921330fc02e31c4af9c624a4f4c09ececd8f:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODVmNDRkYjEwMzAyOTI2OTJmNmMwYmUxYzI3YWRiMjIwZGU1MzExODc4ZTRkYzdjYjU2ZmFiMzY3NTcxZDI4MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTQ1MjZhZmQ3OGUyYmJkYzQ3ZDA4NmY2OWI5N2FmNjBlNDkyMDNkM2M0OWExMDAwM2Y1NDE3MTI4OWY5NjFlNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2VkN2ExZjg2YjRiMjdjYWQxMmRmZWQyYmU0ZmRmNDE2ZmZlMTc0YmZmZTEyYjE1MTgxMTA4ODZmYWE2ZTliZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmMxZjAyZmQ3ZWMxZDQ2MmMwY2I4MThiOTQ4ZmZlNGY3MTViMmMyYzQzMjYzMGMyMzJkZmUzNGQ0Mjc0M2ZhOSJ9"
         },
         {
-          "resource": "repo://src/harnessed/schema.py#L830-L885",
-          "version": "repo-lines-v1:sha256:29120a0af9677b99ff1cc1d7bf1d7bc581463bdef602db4cdb6d455e4acfed9b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2ZmJhZTBiOTFkNDRmYzBkNDlmNWRlNjkxZGE2ZmM0MzFmMjYwMTM0YmY3MzFlMGUyMWY3NjQ4MDk0MzM0Y2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5Y2YxNzU1MzNkOTAzMTg0OWQyYTgzY2Q1OWQ1N2Q2MWY1ZmZhZTk5NjBiOTA2ZWU3MTMzNjZiODA3M2QwNzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBiNDY4YWQwYWJkNWRmODYyMGJiOTRiZGZmZTg1ZjQyMTEwZWNkYThhZjc2NGE0ZDVjM2JhMDZiYWE1Zjc3M2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM1NDljMzc3MGE3ZWM4YjlkYjI2ZmRhOTYxZGFhMGRmZjg0ODMxYzBlN2RhNDE2MzJmMmRhOGRhMDhhYzQ1Y2QifQ"
+          "resource": "repo://src/harnessed/schema.py#L833-L883",
+          "version": "repo-lines-v1:sha256:a45726b193755ecd394863499ecdd0e5d4afb9787335316bbf5b7c40157d194a:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2ZmJhZTBiOTFkNDRmYzBkNDlmNWRlNjkxZGE2ZmM0MzFmMjYwMTM0YmY3MzFlMGUyMWY3NjQ4MDk0MzM0Y2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwNTQzYjhmOGQ2ZmZjZDM1ODliODgzZDE5NjI1ZmRkOWFjNWE5OTUxOGI0YjM5OTgyZGNmMTFlNTc5MjE5NzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBiNDY4YWQwYWJkNWRmODYyMGJiOTRiZGZmZTg1ZjQyMTEwZWNkYThhZjc2NGE0ZDVjM2JhMDZiYWE1Zjc3M2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUyMmQ0ZjNhZmZjNDEyYTkyYjQ0Y2I0ODk3ZmRlZmQ1MDEzOWY1NWU3YmZkOTQ2N2M0ZjA1ZWZmZWE2NGY4ZWQifQ"
         },
         {
-          "resource": "repo://src/harnessed/update.py#L330-L345",
-          "version": "repo-lines-v1:sha256:5ce9c5b9d5005fae95704bb19c3d4aa04164ef4cc5abaff8aa3442f7a6dcc348:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4MzA3OTI5YzRkOGJjOWIxZTM3NzZlZDIwNzMwMzM2MmY0ZGJmMWVmODdmMTBkNTI3YmQ4YTFiNmVkMzljY2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4NGU3NjViN2FkZmZiNTViZDVjNzU4ZTE5ODQ5ZDhjYWExZWM4YzY3NTFhNGM0YjljOTUzNDNlZTEwOWNkYjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3ZjA4MDhlOTFjYzU2YTM3MGY1OTExMjlhNTRkZDEwYWUwZmY4YzU1M2QzYTEyMjMzOGMxOWVhMzUyOWI4MGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkZWM1MDBiODEwYTA1YzFhYTNkNTU2ZDc4N2MyNGEwNDkzN2E0MjQ2ODI5NjE5NTUwYTg4NmMyNTliNTFkOTAifQ"
+          "resource": "repo://src/harnessed/update.py#L373-L405",
+          "version": "repo-lines-v1:sha256:9991c5e1f3d42546d89a5ed29e13e29b1a627effa9ab845be142f33358d26998:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzNjg5ZGJhMjNmN2RjZTlmM2NhNjM4YzJlNTFjYTM1MTk5MzNlMjFiNTkxNTEwM2IzYWI1ZDAzYTI1NzQ3YTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5M2U4MTY0MTA2NzdlMDA0ZDFlMmYxYWU3ZWRkMDMyMjFkYzdmZjBhMDY2MWI4Y2I5Njg0NTMxNWMzNzlhODQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzOTM3NDRlMjEwMzBiYmVhMjBjMzI0ZWFkODdhYWNiZGUzN2E4ZGFlNTk5MDA5MzZlOTVhZmIxNWQyNzIxMDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQwZDIzY2ZmMmU0YTY1ZWE2MzFiMGIxNjRhMGM2ZTU5OTFkYWE0NjFjYjUxMzViZTNlYzk4NGUxNGZjMWJlNTkifQ"
         }
       ]
     },
@@ -687,6 +691,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-17T09:44:27.184Z"
+    "at": "2026-09-20T12:51:12.657Z"
   }
 }

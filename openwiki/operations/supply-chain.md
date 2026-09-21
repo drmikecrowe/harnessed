@@ -44,10 +44,10 @@ sources:
     resource: repo://tests/test_toollock_wiring.py
   - id: openwiki-source-854929ba43f12d27e96036d0
     resource: repo://tests/test_update_pins.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-18T12:41:13.644Z
+    at: 2026-09-20T12:51:12.657Z
 ---
 
 # Supply chain and pinning: what ships, how it is pinned, and how it is scanned
@@ -257,7 +257,13 @@ resolvable pin kind inherit a naive line-edit of a file nobody chose. All YAML r
 `width = 4096` and `indent(sequence=4, offset=2)` so a bump is a **one-line diff** (ruamel's
 defaults re-wrap 80-col scalars and re-indent every list), and `_match_v_prefix` rewrites
 `latest` to whatever `v`-prefix convention the pin itself already used — a GitHub release answers
-with its TAG, and `pulumi@3.251.0` must not become `pulumi@v3.254.0`.
+with its TAG, and `pulumi@3.251.0` must not become `pulumi@v3.254.0`. Field-valued pins are
+dispatched *first*, by `pin.key` plus the manifest name (`agent.yaml` →
+`_rewrite_agent_build_arg`, `recipe.yaml` → `_rewrite_install_ref`), before the spec-string
+allow-list runs; and the agent rewriter **validates the new value before writing it**
+(`_require_immutable_build_arg`): a resolver that answers with a channel ("nightly") is declined
+with `False` rather than persisted, because a manifest that was valid a moment ago must not fail
+at the *next* build's schema gate.
 
 When anything was written, the launcher prints the **verify-before-commit block** (bd
 harnessed-czo): the bumped recipes, the affected stacks (`update.affected_stacks` — a stack lists

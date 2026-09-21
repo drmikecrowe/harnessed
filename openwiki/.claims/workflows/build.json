@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:355240085e9dd87b4429fe5435399c6614b5558f180108f5a1b8fa45060d3bfe",
+  "pageVersion": "sha256:14ad2b109ef1bdceabc307826b65b0d093c1af4e971186a2185ba7732f2558ed",
   "claims": [
     {
       "id": "claim_252d58a4136d4bab8deb980788528260",
@@ -294,7 +294,7 @@
         },
         {
           "resource": "repo://src/harnessed/schema.py",
-          "version": "repo-file-v1:sha256:b5eae73846437cda40aefd632aa0de85cf29e79f1c699cc5c205c2623ba836c2"
+          "version": "repo-file-v1:sha256:bc04b0d80d05b9ec82139ce127a82d6f87f91fcb6b23b6918c00668cfa270870"
         }
       ]
     },
@@ -618,7 +618,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/schema.py",
-          "version": "repo-file-v1:sha256:b5eae73846437cda40aefd632aa0de85cf29e79f1c699cc5c205c2623ba836c2"
+          "version": "repo-file-v1:sha256:bc04b0d80d05b9ec82139ce127a82d6f87f91fcb6b23b6918c00668cfa270870"
         }
       ]
     },
@@ -632,7 +632,7 @@
         },
         {
           "resource": "repo://src/harnessed/schema.py",
-          "version": "repo-file-v1:sha256:b5eae73846437cda40aefd632aa0de85cf29e79f1c699cc5c205c2623ba836c2"
+          "version": "repo-file-v1:sha256:bc04b0d80d05b9ec82139ce127a82d6f87f91fcb6b23b6918c00668cfa270870"
         }
       ]
     },
@@ -684,7 +684,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:3f6efbb8fcf3709ca961bebf93cee55f3ba31f01cc2df7304ce80a9a260d0a35"
+          "version": "repo-file-v1:sha256:93c849e4122e65480af98c54d1a9a3596ab47d7900f2c1ab45631feb838eaefd"
         }
       ]
     },
@@ -726,7 +726,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/schema.py",
-          "version": "repo-file-v1:sha256:b5eae73846437cda40aefd632aa0de85cf29e79f1c699cc5c205c2623ba836c2"
+          "version": "repo-file-v1:sha256:bc04b0d80d05b9ec82139ce127a82d6f87f91fcb6b23b6918c00668cfa270870"
         }
       ]
     },
@@ -831,6 +831,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-19T12:16:02.862Z"
+    "at": "2026-09-20T12:51:12.657Z"
   }
 }
