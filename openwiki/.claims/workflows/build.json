@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:14ad2b109ef1bdceabc307826b65b0d093c1af4e971186a2185ba7732f2558ed",
+  "pageVersion": "sha256:c9f8e1f7f370b6723928e8476767bbb4e1b1832fb8c514740d27b1463ef68789",
   "claims": [
     {
       "id": "claim_252d58a4136d4bab8deb980788528260",
@@ -675,16 +675,16 @@
       "statement": "The committed hatago.config.json is project-agnostic (assemble calls emit.write_hatago_config with project_path=None), and the launcher regenerates a per-instance copy at launch (ContainerBackend.wire_mcp calls the same emitter with spec.project_path) to pin each stdio child's cwd to the mirrored project path — one emitter, two call sites, because the committed profile is built before any project is known.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/assemble.py",
-          "version": "repo-file-v1:sha256:bdbaaf7fd9c5abee69ab06b07c7ae2844a7863e6a90d8dbd68af186f2754889e"
+          "resource": "repo://src/harnessed/assemble.py#L303-L309",
+          "version": "repo-lines-v1:sha256:27fa0c0c380bfb68283e92bdf3c22f730a70c3f6a79e6fff7055e7b8671cff7b:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjQ4ZWExZTBmNTdlNDlhZWY5NDE0MDk0ODliNmNmNDE1OTc2MzEwMjg4NDY0NGYwMTM5MmQwZWNjMDRkMjY5YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzg2MjgyOGYwOTA1NDI5N2U5YzkxMTFkOGM4NDYzNGFjNjU3NmI2OWRlZDQ2ODgwZWU2ZjQ3MDRkNzBkYmIwNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGUyYTJkY2UzMzA4NDgwZTc2N2FlNGViODViM2ViMWNkYTk2ZjhlOTAxMmM2Y2I3MmVjMGI0NTVmNGQzMGU3NSJ9"
         },
         {
-          "resource": "repo://src/harnessed/emit.py",
-          "version": "repo-file-v1:sha256:340247819598a1e5d8b1297e4e645f8c206dbb5abeb7ae29b8653f1fc2c439b0"
+          "resource": "repo://src/harnessed/emit.py#L948-L960",
+          "version": "repo-lines-v1:sha256:c2e687f212f62b687e06115138a696596491bd5e77011d20be5cff19d709038a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4NTRmNmY0NzkzZjJkYjM1NDM0MzlkYjMxZTM1MjcxYTEwOTM0YjcwMzYzODlhN2RmNDBiMTZkY2IxZTFlMWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJjNjA5N2JhMmRhZGJkZDc3MTU4MmI3NGYxMjFhOWQxOTc0N2ZhNTM3MjBkNzQ1MDVhZmIwNjYwMWNmZGJjYjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc1ZTdkZGI1NjNmOTNhNGM2NGQzNDU0MWNhNjdjY2VhNTQ3NzliMzQ4M2JmOTQ0YmEwM2FlYWVmMGFlYzY2NTcifQ"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:93c849e4122e65480af98c54d1a9a3596ab47d7900f2c1ab45631feb838eaefd"
+          "resource": "repo://src/harnessed/launcher.py#L3480-L3496",
+          "version": "repo-lines-v1:sha256:50b73634a87c0a8984adbb7f815506e43867da7e91d0da26cc718c1e14527c2d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzliY2I4YzJlYmRmYTc1NmU2ZDQ5YmUyYTljYzExNjIxMzYxMzkzMjhiMjlhM2UwZDg2M2FhN2NlMGEyZGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmYTk3MDNhMWQxZDNmOGExM2E2MzkxN2I1MGI2OGE4NDcxNDAwNTczYjk0ZWQ3NDc0NzIyMTc0Yjc1MTA4ZDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ4MWMzZDUwNDc4NjVhY2U0YzI5M2E1ZDZiZTRlNzY3NDYwMTIzZTk2ZTMwYzdmMGE1MDVjZmEyZmUyMTQ2MmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI1YWY5ZTZiYTcxODYzNDQzZTk2OWZjYjM1M2E5MWM5N2FkYWI0MzljZmNmOGQxMTQ1ZDYzYjZmZTI4MTM3ZmMifQ"
         }
       ]
     },
@@ -831,6 +831,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-20T12:51:12.657Z"
+    "at": "2026-09-21T14:50:01.893Z"
   }
 }

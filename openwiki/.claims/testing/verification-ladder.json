@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:87ca868bab2dafd8b1e091746bae5f0c478fa2829dcc4ebde0b1dfa51319a368",
+  "pageVersion": "sha256:e40c7c0c0430dcdddcd9c2e56bb551275afdee6fb57854fde74581502b8b7140",
   "claims": [
     {
       "id": "claim_53d617e673d544d78bcddfca751dbff6",
@@ -152,15 +152,19 @@
     },
     {
       "id": "claim_84d2ae6f18984bf797e54e4cd5e5b58e",
-      "statement": "The pin check runs weekly (Mondays 06:00 UTC) plus dispatch, deliberately never on pull_request: it resolves live registries, so a third party's release could red an unrelated PR, and a failing scheduled run is the notification. Weekly matches the 7-day minimum release age (DEFAULT_MINIMUM_RELEASE_AGE_MINUTES = 7*1440), and the job exits non-zero only for a pin that is stale, past that age, and not held — held, cooling, and unresolvable pins are reported without failing.",
+      "statement": "The pin check runs weekly (Mondays 06:00 UTC) plus dispatch, deliberately never on pull_request: it resolves live registries, so a third party's release could red an unrelated PR, and a failing scheduled run is the notification. Weekly matches the 7-day minimum release age (DEFAULT_MINIMUM_RELEASE_AGE_MINUTES = 7*1440). Since the #469 decision it invokes `harnessed update --check --fail-on major`, so the job exits non-zero only for a pin that is stale, past that age, not held, and whose offered bump crosses a major version boundary (check_exit_code with fail_on=\"major\"); held, cooling, unresolvable, and unpinnable pins, and minor/patch drift, are reported in the output without failing.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/pin-check.yml#L1-L45",
-          "version": "repo-lines-v1:sha256:6e2af0c6ad7f74d514de1aab064f9809e4e80531aaab80b4d649dab595161fb6:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjOWUxYjBmNDFmYzY2ODY4YjRiNGM1ZDBiMDViN2NjMmNiNDU5NTA1ZGNmYTY1MTBiZjk2NTE2MjkwZWI5MWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1ZDM5NTNmNjU0NjFmOGU1NzNiNmFhZmVjNjNjNTQ5YmYyYzQyMDQ0MmExZjEyYTNiNzFjNWQ1M2M4YzRhZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://.github/workflows/pin-check.yml#L14-L51",
+          "version": "repo-lines-v1:sha256:19c610e05c433bcb0536ce3e09092a1d664eb570afc9acb205b31dbe9e99e86e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NmRjNDgxNDlmNWE4M2QxZWQ2ZGJiMzliYmM3ZTJiOTAyYWEzZDM0ZDZiZDVhZTRiMjkxYjY4ZGYwY2E3OWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlZDQ1MWZiYzMwNTkwN2EwMWU4OWQ1YTMwYjczMTk4ZGU1NjYyNGRlYjM2NDllMGUwNTk2OTQ2NWI0OWM0MzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRhY2QwZTRkMWIyZTc3MGE0NTk0ZjZhYThmM2FiYmE5MzJlOTFkMTAxYjg2OWE3ZDE5ZjRhYjQwZDBhMTA5OTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
-          "resource": "repo://src/harnessed/update.py#L77-L77",
-          "version": "repo-lines-v1:sha256:5f40d5359d72f5062ac06a37a408d36f5524b52d25902b879d8b361f08646ea5:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWY0MGQ1MzU5ZDcyZjUwNjJhYzA2YTM3YTQwOGQzNmY1NTI0YjUyZDI1OTAyYjg3OWQ4YjM2MWYwODY0NmVhNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWY0MGQ1MzU5ZDcyZjUwNjJhYzA2YTM3YTQwOGQzNmY1NTI0YjUyZDI1OTAyYjg3OWQ4YjM2MWYwODY0NmVhNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjNlNWQzZWFhZTU1ZjVlMmY3MWJiNTViNWMyMTlkNGZhY2ExMWY2MWM1MzVmODYyMzA1Zjc2ZjAyYjlkZGI2MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjU0OWU5NjgzY2JlYjZiNzI1NWFjOTdhNWI4YzQ0NDQ3YWIxZWI5MTJhZDU0MTFiODk2Y2NmMjQyZDEzM2RlZSJ9"
+          "resource": "repo://src/harnessed/update.py#L277-L295",
+          "version": "repo-lines-v1:sha256:5dbfada280a224e042b50fcd5000c3ecaad7bc6f129ae0a17fbef4ecf5513b5d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2NDkwMzMyOWE0NDRhMGNmZGVkYWJkZWY3ZTM2YWVhZjcxN2Q1ODZjN2E1ODhkNjc5MDYxNTFkZjMzODU4MmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiMTdmOTM3NzM1NzE5MDQwZDU1NGIxMTBhZWVkMjU4MzNkNTc3M2YwZDQ5M2FmNTFmZDg1YmE0ZTM2ZjFiODAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJjMGJiNDZiZTIxMTY2MzI2N2U0ODNhNmVhNDExNjQwNWNkZDVlNDQ3YmU0N2FmNWM5ZmM4NzIwZWJjNzMxYmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxOTRiM2JlODYyMWMwM2VkZDk1N2ZkY2YyNDllMmY3NjM3ZTdjYzM1OTJkNTFjOTVkZTk0MDg0YTU4NDRkY2QifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L79-L87",
+          "version": "repo-lines-v1:sha256:f3c6e5ac3ae08e37fb31c726dc0204a6daa641f6bd83935b2ddd6f589a774f77:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzJmNjlkYTJhOGM2MjBmYzE0YzBjZjM0M2Q1ZmNmNWMyYWVhZDgyMGIwZjI4ZWEwZWVmNjRiY2Y5NTkwYjRjNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWY0MGQ1MzU5ZDcyZjUwNjJhYzA2YTM3YTQwOGQzNmY1NTI0YjUyZDI1OTAyYjg3OWQ4YjM2MWYwODY0NmVhNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmZkOTdiZDhjODQxYWI4MTkxZTVkZDJmOTQ4ZDMzMjRiOTI0Nzg2NTNmYWY5NDVjMDU0N2E5MDdhNDg1NzQ2MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjU0OWU5NjgzY2JlYjZiNzI1NWFjOTdhNWI4YzQ0NDQ3YWIxZWI5MTJhZDU0MTFiODk2Y2NmMjQyZDEzM2RlZSJ9"
         }
       ]
     },
@@ -527,6 +531,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-20T12:51:12.657Z"
+    "at": "2026-09-21T14:50:01.893Z"
   }
 }

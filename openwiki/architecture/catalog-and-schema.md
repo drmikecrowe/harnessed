@@ -48,10 +48,10 @@ sources:
     resource: repo://tests/test_recipe_uniformity.py
   - id: openwiki-source-a488585d132d26b93d838e43
     resource: repo://tests/test_tools_field_parity.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-17T09:44:27.184Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-21T14:50:01.893Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
+    at: 2026-09-21T14:50:01.893Z
 ---
 
 # Catalog: schema, roots, resolution, and packaging
@@ -330,6 +330,21 @@ Where the rule applies:
   resolves with `root=None` deliberately (the agent image is always built across every root) and
   **fails closed** on a Dockerfile it cannot read — a gate that returns silently for an input it
   could not examine is indistinguishable from one that examined it and approved.
+- **Agent `build_args` values** — `_require_immutable_build_arg`, called for every entry of
+  `build_args:` whether it is a bare scalar or a `{value:, spec:, hold:}` mapping. This is the only
+  place a build_arg's VALUE is ever seen: `validate_agent_pin` reads Dockerfile *text*, where the
+  line is `bun@${NAME}` — a shell variable that reads as pinned precisely because the pin is
+  supposed to live here, so `--build-arg NAME=latest` would otherwise sail through everything
+  downstream. The rule is stated positively (the shared `_IMMUTABLE_REF_RE` grammar — a version-like
+  tag or a full 40-hex SHA; unrecognised shapes fail closed, because a deny-list was tried and
+  defeated by `--branch feat/…`, bd harnessed-1t4.6). `hold:` and `spec:` do **not** excuse a
+  floating value — a hold freezes a pin and a spec explains where it resolves from, neither creates
+  one — and `unpinnable:` per key is rejected, pointing at the top-level `unpinnable:` mapping (an
+  unpinned entry has no version and must never reach `--build-arg`). A bare YAML null/bool/empty
+  scalar is rejected too: `str(None)` is the literal `"None"` and would have shipped as
+  `--build-arg OMP_VERSION=None`. The `_MAX_PIN_LENGTH = 128` cap runs **before** the regex and is
+  shared with `install.refs[].ref` — both surfaces reach the same pattern, and a cap on one of two
+  callers of a quadratic-backtracking regex is not a cap.
 
 `harnessed update --check` (weekly cron in `.github/workflows/pin-check.yml`) sweeps every recipe
 and agent manifest across the active catalog roots for pins with a newer upstream release past the

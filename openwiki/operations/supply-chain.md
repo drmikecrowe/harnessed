@@ -1,15 +1,19 @@
 ---
 type: mechanism
 title: "Supply chain and pinning: what ships, how it is pinned, and how it is scanned"
-description: "The pinning surfaces (recipe tools:, extra-tools pins, image-layer pins, per-recipe mise.lock checksums merged by toollock at launch), the `harnessed update` staleness sweep with its minimum-release-age gate, per-shape bump rewriters and verify-before-commit output, the scheduled `--check`, and the scan layer itself: osv-scanner + pip-audit with a pure-Python severity gate at CVSS >= HIGH (7.0), the credentialed advisory in-image pass, and the online rescan path behind the SEC-04 nightly systemd timer."
+description: "The pinning surfaces (recipe tools:, extra-tools pins, image-layer pins, per-recipe mise.lock checksums merged by toollock at launch), the `harnessed update` staleness sweep with its minimum-release-age gate, per-shape bump rewriters and verify-before-commit output, the scheduled `--check` (weekly, failing only on major bumps under --fail-on major), and the scan layer itself: osv-scanner + pip-audit with a pure-Python severity gate at CVSS >= HIGH (7.0), the credentialed advisory in-image pass, and the online rescan path behind the SEC-04 nightly systemd timer."
 tags: [supply-chain, pinning, skills-pins, extra-tools, mise-lock, toollock, harnessed-update, stale-pins, security-scan, osv-scanner, pip-audit, cvss-gate, harnessed-scan, rescan, nightly-scan, systemd-timer, coverage-accounting]
 sources:
+  - id: openwiki-source-4e2e2b93eeb15847052a26fb
+    resource: repo://.github/workflows/pin-check.yml
   - id: openwiki-source-e916c387e9195be48f6d9d41
     resource: repo://catalog/base/Dockerfile.harnessed-base
   - id: openwiki-source-18cedd09b868a0074380c4cd
     resource: repo://catalog/base/extra-tools.default.txt
   - id: openwiki-source-c799522f988c7842c7395388
     resource: repo://catalog/base/harnessed-scan
+  - id: openwiki-source-06a464059c15ec52985417e2
+    resource: repo://catalog/recipes/tokensave/mise.lock
   - id: openwiki-source-0852603a38d760a77db2bc8a
     resource: repo://src/harnessed/cli.py
   - id: openwiki-source-eea4d18f75a13f889234865d
@@ -44,10 +48,10 @@ sources:
     resource: repo://tests/test_toollock_wiring.py
   - id: openwiki-source-854929ba43f12d27e96036d0
     resource: repo://tests/test_update_pins.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-21T14:50:01.893Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
+    at: 2026-09-21T14:50:01.893Z
 ---
 
 # Supply chain and pinning: what ships, how it is pinned, and how it is scanned
@@ -121,7 +125,7 @@ wrong, so the gate now proves "dua is still listed and still carries a version".
 A stack's tool set is the **union** of its recipes' `tools:`, composed at launch — but the
 checksums are authored per **recipe**, as a `mise.lock` beside `recipe.yaml`
 (e.g. `catalog/recipes/tokensave/mise.lock`: version, per-platform `sha256`, and download URL for
-`github:aovestdipaperino/tokensave@7.11.1`). `src/harnessed/toollock.py` merges the lockfiles of
+`github:aovestdipaperino/tokensave@7.12.1`). `src/harnessed/toollock.py` merges the lockfiles of
 the recipes a stack actually uses. Four facts were measured against a real mise before any of this
 was written (module docstring), because each would otherwise have produced a mechanism that
 verifies nothing:
@@ -217,16 +221,32 @@ whose only newer candidates are all too fresh lands in a separate **`cooling`** 
 `apply` refuses cooling pins even if a caller passes the wrong bucket, so the cooldown cannot be
 raced.
 
-`--check` is the CI mode: it exits non-zero on a stale pin (extra-tools pins included) and
-**writes nothing** — building a report must leave the catalog byte-identical. Unresolved pins
+`--check` is the CI mode: it writes nothing and exits non-zero only for a pin that is stale AND
+resolvable AND unheld AND past the cooldown (extra-tools pins included) — building a report must
+leave the catalog byte-identical. Unresolved pins
 alone do not fail the check, because every recipe with a Dockerfile literal has one; failing on
 them would make CI permanently red and teach everyone to ignore it. The workflow placement
 (`.github/workflows/pin-check.yml`, guarded by `tests/test_ci_pin_check_workflow.py`) is itself a
 design decision: `harnessed update --check` resolves **live registries**, so its result depends on
 what third parties published today — wired to `pull_request` it would fail an unrelated
 contributor's branch unfixably by the author. It therefore runs on `schedule` and
-`workflow_dispatch` only, never on a diff; the hermetic test suite, whose result depends only on
-the diff, still gates PRs.
+`workflow_dispatch` only, never on a diff (the tests assert that adding `pull_request:`/`push`
+breaks a test, not a contributor's PR); the hermetic test suite, whose result depends only on
+the diff, still gates PRs. Three further facts about the scheduled run:
+
+- It is **weekly** (Mondays 06:00 UTC, `0 6 * * 1`), not daily: the gate already refuses anything
+  published in the last 7 days, so a daily run would re-report the same pins six times before any
+  of them is offerable.
+- It invokes `harnessed update --check --fail-on major` (#469): the scheduled check fails **only
+  when a stale pin's offered bump crosses a major version boundary** (`Report.check_exit_code`
+  with `fail_on="major"`, `update.is_major_bump`) — a weekly check failing on ANY drift made red
+  its normal state (eight consecutive red weeks carried no signal). Minor and patch drift is
+  still listed in the run's output and bumped on the roadmap's wave cadence; `"any"` remains the
+  default for the interactive caller and the existing tests.
+- The runner installs **mise** before the check, because bare `tools:` entries with no backend
+  prefix (currently `pulumi`) resolve through `mise registry` to the dated GitHub releases of the
+  aqua/ubi/github repo backing them — without mise those pins degrade to `unresolved`, reported
+  but unchecked, quietly shrinking what the sweep covers.
 
 On accept, `apply` rewrites the pin **in place**: recipe YAML goes through a ruamel round-trip
 that preserves comments and reflows nothing (a bump must produce a one-line diff), extra-tools
@@ -625,7 +645,3 @@ Each rung is bigger than the one below it, with a different reason:
 - `/openwiki/concepts/invariants.md` — the invariant catalog entry for the coverage ledger, and the
   catalog's other supply-chain surfaces (pin freshness via `harnessed update`, per-recipe
   `mise.lock` checksums via `toollock.py`).
-s via `toollock.py`).
-via `harnessed update`, per-recipe
-  `mise.lock` checksums via `toollock.py`).
-s via `toollock.py`).

@@ -10,8 +10,6 @@ sources:
     resource: repo://src/harnessed/broker.py
   - id: openwiki-source-0f0f277c40d34909acb07908
     resource: repo://src/harnessed/capability.py
-  - id: openwiki-source-bfccb812c84b1bb2eeabf062
-    resource: repo://src/harnessed/catalogseed.py
   - id: openwiki-source-0852603a38d760a77db2bc8a
     resource: repo://src/harnessed/cli.py
   - id: openwiki-source-3d73552d55725e6e392c06df
@@ -40,10 +38,12 @@ sources:
     resource: repo://systemd/harnessed-rescan.service
   - id: openwiki-source-7af162bd104477b196c3dcdd
     resource: repo://systemd/harnessed-rescan.timer
-generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
+  - id: openwiki-source-42c2d17b3e89eec55f2e4419
+    resource: repo://tests/test_update_cli.py
+generated: { by: "openwiki/0.5.1", at: "2026-09-21T14:50:01.893Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
+    at: 2026-09-21T14:50:01.893Z
 ---
 
 # Operations: the command surface and lifecycle verbs
@@ -69,6 +69,7 @@ Each verb with its owning module and the lifecycle it manages. Function names ar
 | Command | Owner | Lifecycle |
 | --- | --- | --- |
 | `harnessed container-run` / `host-run` | `launcher.container_run` / `launcher.host_run` → `ContainerBackend` / `HostBackend` | **Launch** — covered by the container-run and host-run pages |
+| `harnessed container-exec` / `host-exec` | the **same** `container_run` / `host_run` bodies, registered a second time (#450) | **Non-interactive launch** — scripts and pipes, see below |
 | `harnessed build [<stack> [<harness>]]` | `launcher.build` → `_build_stack`, `_build_images_cmd`, `_reconcile_stacks` | **Build** — profile + images + volumes; reconciliation sweep |
 | `harnessed list` | `launcher.list_stacks` | **Inspect** — authored stacks + instances (running and stopped) + live secret brokers |
 | `harnessed stop <stack>` / `rm <stack>` | `launcher.stop` / `launcher.remove` | **Instance teardown** — pods/containers only |
@@ -143,6 +144,37 @@ harnessed container-run <harness> [path] --recipe r1 --recipe r2
   which is what lets `harnessed list`, the staleness check and both GCs treat it like any other
   stack; an identical recipe set in another repo resolves to the same stack and shares its image
   and volumes — that is what collapses proliferation rather than relocating it.
+
+### The `-exec` aliases (#450): the same body, nobody at the keyboard
+
+`host-exec` and `container-exec` are **the same function under a second name, never a wrapper
+that forwards arguments** — `host_run` and `container_run` carry twenty-odd options between them,
+and a second signature is a second place for one to be added. Both registrations pass the body
+straight through (`app.command("container-exec", help=_EXEC_HELP…)(container_run)`), and Typer
+building one click command per registration is what makes the trick work: each body reads
+`ctx.info_name` to tell which verb the operator typed, and `set_exec_mode(exec_mode)` publishes
+that answer module-wide (`console.in_exec_mode`), so `_can_prompt` reports **no** even when an
+`-exec` launch owns a real TTY — nothing downstream may block on a question.
+
+What an exec launch changes: output streams to the caller's terminal, the **exit code is the
+agent's** (so it pipes and it scripts), a pending `setup:` notice, a stale profile and an
+older-build instance all take the branch a piped launch already takes and are *reported*, not
+asked about. Backgrounding is the caller's job (`&`, `nohup`, or an existing supervisor). Two
+deliberate details in the help text (written once as `_EXEC_HELP` and formatted per backend, so
+the two verbs' help cannot drift): `<path>` is written with angle brackets rather than `[path]`
+because rich parses a bracketed word as a style tag and drops it silently, and
+`container-exec --shell` is **rejected outright** (`--shell is interactive`) — it starts no
+harness, and `-i` with no pty would hand a shell nothing could drive; also no pty is allocated
+for the agent, so its output is plain text rather than a fullscreen redraw. Args after a
+standalone `--` still reach the harness's own headless flag, which is the whole point:
+`harnessed container-exec <harness> <path> -- -p "summarize the diff"`.
+
+**Help text that changed in the current update window** (the launcher's `build` / `container-exec`
+region): `build --force` now says explicitly that it forces base/claude images plus (on a bare
+`build`) every declared/previously-built container stack, bypasses the podman layer cache
+(implies `--no-cache`); `--no-cache` and `--jobs` gained their own help strings, `--jobs`
+documenting the per-build coloured stack(harness) tag and `-j1`; and the `-exec` verbs' help was
+consolidated into the shared `_EXEC_HELP` template above.
 
 ### The minted-manifest cleanup rule
 
@@ -450,11 +482,21 @@ backend (npm / PyPI / GitHub releases / mise), and offers bumps. The design's in
   that mutated the tree it was validating would be a trap. Its exit code comes from
   `check_exit_code`: **non-zero only for a stale, unheld, resolvable, past-cooldown pin** —
   unresolved pins do not fail (every recipe with a Dockerfile has one; a permanently red check is
-  one nobody reads), and cooling/unpinnable pins fail nobody's fault.
+  one nobody reads), and cooling/unpinnable pins fail nobody's fault. `--fail-on any|major`
+  (#469) narrows what fails: `major` makes `--check` fail only when an offered bump crosses the
+  leading numeric component — a weekly scheduled check that fails on *any* drift makes red its
+  normal state, so minor/patch drift is reported in the output and bumped on the roadmap's
+  cadence while a major (the class that breaks a harness on upstream's schedule, not ours) still
+  gates. `any` stays the default so the interactive caller and every existing test keep today's
+  behaviour.
 - **The release-age cooldown** (`--minimum-release-age`, default 10080 minutes = 7 days, pnpm's
   `minimumReleaseAge` semantics and unit): a compromised or broken publish is usually yanked
   within days. A too-fresh newest release does not mean "no update" — the newest version that *is*
   old enough is offered instead, and the skipped newer one is named.
+- **Interactive mode prompts per pin** (`Bump <recipe> <spec>: <current> -> <latest>?`, default
+  yes); `--yes/-y` accepts every offered bump without prompting — but even `--yes` cannot write
+  a cooling pin: `apply` refuses those outright, so a caller that hands it the wrong bucket
+  still cannot install a too-fresh version. Held pins are never prompted for at all.
 - **`apply` is an allow-list of per-file rewriters**, not an else-branch to a text rewriter: YAML
   round-trippers for recipe/agent manifests, a plain-text rewriter for the extra-tools list, and
   **an unrecognized file is skipped** rather than naively line-edited — the fail-closed posture

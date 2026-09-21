@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d6f69b9452255910bb10de2f8565f850e8c134da8b4789648003262e118e68b1",
+  "pageVersion": "sha256:bbc40f698aa540f473e6438f375d5d748f2b1fa76122f16e9f5c68794b207a70",
   "claims": [
     {
       "id": "claim_3ca3ab952a3b430ab7661735d2c1498d",
@@ -402,7 +402,7 @@
     },
     {
       "id": "claim_66aa9b711dd14fb1a8690388cdff4712",
-      "statement": "Each harness's agent image is defined by a manifest catalog/agents/<harness>/agent.yaml, parsed by schema.load_agent into an Agent: `harness` and `image` are required; an unset `dockerfile` defaults to catalog/base/Dockerfile.harnessed-<harness> at the consuming build/lint sites (assemble.validate_agent_image and launcher._build_agent_image), not in load_agent itself; `build_args` entries (scalar or mapping) are flattened to NAME->value strings, with a mapping lacking `value`, a null/bool scalar, or a reason-less `hold` all SchemaErrors; and `unpinnable:` (NAME -> reason, same ARG-name namespace as build_args) records conceded non-pins — a key declared in both is an error, and unpinnable entries never reach --build-arg.",
+      "statement": "Each harness's agent image is defined by a manifest catalog/agents/<harness>/agent.yaml, parsed by schema.load_agent into an Agent: `harness` and `image` are required; an unset `dockerfile` defaults to catalog/base/Dockerfile.harnessed-<harness> at the consuming build/lint sites (assemble.validate_agent_image and launcher._build_agent_image), not in load_agent itself; `build_args` entries (scalar or mapping) are flattened to NAME->value strings, with a mapping lacking `value`, a null/bool/empty scalar, or a reason-less `hold` all SchemaErrors; and `unpinnable:` (NAME -> reason, same ARG-name namespace as build_args) records conceded non-pins — a key declared in both is an error, and unpinnable entries never reach --build-arg.",
       "evidence": [
         {
           "resource": "repo://catalog/agents/antigravity/agent.yaml#L9-L14",
@@ -410,7 +410,7 @@
         },
         {
           "resource": "repo://catalog/agents/codex/agent.yaml#L19-L20",
-          "version": "repo-lines-v1:sha256:e23c779be8d734b9456d85edd8da5f376fea294ec015c2746ab7f9ae5888e990:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTIzNjJlMDBkZDliNTQ5YjQwYjE3MTY1ZThhZGJmOTIyMjEwM2FiMDBhODNjYWQyYzE4YWY2OTgwMjFjNDEyNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGRlZjJhZjZiNTYyYjE2NzczZjcwN2Y5NzVjY2ViMjcwYjI3ZjExZjM5YTZlMGY0ZWI1NTVhNzE5ZmViMDM1NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDY0MDMzZmE5OTgyZGM1ZmM5YTc5ZDA2NjQwOWVjZTY4NzYwOTRmYTUyM2EyN2EzNTEzODRkMTZiNWI2NGY2MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2E3MmQ1YjJlNDFkMTEwOTk0N2I4NjBhMDBjZGQ4YzA3N2JjZmMzY2VkYzZkMWQzNDE0MDljZGY4MmJhZjU4MSJ9"
+          "version": "repo-lines-v1:sha256:f4797b5f0c482b06776b7a7954fe81fb257dc7a7a2e09477b134b731df40fe23:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTIzNjJlMDBkZDliNTQ5YjQwYjE3MTY1ZThhZGJmOTIyMjEwM2FiMDBhODNjYWQyYzE4YWY2OTgwMjFjNDEyNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjJmZTVjYjBlNTU4ODFmMDZlYTMzNjZkYzE3NGE5NDBhNzg2ZGMxMzVhNzFhNTljOWVkNjNmODk3NDhkMDMxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDY0MDMzZmE5OTgyZGM1ZmM5YTc5ZDA2NjQwOWVjZTY4NzYwOTRmYTUyM2EyN2EzNTEzODRkMTZiNWI2NGY2MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2E3MmQ1YjJlNDFkMTEwOTk0N2I4NjBhMDBjZGQ4YzA3N2JjZmMzY2VkYzZkMWQzNDE0MDljZGY4MmJhZjU4MSJ9"
         },
         {
           "resource": "repo://src/harnessed/assemble.py#L189-L203",
@@ -465,6 +465,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-20T12:51:12.657Z"
+    "at": "2026-09-21T14:50:01.893Z"
   }
 }
