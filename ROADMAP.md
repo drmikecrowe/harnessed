@@ -6,33 +6,26 @@ Every item links to the issue that carries the detail. Nothing here is a dated c
 harnessed is alpha. The near-term bar is "the container path is trustworthy end to end"; the
 longer-term bar is "where a stack runs is a choice, not a constraint".
 
-## Where we are — 2026-09-09
+## Where we are — 2026-09-21
 
-Two threads are in flight at once, and they intersect. This section says what is actually true
-today so the themes below read as future work rather than as a description of the product.
+**Green, but hollow:** the hermetic layer (`lint`, `tests`, 3,541+ passing) and, nominally, the
+live layer. The live green is not evidence: commit `db0c2d2` deselected the four
+`TestVarlockProxyRulesOutput` tests by name, so no run since 2026-09-09 has exercised the
+contract they pin. [#462] was reopened on exactly that evidence — the fix is the parser in
+`launchenv.py`, then deleting the four `--deselect` lines from `live.yml`.
 
-**Green:** the hermetic layer. `lint` and `tests` pass on every push to main; the latest run is
-3,541 passed.
-
-**Red, and has been for a while:**
-
-- The **live layer** (real podman) has failed every run since 2026-08-28. Four tests, all in
-  `TestVarlockProxyRulesOutput` — `varlock proxy rules` output no longer parses. The other ~3,584
-  live tests pass, so this is one drifted contract, not a broken layer — [#462]
-- **pin check** has failed every weekly run since at least 2026-07-27: 20 outdated pins, three of
-  them majors. `mise run upgrade-pr` is the vehicle. Seven weeks of red is also its own problem —
-  the check fails by design when drift exists, so failure is its steady state and carries no
-  signal — [#469]
+**Red, eight weeks running:** pin check — 20 outdated pins, three majors, latest failure
+2026-09-14. `mise run upgrade-pr` is the vehicle, and whether a check whose normal state is
+failure is the right signal is part of the decision — [#469].
 
 **Half-landed:** host-anchored secrets over `varlock proxy` [#388]. The broker lifecycle, the
 loopback door and `--no-secrets` shipped in Phase 1. The behaviour change did not — the launcher
-still resolves real values into the container env at launch. Both halves are needed before the
-security property is real, and only the first is in.
+still resolves real values into the container env at launch. The chain is [#438], then [#468],
+then [#439], with [#440] and [#441] unblocked and parallel.
 
-**In flight:** docker as a first-class runtime. The userns handling was written as if podman were
-the only runtime; the first three fixes landed on 2026-09-09 — [#456], [#457], [#458]. What remains
-is the last creation and detection sites [#459], and saying in `BACKENDS.md` and `capmatrix` what
-docker honors and what it does not, so "supported" is data rather than a claim — [#466].
+**Landed since the last snapshot:** the docker userns code work — [#456], [#457], [#458] and
+[#459] are all closed. What remains of [#466] is documentation and the capability matrix. The
+test-intent audit landed as epic [#503]: 76 findings, to be worked in batches.
 
 **Known gap, now tracked:** the varlock secrets broker does not exist on docker. Its door is a
 pasta option on `pod create`, and docker has no pods, so a docker launch starts no broker and falls
@@ -40,18 +33,75 @@ back to real values in env. Today that is a note printed at launch and nothing e
 asserts it. Once the secrets behaviour change lands, podman gains the property and docker silently
 does not — [#468], which blocks [#439] for that reason.
 
-### The order that follows from that
+### How we bring the backlog down
 
-1. Fix the live layer's four red tests, so the runtime layer can gate anything at all — [#462]
-2. Keep the change that makes live a per-PR check separate from the runtime fixes: turning a red
-   job into a required check blocks every PR — [#467]
-3. Finish docker parity: the remaining creation and detection sites, then record what docker
-   honors — [#459], [#466]
-4. Decide and test what a docker launch does about secrets, before the behaviour change makes the
-   gap load-bearing — [#468]
-5. Then retire real-value env seeding — [#438], [#439]
-6. In parallel, and unblocked: classify every schema item, and grow the secrets report — [#441],
-   [#440]
+This is the one section that is a task list. It is rewritten as waves land.
+
+Work runs in waves of parallel lanes. A **lane** is a file-ownership contract: one agent, one
+worktree, one issue, a named set of files nobody else touches. Cross-lane findings are filed,
+never fixed in-lane. `launcher.py` is the one serializing constraint, and no wave-1 lane holds it.
+
+**Wave 1 — eight disjoint lanes:**
+
+| Lane | Owns | Issue |
+|---|---|---|
+| live contract | `launchenv.py`, `live.yml` | [#462] |
+| pin supply chain | `pin-check.yml`, catalog lockfiles | [#469] |
+| broker cert mount | `mounts.py` | [#438] |
+| secrets report | `aoe.py` | [#440] |
+| @proxy classification | `catalog/**/recipe.yaml` | [#441] |
+| backend truth | `BACKENDS.md`, capmatrix rows | [#466] |
+| audit batch 1 | `tests/` only | [#503] |
+| audit batch 2 | `tests/` only | [#503] |
+
+**Wave 2 — unblocked by wave-1 merges:** [#467] (required check; needs a live layer that can
+fail), [#468] (docker secrets decision; needs [#438]'s landed shape), [#439] (the behaviour
+change that makes "zero secrets in the initial container environment" true; needs [#462]'s
+contract, [#438], and [#468]), [#460] (unblocks the [#485] battery), [#390], and audit batches
+3-4. Wave-2 stories are drafted and gated during wave-1 review windows, so review latency
+absorbs the prep instead of idling the lanes.
+
+**Wave 3:** the [#454] split, after every launcher-touching fix has landed — pure-move commits,
+taken so the split starts from a stable shape. Then the [#485] credentialed battery.
+
+### The process a lane runs
+
+Every lane works the spec-evidence process in its own worktree, with two human review gates per
+wave, batched into one sitting each:
+
+1. **Story** pulled from the issue's own words into `docs/spec-evidence/<date>-GH-<n>/`.
+2. **Gate 1**: the story-readiness judge grades it, and `gate_story.py` computes the verdict
+   from the record. Two rounds, then it names the human.
+3. **Review gate A**: approve, revise, or drop each story. A story the gate marks not-ready
+   comes back with its named gap for the author to fill.
+4. **SPEC** approved and committed, then the old-coder loop: RED → GREEN → gauntlet → EVIDENCE,
+   with intent review from Tier 2 and adversary review at Tier 3.
+5. **Review gate B**: the EVIDENCE reports.
+6. PRs open in roadmap order and merge serially, [#462] first. The loop never pushes; opening
+   the PR is the integrator's act, after review gate B.
+
+The gauntlet scales by tier so the process stays proportionate. **Tier 3** — parsers and
+secrets: [#462], [#438], and wave-2's [#468], [#439] — adds a failure model, mutation,
+hostile-input, and adversary review. **Tier 2** — [#469], [#440], [#460], the [#503] batches —
+runs the full loop. **Tier 1** — [#466] docs, [#441] catalog content — keeps story and SPEC with
+a content-grade gauntlet. The [#503] batches are `tests/`-only by contract: their evidence is
+the test diff that replaces a source-text assertion with a behaviour assertion, and production
+bugs found on the way are filed on the epic, never fixed in-batch.
+
+Repo-specific wiring, codified because it bites:
+
+- Two artifact roots coexist. Stories pulled from now on live in
+  `docs/spec-evidence/<date>-GH-<n>/`. The thirteen `.old-coder/<timestamp>-<slug>/` task
+  directories from the old-coder era stay where they are as history — they are never renamed
+  into the new root. The two unite only when upstream issue 31 lets one date format serve both.
+- `spec-evidence.toml` is untracked, so a fresh worktree lacks it — and its absence makes the
+  Gate 1 judge handler deny every read. Each worktree gets a copy before Gate 1 runs.
+- `docs/` is the gitignored wiki clone, so story artifacts do not travel with PRs. After each
+  merge, the story directory is consolidated into `main/docs/spec-evidence/`. Closed stories
+  stay, and are never renamed.
+- Gate 2, `layout_check` and the findings gates are not wired in this repo yet (upstream issue
+  31), and the tracker adapter is a no-op. EVIDENCE is therefore human-reviewed at gate B, and
+  gate outcomes surface in the story directory, not on GitHub.
 
 ## Both runtimes, or say so
 
@@ -63,9 +113,10 @@ a fact, and until recently no PR check ran a container runtime at all.
 - [x] Map the invoking user correctly on a runtime with no `keep-id`, so a container does not
       write as somebody else — [#457]
 - [x] Give the agent a network namespace that exists on a runtime with no pods — [#458]
-- [ ] Close the remaining creation and detection sites that still miss the mapping, and put an
-      enumeration test on the class so the next one fails the suite instead of a launch — [#459],
-      [#466]
+- [x] Close the creation and detection sites that missed the mapping — [#456], [#457],
+      [#458], [#459]
+- [ ] Put an enumeration test on the runtime-flag class, so the next site that misses the
+      mapping fails the suite instead of a launch — [#466]
 - [ ] Say what docker honors and what it does not, in `BACKENDS.md` and `capmatrix`. Three fixes
       in one day were all found by running a container, not by reading the docs — [#466]
 - [ ] Decide what a docker launch does about the secrets broker, and put a test on the
@@ -144,11 +195,12 @@ to hold on the host path too, and the rules a stack declares have to actually bi
 
 ## Prove it, don't assert it
 
-The live layer now runs on push and nightly, which was the goal — and it has been red since the
-day after it started. A check nobody can merge against verifies as much as the skip it replaced,
-so getting it green outranks extending it.
+The live layer now runs on push and nightly, which was the goal — and its recent green is
+hollow: the four contract tests are deselected by name, so no run can fail. A check that cannot
+fail verifies as much as the skip it replaced, so making it honestly green outranks extending it.
 
-- [ ] Get the live layer green, then keep it that way — [#462]
+- [ ] Fix the drifted `varlock proxy rules` contract, re-include the four deselected tests,
+      and keep the live layer green — [#462]
 - [ ] Make both runtimes gate a PR, once there is a green job to gate with — [#467]
 - [ ] Cover the untested seams: service lifecycle, proxy CA injection, update-registry
       contracts — [#392], [#397], [#396]
@@ -170,7 +222,7 @@ so getting it green outranks extending it.
 Not damage, and not urgent — but it is where the work above has to happen, so it sets the price of
 everything else.
 
-- [ ] Split `launcher.py`: 5,500 lines holding a facade, both execution backends, and the whole
+- [ ] Split `launcher.py`: 5,682 lines holding a facade, both execution backends, and the whole
       CLI surface — [#454]
 
 ## Docs that match the product
@@ -225,6 +277,7 @@ rather than as epics. See the [full issue list] for everything open.
 [#349]: https://github.com/drmikecrowe/harnessed/issues/349
 [#350]: https://github.com/drmikecrowe/harnessed/issues/350
 [#388]: https://github.com/drmikecrowe/harnessed/issues/388
+[#390]: https://github.com/drmikecrowe/harnessed/issues/390
 [#392]: https://github.com/drmikecrowe/harnessed/issues/392
 [#396]: https://github.com/drmikecrowe/harnessed/issues/396
 [#397]: https://github.com/drmikecrowe/harnessed/issues/397
@@ -244,3 +297,5 @@ rather than as epics. See the [full issue list] for everything open.
 [#467]: https://github.com/drmikecrowe/harnessed/issues/467
 [#468]: https://github.com/drmikecrowe/harnessed/issues/468
 [#469]: https://github.com/drmikecrowe/harnessed/issues/469
+[#485]: https://github.com/drmikecrowe/harnessed/issues/485
+[#503]: https://github.com/drmikecrowe/harnessed/issues/503
