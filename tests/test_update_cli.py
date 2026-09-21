@@ -121,7 +121,10 @@ class TestCheckMode:
         monkeypatch.setattr(update, "resolve_releases", lambda backend, name, **kw: _table({"x": "2.0.0", "y": "9.9.9"}, name))
         result = runner.invoke(launcher.app, ["update", "--check", "--fail-on", "major"])
         assert result.exit_code != 0
-        assert "1 outdated pin(s)" in _plain(result.output)
+        assert "1 failing outdated pin(s)" in _plain(result.output), (
+            "under --fail-on major the count names the FAILING pins — the report above may "
+            "list more stale ones"
+        )
 
     def test_fail_on_rejects_an_unknown_value(self, catalog):
         assert runner.invoke(launcher.app, ["update", "--check", "--fail-on", "bogus"]).exit_code != 0

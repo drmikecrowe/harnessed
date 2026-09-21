@@ -4677,6 +4677,9 @@ def update_pins(
     that does not mean "no update" — the newest version that IS old enough is offered instead, and
     the newer one it passed over is named.
     """
+    if fail_on not in ("any", "major"):
+        raise typer.BadParameter("--fail-on must be 'any' or 'major'")
+
     from . import update as pinupdate
 
     dirs = _update_recipe_dirs()
@@ -4707,14 +4710,12 @@ def update_pins(
     )
     _print_update_report(report)
 
-    if fail_on not in ("any", "major"):
-        raise typer.BadParameter("--fail-on must be 'any' or 'major'")
-
     if check:
         failing = [f for f in report.stale if fail_on == "any" or f.major]
         if failing:
+            label = "outdated" if fail_on == "any" else "failing outdated"
             _err.print(
-                f"[bold red]error:[/bold red] {len(failing)} outdated pin(s) — "
+                f"[bold red]error:[/bold red] {len(failing)} {label} pin(s) — "
                 "run `harnessed update` to bump them"
             )
         raise typer.Exit(report.check_exit_code(fail_on))
