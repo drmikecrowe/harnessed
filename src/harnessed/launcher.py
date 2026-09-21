@@ -4659,6 +4659,11 @@ def update_pins(
         help="Minutes a release must have existed before it is offered (default 10080 = 7 days, "
              "pnpm's `minimumReleaseAge` unit). 0 disables the gate.",
     ),
+    fail_on: str = typer.Option(
+        "any", "--fail-on",
+        help="What `--check` fails on: `any` outdated pin (default), or only bumps that cross a "
+             "major version boundary — drift short of a major is still reported, just not fatal.",
+    ),
 ) -> None:
     """Find outdated pins across the catalog and offer to bump them.
 
@@ -4702,13 +4707,17 @@ def update_pins(
     )
     _print_update_report(report)
 
+    if fail_on not in ("any", "major"):
+        raise typer.BadParameter("--fail-on must be 'any' or 'major'")
+
     if check:
-        if report.stale:
+        failing = [f for f in report.stale if fail_on == "any" or f.major]
+        if failing:
             _err.print(
-                f"[bold red]error:[/bold red] {len(report.stale)} outdated pin(s) — "
+                f"[bold red]error:[/bold red] {len(failing)} outdated pin(s) — "
                 "run `harnessed update` to bump them"
             )
-        raise typer.Exit(report.check_exit_code())
+        raise typer.Exit(report.check_exit_code(fail_on))
 
     if not report.stale:
         _out.print("[green]All resolvable pins are up to date.[/green]")

@@ -41,5 +41,11 @@ jobs:
       # Exits non-zero only for a pin that is stale AND past the minimum release age AND not held.
       # Held pins (recipe.yaml `install.hold` / a `tools:` entry's `hold`), cooling pins, and
       # unresolvable ones are all reported in the output without failing — see bd harnessed-c5t.
+      # #469 DECISION, recorded: the check fails only on a stale pin whose offered bump crosses a
+      # major version boundary (`--fail-on major`). A weekly check that fails on ANY drift made red
+      # its normal state — eight consecutive red weeks carried no signal. Minor and patch drift is
+      # still listed in this run's output and bumped on the roadmap's wave cadence
+      # (`mise run upgrade-pr`); a major is the class that can break a harness, so it gates.
+      # `--check` writes nothing either way.
       - name: Check catalog pins
-        run: uv run --extra dev harnessed update --check
+        run: uv run --extra dev harnessed update --check --fail-on major

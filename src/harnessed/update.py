@@ -69,6 +69,7 @@ __all__ = [
     "discover_extra_tools_pins",
     "discover_pins",
     "extra_tools_default_path",
+    "is_major_bump",
     "mise_repo",
     "resolve_releases",
     "verify_commands",
@@ -176,6 +177,19 @@ def is_semver_prerelease(version: str) -> bool:
     return "-" in version.partition("+")[0]
 
 
+def is_major_bump(current: str, latest: str) -> bool:
+    """True when the offered bump crosses the leading numeric component.
+
+    The leading run IS the major for every shape the catalog pins: `1.13.0 -> 1.14.0` is not a
+    major, `2.1.2 -> 3.0.0` is, and a calendar scheme (`2024.1 -> 2025.1`) reports as major —
+    the conservative reading, since a calendar-major is exactly the kind of bump that changes a
+    tool's behaviour wholesale. A prerelease suffix hides nothing: its base still carries the
+    major. `version_key` never returns an empty parts tuple, so this is total — no pair of
+    version strings can make it raise.
+    """
+    return version_key(latest)[0][0] > version_key(current)[0][0]
+
+
 @dataclass(frozen=True)
 class Pin:
     """One pinned reference found in the catalog.
@@ -236,6 +250,14 @@ class Finding:
         except (ValueError, AttributeError):
             return False
 
+    @property
+    def major(self) -> bool:
+        """The offered bump crosses the leading numeric component — the class that can break a
+        harness on upstream's schedule, not ours."""
+        if self.latest is None:
+            return False
+        return is_major_bump(self.pin.current, self.latest)
+
 
 @dataclass
 class Report:
@@ -252,7 +274,7 @@ class Report:
     # resolver outage hide inside a permanent, expected condition.
     unpinnable: list[Finding] = field(default_factory=list)
 
-    def check_exit_code(self) -> int:
+    def check_exit_code(self, fail_on: str = "any") -> int:
         """`--check`: non-zero ONLY for a stale, unheld, resolvable, past-cooldown pin.
 
         Unresolved pins do not fail — every recipe with a Dockerfile has one, and a permanently-red
@@ -261,7 +283,15 @@ class Report:
         the repo. UNPINNABLE agents are the limiting case of the same argument — they are
         permanently unpinnable by definition — which is why this method needs no change to exclude
         them, and why a test pins that it exits 0 rather than trusting the omission.
+
+        `fail_on="major"` narrows the failure to stale pins whose offered bump crosses the leading
+        numeric component (#469): a weekly scheduled check that fails on ANY drift makes red its
+        normal state, so minor and patch drift is reported in the run's output and bumped on the
+        roadmap's cadence, while a major — the class that breaks a harness — still gates. "any"
+        stays the default: the interactive caller and every existing test keep today's behaviour.
         """
+        if fail_on == "major":
+            return 1 if any(f.major for f in self.stale) else 0
         return 1 if self.stale else 0
 
 
