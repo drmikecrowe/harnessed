@@ -3,9 +3,6 @@ type: Reference
 title: "The verification ladder: what each gate proves and what it does not"
 description: "What each verification gate proves and what it does not — the hermetic pytest suite, the HARNESSED_PODMAN live layer, the lint layers, the pin check, the capability oracle, and the wiki's own drift gate with its regeneration path and retry patch."
 tags: [ci, testing, verification, supply-chain, openwiki, drift]
-verified:
-  - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
 sources:
   - id: openwiki-source-2ab88915e37908e92fe8ef01
     resource: repo://.github/workflows/lint.yml
@@ -59,7 +56,10 @@ sources:
     resource: repo://tools/openwiki-retry-patch.py
   - id: openwiki-source-42360cb3e257ef7023d23d39
     resource: repo://tools/preflight.sh
-generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-21T14:50:01.893Z" }
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-21T14:50:01.893Z
 ---
 
 # The verification ladder
@@ -447,8 +447,8 @@ whatever the later layers would have found whenever an earlier layer is red.
 
 ## Rung 4 — the pin check
 
-`.github/workflows/pin-check.yml` runs `uv run --extra dev harnessed update --check` on a weekly
-schedule (Mondays 06:00 UTC, `cron: "0 6 * * 1"`) and on `workflow_dispatch`.
+`.github/workflows/pin-check.yml` runs `uv run --extra dev harnessed update --check --fail-on
+major` on a weekly schedule (Mondays 06:00 UTC, `cron: "0 6 * * 1"`) and on `workflow_dispatch`.
 
 **Deliberately not `pull_request`.** This check resolves **live registries**, so its result depends
 on what npm/PyPI/GitHub published today, not on the diff. As a PR gate it would fail an unrelated
@@ -460,10 +460,18 @@ Weekly, not daily, because the gate already refuses anything published inside th
 age (`DEFAULT_MINIMUM_RELEASE_AGE_MINUTES = 7 * 1440`, i.e. 7 days): a daily run would re-report the
 same pins six times before any of them became offerable.
 
-It exits non-zero **only** for a pin that is stale, past the minimum release age, and not held.
-Held pins (a recipe's `install.hold`, a `tools:` entry's `hold`), cooling pins, and unresolvable
-ones are all reported in the output without failing. An undated release is never selectable — the
-age gate cannot be honoured for it, so it is surfaced rather than waved through.
+It exits non-zero **only** for a pin that is stale, past the minimum release age, not held, **and**
+whose offered bump crosses a major version boundary (`--fail-on major`, the recorded #469 decision:
+a weekly check that fails on ANY drift makes red its normal state — eight consecutive red weeks
+carried no signal — while a major is the class that can break a harness, so it gates). Minor and
+patch drift is still listed in the run's output and bumped on the roadmap's wave cadence
+(`mise run upgrade-pr`); it is information, not a failure. Held pins (a recipe's `install.hold`, a
+`tools:` entry's `hold`), cooling pins, and unresolvable ones are all reported in the output without
+failing. An undated release is never selectable — the age gate cannot be honoured for it, so it is
+surfaced rather than waved through. `check_exit_code(fail_on="major")` in `update.py` is the single
+decision point: `1 if any(f.major for f in self.stale) else 0`, with `"any"` left as the default so
+the interactive caller and existing tests keep today's behaviour. `--check` writes nothing either
+way.
 
 mise is installed on the runner (`install: false` — the binary, not the tools) because `tools:`
 entries with no backend prefix (currently `pulumi@3.256.0`) resolve through `mise registry` to the

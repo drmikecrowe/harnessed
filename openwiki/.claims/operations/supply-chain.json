@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7b51809df48ca12f8d3cdb4edc20febc74b87018cfe37f4cd5a327a592c15fcb",
+  "pageVersion": "sha256:1e9c9df303992f8a6957cdb7129e008829a5f72703201fc4b645a7b1bcb8366f",
   "claims": [
     {
       "id": "claim_ff26409f53a94907a3855d0c14a03448",
@@ -595,10 +595,60 @@
           "version": "repo-lines-v1:sha256:431c4d01122113799b3db5065bc6e8d59ff05044d1831372fcea9963843d7fc5:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3NmI2ZjgyMDc1YjdhMTlmY2Q2ODQ2Y2Y5YjBkOWM0NTdjMGE2YWYzNmVlMGEzZDEyMTkyNmU0MjQ1YmY0NDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwZTJhNDY1MDA5NWZhOTVkMGUyYmI0MWIyZGIyOTA5NGQzNDA0ZDI4Y2UxMjMzOWVjODhiYjRiNWM1YmU4ZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg4YjJiOTRlMjcyZTMxZGFiZTdmNTIzMjcxODg0ZjBiZmQ1OWVjNGRkMWU3NzU1ZDg3ZmViOTIwYjgyNzhmMWIifQ"
         }
       ]
+    },
+    {
+      "id": "claim_1ea59e6496df4c06a486e80e1de39f53",
+      "statement": "The pin-check workflow (.github/workflows/pin-check.yml) runs only on schedule (weekly, Mondays 06:00 UTC) and workflow_dispatch — never on a PR/diff trigger, because `harnessed update --check` resolves live registries — and its check step invokes `harnessed update --check --fail-on major`, so the scheduled run fails only when a stale, unheld, resolvable, past-cooldown pin's offered bump crosses a major version boundary (Report.check_exit_code / is_major_bump); minor/patch drift is reported but not failing, and \"any\" stays the default for interactive use.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/pin-check.yml",
+          "version": "repo-file-v1:sha256:c1e7b4fd8066c11ae691ddcb298212e87f3a03cb6eb7f6d76658af1be2893e8e"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L180-L195",
+          "version": "repo-lines-v1:sha256:ad8157cf1cb882c40c549fcecb9dade39517faf1b8cda993bb6cd237aa8bb35d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBiNDRiNzgyNTM4ODlkOTg0ZDdlNmRhNmYyNjc1ZTE3M2ZhYmY4MmNmN2ZmM2Y3NzZiOGFlYmQ2MjcxMzczOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlMWMwNDQ1NGU1MjllNjg5ZDM3YTlhMTFhNDAzOGY1Y2QyNWVmNTdjNWMzYWJlOGJmYzg4YjdkNjQ4MTNhMzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQzNDcxYjgwMTczYTBlYzM1NGMxNDcxZGY0NTIyYTc0MjI4ZDQ0YWRiYmNmNmE4NTY0MDU0ZjIzNDA2MmU1ZTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0NzRlMGQzZDQ3YjAwNTA3ODUxZmMyY2U4ODFiNmM3NTQxMjAxOTM5YWU5MDAwNmJiMTJmZDQ3MjY1ZTIzYzMifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L277-L295",
+          "version": "repo-lines-v1:sha256:5dbfada280a224e042b50fcd5000c3ecaad7bc6f129ae0a17fbef4ecf5513b5d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2NDkwMzMyOWE0NDRhMGNmZGVkYWJkZWY3ZTM2YWVhZjcxN2Q1ODZjN2E1ODhkNjc5MDYxNTFkZjMzODU4MmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiMTdmOTM3NzM1NzE5MDQwZDU1NGIxMTBhZWVkMjU4MzNkNTc3M2YwZDQ5M2FmNTFmZDg1YmE0ZTM2ZjFiODAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJjMGJiNDZiZTIxMTY2MzI2N2U0ODNhNmVhNDExNjQwNWNkZDVlNDQ3YmU0N2FmNWM5ZmM4NzIwZWJjNzMxYmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxOTRiM2JlODYyMWMwM2VkZDk1N2ZkY2YyNDllMmY3NjM3ZTdjYzM1OTJkNTFjOTVkZTk0MDg0YTU4NDRkY2QifQ"
+        },
+        {
+          "resource": "repo://tests/test_ci_pin_check_workflow.py#L33-L62",
+          "version": "repo-lines-v1:sha256:ee16e2ba83070c614fe5a2ac247b4e039e38ad3e5b2765c9054937a7ea2266c9:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4NTU3M2RhMjMwMzBiMmZmY2VlYWNlZGFkNDRkNDg3OWY5MWMwNTc2ZTYxNjc4NTZiYmY5MWYzMGZiNzI5OGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4YmE2OTljNDRjOWY1NjI4NTI1ZjlhYmNjNGVmZmM2MDMxNDE1M2MzZjFjOWQwM2FiMDdmMjIyM2MwMzYzNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5NTNiMTNhMWMxM2M0NDZkNjE5NzhiMGRiNmMxZTYwYmQyMjYzODliYWEwNTY2NmE3NmQzMzM3ZjM3NDAwMzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3Yzc4ODY1MWUyOTAzYjdkZDJlN2EzZjg5OGU2ZDI5ZTkzOGNiMjA0YTRjNDhiZDQ5ZGUwZTZkYTRjNjk1ZTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0c0f8a36d7d04b6c90276d1ed3c40e5a",
+      "statement": "The pin-check runner installs mise (jdx/mise-action, install: false) before the check, because backend-less `tools:` entries resolve through `mise registry` to dated GitHub releases; without mise those pins degrade to unresolved, shrinking the sweep's coverage.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/pin-check.yml#L32-L39",
+          "version": "repo-lines-v1:sha256:6cfdd4a0f3eebaeca8e89466c0df2cfe679675074de1744911f6ffe3fcbb5c85:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzAxNmFmMzdlZWQwZjBmMzVmY2Y4MzQ3NWZiODJkODE0MGE1ZTk4MGRlMDcyMjQ3MTUwMjEyZTQ2Yjc1ZTlmOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjUwZDE1YjA5MzcyODZiMGM2NzFkMWIwODc0YTY0ZDJhMzE2N2FjNTdiOWI5NmFhZmMwN2M4NDE3NTUzZTI0YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzFkYzlhODBhZTQyZGRkNmVkZjk0MTQ4YjQyZDQyYjY3NzNkZjJmNWQ1NDA0NjU0NmMxZTk1MWJlN2QyODExNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGQ3NGY2ZjQxNjQ1OWMyZDgwMTU0MGIxZTZkMGE4ZmUwMzZiNDBlMTUwOWZjNDU0MWU5Y2ZhZDMwOTc4NmIxMSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L474-L497",
+          "version": "repo-lines-v1:sha256:c85b0a435e4e88e601500db54bb1d6a4d318b4af5de5e2879837954010395425:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViZWM2ZjEwOWIwZjI3OTNhNjY1M2VhMjE2MzJhMDNjZGQ4NDVkMTQ5MGQ3ZmQ2M2Q0NjdmMmZlMjc0ZDE5ZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTYwMGE3M2QyZTAyZjM1MmI5MGZlZjFkOGQ2MzgxMWJhNGE4ZWUwYzFiZWFhN2FlNDY1OGYzNmFhMmUxOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5MzFmM2MwMDJhMTM4ZTNjZjI4YWRhOTU3MjU3Y2E4OTgxMDgyZjNmYTVkYzc3MzczNGE5N2JhMjA4NTlkMWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3MmM0ZTBhMGJjZTQzMmY5MWRjNmZmMDkzZmJiNzJiN2I0MjRkYjhlODVhMGE5MjQwNGE1YjJhNTBlMDQwZWEifQ"
+        },
+        {
+          "resource": "repo://tests/test_ci_pin_check_workflow.py#L57-L62",
+          "version": "repo-lines-v1:sha256:12e909775a71ac85138eedbe8d1f53421de1e789e042c521201b73fcc68912c2:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTZkNjRhY2M2MzFkMGIyOTYyNGNlOTc5YmViYTdmZmMyOGMyNjAxNjFmNWY5NWEyNzM2ZTNjOTFmMjMzNzJlMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzhiYTY5OWM0NGM5ZjU2Mjg1MjVmOWFiY2M0ZWZmYzYwMzE0MTUzYzNmMWM5ZDAzYWIwN2YyMjIzYzAzNjM0ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzMwZDg0NDAwMGJjYTFjNTAyNjQzZjNiOTI3Y2UxMTQxMTU1NzczNTRiNGQ3ZTE2ZWFlOTU4MmI5ZDg3MzZmZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzdjNzg4NjUxZTI5MDNiN2RkMmU3YTNmODk4ZTZkMjllOTM4Y2IyMDRhNGM0OGJkNDlkZTBlNmRhNGM2OTVlMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_b53abdc22e2f4907a9755fc12fac5762",
+      "statement": "catalog/recipes/tokensave/mise.lock pins github:aovestdipaperino/tokensave@7.12.1 with per-platform sha256 checksums and download URLs across linux-arm64/musl, linux-x64/musl, macos-arm64, and windows-x64 platforms.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/tokensave/mise.lock",
+          "version": "repo-file-v1:sha256:a8eb553a221efb0adbc7d6fe7cdc8e18bce7ea5f1df0550766b4add23d15f19b"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-20T12:51:12.657Z"
+    "at": "2026-09-21T14:50:01.893Z"
   }
 }

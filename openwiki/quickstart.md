@@ -1,7 +1,7 @@
 ---
 type: quickstart
 title: "Quickstart: set up, build, launch, and where to read next"
-description: "Entry point for working on harnessed: the mise/uv toolchain and the venv that deliberately lives outside the repo, the only correct ways to run the three verification entry points (tools/run-tests.sh, tools/preflight.sh, mise run openwiki-drift), the two console entrypoints and the ban on automating the interactive run verbs, a safe first end-to-end slice, and the task-routing table into every other page."
+description: "Entry point for working on harnessed: the mise/uv toolchain and the venv that deliberately lives outside the repo, the only correct ways to run the three verification entry points (tools/run-tests.sh, tools/preflight.sh, mise run openwiki-drift), the two console entrypoints and the ban on automating the interactive run verbs, a safe first end-to-end slice, and the task-routing table into the rest of the wiki."
 tags: [quickstart, dev-setup, mise, uv, run-tests, preflight, openwiki-drift, cli, task-routing]
 sources:
   - id: openwiki-source-2ab88915e37908e92fe8ef01
@@ -40,10 +40,10 @@ sources:
     resource: repo://tools/preflight.sh
   - id: openwiki-source-bb9438d561f4cbb6d5d38c49
     resource: repo://tools/run-tests.sh
-generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-21T14:50:01.893Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
+    at: 2026-09-21T14:50:01.893Z
 ---
 
 # Quickstart: set up, build, launch, and where to read next
@@ -54,8 +54,7 @@ anything runs, the sanctioned ways to run the verification entry points, the two
 entrypoints, the launch verbs an agent must never invoke, a safe first slice, and the task-routing
 table into the specialist pages.
 
-Related: [the system overview](/openwiki/architecture/overview.md),
-[what each gate proves](/openwiki/testing/verification-ladder.md),
+Related: [what each gate proves](/openwiki/testing/verification-ladder.md),
 [the command surface](/openwiki/operations/cli.md),
 [the build workflow](/openwiki/workflows/build.md).
 
@@ -304,52 +303,14 @@ flowchart TD
 
 ## Where to go next
 
-Route by task, not by directory. The index files under each directory list the same pages.
-
-### Architecture
-
-| Task or question | Page |
-| --- | --- |
-| The build-and-launch pipeline end to end, and which module owns each stage | [architecture/overview](/openwiki/architecture/overview.md) |
-| What a backend is; the container/host asymmetry and shared invariants | [architecture/backends](/openwiki/architecture/backends.md) |
-| How authored `catalog/` content is validated and consumed (schema.py, the derived seed, entry schema) | [architecture/catalog-and-schema](/openwiki/architecture/catalog-and-schema.md) |
-| Where secrets enter, what resolves them, what never touches disk or an image layer | [architecture/secrets-broker](/openwiki/architecture/secrets-broker.md) |
-| Service containers: identity, allocation, lifecycle via svcstate/svcguards | [architecture/services](/openwiki/architecture/services.md) |
-| What persists where on disk; project keying, persist dirs, XDG state | [architecture/state](/openwiki/architecture/state.md) |
-
-### Concepts
+Route by task, not by directory. This wiki is a small set of specialist pages; each row below is
+the whole map:
 
 | Task or question | Page |
 | --- | --- |
-| Credential lifecycle across the stack: entry, resolution, mounting, disposal | [concepts/credentials](/openwiki/concepts/credentials.md) |
-| The credential-proxy migration model and the `_schema_declares_proxy` gate | [concepts/credential-proxy](/openwiki/concepts/credential-proxy.md) |
-| The env contract between harnessed, the stack, and the agent; layered env files | [concepts/env-contract](/openwiki/concepts/env-contract.md) |
-| Deliberate deviations that read like defects and must not be cleaned up | [concepts/invariants](/openwiki/concepts/invariants.md) |
-| One row per conflict across env layers, recipe vs harnessed values, global vs project overrides | [concepts/precedence](/openwiki/concepts/precedence.md) |
-
-### Workflows
-
-| Task or question | Page |
-| --- | --- |
-| Stack + harness → profile → image → pod: stages and run order | [workflows/build](/openwiki/workflows/build.md) |
-| The container launch path: pod creation, identity, mounts, invariants | [workflows/container-run](/openwiki/workflows/container-run.md) |
-| The host launch path: what is container-free and what still needs the runtime | [workflows/host-run](/openwiki/workflows/host-run.md) |
-| How `harnessed test` proves a build against the capability oracle | [workflows/capability-test](/openwiki/workflows/capability-test.md) |
-| Ad-hoc and dynamic stack assembly (dynstack.py, aoe.py) and service revival | [workflows/dynamic-stacks](/openwiki/workflows/dynamic-stacks.md) |
-
-### Operations
-
-| Task or question | Page |
-| --- | --- |
-| The full verb surface, each verb's gates, and post-#460 delegation behavior | [operations/cli](/openwiki/operations/cli.md) |
-| Pinned dependency strategy, the pin check, and `harnessed update`'s flow | [operations/supply-chain](/openwiki/operations/supply-chain.md) |
-| How the wiki is generated and drift-checked from within the repo's own tooling | [operations/wiki-automation](/openwiki/operations/wiki-automation.md) |
-
-### Integrations and testing
-
-| Task or question | Page |
-| --- | --- |
-| How harness integrations are defined in the catalog and consumed by update.py | [integrations/harnesses](/openwiki/integrations/harnesses.md) |
-| How this repository dogfoods itself to regenerate this wiki | [integrations/openwiki-recipe](/openwiki/integrations/openwiki-recipe.md) |
-| The `aoe` trash/lifecycle surface and launchscript.py's container-side contract | [integrations/aoe-and-launch-scripts](/openwiki/integrations/aoe-and-launch-scripts.md) |
-| What each verification gate proves and what it does not | [testing/verification-ladder](/openwiki/testing/verification-ladder.md) |
+| How authored `catalog/` content (stacks, recipes, agents) is loaded, validated, and consumed by the build — schema guards like the immutable-build-arg check and typo guardrail | [architecture/catalog-and-schema](/openwiki/architecture/catalog-and-schema.md) |
+| Stack + harness → profile → image: assembly order, recipe-hash staleness, layer caching, `jobs/-j` concurrency, security-scan invocation | [workflows/build](/openwiki/workflows/build.md) |
+| The full verb surface: every command, its options, and which backend/runtime each requires | [operations/cli](/openwiki/operations/cli.md) |
+| What ships, how it is pinned, and how it is scanned — extra-tools and image-layer pins, `harnessed update`'s staleness sweep with its minimum-release-age gate, the osv-scanner + pip-audit scan layer | [operations/supply-chain](/openwiki/operations/supply-chain.md) |
+| What each supported harness expects from harnessed: launch command shape, env contract, `agent.yaml` fields, how harness selection alters the launch path | [integrations/harnesses](/openwiki/integrations/harnesses.md) |
+| What each verification gate proves and what it does not: the pytest suite, live tests behind `HARNESSED_PODMAN=1`, lint layers, the pin check | [testing/verification-ladder](/openwiki/testing/verification-ladder.md) |

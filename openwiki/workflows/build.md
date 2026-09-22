@@ -44,10 +44,10 @@ sources:
     resource: repo://tests/test_build_cache_mounts.py
   - id: openwiki-source-f725ea11f1806a58b06d7f3e
     resource: repo://tests/test_launch_parity.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-19T12:16:02.862Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-21T14:50:01.893Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
+    at: 2026-09-21T14:50:01.893Z
 ---
 
 # Build pipeline: from stack and harness to profile, images, and populated volumes
@@ -119,7 +119,12 @@ container runtime, and the host runs `podman build` on the emitted artifacts its
 `harnessed build`, the same `assemble()` is called in-process. (`launcher.py` is being split into
 modules — `mounts.py` holds the launch-time `-v`/`-e` mount builders, `backend.py` the
 `ExecutionBackend`/`LaunchSpec` seam — but the split has not moved any podman call into the
-emit-only set.)
+emit-only set.) The direction of that split is enforced by `tests/test_module_boundaries.py`:
+extracted modules must never import `launcher` — dependencies point INTO modules, never back out.
+It is also why **both backends live in `launcher.py`**: `HostBackend` and `ContainerBackend` sit
+either side of the podman orchestration, and a module holding the pieces they reach for
+(`_build_stack`, `_runtime`, `_err`) could only work through an import cycle — so the backends,
+not just the Typer surface, stay in the launcher.
 
 Two consequences for a change plan:
 
