@@ -204,7 +204,7 @@ dissolves with it:
 So phase 1 lands as a **pure recipe** — the `time` shape, no image edit:
 
 ```yaml
-args: ["--from", "headroom-ai[mcp]==0.27.0", "headroom", "mcp", "serve"]
+args: ["--with", "mcp==1.29.0", "--from", "headroom-ai[mcp]==0.27.0", "headroom", "mcp", "serve"]
 env: {HEADROOM_UPDATE_CHECK: "off"}
 ```
 
