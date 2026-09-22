@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/stack.schema.json
+# Stack: headroom-default — the baseline plus the headroom recipe.
+#
+# `extends: default` UNIONs the recipe lists (schema.py `_STACK_UNION_FIELDS`): the composed set
+# is [default, headroom] — the baseline's authoring content next to headroom's compression
+# tools. An authored stack does not inherit the baseline implicitly, which is why this file says
+# `extends:` explicitly.
+#
+# One stdio MCP child, uvx-resolved at first spawn, so a green `harnessed test` proves the whole
+# chain the recipe owns: derived image assembly, hatago hub, child spawn, and the compression
+# tools connecting.
+#
+# Harness-free, like every stack: `harnessed build headroom-default claude`,
+# `harnessed test headroom-default omp`.
+name: headroom-default
+extends: default
+recipes: [headroom]
+services: []

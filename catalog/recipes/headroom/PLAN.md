@@ -187,3 +187,47 @@ compression into a stack today.
 - **No double-compression illusion.** Be clear in the stack docs: MCP mode compresses *only what
   the agent explicitly passes to the tool*. It is not the transparent, whole-traffic 60–95% the
   proxy headlines — that requires the deferred proxy mode.
+
+## Correction, 2026-09-22 (at implementation): no image edit after all
+
+The plan above was written against a layout that no longer exists, and its central risk
+dissolves with it:
+
+- There is no `catalog/base/Dockerfile.hatago`. Hatago was consolidated into
+  `Dockerfile.harnessed-base` (hatago-consolidation). The recipe.yaml comment knew this; the
+  plan body did not.
+- `mcp-server-time` is NOT baked via `ARG` + `uv tool install` anywhere. The `time` recipe runs
+  it via `uvx` at first spawn (`command: uvx`), pinning the server as `pkg@version` and its
+  transitive SDK with `--with`. The base image's only concession to stdio children is making
+  `~/.cache/uv` group-writable so that first spawn can write.
+
+So phase 1 lands as a **pure recipe** — the `time` shape, no image edit:
+
+```yaml
+args: ["--with", "mcp==1.29.0", "--from", "headroom-ai[mcp]==0.27.0", "headroom", "mcp", "serve"]
+env: {HEADROOM_UPDATE_CHECK: "off"}
+```
+
+`--from` replaces the bare package form because the package (`headroom-ai`) and the command
+(`headroom`) have different names; the `[mcp]` extra rides in the pinned spec. The
+`HEADROOM_UPDATE_CHECK=off` silence moves from an image ENV to the server's own `env:` — same
+effect, recipe-local, and it survives into a host launch. The "recipe→hatago baking gap" risk is
+retired for this recipe; it stays real for any future stdio server uvx cannot resolve. Phase 2
+(per-stack hatago baking from `baked-servers.json`) is unaffected as a future direction.
+
+Stack note, 2026-09-22: the plan's test stack was named `claude_headroom`; the shipped stack is
+`headroom-default`, which `extends: default` so the composed recipe set is the union
+[default, headroom]. One recipe, one stack, and no `claude_` prefix — stacks are harness-free by
+construction (the harness is a CLI positional).
+
+Trade-off accepted vs baking: the first spawn pays a one-time uvx fetch from PyPI (the same cost
+`time` already pays in every stack, under the same firewall — PyPI is reachable where
+`cdn.pyke.io` / `huggingface.co` are not). Once cached in `~/.cache/uv`, later spawns are local.
+
+One more upstream defect found at implementation, same class as bd harnessed-2c4: `headroom mcp
+serve` at 0.27.0 dies at startup with `AttributeError: 'Server' object has no attribute
+'list_tools'` — its transitive `mcp` SDK resolves to 2.x, which changed the low-level `Server`
+API. The recipe therefore pins the SDK the way `time` does (`--with mcp==1.29.0`). Verified in a
+real container: without the pin the child crashes three connect attempts in a row; with it, the
+capability probe reports connected, and a live `tools/call` round-trip (compress 71.8% claimed
+savings on a mixed payload, then retrieve by hash returning the byte-identical original) passes.
