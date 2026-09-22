@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:14ad2b109ef1bdceabc307826b65b0d093c1af4e971186a2185ba7732f2558ed",
+  "pageVersion": "sha256:7568453dfba3e3d4f3dda57182b952aab4d127755f2fca982f8a587f7feb2093",
   "claims": [
     {
       "id": "claim_252d58a4136d4bab8deb980788528260",
@@ -684,7 +684,7 @@
         },
         {
           "resource": "repo://src/harnessed/launcher.py",
-          "version": "repo-file-v1:sha256:93c849e4122e65480af98c54d1a9a3596ab47d7900f2c1ab45631feb838eaefd"
+          "version": "repo-file-v1:sha256:1bc6e6baee6608a87f31a5d77f8e53f50dca9dae3631f33a4d00a610d11d1423"
         }
       ]
     },
@@ -831,6 +831,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-20T12:51:12.657Z"
+    "at": "2026-09-22T13:04:15.246Z"
   }
 }

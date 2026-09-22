@@ -47,7 +47,7 @@ sources:
 generated: { by: "openwiki/0.5.1", at: "2026-09-19T12:16:02.862Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
+    at: 2026-09-22T13:04:15.246Z
 ---
 
 # Build pipeline: from stack and harness to profile, images, and populated volumes

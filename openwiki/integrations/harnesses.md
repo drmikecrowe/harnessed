@@ -40,10 +40,10 @@ sources:
     resource: repo://src/harnessed/schema.py
   - id: openwiki-source-dedbae614432467fbfc419d9
     resource: repo://src/harnessed/update.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-22T13:04:15.246Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
+    at: 2026-09-22T13:04:15.246Z
 ---
 
 # Harness integrations: one canonical profile, five readers
@@ -151,9 +151,10 @@ is a Dockerfile ARG name, and its value may be a scalar or a mapping:
 
 ```yaml
 build_args:
-  CODEX_VERSION: {value: "0.153.4", spec: "npm:@openai/codex"}   # resolvable — update can offer a bump
-  BUN_VERSION: {value: "1.3.14", hold: "unqueryable: …"}          # pinnable but not resolvable — held
-  OMP_VERSION: "18.1.13"                                          # scalar — stringified, same validation
+  CODEX_VERSION: {value: "0.154.0", spec: "npm:@openai/codex"}     # resolvable — update can offer a bump
+  OMP_VERSION: {value: "18.1.21", spec: "github:can1357/oh-my-pi"} # resolvable via the github resolver
+  BUN_VERSION: {value: "1.3.14", hold: "unqueryable: …"}           # pinnable but not resolvable — held
+  SOME_VERSION: "1.2.3"                                           # scalar — stringified, same validation
 ```
 
 `load_agent` flattens both shapes to plain `NAME -> value` strings, so every downstream reader sees

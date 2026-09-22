@@ -3,9 +3,6 @@ type: Reference
 title: "The verification ladder: what each gate proves and what it does not"
 description: "What each verification gate proves and what it does not — the hermetic pytest suite, the HARNESSED_PODMAN live layer, the lint layers, the pin check, the capability oracle, and the wiki's own drift gate with its regeneration path and retry patch."
 tags: [ci, testing, verification, supply-chain, openwiki, drift]
-verified:
-  - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
 sources:
   - id: openwiki-source-2ab88915e37908e92fe8ef01
     resource: repo://.github/workflows/lint.yml
@@ -59,7 +56,10 @@ sources:
     resource: repo://tools/openwiki-retry-patch.py
   - id: openwiki-source-42360cb3e257ef7023d23d39
     resource: repo://tools/preflight.sh
-generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-22T13:04:15.246Z" }
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-22T13:04:15.246Z
 ---
 
 # The verification ladder
@@ -101,7 +101,7 @@ flowchart TD
     gate --> skipped{"any live_podman-marked test skipped?"}
     skipped -->|"yes"| red["run refuses to exit green"]
     skipped -->|"no"| oklive["container contracts verified"]
-    weekly["weekly Monday 06:00 UTC"] --> pins["pin-check.yml - harnessed update --check"]
+    weekly["weekly Monday 06:00 UTC"] --> pins["pin-check.yml - harnessed update --check --fail-on major"]
 ```
 
 *Which workflow runs when, and the one refusal that turns a skip into a failure. Only the pin check
@@ -779,7 +779,7 @@ gitignored live clone that only a `main/` checkout has).
 | hermetic pytest | `test.yml` jobs `pytest` / `pytest-py313` | PR + push main | pure functions, assembly oracle, emitted text, repo-asset invariants, order independence | any container behaviour — no podman build, no `container-run`; gated tests skip, and a skip is not a pass |
 | live layer | `live.yml` jobs `live` (podman) and `live-docker`, gated by the `changes` job | PRs touching the live list + push main + nightly 04:00 + dispatch | real `podman`/`docker` build and launch, capability oracle per stack, external contract drift within a day | nothing about the host backend; no packet across the broker's 169.254.1.1 route — that argv layer is asserted hermetically, through injected seams |
 | lint | `lint.yml` job `lint` | PR + push main | ruff correctness/security at zero, pyright basic at zero, shellcheck over every tracked script | runtime behaviour; layers after a red one never ran |
-| pin check | `pin-check.yml` job `pins` | weekly Mon 06:00 + dispatch | stale, unheld, past-age pins across the catalog | nothing about code correctness; nothing on PRs by design |
+| pin check | `pin-check.yml` job `pins` | weekly Mon 06:00 + dispatch | stale, unheld, past-age pins across the catalog — and fails only when the offered bump crosses a major version | nothing about code correctness; nothing on PRs by design; minor/patch drift is reported, not gated |
 | capability test | `harnessed test <stack> <harness>` | inside the live layer, or by hand | the manifest's declared capabilities are present in a running instance | undeclared capabilities, host-mode behaviour, interactive attach |
 | wheel packaging | `tests/test_wheel_packaging.py` (in the suite) | every pytest run | the shipped wheel carries the catalog and no host-local content | installed-wheel runtime behaviour — still the live layer's job |
 | mutation | `mutmut run` (config in `pyproject.toml`) | on demand | a failing change fails a container-free test | anything reachable only through a gated test |
@@ -825,6 +825,11 @@ run answers "what else is broken" in one pass instead of four.
 **The two end-to-end oracles.** A contribution is done when `harnessed test <your-stack>` is green
 and the live integration test passes — those two, not the hermetic suite, are the checks that
 exercise real containers, and nothing on this ladder substitutes for either. For the git workflow
+itself — worktree per change, full suite passing before proposing a merge, PR into `main`, signed
+commits — see [AGENTS.md](https://github.com/drmikecrowe/harnessed/blob/main/AGENTS.md) and
+[CONTRIBUTING.md](https://github.com/drmikecrowe/harnessed/blob/main/CONTRIBUTING.md); this page
+deliberately does not restate it.
+es for either. For the git workflow
 itself — worktree per change, full suite passing before proposing a merge, PR into `main`, signed
 commits — see [AGENTS.md](https://github.com/drmikecrowe/harnessed/blob/main/AGENTS.md) and
 [CONTRIBUTING.md](https://github.com/drmikecrowe/harnessed/blob/main/CONTRIBUTING.md); this page

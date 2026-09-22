@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7b51809df48ca12f8d3cdb4edc20febc74b87018cfe37f4cd5a327a592c15fcb",
+  "pageVersion": "sha256:8754001c6509703de9b13f524a66d388bcb2352b787aae23fe1255c3f7d358ec",
   "claims": [
     {
       "id": "claim_ff26409f53a94907a3855d0c14a03448",
@@ -595,10 +595,78 @@
           "version": "repo-lines-v1:sha256:431c4d01122113799b3db5065bc6e8d59ff05044d1831372fcea9963843d7fc5:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3NmI2ZjgyMDc1YjdhMTlmY2Q2ODQ2Y2Y5YjBkOWM0NTdjMGE2YWYzNmVlMGEzZDEyMTkyNmU0MjQ1YmY0NDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwZTJhNDY1MDA5NWZhOTVkMGUyYmI0MWIyZGIyOTA5NGQzNDA0ZDI4Y2UxMjMzOWVjODhiYjRiNWM1YmU4ZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg4YjJiOTRlMjcyZTMxZGFiZTdmNTIzMjcxODg0ZjBiZmQ1OWVjNGRkMWU3NzU1ZDg3ZmViOTIwYjgyNzhmMWIifQ"
         }
       ]
+    },
+    {
+      "id": "claim_42c3c450e3cb48b881fca375e7d02458",
+      "statement": "Pin-check CI fails only on major drift (#469): the workflow runs `harnessed update --check --fail-on major` weekly (Mondays 06:00 UTC — daily would re-report the same pins six times before any clears the 7-day gate), so minor and patch drift is reported in the run's output but not fatal, while a bump crossing a major version boundary still gates; `check_exit_code(fail_on)` keeps \"any\" as the default for the interactive caller, and the runner installs mise (jdx/mise-action) so bare tools: entries resolve through mise registry instead of degrading to unresolved.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/pin-check.yml#L41-L51",
+          "version": "repo-lines-v1:sha256:004de73796729471877ed88980a072c2535db300c10ba4d0a396e77510d7d820:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjljNDBmNDk1NGE5ZTc2MmIwZGQ5OGM2NWNkOGQ1MGZhYmY3Zjk4MjM1NWQwNGFjNzQ5NTFiMzgzY2U5MTc4NjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlZDQ1MWZiYzMwNTkwN2EwMWU4OWQ1YTMwYjczMTk4ZGU1NjYyNGRlYjM2NDllMGUwNTk2OTQ2NWI0OWM0MzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVkNjYxZDI2M2FiMTE3NTI0ZmEwZTNiYjFkOWQ4ZjRkMTA2YmUyNjFkMTdiMTY5ZTc4Y2U5M2JlNmJjOTEyZTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L4662-L4721",
+          "version": "repo-lines-v1:sha256:ea22da5684ff3cb8f44c8ab57d83631b3bdf39ebd9eb842d9a465ad17630325c:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2YmJlNDBlZmI1N2MyYmRiZGQ3NmIwZDk5M2E3ODhkNmI5YWNmYWY1YTUwMjcyM2ExYWY0YjNlNGU2ZGJlODUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzNzc2MWU2YzI3NjE3ZjcwYmNhYTEwZjA5MTIxZTIzY2NjNjE1MzEzYjNmYjkyYmNlYjAxMmU3ODVmYTI5ZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ3NmM0YTMwOWI5NGU0YTcwMjY1YTk1YjdmYThhYTYzZTk3ZWZiZjUxYmU0NTg1ZGIwYjJiYWU5ODdhYTJlN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkNDI4N2YwZWViMWY5YzgyYWIzOWI3ZjM2Njg3YWVjZjMxOTE5Yjk0N2FmN2QwZjE0NjEyYjk3NjA2ODU1OGYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L277-L295",
+          "version": "repo-lines-v1:sha256:5dbfada280a224e042b50fcd5000c3ecaad7bc6f129ae0a17fbef4ecf5513b5d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2NDkwMzMyOWE0NDRhMGNmZGVkYWJkZWY3ZTM2YWVhZjcxN2Q1ODZjN2E1ODhkNjc5MDYxNTFkZjMzODU4MmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiMTdmOTM3NzM1NzE5MDQwZDU1NGIxMTBhZWVkMjU4MzNkNTc3M2YwZDQ5M2FmNTFmZDg1YmE0ZTM2ZjFiODAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJjMGJiNDZiZTIxMTY2MzI2N2U0ODNhNmVhNDExNjQwNWNkZDVlNDQ3YmU0N2FmNWM5ZmM4NzIwZWJjNzMxYmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxOTRiM2JlODYyMWMwM2VkZDk1N2ZkY2YyNDllMmY3NjM3ZTdjYzM1OTJkNTFjOTVkZTk0MDg0YTU4NDRkY2QifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3acf3d7ca4124ebdb914d54eeaba6668",
+      "statement": "Opaque pin discovery fails closed: `_ASSIGN_RE` matches only variable/ARG/ENV assignments and `_IMMUTABLE_LITERAL_RE` accepts only a 40-hex SHA or a version-ish tag, so an unrecognised shape is not reported as a pin at all (a false bump offer on every FOO=bar would bury real ones). Declared `install.refs.<key>` entries are resolvable GitHub pins (repo names the upstream, ref is the pin) with per-ref hold, unlike the recipe-wide `install.hold`; a DERIVED install.cache (present only when the recipe declares no refs) is deliberately not reported since it would double-count the refs, while a hand-written cache key still reports as opaque.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/update.py#L318-L332",
+          "version": "repo-lines-v1:sha256:e8a943c22b994eed7bf8204977d28d8be4d898e90fc96d6f570d534251eb8746:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzNWY5YzAwNWJjMzZhZTIyNjAxOGJmY2YwNTcyYjJhYWNlZTBhNGZlOWVlOGJiMmU5ZGQyZWJkYzUwOWVlMzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0NTI2YWZkNzhlMmJiZGM0N2QwODZmNjliOTdhZjYwZTQ5MjAzZDNjNDlhMTAwMDNmNTQxNzEyODlmOTYxZTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjZmMzNmJhYjI1YjU1ZDg4YTA1ZWQ1NTk1MjZhMTQ1NWFhMTJkMDEyMjAzMGJlMTZhMzI1ZjA5ZTgyMDYwMDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI4NzMzZTIxMWNhYmE0MGZmNGIwOGUyMDQ5ZDMwMGVhMTg1YTFkOWRjZTIxM2M2MmNiNTQyYzI3YTkyYTgwZTYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L407-L445",
+          "version": "repo-lines-v1:sha256:991f5be8a7a444d9865035d2ef9cb2ed7ac038d186656e265cc92c735ec48401:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1OTI4NTdiNmQ3MDJjOGQwODgzYjQ1NGY1OTAwMmRjYzI0MGExMTc5NTlhODQ0NDk5ZjAxMzU0NjM3MTg1MmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgyYzQxNjQ1ZGQyMDg5YjdmZmVmZWZlODNmMzNiNWRlODFmYWQ5NjZkNDA4YzZjNmYzZmQzOGFkMDBkNGQ5NzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlZjg5MTRiOWI5ZjYyMTEzMTIwNmU2MDBjOTFkNmVjZGE1MjgxNmYwMmVhYTMxZmYyZjZkOGFmYzgwNjcwMGEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L94-L105",
+          "version": "repo-lines-v1:sha256:0ab2c6041487fac7f5f89564e3696f4261fa1b48af475bd44362681a3d2a1c0f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3OTIyMjk3NTU0MTExNTZmZGI5Njg2YWY1Zjc2NjM2MjRkMmVhMDExMDVjNGY1ZDBjOWVhMzQwMzBmOGQyM2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkOTkyYWJmMzUxYzM4NTVjODA5MjU4OGM5MDhjYzNhM2I1N2EwNjc4ZjRjNzg4ZTI1ZjdiNDZhN2NlMjhmMDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzOGFlOGJkMTIxMzY4MTk3NTU0NDFkMzljZDRlMzJiNmQ5MzIyYTM0YTIwOWJkZGNlYzczYzMwOWI3OWE5ODAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEyODBhYTcyZjQxMTE0YjA3MmQ5M2QyZmMwNTk3MGI1ZTNhNzc4YjhiMTMxZWNiMGE4ZmQ4ZTJiYjYzMDg5MGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ba72e1fe3efc48339da489fa705d6683",
+      "statement": "version_key is a TOTAL ordering, not merely correct on obvious pairs: build metadata is stripped before the prerelease split (semver §10), a release outranks its prerelease, and prerelease identifiers are tagged (int, int|str) so payloads only meet their own kind — the crash class seen when pinning @openai/codex produced an int and a str at the same sort index. Prereleases are excluded from candidates on the npm branch via `is_semver_prerelease` (which reads semver strings, never VCS tags like bun-vX.Y.Z) and on the GitHub branch via the API's own prerelease flag. `is_major_bump` compares only the leading numeric component (calendar schemes conservatively report major) and is total for any version pair.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/update.py#L111-L190",
+          "version": "repo-lines-v1:sha256:2377c8c53ebb49c565967bfba4ed0e11ceac1824bb7f971e690a5bf790e61d77:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmY3M2E5ZGQ4MDAwOTJiODY5ODBmZDY4OWE0ODcxZjg4N2NhMmE1ZDI5NDQzNWRmODk4Yjg4ZWIxZDMxZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkMTFjNzcxYjBlMWY2MWY2OTNjY2I0NTlhZjY2MmM2MzlmNDY4ODJjNDg1MTYwMWIyNDY3MjA1MmY4ZDNiMjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI1MzJiNjZmMTIxYmMxNDQ1OGVkYTA4ZjBiZWVmYjlmN2M0ZjIwYWRiODE3YjhiY2JiYTY3NmFjY2IxYzhlZjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwY2UzZjI0YWI0N2MyZjVhOWQzMzdmMzc3ZWQ4NTczZmE1NjU4NDA3NjQwMmYxYWYwNTRhM2RlZDYxOTQ2MmYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L526-L559",
+          "version": "repo-lines-v1:sha256:eff3d30a0d23275c2721c7ed0d2f48da0a6e1ee6033c06a95897b614c81d2729:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkYTVjNjZlMTdiMTQ1Mzk3ODM0YjhjODU0ZGM0MTkzZTIxMjUxODBhODk5NmExNGMzMTg4MzMyNmIyZWZiY2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzYmJkYWU0ZWZhMzI4OGZhZmRlYzk0ZjA3MmZmOGIxZmFhMGExYThhMDU5NDdlZDE4N2VkOTBhNDMzYTM2YjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZmJiYThiYTE3NGMyODA5MzAyNmY0NmY1ZjY1MmNmNGExNjYzNDYxNjNmZmU4YzZmNThkYjUyNzIzMzdhMzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMxMzU2YTExYmEzYmMxNjY5ZThiZWI5OTAxNWEzZmQ1OWVmNzRmYTc5MzZhMjhhMTYyZWViMTNhMWFlMDhkOGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_abb3195f346e4ad0bb541db963c92008",
+      "statement": "mise-registered tools obtain publish dates through `mise_repo`: `mise registry` rows are matched by exact tool name and only aqua:/ubi:/github: tokens count (an asdf: token names the plugin's repo, not the tool's); when no such repo exists the resolver raises ResolveError rather than falling back to an undated `mise latest`, because an age check it could not perform must not be pretended. Separately, a held pin whose backend answers with zero releases is classified held, not unresolved — \"the resolver failed\" is the wrong story for what the hold already explains — while a genuine ResolveError stays unresolved for unheld pins so a broken run never looks clean.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/update.py#L474-L497",
+          "version": "repo-lines-v1:sha256:c85b0a435e4e88e601500db54bb1d6a4d318b4af5de5e2879837954010395425:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViZWM2ZjEwOWIwZjI3OTNhNjY1M2VhMjE2MzJhMDNjZGQ4NDVkMTQ5MGQ3ZmQ2M2Q0NjdmMmZlMjc0ZDE5ZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTYwMGE3M2QyZTAyZjM1MmI5MGZlZjFkOGQ2MzgxMWJhNGE4ZWUwYzFiZWFhN2FlNDY1OGYzNmFhMmUxOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5MzFmM2MwMDJhMTM4ZTNjZjI4YWRhOTU3MjU3Y2E4OTgxMDgyZjNmYTVkYzc3MzczNGE5N2JhMjA4NTlkMWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3MmM0ZTBhMGJjZTQzMmY5MWRjNmZmMDkzZmJiNzJiN2I0MjRkYjhlODVhMGE5MjQwNGE1YjJhNTBlMDQwZWEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L560-L570",
+          "version": "repo-lines-v1:sha256:c1bc8e4d8aebfd88c9bea9644f5fd2b686465c20ab44f7ed685a450169e178fd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjY2RmNjNlZjI3MTgwZTBjZmNlN2IxMGM5Mzg5MDdmMDFmZmFiNWZjYWExZjhlODdkNDU4MTM0ZTc3ODQwMjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzMjc0MTkzYTYxY2YxYTFiNGNhZjc0NGU0YzY1NTYyOGRkMjgwYjk3YzcyYWNjYWNjMTA2ZTA2M2RhZmIxMGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhhZTVhNzRmMjBiZjljMTA4NzgyYjMxNDFlYmFmOWE0OGUxMWEyMTM5NTQ2NWU1M2RjZjg1M2E2ZjE1Mjg5NTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBhNTNjZTY0MjZlZTVjOWFmMTdkYTkxODgzMTE2NzhmNzNjYTliZWMxNjQ1ZjcwYjI5YTZiNTM3YTQ1MzY1MTgifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L729-L747",
+          "version": "repo-lines-v1:sha256:6cdbc18285a114fb2b22b17302781c0ad2be3b97ab3126ee79aa8e8b0b90089f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3YTc3ODczNTE4N2E2YzQ4ZmRlZWE1ODZjZGZiMmU0NjBlYTMyYTJhNDcyM2I4NjJjYWFlNzgzOTI4ZDI2M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2YWQwNTJjNDRiOTUzZjBkODMyODZhMmRkZGVjMjE4NWU3ZjE4OWRiMGU0ZjUwMmM2ZjA2ZjM0NzU4NDU0YTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAxOTIxNGE3ZmQ2M2I3Y2VkMzI0NDU1NTJmNzc2MTYyODNhYmNjMzY3ZjljYWRiNTFhM2M5MTZjODdhNjZmMGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJhMjU0NGU4ODE2N2UyY2NiMTE3Yzg3YWFjNDBjZTU2YWEwZjk2OTVhZGMxM2UwZWY2YmUxNmU4NjM3ZjI2YTkifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-20T12:51:12.657Z"
+    "at": "2026-09-22T13:04:15.246Z"
   }
 }

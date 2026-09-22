@@ -10,8 +10,6 @@ sources:
     resource: repo://src/harnessed/broker.py
   - id: openwiki-source-0f0f277c40d34909acb07908
     resource: repo://src/harnessed/capability.py
-  - id: openwiki-source-bfccb812c84b1bb2eeabf062
-    resource: repo://src/harnessed/catalogseed.py
   - id: openwiki-source-0852603a38d760a77db2bc8a
     resource: repo://src/harnessed/cli.py
   - id: openwiki-source-3d73552d55725e6e392c06df
@@ -40,10 +38,12 @@ sources:
     resource: repo://systemd/harnessed-rescan.service
   - id: openwiki-source-7af162bd104477b196c3dcdd
     resource: repo://systemd/harnessed-rescan.timer
-generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
+  - id: openwiki-source-42c2d17b3e89eec55f2e4419
+    resource: repo://tests/test_update_cli.py
+generated: { by: "openwiki/0.5.1", at: "2026-09-22T13:04:15.246Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
+    at: 2026-09-22T13:04:15.246Z
 ---
 
 # Operations: the command surface and lifecycle verbs
@@ -445,24 +445,57 @@ backend (npm / PyPI / GitHub releases / mise), and offers bumps. The design's in
   loud on purpose, because a pin that could not be checked is the one case where silence reads as
   "fine"), and *unpinnable* (agents with no version selector that preserves integrity — its own
   bucket, never folded into unresolved, so a permanent, declared condition cannot hide a real
-  resolver outage).
+  resolver outage). Discovery also reads declared `install.refs` — a ref entry names its `repo`, so
+  it is resolvable against GitHub releases with per-ref `hold:` (a recipe with three refs may hold
+  one and auto-bump two, which the recipe-wide `install.hold` cannot express) — while a derived
+  `install.cache` next to refs is *not* reported, since it would double-count the refs it is
+  computed from.
 - **`--check` writes nothing.** Report building is side-effect free; only `apply` writes. A CI mode
   that mutated the tree it was validating would be a trap. Its exit code comes from
   `check_exit_code`: **non-zero only for a stale, unheld, resolvable, past-cooldown pin** —
   unresolved pins do not fail (every recipe with a Dockerfile has one; a permanently red check is
-  one nobody reads), and cooling/unpinnable pins fail nobody's fault.
+  one nobody reads), and cooling/unpinnable pins fail nobody's fault. **`--fail-on major` (#469)**
+  narrows the failure to stale pins whose offered bump crosses the leading numeric component
+  (`is_major_bump` — a calendar scheme like `2024.1 -> 2025.1` reports as major): a weekly
+  scheduled check that fails on ANY drift makes red its normal state, so minor/patch drift is
+  reported in the output but bumped on the roadmap's cadence while a major — the class that breaks
+  a harness on upstream's schedule — still gates. `--fail-on any` stays the default; an unknown
+  value is a `BadParameter` before any network is touched.
 - **The release-age cooldown** (`--minimum-release-age`, default 10080 minutes = 7 days, pnpm's
-  `minimumReleaseAge` semantics and unit): a compromised or broken publish is usually yanked
-  within days. A too-fresh newest release does not mean "no update" — the newest version that *is*
-  old enough is offered instead, and the skipped newer one is named.
-- **`apply` is an allow-list of per-file rewriters**, not an else-branch to a text rewriter: YAML
-  round-trippers for recipe/agent manifests, a plain-text rewriter for the extra-tools list, and
-  **an unrecognized file is skipped** rather than naively line-edited — the fail-closed posture
-  that costs a bump nobody asked for instead of a corrupted catalog file.
+  `minimumReleaseAge` semantics and unit; `0` disables the gate): a compromised or broken publish
+  is usually yanked within days. The 7-day default is a measurement, not a guess: on 2026-07-25
+  ALL FIVE pins the command offered were younger than a week, two of them hours old — pnpm's own
+  default is 1440 minutes (1 day). A too-fresh newest release does not mean "no update" — the
+  newest version that *is* old enough is offered instead, and the skipped newer one is named with
+  its age. An undated release is never selectable (the age promise could not be honoured) and is
+  reported unresolved for hand review.
+- **`apply` is an allow-list of per-file/field rewriters**, not an else-branch to a text rewriter:
+  a ruamel round-tripper (comments, key order, and the catalog's `  - item` indentation preserved)
+  for `tools:` spec swaps in recipe manifests, a plain-text rewriter for the extra-tools list
+  (matching the whole first field, never a substring), and dedicated field rewriters for pins whose
+  version lives in a *field* rather than inside a spec string — agent `build_args.<KEY>.value`
+  (validated via `_require_immutable_build_arg` before writing, so a resolver returning a channel
+  is declined rather than persisted) and recipe `install.refs.<key>.ref`. Each field rewriter
+  exists because `apply` once dispatched every `.yaml` to the spec-swap rewriter, which returned
+  False for the field-shaped pin: a bump was offered, accepted, reported successful, and never
+  written. **An unrecognized file is skipped** rather than naively line-edited — the fail-closed
+  posture that costs a bump nobody asked for instead of a corrupted catalog file. Opaque pins and
+  cooling pins are refused outright, so even a caller handing in the wrong bucket cannot write a
+  too-fresh version.
+- **A bumped `tools:` recipe is relocked in the same write** (`_relock_recipe`): the sibling
+  `mise.lock` still names the old version, and mise's lock migration at install time re-resolves
+  EVERY platform — a platform whose attestation the running mise cannot see then trips mise's
+  provenance-downgrade guard ("this could indicate a supply chain attack") and the launch fails on
+  a machine that bumped nothing. The relock runs once per manifest (after the loop, on a set) against
+  a temp-dir copy, because `mise lock` downloads artifacts to verify provenance (900s budget, not
+  the 60s registry-lookup seam) and a crash must not leave a stray `mise.toml` inside `catalog/`.
 - **After writing**, the verb names the bumped recipes, the affected stacks, and prints the literal
   `harnessed build`/`harnessed test` commands to verify before committing — a bumped pin is a code
   change like any other, and printing the commands is the difference between a reminder and a task
-  the user has to go research.
+  the user has to go research (a recipe no stack uses says "nothing to rebuild" rather than
+  printing an empty list). Interactively each offered bump is a confirm (default yes); `--yes/-y`
+  accepts all without prompting — and even then a held pin is never written, because the hold is a
+  rule, not a default.
 - Resolution goes **through the module attribute** (`pinupdate.resolve_releases`), so a test or a
   future offline mode can swap the resolver.
 

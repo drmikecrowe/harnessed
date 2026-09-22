@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d76e08a06315cf14d917c5edcd049afdb4b65e13a158b566fbcc342d0e53a7f4",
+  "pageVersion": "sha256:1651f2932acc3baf80490700a8e3cd4c5fa970a702c39b8b10b67457bae93158",
   "claims": [
     {
       "id": "claim_884ca4508fb040328ba5ba629d13b020",
@@ -372,15 +372,15 @@
     },
     {
       "id": "claim_592615409b1145eb844b01b3f4e69769",
-      "statement": "`harnessed update` sorts pins into five buckets all printed even under --check (stale/cooling/held/unresolved/unpinnable, each with its own reason for existing), and --check WRITES NOTHING — report building is side-effect free and only apply writes, because a CI mode that mutated the tree it validated would be a trap. check_exit_code returns non-zero only for a stale, unheld, resolvable, past-cooldown pin: unresolved pins (every Dockerfile recipe has one) and cooling pins must not keep CI permanently red.",
+      "statement": "`harnessed update` sorts pins into five buckets all printed even under --check (stale/cooling/held/unresolved/unpinnable, each with its own reason for existing), and --check WRITES NOTHING — report building is side-effect free and only apply writes, because a CI mode that mutated the tree it validated would be a trap. check_exit_code returns non-zero only for a stale, unheld, resolvable, past-cooldown pin: unresolved pins (every Dockerfile recipe has one) and cooling pins must not keep CI permanently red. `--fail-on major` (#469) narrows the failure further to stale pins whose offered bump crosses the leading numeric component, so a weekly scheduled check reports minor/patch drift without failing while majors still gate; `any` stays the default and unknown values are rejected with BadParameter.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L4386-L4449",
-          "version": "repo-lines-v1:sha256:3e645364d745f0c7c51d6e56aa2a7071927254f0809c42c869d90ff394be9a6a:eyJzZWxlY3RlZExpbmVDb3VudCI6NjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiZDU2MGY0NTI2NzMzNWFlNTUwOTZjOTg5MjI5OTNkYTIzNDY5OTA5NjNiNTAzN2Q4NmI4ZTE5OTM0YjgyZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmNzRhM2VlMTBkZTA3ODA3ODQ2NmViMTE2MDE1ZGNlNWQ4Yzc0Y2RhN2U4ZWY5YWRlNzU1MmZhOTZhZTEwZWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjljNWU5NTEwZTM1ZjdkOTdjNzdkMzg0NzI0OGYzNWEwZWJmZGU0NzgxN2IwZmJiNWNiOGU3NmYwNTQ5ZDk4MzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkNDI4N2YwZWViMWY5YzgyYWIzOWI3ZjM2Njg3YWVjZjMxOTE5Yjk0N2FmN2QwZjE0NjEyYjk3NjA2ODU1OGYifQ"
+          "resource": "repo://src/harnessed/launcher.py#L4648-L4725",
+          "version": "repo-lines-v1:sha256:e3c313b171bcb9d3030310af6037b7c2d2fe559fa1fc81c555f5d631778b4713:eyJzZWxlY3RlZExpbmVDb3VudCI6NzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiZDU2MGY0NTI2NzMzNWFlNTUwOTZjOTg5MjI5OTNkYTIzNDY5OTA5NjNiNTAzN2Q4NmI4ZTE5OTM0YjgyZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3NzJjMDJkOTgyNzUzNTBiNDZlYjlmZWQ3OGNkYjYzYjQ5MDM5MjMzY2Y0YmQxMDk4YTExMmY4YmUyZTNiNGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjljNWU5NTEwZTM1ZjdkOTdjNzdkMzg0NzI0OGYzNWEwZWJmZGU0NzgxN2IwZmJiNWNiOGU3NmYwNTQ5ZDk4MzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQyYjA3YmQyYWFmYjA2MmY1OTdkZjQ0Y2M5ODI4YmIwMjJiODliYWUwNzM0ZWM3MzVjZDY5ODVjMjZkYWQ5ZjMifQ"
         },
         {
-          "resource": "repo://src/harnessed/update.py#L231-L256",
-          "version": "repo-lines-v1:sha256:96ab148ace373b8eb4e9ee565243eb50d17aae283f5530701f30fd19930a6630:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2ZmJhZTBiOTFkNDRmYzBkNDlmNWRlNjkxZGE2ZmM0MzFmMjYwMTM0YmY3MzFlMGUyMWY3NjQ4MDk0MzM0Y2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiMTdmOTM3NzM1NzE5MDQwZDU1NGIxMTBhZWVkMjU4MzNkNTc3M2YwZDQ5M2FmNTFmZDg1YmE0ZTM2ZjFiODAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwNDc0NzlmOWFkZDc3NjljMzc0N2E2MWEzOTc1OGYxM2QxNTgyMjgzNjZhYTBkYWJjMThiOGI1OGZkY2ZlY2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxOTRiM2JlODYyMWMwM2VkZDk1N2ZkY2YyNDllMmY3NjM3ZTdjYzM1OTJkNTFjOTVkZTk0MDg0YTU4NDRkY2QifQ"
+          "resource": "repo://src/harnessed/update.py#L262-L295",
+          "version": "repo-lines-v1:sha256:24600681543dc98a41c1b6bf65fd42c4bf10908dabb017c8f8b138feab8f01e5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2ZmJhZTBiOTFkNDRmYzBkNDlmNWRlNjkxZGE2ZmM0MzFmMjYwMTM0YmY3MzFlMGUyMWY3NjQ4MDk0MzM0Y2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiMTdmOTM3NzM1NzE5MDQwZDU1NGIxMTBhZWVkMjU4MzNkNTc3M2YwZDQ5M2FmNTFmZDg1YmE0ZTM2ZjFiODAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUzZGNjMmNlZWIwNGQzYzZhYTI2NWY4NGJjYzFlY2UzODY0MTE1NDgzZDlkOTg2MGE4MTQxYzIwMjAwYzVjMzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxOTRiM2JlODYyMWMwM2VkZDk1N2ZkY2YyNDllMmY3NjM3ZTdjYzM1OTJkNTFjOTVkZTk0MDg0YTU4NDRkY2QifQ"
         },
         {
           "resource": "repo://src/harnessed/update.py#L29-L32",
@@ -390,14 +390,18 @@
     },
     {
       "id": "claim_8c867965e12c40b0bbdbbf1936fa7eea",
-      "statement": "The release-age cooldown models pnpm's minimumReleaseAge (same unit, minutes; default 10080 = 7 days): a release younger than the window is not offered, but the newest version old enough IS offered and the skipped newer one named. Pins marked hold (install.hold or a tools: entry's hold) are listed for information and never bumped — skill content is agent instructions run with full tool permissions, so a compromised upgrade is prompt injection no CVE scanner detects.",
+      "statement": "The release-age cooldown models pnpm's minimumReleaseAge (same unit, minutes; default 10080 = 7 days, versus pnpm's own 1440 = 1 day — the 7-day default comes from a 2026-07-25 measurement where all five offered pins were younger than a week, two of them hours old): a release younger than the window is not offered, but the newest version old enough IS offered and the skipped newer one named with its age. An undated release is never selectable (the age promise could not be honoured) and is reported unresolved for hand review. Pins marked hold (install.hold, a tools: entry's hold, a per-ref hold, or an agent build_arg hold) are listed with any newer ref for information and never bumped — skill content is agent instructions run with full tool permissions, so a compromised upgrade is prompt injection no CVE scanner detects.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L4395-L4411",
-          "version": "repo-lines-v1:sha256:033a3f27d693fa493e0a2665be4a9739adc0df94b0c50aaf17fa99ecb01f4a48:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5ZTMxNDExMGZjMTE5NDVhZWIxYTUyM2JlZDY0YzgzOWYyNDdjMjhkNjE3MjFkYmNiMGE4NDZjMjk2ZTk1MDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRlNDhiNTJjNzg0NDZmNWI5NjU0MGJmODUwYmUwNmM4ZDM4MWZkNjlmY2Q5ZmUyYmMxZWM1MDAwOWMwN2M0ZTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU2Nzg2NTk2MGIyMzJiOWU3MzJhZTJiYzQ5ZDg0NjM0OThiMDU5MmFlZjMxMjczNzE1Mzk2N2M5MGFkYzJlOTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMyODIzYjhiNGE4NzJlODBkNmUxYzJlNDBkMTY0MjgyMGYwNzUwMDAxOTZlMTY5NzEyMjNhODY2YWVhMWEwNzIifQ"
+          "resource": "repo://src/harnessed/launcher.py#L4657-L4679",
+          "version": "repo-lines-v1:sha256:2c7ade08f3a53ba911d1267b6a6c593ad1333f065bd02987b78bcb7e27e78f23:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5ZTMxNDExMGZjMTE5NDVhZWIxYTUyM2JlZDY0YzgzOWYyNDdjMjhkNjE3MjFkYmNiMGE4NDZjMjk2ZTk1MDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU2Nzg2NTk2MGIyMzJiOWU3MzJhZTJiYzQ5ZDg0NjM0OThiMDU5MmFlZjMxMjczNzE1Mzk2N2M5MGFkYzJlOTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkNWJkZWVlNzQ1Njk3NjI0YWIyMzkwYWIyNzQ4ZjVmZTMyMDcyMWNkNjk5NzYzMmQyYmQ3ZDRhM2VhOGJkNGMifQ"
         },
         {
-          "resource": "repo://src/harnessed/update.py#L69-L77",
+          "resource": "repo://src/harnessed/update.py#L582-L640",
+          "version": "repo-lines-v1:sha256:ec115874fef5d41a3ca51e51064b9e4a3072e74eb6bf18869c2b3531918d7046:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmYTlkYjRjYmE5MTU3ZGRmYmRlZjAxODRmYTMyZGFiZjg3ODFiMWFhZTVjYTczMjA0NGQwYmQ4NzkwYWNkODMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiNGIyZDI5MWQ4OWU0ZmZjNjliNjYwMTUxYWFmMmM5MGFmOTkxZDI4MDE3NWI5ZDRjZDAyNDgwMzBmMjVkMWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdhMDdiNjdjZmI3YjEzMWE1ZmNjYzgwNTY3Mzc3YTY5MzJmNzM5MTM3MjgwZDgyODU2ZDgxZGQ3OGMxYzdlZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwODRhNDg1YWQ5NTQzMmMzZjViOGI2MzhhOGFkYmNkYjI3YjA3YTIxMzM4OWU5ZTFkYTRmMTNhMmEyNWM5ODMifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L79-L87",
           "version": "repo-lines-v1:sha256:f3c6e5ac3ae08e37fb31c726dc0204a6daa641f6bd83935b2ddd6f589a774f77:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzJmNjlkYTJhOGM2MjBmYzE0YzBjZjM0M2Q1ZmNmNWMyYWVhZDgyMGIwZjI4ZWEwZWVmNjRiY2Y5NTkwYjRjNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWY0MGQ1MzU5ZDcyZjUwNjJhYzA2YTM3YTQwOGQzNmY1NTI0YjUyZDI1OTAyYjg3OWQ4YjM2MWYwODY0NmVhNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmZkOTdiZDhjODQxYWI4MTkxZTVkZDJmOTQ4ZDMzMjRiOTI0Nzg2NTNmYWY5NDVjMDU0N2E5MDdhNDg1NzQ2MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjU0OWU5NjgzY2JlYjZiNzI1NWFjOTdhNWI4YzQ0NDQ3YWIxZWI5MTJhZDU0MTFiODk2Y2NmMjQyZDEzM2RlZSJ9"
         }
       ]
@@ -414,19 +418,23 @@
     },
     {
       "id": "claim_cf5656ad02ad42c4bb3cab1b16129374",
-      "statement": "After writing bumps, the verb names the bumped recipes, the affected stacks, and prints the literal build/test verify commands to run before committing (a bumped pin is a code change like any other). The update verb sweeps recipes, agent manifests, and the base image's extra-tools pins, resolving through the module attribute (pinupdate.resolve_releases) so tests or a future offline mode can swap the resolver.",
+      "statement": "After writing bumps, the verb names the bumped recipes, the affected stacks, and prints the literal build/test verify commands to run before committing (a bumped pin is a code change like any other; a recipe no stack uses says \"nothing to rebuild\" rather than an empty list). The update verb sweeps recipes, agent manifests, and the base image's extra-tools pins — both sources gathered before the empty-catalog guard so an agents-only catalog still reports — and resolves through the module attribute (pinupdate.resolve_releases) so tests or a future offline mode can swap the resolver.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/catalogseed.py#L270-L308",
-          "version": "repo-lines-v1:sha256:9685c9292aabfe9e0af9d2a5101ac3094e8a474aa56d094f89ed7967fca895b9:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVhMDU1YmM2MTU0MDI0NjVlN2YyYjc1MjUwNjNjNjU3ZDUzMzhlMWZkNjhhODVjYjEyMTNjNGUyNDQ1MWRhYjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmNjk5NzdkMDA3ZjAzMTUwZWNjNzJiNDZlY2YwNzJjMmNjMmQ5ZTQwYmQ0MDlhZmQ0MjlkNDJiZTcwNzYzNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRiYTg2ZjNiNjE3ZGE0ZWU1YzcwZDMyMGVlMTg0MWVjM2IxYzRhMjY2MjAyMDI5M2EzYTg3MDg4OWM0ZDlkOGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://src/harnessed/launcher.py#L4683-L4756",
+          "version": "repo-lines-v1:sha256:f7e4c8a896b95e95eaa33a27677ea70bba79ee24973fef8941cab85a77d57838:eyJzZWxlY3RlZExpbmVDb3VudCI6NzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzOWQ3N2JjZDk3ZDRkZjY3OGY1MjYxNzBiNmI3MWU0ZjRkNDcwYWUzNmQ1ODY2OWNiZTQxNWI1MjljNjFkZTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDMyZTk2NGQwOTMyMzUxZTVkMTg1MjY5MjgxYjE3MWEzYTA5YjA4YjI4NmU2NjFlYTQ3MDMyM2M4MmViNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVkNWJkZWVlNzQ1Njk3NjI0YWIyMzkwYWIyNzQ4ZjVmZTMyMDcyMWNkNjk5NzYzMmQyYmQ3ZDRhM2VhOGJkNGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU4YWIxZTIyNDgzZGUyMDk2NmIzOWQ2MzFmYmY2ZWVlY2M0OGFlN2Y4ZDcwZGJlMjIxYjAxYjcwMGViOGE4ZDMifQ"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L4425-L4484",
-          "version": "repo-lines-v1:sha256:7699204eea48605166bcec4029cb1f132bc989bb0dad2b26aceb9bdacbf13a07:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmNDRhZjc2N2IwZDg2ZjE2N2RhYzNkYzk2YzZjOTFlYjc5MWZkYTU3ZTg0MWFhMTY4M2MxYmFjYzBmY2Y2OWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDMyZTk2NGQwOTMyMzUxZTVkMTg1MjY5MjgxYjE3MWEzYTA5YjA4YjI4NmU2NjFlYTQ3MDMyM2M4MmViNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYxNThjNGFiOTA0NzllYjNkZDdlY2Y0YTU2NWNjZGVlZGE3MzczN2VjMGM1NzA3ZTdmYjgyOTkyNmNiYzhjNWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU4YWIxZTIyNDgzZGUyMDk2NmIzOWQ2MzFmYmY2ZWVlY2M0OGFlN2Y4ZDcwZGJlMjIxYjAxYjcwMGViOGE4ZDMifQ"
+          "resource": "repo://src/harnessed/update.py#L689-L713",
+          "version": "repo-lines-v1:sha256:a0faad0d9e0d1e2c29b7474a983efed7d13009f3bfaeb39660e32ea5b2743d47:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZWQyODk0ZDI0NzUyMTM4ODdmZWYyOGU3NjFjMzkyOTUyYjc0NjJhMjg2ZmE0NjJmNTBjMDY0MzRkNDczNzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwNmEyODEwYjI3Yzk3ZTcxNWI4ODU3MmVlNDYxNDFiNmUyNzk3MGFjMjIyYzQ5YjcxZDczNWZlYjc5MWM4ZDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3ODU4NDcwNTYwNjVjNjRiNTJlMTc3NjI2OTdlNTM3MGQ3ODczOTUxOGZjYzI3ODQxOTczZTRhYmY2ZDUwNTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQwZjNhNWIyOTczOGIzYjY1ZDQxZjkwNDUxMjRhNDRjNzNkZDkxMWIzZDc3N2MxODliMjM0NWYxZjNjNzA4MDcifQ"
         },
         {
-          "resource": "repo://src/harnessed/update.py#L49-L67",
-          "version": "repo-lines-v1:sha256:f072b6d4d4d95b6179992c44a9dd6c79ce8f8f9fa8ffae8d2ee80110039428b0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkNGQ3N2EwYTU0MzZiZjIyYjBkOGM3ZmYyMGY3ZmY3N2M0ZjFjYjMyYzZhOGM5MWQ1MDJkODJjYTY2Njc2YjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5NDE2ZTA5Zjc4YmEzMTZjMDMyNTY4MjEzYjg1NWVlNzU2ZTQxNTY1ZDkxOGYwOTUxOWM4MWZkNjIwZjQwNjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwNmIxMTA4M2M5NmQwZjY5ZDFhNjg2OGExMmU4NWExMmQwNmE2NTMyMTA4MDRlM2QwYWUyZGMyZGY3NjdiOTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNlZTg3ZTQ1Y2Y4MDAyYzQ3NjI5ZTUzZDc3OTA0YTRhMDRkOWMzYmNiMGMzNDVlNDQ4Y2NlZWFmYWFmZjlkM2YifQ"
+          "resource": "repo://src/harnessed/update.py#L762-L796",
+          "version": "repo-lines-v1:sha256:c8f649a367cd7d39342df1a438f21d3f1434fc68f43020c2183c3048bb5b671f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjZWI3NTZiZDBjZjM2ZTFiYWJlMGUzMTQxZjYwMzM1NmU1YjMyYTljOTU2MjM1MTg0NGQwMzI5MTJhNWYwNTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjMGIzNmFmZGU0Y2NlNDQxNDYxYzZiNzQwMTFiZmFkNjI5NGUyZDZkZjcyZTM3ZDJiNmI1ZmE3MzRhNTFjMDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNjNmMTJiZjQ3ZTBkZGM2MWU5ZDdlMWUzNDZmMGYwNGZmOWNiMmM2MWFjMmVjMGQwNWI2OTJiNDU0MTg0MmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjZDgzY2Q0ZjcxZDkwODNmNTRkYmJiM2E5NWFmY2I3MGU5MmIzNGU1YTg4Njg4YTViYjZjOWMxMzEzZDYyNDcifQ"
+        },
+        {
+          "resource": "repo://tests/test_update_cli.py#L223-L247",
+          "version": "repo-lines-v1:sha256:e82106cab40f2d71ba4478d3b6bc05cc7087fcbe0005eb1d193f658058e71968:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1NTQ1MzU3YWJiNjIzN2VlN2QxYWU3MGJhYmNjMzU3NzBiZTFhYTgxYzNhZTU1MTQxZmNmM2RiZjViZDg3ZDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkOTdhNzA1ZGMxMGEyODMzZmQzZmZkMjc1NWIzMWM4NmU4NzVjZWY1OTFhYTYwMjI1OWE3YThmY2Y3NDA2YzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ1MWY2NmNiYjQ5YjBmZDQ4MjE4NzU4NWVjODlkMzVkYTQyMjE2ODNkM2RhYjZiZTIzNjY3YzhmZjM4MzM1ZjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -765,10 +773,34 @@
           "version": "repo-lines-v1:sha256:7df99edac664bb48653800631c3634c8f26ee709986df40fc564f478396be115:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyOWY1YmU3MGM4ZTNjZWNjNDY3M2Q2YjVhZmRmNzA3YjVkODA0NGUwZTIwN2Y2Njc4MzUyZjBkYzkyNDk4M2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhNWVkZTExNjhkNThlZDcxOGM4MTU4NThkMmViNjMzM2RkNzA1ZmZhNzZhMmJlY2M1YmZlOWQ4MWEzNDI4ODgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxY2I3ZmUxMWZhYTJmY2U5NWU0ZGNiZTc1YjczNTI1NjE3MGUyMzU1YWIzNjlhYTYxMjhiZGNmYWE0ZTQ1NTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ3M2RmNzBmNzJjMDQzMzMyMzRiMGU0MmFjMDEyNGE2NzI4NWY0MDQ3OGE4ZGQwMGRkNmQ4MjdhMjNmODBmMzAifQ"
         }
       ]
+    },
+    {
+      "id": "claim_1d077c76bb294cc786cf7a8424c2793c",
+      "statement": "apply dispatches on pin shape: spec-string pins go to the ruamel round-tripper (tools:) or plain-text rewriter (extra-tools, whole-first-field match), while pins whose version lives in a FIELD — agent build_args.<KEY>.value and recipe install.refs.<key>.ref — have dedicated field rewriters, each added after the spec-swap path silently reported success without writing. The agent rewriter validates the new value with _require_immutable_build_arg before writing so a resolver returning a channel is declined (False) rather than persisted; unrecognized files, opaque pins, and cooling pins are all skipped, the fail-closed allow-list posture.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/update.py#L1013-L1072",
+          "version": "repo-lines-v1:sha256:0a4f44f347a3a479016d97b75f4e3a23f4e97395c194f1777fe287600a66f13b:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkNTJkOTg5MDBhNzE2MzY4YTA5YjNiOTg4MGE2YzMyY2ZhMzRjY2VkNDQ1ZjI1N2ZjMDY3NWJjNWFmZWZlNjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhNmE5YjFlMzk0OWNhMThmMWUyOGRlZGNiODM4MjRlY2NlZjEzYjQ0MGY2ZTM3MzdiMDg3MDc1NjUyODYyNWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L855-L955",
+          "version": "repo-lines-v1:sha256:2b745469a15e3063229a52e8f167f5ef1731e2c345dfc3314daa14754077fe0c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyMmU3MDQ5YTM1ZjQ3ZWY0NTNkMDM1MmJiYzQ4NDM3YTFlNmNkM2FhZmI3ZDcwN2Y5NmVkNWNlODE3ZmMwNGJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzMGUyYTQ2NTAwOTVmYTk1ZDBlMmJiNDFiMmRiMjkwOTRkMzQwNGQyOGNlMTIzMzllYzg4YmI0YjVjNWJlOGY2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkZTc1NzVjM2I3Nzc2Y2YyZjljMmJmYmNhNDRmMjE0ODEzYTc4MjdlYWE5YzM4NDU0YzcwM2I2ODlhNzQ0Mzg2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjMWY1Mzk2ZGM3N2YxYmU2OTE3MjZlZThjMGI0NDEzYTVmMThkNmZhZGJmMWFiZjZiMzEzZjlmYmJhZDExOTA4In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_458a1023a3ef43c3877a9f49a541859a",
+      "statement": "apply relocks a recipe's sibling mise.lock whenever its tools: entries were bumped: the lock otherwise still names the old versions, and mise's lock migration at install time re-resolves every platform — tripping mise's provenance-downgrade guard on platforms whose attestation the running mise cannot see and failing a launch on a machine that bumped nothing, reported as a supply-chain alarm. The relock runs once per manifest after the bump loop against a temp-dir copy of the lock (mise lock writes into its config root and a crash must not leave a stray mise.toml in catalog/) under a 900s budget because it downloads artifacts to verify provenance.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/update.py#L958-L1024",
+          "version": "repo-lines-v1:sha256:0f271c2f6e175cce0680ebd8314edcab5c89fee797766ccd23b78e1d2e41799c:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1ZTA4MzkxODkzODMxMGQ4NjkwM2ExZDk0MzQxMTk0ODhlMzYxZmIxNGQ4MWIwMjZlZmNhYTBmYTVjZDljMTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg3ZGM5MjkzM2Q5MzM1YjUxZTMzOTFkMTdhZmQyZTU2OTFjZjBkZjkxMDY1ZGE2OGJiNmYyNzgyYWI3MDViNjUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-20T12:51:12.657Z"
+    "at": "2026-09-22T13:04:15.246Z"
   }
 }

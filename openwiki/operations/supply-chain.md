@@ -1,9 +1,11 @@
 ---
 type: mechanism
 title: "Supply chain and pinning: what ships, how it is pinned, and how it is scanned"
-description: "The pinning surfaces (recipe tools:, extra-tools pins, image-layer pins, per-recipe mise.lock checksums merged by toollock at launch), the `harnessed update` staleness sweep with its minimum-release-age gate, per-shape bump rewriters and verify-before-commit output, the scheduled `--check`, and the scan layer itself: osv-scanner + pip-audit with a pure-Python severity gate at CVSS >= HIGH (7.0), the credentialed advisory in-image pass, and the online rescan path behind the SEC-04 nightly systemd timer."
+description: "The pin surfaces (recipe tools:, install.refs, agent build_args, extra-tools pins, per-recipe mise.lock checksums merged by toollock at launch), the `harnessed update` staleness sweep with its pnpm-style minimum-release-age gate and major-bump-only CI failure (`--fail-on major`), per-shape bump rewriters and verify-before-commit output, the scheduled weekly pin-check, and the scan layer itself: osv-scanner + pip-audit with a pure-Python severity gate at CVSS >= HIGH (7.0), the credentialed advisory in-image pass, and the online rescan path behind the SEC-04 nightly systemd timer."
 tags: [supply-chain, pinning, skills-pins, extra-tools, mise-lock, toollock, harnessed-update, stale-pins, security-scan, osv-scanner, pip-audit, cvss-gate, harnessed-scan, rescan, nightly-scan, systemd-timer, coverage-accounting]
 sources:
+  - id: openwiki-source-4e2e2b93eeb15847052a26fb
+    resource: repo://.github/workflows/pin-check.yml
   - id: openwiki-source-e916c387e9195be48f6d9d41
     resource: repo://catalog/base/Dockerfile.harnessed-base
   - id: openwiki-source-18cedd09b868a0074380c4cd
@@ -44,10 +46,10 @@ sources:
     resource: repo://tests/test_toollock_wiring.py
   - id: openwiki-source-854929ba43f12d27e96036d0
     resource: repo://tests/test_update_pins.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-22T13:04:15.246Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
+    at: 2026-09-22T13:04:15.246Z
 ---
 
 # Supply chain and pinning: what ships, how it is pinned, and how it is scanned
@@ -174,8 +176,14 @@ every pin surface and offers bumps. Its classification rules (each pinned by a t
 
 - **RESOLVABLE vs OPAQUE.** `tools:` and extra-tools entries name their backend, so the latest
   version is a registry lookup (npm/PyPI/GitHub/mise registry; a scoped npm package keeps its
-  slash unescaped and its version splits at the **last** `@`). `install.cache` keys, shell-var
-  SHAs in `install.sh`, and Dockerfile `ARG REF=` literals are opaque — machine-unresolvable, but
+  slash unescaped and its version splits at the **last** `@`). A declared `install.refs.<key>`
+  entry is resolvable too — `repo` names the upstream and `ref` is the pin — while a *derived*
+  `install.cache` (present only when the recipe declares no refs) is deliberately *not* reported:
+  it is a digest computed from the refs and would double-count them. Hand-written `cache:` keys,
+  shell-var SHAs in `install.sh`, and Dockerfile `ARG REF=` literals are opaque — found by
+  `_ASSIGN_RE`/`_IMMUTABLE_LITERAL_RE`, which **fail closed**: a variable assignment whose value
+  is not a 40-hex SHA or a version-ish tag is simply not a pin, because a false "here is a pin
+  you should bump" on every `FOO=bar` would bury the real ones. Opaque pins are
   **reported, never silently skipped**: a pin the tool quietly drops reads as "everything is
   current", which is worse than no tool. Opaque pins are also never auto-rewritten — there is no
   safe automated edit for a ref buried in shell.
@@ -193,15 +201,34 @@ every pin surface and offers bumps. Its classification rules (each pinned by a t
   a pin reported differently from every other pin is a pin nobody trusts.
 - **HELD.** A `hold:` on a `tools:` entry or an `install.hold` on a script (the motivating case is
   skill content no scanner vets) makes its pins informational: listed with the newer ref, never
-  offered for bumping, never failing `--check`. Without that, a deliberately frozen pin makes CI
-  permanently red and the hold is worthless.
+  offered for bumping, never failing `--check`. `install.refs` entries carry a *per-ref* `hold`,
+  so a recipe with three refs may hold one and auto-bump two — exactly what the recipe-wide
+  `install.hold` cannot express. A held pin whose backend answers with **no releases at all**
+  (a Class-B repo pinned by SHA because it has no releases or tags) is also classified held, not
+  unresolved — "the resolver failed" would be the wrong story for the thing the hold already
+  explains. A genuine `ResolveError` (rate limit, network) is never hidden this way: an unheld
+  pin still reports unresolved, which is real news. Without held semantics, a deliberately
+  frozen pin makes CI permanently red and the hold is worthless.
 - **Version order is numeric, not lexicographic** (`1.9.0 < 1.10.0`), a leading `v` is ignored,
-  and a release outranks its own prerelease — so a bump is never a silent downgrade. A pin *ahead*
-  of the registry is not stale.
+  and a release outranks its own prerelease — so a bump is never a silent downgrade. The key must
+  also be **total**: `_select` sorts candidates with it, and two versions can each order fine
+  against the pin yet be mutually incomparable — pinning `npm:@openai/codex` once crashed
+  `harnessed update --check` when `0.146.0-alpha.3.1-linux-x64` and `0.146.0-alpha.3.1` produced
+  an int and a str at the same index; prerelease identifiers are now tagged with their kind so a
+  payload only ever meets its own kind. Semver build metadata is stripped *before* the prerelease
+  split (semver §10: `1.1.0+build-7` equals `1.1.0`), and **prereleases are excluded from the
+  candidate list entirely** on both the npm branch (via `is_semver_prerelease`, which reads a
+  semver string, never a VCS tag — this repo's own bun pin resolves against tags spelled
+  `bun-vX.Y.Z`) and the GitHub branch (the API's own `prerelease` flag): offering one would bump
+  the catalog onto an unreleased build. A pin *ahead* of the registry is not stale.
 - **Resolver failures and unknown packages are `unresolved`, never `current`** — a registry
   timeout must never read as up-to-date. A newer release whose backend gives **no publish date**
   is also `unresolved` ("review it by hand"), because its age cannot be checked against the
-  minimum-release-age gate.
+  minimum-release-age gate. The same rule refuses an undated fallback for mise-registered tools:
+  when `mise registry` names no `aqua:`/`ubi:`/`github:` repo backing the tool, `mise_repo`
+  returns None and the resolver raises rather than offering a bump under an age check it could
+  not perform (and only those three backends count — an `asdf:` token names the *plugin's* repo,
+  whose releases are not the tool's).
 
 ### The minimum-release-age gate (pnpm `minimumReleaseAge`)
 
@@ -220,13 +247,29 @@ raced.
 `--check` is the CI mode: it exits non-zero on a stale pin (extra-tools pins included) and
 **writes nothing** — building a report must leave the catalog byte-identical. Unresolved pins
 alone do not fail the check, because every recipe with a Dockerfile literal has one; failing on
-them would make CI permanently red and teach everyone to ignore it. The workflow placement
-(`.github/workflows/pin-check.yml`, guarded by `tests/test_ci_pin_check_workflow.py`) is itself a
-design decision: `harnessed update --check` resolves **live registries**, so its result depends on
-what third parties published today — wired to `pull_request` it would fail an unrelated
-contributor's branch unfixably by the author. It therefore runs on `schedule` and
-`workflow_dispatch` only, never on a diff; the hermetic test suite, whose result depends only on
-the diff, still gates PRs.
+them would make CI permanently red and teach everyone to ignore it. Cooling pins and declared
+`unpinnable` agents do not fail either — you cannot act on a release you are deliberately waiting
+for, and an unpinnable agent is permanently so by definition.
+
+What CI actually fails on is narrowed further by **`--fail-on major`** (#469): a weekly scheduled
+check that fails on ANY drift makes red its normal state — eight consecutive red weeks carried no
+signal — so minor and patch drift is reported in the run's output and bumped on the roadmap's wave
+cadence (`mise run upgrade-pr`), while a major still gates. Major-ness is
+`update.is_major_bump`: the bump crosses the **leading numeric component** (`2.1.2 -> 3.0.0` is,
+`1.13.0 -> 1.14.0` is not), a calendar scheme (`2024.1 -> 2025.1`) conservatively reports as
+major, and a prerelease suffix hides nothing. The interactive caller keeps `--fail-on any` (the
+default), so a human running `harnessed update` still sees everything.
+
+The workflow placement (`.github/workflows/pin-check.yml`, guarded by
+`tests/test_ci_pin_check_workflow.py`) is itself a design decision: `harnessed update --check`
+resolves **live registries**, so its result depends on what third parties published today — wired
+to `pull_request` it would fail an unrelated contributor's branch unfixably by the author. It
+therefore runs on `schedule` and `workflow_dispatch` only, never on a diff; the hermetic test
+suite, whose result depends only on the diff, still gates PRs. The schedule is **weekly, Mondays
+06:00 UTC** — daily would re-report the same pins six times before any of them clears the 7-day
+gate — and the runner **installs mise** (`jdx/mise-action`) so bare `tools:` entries resolve
+through `mise registry`; without it they degrade to "unresolved" — reported, never silently
+skipped, but unchecked, which quietly shrinks what the sweep covers.
 
 On accept, `apply` rewrites the pin **in place**: recipe YAML goes through a ruamel round-trip
 that preserves comments and reflows nothing (a bump must produce a one-line diff), extra-tools
@@ -289,7 +332,7 @@ flowchart TD
     L --> MI["mise install enforces the merged checksums in MISE_CONFIG_DIR/mise.lock"]
     B --> SCAN["the scan layer sees what the pins actually installed"]
     SW["harnessed update sweep: resolvable, opaque-reported, held, cooling under the 7-day min-age gate"] -->|"apply + relock"| R
-    SW -->|"check, writes nothing"| CI["scheduled pin-check workflow, never on a PR diff"]
+    SW -->|"check --fail-on major, writes nothing"| CI["weekly scheduled pin-check workflow, never on a PR diff"]
 ```
 
 *Figure: the pin surfaces, the launch-time lockfile merge mise enforces, and the sweep that keeps
@@ -625,7 +668,3 @@ Each rung is bigger than the one below it, with a different reason:
 - `/openwiki/concepts/invariants.md` — the invariant catalog entry for the coverage ledger, and the
   catalog's other supply-chain surfaces (pin freshness via `harnessed update`, per-recipe
   `mise.lock` checksums via `toollock.py`).
-s via `toollock.py`).
-via `harnessed update`, per-recipe
-  `mise.lock` checksums via `toollock.py`).
-s via `toollock.py`).

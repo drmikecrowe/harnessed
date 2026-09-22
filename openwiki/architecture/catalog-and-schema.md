@@ -48,10 +48,10 @@ sources:
     resource: repo://tests/test_recipe_uniformity.py
   - id: openwiki-source-a488585d132d26b93d838e43
     resource: repo://tests/test_tools_field_parity.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-17T09:44:27.184Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-22T13:04:15.246Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
+    at: 2026-09-22T13:04:15.246Z
 ---
 
 # Catalog: schema, roots, resolution, and packaging
@@ -333,8 +333,12 @@ Where the rule applies:
 
 `harnessed update --check` (weekly cron in `.github/workflows/pin-check.yml`) sweeps every recipe
 and agent manifest across the active catalog roots for pins with a newer upstream release past the
-minimum release age. Held pins (`install.hold`, a `tools:` entry's `hold`, an agent `build_args`
-hold) are listed for information and never offered for bumping, and never fail `--check`.
+minimum release age, plus the base image's committed `extra-tools.default.txt` (`update.extra_tools_default_path`
+— that sweep is how bd harnessed-2o9 reached CI). Both sources are gathered before the "nothing found"
+guard, so a catalog of agents and no recipes still reports. Held pins (`install.hold`, a `tools:`
+entry's `hold`, an agent `build_args` hold) are listed for information and never offered for bumping,
+and never fail `--check` (which by default fails on any stale pin; `--fail-on major` demotes
+sub-major drift to a report).
 
 ### Raw npm/npx rejection
 
