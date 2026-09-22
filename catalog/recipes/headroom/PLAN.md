@@ -215,6 +215,11 @@ effect, recipe-local, and it survives into a host launch. The "recipe→hatago b
 retired for this recipe; it stays real for any future stdio server uvx cannot resolve. Phase 2
 (per-stack hatago baking from `baked-servers.json`) is unaffected as a future direction.
 
+Stack note, 2026-09-22: the plan's test stack was named `claude_headroom`; the shipped stack is
+`headroom-default`, which `extends: default` so the composed recipe set is the union
+[default, headroom]. One recipe, one stack, and no `claude_` prefix — stacks are harness-free by
+construction (the harness is a CLI positional).
+
 Trade-off accepted vs baking: the first spawn pays a one-time uvx fetch from PyPI (the same cost
 `time` already pays in every stack, under the same firewall — PyPI is reachable where
 `cdn.pyke.io` / `huggingface.co` are not). Once cached in `~/.cache/uv`, later spawns are local.
