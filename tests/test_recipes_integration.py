@@ -48,9 +48,11 @@ FLOATING_RECIPE_DOCKERFILE = ROOT / "catalog" / "recipes" / "floating-recipe" / 
 # written in an older `claude_<recipe>` scheme under which no stack has been named for some time —
 # every entry in both sets silently matched nothing, so the exclusions they document were not in
 # force. `openbrain-example` is the one that still exists, and its own stack.yaml says it is
-# "intentionally excluded from the live capability sweep". `hindsight` has no stack at all
-# (bd harnessed-5wm).
-NO_LIVE_CONNECT = {"openbrain-example"}
+# "intentionally excluded from the live capability sweep". `hindsight-default` joined for the
+# same reason when the hindsight recipe left the backlog: its committed recipe is a template
+# (placeholder BANK_ID and Bearer key) that assembles but connects only against the user's own
+# host deployment via an overlay copy.
+NO_LIVE_CONNECT = {"openbrain-example", "hindsight-default"}
 
 # CLI-only recipes with no skill/command/mcp/plugin surface at all, by design — the agent shells
 # out to the binary directly and there is no `expect:` kind for "a binary is on PATH" (see e.g.

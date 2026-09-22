@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/stack.schema.json
+# Stack: hindsight-default — the baseline plus the hindsight recipe.
+#
+# `extends: default` UNIONs the recipe lists (schema.py `_STACK_UNION_FIELDS`): the composed set
+# is [default, hindsight] — the baseline's authoring content next to hindsight's
+# retain/recall/reflect tools. An authored stack does not inherit the baseline implicitly, which
+# is why this file says `extends:` explicitly.
+#
+# The committed hindsight recipe is a TEMPLATE: its MCP URL carries a placeholder BANK_ID and a
+# placeholder Bearer key, so the stack ASSEMBLES anywhere but CONNECTS only against a real
+# hindsight deployment. Copy the recipe to your overlay
+# (~/.config/harnessed/catalog/recipes/hindsight/) and fill in the real values — the recipe's own
+# setup: note says exactly this. Until then the stack is excluded from the live connect sweep
+# (NO_LIVE_CONNECT in tests/test_recipes_integration.py), the same arrangement as
+# openbrain-example.
+#
+# Harness-free, like every stack: `harnessed build hindsight-default claude`,
+# `harnessed test hindsight-default omp`.
+name: hindsight-default
+extends: default
+recipes: [hindsight]
+services: []
