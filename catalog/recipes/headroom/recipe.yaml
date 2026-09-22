@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
+# Recipe: headroom — context compression via the headroom MCP server (MCP-tools mode only).
+#
+# Exposes headroom_compress / headroom_retrieve / headroom_stats as stdio MCP tools the agent
+# calls on demand to shrink large tool outputs, logs, and JSON before reasoning over them.
+# No skill (upstream ships none), no hooks, no service, no Dockerfile. MCP-tools mode only —
+# the proxy/wrap modes (transparent whole-traffic compression) are deferred (network
+# intermediary model harnessed lacks). See PLAN.md.
+name: headroom
+description: >
+  Context compression via the headroom MCP server — headroom_compress / headroom_retrieve /
+  headroom_stats. On-demand JSON/code/structured compression (60–95% fewer tokens); originals
+  retrievable via CCR. MCP-tools mode only (no proxy).
+# setup: none needed — local compression, no account or key, no image edit
+
+# --- MCP layer ---
+# `transport: stdio` is explicit (RESEARCH Pitfall B): hatago spawns this command as a child
+# and wraps its stdio into the single HTTP endpoint the harness talks to. Same shape as the
+# `time` tracer bullet: uvx resolves the pinned wheel at first spawn into ~/.cache/uv
+# (group-writable in the base image), so the recipe carries the pin — NO image edit.
+#
+# Package and command names differ (`headroom-ai` ships the `headroom` CLI), so the server is
+# selected with `--from`, and the `[mcp]` extra is pinned WITH the version: it pulls mcp +
+# httpx + tiktoken/pydantic/ast-grep-cli and pulls NO ML stack. `[all]` would fetch GBs of
+# torch/onnx and reach for cdn.pyke.io / huggingface.co at first compress, none of which the
+# egress firewall allows; `[mcp]` compression itself is local and offline.
+#
+# HEADROOM_UPDATE_CHECK=off: headroom probes PyPI once a day for a newer self, and the egress
+# firewall would turn that probe into a recurring startup warning. The server's own `env:`
+# delivers it to the child in both modes, so no image ENV is needed.
+mcp:
+  servers:
+    - name: headroom
+      command: uvx
+      # BOTH pins are load-bearing, and the second is not optional. Unpinned, the mcp SDK
+      # resolves to 2.x, where the low-level Server API no longer has `list_tools` —
+      # `headroom mcp serve` died at startup with
+      #   AttributeError: 'Server' object has no attribute 'list_tools'
+      # and hatago reported headroom as "not connected" after 3 attempts. 1.29.0 is the
+      # version `time` pins for the same reason (bd harnessed-2c4 is this exact failure
+      # class). Verified in a real container: without the pin the child crashes; with it,
+      # initialize + tools/list answer cleanly.
+      args: [
+        "--from", "headroom-ai[mcp]==0.27.0",
+        "--with", "mcp==1.29.0",
+        "headroom", "mcp", "serve",
+      ]
+      transport: stdio
+      env:
+        HEADROOM_UPDATE_CHECK: "off"
