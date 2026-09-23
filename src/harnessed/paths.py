@@ -17,6 +17,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+
 class HomeNotFoundError(RuntimeError):
     """harnessed's catalog could not be located — see `harnessed_home`."""
 
@@ -193,7 +194,9 @@ def _probe_docker_rootless() -> bool | None:
     try:
         proc = subprocess.run(
             ["docker", "info", "--format", "{{range .SecurityOptions}}{{.}} {{end}}"],
-            capture_output=True, text=True, timeout=_DOCKER_INFO_TIMEOUT,
+            capture_output=True,
+            text=True,
+            timeout=_DOCKER_INFO_TIMEOUT,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -429,24 +432,29 @@ def catalog_relpath(name: str) -> Path:
     """
     parts = name.split("/")
     if len(parts) > 2:
-        raise ValueError(f"invalid catalog ref {name!r}: a family is one level deep (<family>/<variety>)")
+        raise ValueError(
+            f"invalid catalog ref {name!r}: a family is one level deep (<family>/<variety>)"
+        )
     if any(not p or p in (".", "..") for p in parts):
         raise ValueError(f"invalid catalog ref {name!r}: empty or traversing path component")
     return Path(*parts)
 
 
 def find_in_catalog(kind: str, name: str) -> Path:
-    """Resolve catalog/<kind>/<name> across the catalog roots (user first); first existing wins.
+    """Resolve catalog/<kind>/<name> across the catalog roots (user first); first real entry wins.
 
     `kind` is the plural dir: agents | recipes | services | stacks. `name` may be a variety
-    ref (see `catalog_relpath`). Returns the resolved directory even if absent (so the loader raises
-    a clear not-found pointing at the highest-precedence root).
+    ref (see `catalog_relpath`). An entry is a directory carrying the kind's marker manifest
+    (`_KIND_MARKER`): a hollow dir (a rename mid-flight, a half-authored recipe) must fall
+    through to a real copy in a lower root, not shadow it. Returns the resolved directory even
+    if absent (so the loader raises a clear not-found pointing at the highest-precedence root).
     """
     rel = catalog_relpath(name)
+    marker = _KIND_MARKER[kind]
     roots = catalog_roots()
     for r in roots:
         cand = r / kind / rel
-        if cand.exists():
+        if (cand / marker).is_file():
             return cand
     return roots[0] / kind / rel
 
@@ -454,16 +462,19 @@ def find_in_catalog(kind: str, name: str) -> Path:
 def overlay_shadowed_repo_path(kind: str, name: str) -> Path | None:
     """The repo-catalog path a user-overlay entry shadows; None when nothing is shadowed.
 
-    Shadowed means BOTH copies exist: `user_catalog()/<kind>/<relpath>` AND
-    `harnessed_home()/catalog/<kind>/<relpath>`. On a name clash the overlay wins (see
+    Shadowed means BOTH copies are real entries (each carries its kind's marker manifest):
+    `user_catalog()/<kind>/<relpath>` AND `harnessed_home()/catalog/<kind>/<relpath>`. On a name
+    clash the overlay wins (see
     `catalog_roots`), so the repo copy is never read — a session then quietly assembles stale
     overlay content while the newer repo copy sits unused. That silent drift has already caused
     real regressions, which is why the loader warns on it. `name` may be a variety ref (see
     `catalog_relpath`).
     """
     rel = catalog_relpath(name)
+    marker = _KIND_MARKER[kind]
     repo = harnessed_home() / "catalog" / kind / rel
-    if (user_catalog() / kind / rel).exists() and repo.exists():
+    overlay = user_catalog() / kind / rel
+    if (overlay / marker).is_file() and (repo / marker).is_file():
         return repo
     return None
 
@@ -633,7 +644,7 @@ def container_hostname(inst: str) -> str:
     if len(inst) <= _HOST_NAME_MAX:
         return inst
     head, _, tail = inst.rpartition("-")
-    return f"{head[:_HOST_NAME_MAX - len(tail) - 1].rstrip('-.')}-{tail}"
+    return f"{head[: _HOST_NAME_MAX - len(tail) - 1].rstrip('-.')}-{tail}"
 
 
 def setup_dismissed_flag(stack: str, harness: str, project_path: str | Path) -> Path:
@@ -643,7 +654,12 @@ def setup_dismissed_flag(stack: str, harness: str, project_path: str | Path) -> 
     launcher._prompt_setup_notices. Conditional notices are NOT gated by this flag; they follow
     their own `setup.condition` every launch.
     """
-    return xdg_state_home() / "harnessed" / "setup-dismissed" / instance_name(stack, harness, project_path)
+    return (
+        xdg_state_home()
+        / "harnessed"
+        / "setup-dismissed"
+        / instance_name(stack, harness, project_path)
+    )
 
 
 def svc_ports_file() -> Path:
@@ -697,7 +713,14 @@ def git_common_dir_checked(project_path: str | Path) -> Path | None:
         return None
     try:
         result = subprocess.run(
-            ["git", "-C", str(project_path), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            [
+                "git",
+                "-C",
+                str(project_path),
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ],
             capture_output=True,
             text=True,
             check=True,
@@ -750,10 +773,15 @@ def bare_worktree_container(project_path: str | Path) -> Path | None:
     if gcd is None:
         return None
     try:
-        is_bare = subprocess.run(
-            ["git", "--git-dir", str(gcd), "rev-parse", "--is-bare-repository"],
-            capture_output=True, text=True, check=True,
-        ).stdout.strip() == "true"
+        is_bare = (
+            subprocess.run(
+                ["git", "--git-dir", str(gcd), "rev-parse", "--is-bare-repository"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+            == "true"
+        )
     except (subprocess.CalledProcessError, FileNotFoundError, OSError):
         return None
     return gcd.parent if is_bare else None
@@ -775,18 +803,27 @@ def primary_worktree(project_path: str | Path) -> Path:
     if gcd is None:
         return Path(project_path)
     try:
-        if subprocess.run(
-            ["git", "--git-dir", str(gcd), "rev-parse", "--is-bare-repository"],
-            capture_output=True, text=True, check=True,
-        ).stdout.strip() != "true":
+        if (
+            subprocess.run(
+                ["git", "--git-dir", str(gcd), "rev-parse", "--is-bare-repository"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+            != "true"
+        ):
             return Path(project_path)
         head = subprocess.run(
             ["git", "--git-dir", str(gcd), "symbolic-ref", "--short", "HEAD"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout.strip()
         porcelain = subprocess.run(
             ["git", "--git-dir", str(gcd), "worktree", "list", "--porcelain"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout
     except (subprocess.CalledProcessError, FileNotFoundError, OSError):
         return Path(project_path)
