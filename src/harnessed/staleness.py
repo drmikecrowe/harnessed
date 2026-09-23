@@ -45,11 +45,7 @@ def _feed_dir(h: "hashlib._Hash", root: Path) -> None:
 
 def _stack_yaml(root: Path | None, stack_name: str) -> Path:
     """Resolve the stack.yaml the same way the loader/assembler does (single root vs catalog roots)."""
-    stack_dir = (
-        (root / "stacks" / stack_name)
-        if root is not None
-        else paths.find_in_catalog("stacks", stack_name)
-    )
+    stack_dir = (root / "stacks" / stack_name) if root is not None else paths.find_in_catalog("stacks", stack_name)
     return stack_dir / "stack.yaml"
 
 
@@ -104,9 +100,7 @@ def stack_resolves(root: Path | None, stack_name: str) -> bool:
     return True
 
 
-def check_profile_fresh(
-    root: Path | None, stack_name: str, harness: str, *, strict: bool = False
-) -> None:
+def check_profile_fresh(root: Path | None, stack_name: str, harness: str, *, strict: bool = False) -> None:
     """Raise if the built profile for `stack_name`/`harness` no longer matches the current catalog.
 
     Raises `SchemaError` when a referenced recipe/stack no longer resolves (existence check), or

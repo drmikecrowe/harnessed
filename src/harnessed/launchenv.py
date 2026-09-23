@@ -12,7 +12,6 @@ reason they live together: the two must not drift.
 
 Pure resolution only — nothing here knows about podman, containers, or the Typer surface.
 """
-
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -221,7 +220,7 @@ def _parse_plain_env_line(raw: str) -> tuple[str, str] | None:
     if not stripped or stripped.startswith("#") or "=" not in stripped:
         return None
     if stripped.startswith("export "):
-        stripped = stripped[len("export ") :]
+        stripped = stripped[len("export "):]
     key, _, val = stripped.partition("=")
     key, val = key.strip(), val.strip()
     if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
@@ -234,8 +233,7 @@ def _plain_env_values(src: Path) -> dict[str, str]:
     `_normalize_plain_env_file`, minus the temp file). Used by the host path, which sets the values
     in-process instead of handing podman an env-file."""
     return dict(
-        pair
-        for raw in src.read_text().splitlines()
+        pair for raw in src.read_text().splitlines()
         if (pair := _parse_plain_env_line(raw)) is not None
     )
 
@@ -318,10 +316,7 @@ def _varlock_proxy_modes(schema_dir: Path) -> dict[str, str] | None:
     try:
         proc = subprocess.run(
             ["varlock", "proxy", "rules"],
-            cwd=schema_dir,
-            capture_output=True,
-            text=True,
-            timeout=_VARLOCK_TIMEOUT,
+            cwd=schema_dir, capture_output=True, text=True, timeout=_VARLOCK_TIMEOUT,
         )
     except (subprocess.TimeoutExpired, OSError):
         proc = None
@@ -332,17 +327,17 @@ def _varlock_proxy_modes(schema_dir: Path) -> dict[str, str] | None:
         modes: dict[str, str] = {}
         in_secrets = False
         for line in proc.stdout.splitlines():
-            if m := _RULES_HEADER_RE.match(line):
+            if (m := _RULES_HEADER_RE.match(line)):
                 rule_count = int(m.group(1))
                 continue
-            if m := _SECRETS_HEADER_RE.match(line):
+            if (m := _SECRETS_HEADER_RE.match(line)):
                 declared, in_secrets = int(m.group(1)), True
                 continue
             if in_secrets:
                 if not line.strip():
                     in_secrets = False
                     continue
-                if m := _SECRET_LINE_RE.match(line):
+                if (m := _SECRET_LINE_RE.match(line)):
                     modes[m.group("name")] = m.group("mode")
         # Both headers must have been seen and the count must agree, or the parse is not
         # trustworthy. `rule_count` is read purely as that structural check.
@@ -386,7 +381,8 @@ def _warn_unproxied_secrets(schema_dir: Path) -> None:
     # Grouped by what actually goes wrong, because the fix differs. Anything unrecognised joins
     # `unusable`: a mode this version of harnessed has never heard of is not something to assume
     # is safe.
-    unusable = sorted(k for k, v in classified.items() if v not in _PROXY_MODES_OK and v != "omit")
+    unusable = sorted(k for k, v in classified.items()
+                      if v not in _PROXY_MODES_OK and v != "omit")
     withheld = sorted(k for k, v in classified.items() if v == "omit")
     passthrough = sorted(k for k, v in classified.items() if v == "passthrough")
 

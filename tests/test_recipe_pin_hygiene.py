@@ -32,7 +32,7 @@ _KNOWN_DUPLICATES: dict[str, str] = {}
 # bare form would let a recipe walk past the lint by writing the most ordinary shell there is.
 # Raised in review of PR #339 for `export`; the siblings came from sweeping rather than patching.
 _ASSIGN_RE = re.compile(
-    r"^\s*(?:(?:export|readonly|local|declare|typeset)\s+(?:-\w+\s+)*)?"
+    r'^\s*(?:(?:export|readonly|local|declare|typeset)\s+(?:-\w+\s+)*)?'
     r'([A-Z][A-Z0-9_]*)=["\']?([^"\'\s#]+)'
 )
 
@@ -85,9 +85,7 @@ def test_the_allowlist_names_only_recipes_that_still_duplicate():
     for recipe_dir in _recipe_dirs():
         if recipe_dir.name in _KNOWN_DUPLICATES and not _duplicated_tool_versions(recipe_dir):
             stale.append(recipe_dir.name)
-    assert not stale, (
-        f"{stale} no longer duplicate a tools: pin — remove them from _KNOWN_DUPLICATES"
-    )
+    assert not stale, f"{stale} no longer duplicate a tools: pin — remove them from _KNOWN_DUPLICATES"
 
 
 def test_the_allowlist_names_only_recipes_that_exist():
@@ -106,29 +104,22 @@ def test_the_lint_actually_detects_the_shape_it_claims_to(tmp_path):
     """
     d = tmp_path / "dup"
     d.mkdir()
-    (d / "recipe.yaml").write_text(
-        "name: dup\ntools:\n  - npm:thing@1.2.3\ninstall:\n  script: install.sh\n"
-    )
-    (d / "install.sh").write_text(
-        '#!/usr/bin/env bash\nTHING_VERSION="1.2.3"\necho "$THING_VERSION"\n'
-    )
+    (d / "recipe.yaml").write_text("name: dup\ntools:\n  - npm:thing@1.2.3\ninstall:\n  script: install.sh\n")
+    (d / "install.sh").write_text('#!/usr/bin/env bash\nTHING_VERSION="1.2.3"\necho "$THING_VERSION"\n')
     assert _duplicated_tool_versions(d) == [("THING_VERSION", "1.2.3")]
 
     (d / "install.sh").write_text('#!/usr/bin/env bash\nTHING_VERSION="9.9.9"\n')
     assert _duplicated_tool_versions(d) == [], "a DIFFERENT version is not a duplicate of the pin"
 
 
-@pytest.mark.parametrize(
-    "decl",
-    [
-        'THING_VERSION="1.2.3"',
-        'export THING_VERSION="1.2.3"',
-        "export THING_VERSION=1.2.3",
-        "readonly THING_VERSION=1.2.3",
-        "declare -r THING_VERSION=1.2.3",
-        '  export  THING_VERSION="1.2.3"',
-    ],
-)
+@pytest.mark.parametrize("decl", [
+    'THING_VERSION="1.2.3"',
+    'export THING_VERSION="1.2.3"',
+    "export THING_VERSION=1.2.3",
+    "readonly THING_VERSION=1.2.3",
+    "declare -r THING_VERSION=1.2.3",
+    '  export  THING_VERSION="1.2.3"',
+])
 def test_the_lint_sees_every_way_to_declare_the_literal(tmp_path, decl):
     """A lint that only recognises one spelling is a lint you can walk past without meaning to.
 
@@ -138,10 +129,8 @@ def test_the_lint_sees_every_way_to_declare_the_literal(tmp_path, decl):
     """
     d = tmp_path / "dup"
     d.mkdir()
-    (d / "recipe.yaml").write_text(
-        "name: dup\ntools:\n  - npm:thing@1.2.3\ninstall:\n  script: install.sh\n"
-    )
-    (d / "install.sh").write_text(f'#!/usr/bin/env bash\n{decl}\necho "$THING_VERSION"\n')
+    (d / "recipe.yaml").write_text("name: dup\ntools:\n  - npm:thing@1.2.3\ninstall:\n  script: install.sh\n")
+    (d / "install.sh").write_text(f"#!/usr/bin/env bash\n{decl}\necho \"$THING_VERSION\"\n")
     assert _duplicated_tool_versions(d) == [("THING_VERSION", "1.2.3")], f"missed: {decl!r}"
 
 

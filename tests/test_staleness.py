@@ -52,7 +52,9 @@ def test_stamp_is_written_and_readable(built):
 
 def test_edited_recipe_is_stale(built):
     catalog, recipe_dir = built
-    (recipe_dir / "recipe.yaml").write_text("name: foo\ndescription: EDITED\n", encoding="utf-8")
+    (recipe_dir / "recipe.yaml").write_text(
+        "name: foo\ndescription: EDITED\n", encoding="utf-8"
+    )
     with pytest.raises(staleness.StaleProfileError):
         staleness.check_profile_fresh(catalog, "claude_x", "claude")
 

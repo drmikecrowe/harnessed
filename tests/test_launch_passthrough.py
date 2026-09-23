@@ -42,13 +42,7 @@ class TestTypedInvocation:
 
     def test_a_matching_parse_is_reported_with_the_binary_name(self, monkeypatch):
         monkeypatch.setattr(launcher, "_invocation", ["host-run", "claude", "-r", "x"])
-        assert launcher._typed_invocation("host-run") == [
-            "harnessed",
-            "host-run",
-            "claude",
-            "-r",
-            "x",
-        ]
+        assert launcher._typed_invocation("host-run") == ["harnessed", "host-run", "claude", "-r", "x"]
 
     def test_extract_passthrough_records_the_head_only(self):
         launcher._extract_passthrough(["host-run", "claude", "--", "--resume", "abc"])
@@ -94,8 +88,7 @@ class TestMainArgvRewrite:
 
     def test_argv_passes_through_untouched_but_for_the_suffix(self, monkeypatch):
         monkeypatch.setattr(
-            launcher.sys,
-            "argv",
+            launcher.sys, "argv",
             ["harnessed", "container-run", "claude", "-s", "mystack", "--", "--chrome"],
         )
         launcher.main()
@@ -139,22 +132,14 @@ class TestAttachAppendsSuffix:
 
         with pytest.raises(SystemExit):
             launcher._attach(
-                "podman",
-                "claude",
-                "inst",
-                Path("/proj"),
-                stack="s",
-                mount_path=Path("/proj"),
-                shell=shell,
-                extra=extra,
+                "podman", "claude", "inst", Path("/proj"),
+                stack="s", mount_path=Path("/proj"), shell=shell, extra=extra,
             )
 
     def test_suffix_appended_and_quoted(self, captured):
         self._run(["--chrome", "a b"])
         shell_cmd = captured["argv"][-1]  # bash -l -c <shell_cmd>
-        assert shell_cmd.endswith(
-            "claude --mcp-config '/mcp.json' --strict-mcp-config --chrome " + shlex.quote("a b")
-        )
+        assert shell_cmd.endswith("claude --mcp-config '/mcp.json' --strict-mcp-config --chrome " + shlex.quote("a b"))
 
     def test_no_suffix_leaves_command_unchanged(self, captured):
         self._run(None)

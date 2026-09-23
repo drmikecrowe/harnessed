@@ -31,11 +31,7 @@ def _isolated_registry(tmp_path, monkeypatch):
 
 def _svc(name: str = "beads-server") -> ServiceDef:
     return ServiceDef(
-        name=name,
-        image="i",
-        scope="project",
-        port=3307,
-        publish="stable",
+        name=name, image="i", scope="project", port=3307, publish="stable",
         client_env={"BEADS_DOLT_SERVER_PORT": "{port}", "BEADS_DOLT_PASSWORD": "{password}"},
     )
 
@@ -89,11 +85,10 @@ class TestPublishing:
     def test_client_env_uses_the_registry_not_podman(self, tmp_path, monkeypatch):
         """`podman port` can only answer while the container is running. A plain `bd` in the repo
         needs a configured environment when it is NOT."""
-        patch_all(monkeypatch, "_service_refs", lambda stack: ["beads-server"])
+        patch_all(monkeypatch, "_service_refs", lambda stack: ["beads-server"]
+        )
         patch_all(monkeypatch, "load_service", lambda root, name: _svc())
-        patch_all(
-            monkeypatch,
-            "_svc_published_port",
+        patch_all(monkeypatch, "_svc_published_port",
             lambda *a, **k: pytest.fail("stable ports must not consult podman"),
         )
         patch_all(monkeypatch, "_svc_password", lambda *a, **k: "pw")

@@ -15,7 +15,6 @@ and its wording has to stay in that tense until the broker path is the one deliv
 display text. The parse is therefore the fragile part, and most of what follows pins its failure
 behaviour rather than its happy path.
 """
-
 from __future__ import annotations
 
 import subprocess
@@ -41,7 +40,7 @@ Secrets (4)
 """
 
 
-def _schema(tmp_path: Path, body: str = '# @proxy(domain="x")\nA=1\n') -> Path:
+def _schema(tmp_path: Path, body: str = "# @proxy(domain=\"x\")\nA=1\n") -> Path:
     tmp_path.mkdir(parents=True, exist_ok=True)
     (tmp_path / ".env.schema").write_text(body)
     return tmp_path
@@ -64,7 +63,6 @@ def _flat(text: str) -> str:
 def _fake_rules(stdout: str, returncode: int = 0):
     def run(cmd, **kw):
         return subprocess.CompletedProcess(cmd, returncode, stdout=stdout, stderr="")
-
     return run
 
 
@@ -99,7 +97,9 @@ class TestClassification:
 
     def test_a_missing_rules_header_is_refused(self, tmp_path, monkeypatch):
         """Both headers are the structural check; one of them alone does not prove the shape."""
-        no_rules = "\n".join(ln for ln in RULES_OUTPUT.splitlines() if not ln.startswith("Rules ("))
+        no_rules = "\n".join(
+            ln for ln in RULES_OUTPUT.splitlines() if not ln.startswith("Rules (")
+        )
         monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules(no_rules))
         assert launchenv._varlock_proxy_modes(_schema(tmp_path)) is None
 
@@ -141,28 +141,21 @@ class TestTheGate:
             raise AssertionError("varlock must not run for a schema that never mentions @proxy")
 
         monkeypatch.setattr(launchenv.subprocess, "run", explode)
-        launchenv._warn_unproxied_secrets(
-            _schema(tmp_path, "# @sensitive\nSNYK_TOKEN=op(op://v/i/f)\n")
-        )
+        launchenv._warn_unproxied_secrets(_schema(tmp_path, "# @sensitive\nSNYK_TOKEN=op(op://v/i/f)\n"))
         assert _flat(capsys.readouterr().err) == ""
 
-    @pytest.mark.parametrize(
-        "prose",
-        [
-            "# TODO: add @proxy after the migration\nA=1\n",
-            "# see the @proxy docs before editing this\nA=1\n",
-            # Bare `@proxy` is not an annotation either. Measured on varlock 1.17.0: the item is
-            # reported as `omit` and `varlock load` fails validation, so `_varlock_resolve` already
-            # returns None and the launch says so. Nothing is silenced by skipping it here.
-            "# @sensitive @proxy\nA=1\n",
-        ],
-    )
-    def test_a_prose_mention_of_proxy_does_not_buy_a_subprocess(
-        self, tmp_path, capsys, monkeypatch, prose
-    ):
+    @pytest.mark.parametrize("prose", [
+        "# TODO: add @proxy after the migration\nA=1\n",
+        "# see the @proxy docs before editing this\nA=1\n",
+        # Bare `@proxy` is not an annotation either. Measured on varlock 1.17.0: the item is
+        # reported as `omit` and `varlock load` fails validation, so `_varlock_resolve` already
+        # returns None and the launch says so. Nothing is silenced by skipping it here.
+        "# @sensitive @proxy\nA=1\n",
+    ])
+    def test_a_prose_mention_of_proxy_does_not_buy_a_subprocess(self, tmp_path, capsys,
+                                                                monkeypatch, prose):
         """The gate guards a `varlock proxy rules` call that RESOLVES values and can sit on a
         1Password prompt. A schema that merely says the word has opted into nothing."""
-
         def explode(*a, **kw):
             raise AssertionError("varlock must not run for a schema with no @proxy annotation")
 
@@ -170,35 +163,25 @@ class TestTheGate:
         launchenv._warn_unproxied_secrets(_schema(tmp_path, prose))
         assert _flat(capsys.readouterr().err) == ""
 
-    @pytest.mark.parametrize(
-        "annotation",
-        [
-            '# @sensitive @proxy(domain="api.github.com")\nA=1\n',
-            "# @sensitive @proxy=passthrough\nA=1\n",
-            '# @proxyConfig={egress="strict"}\n# ---\n# @sensitive\nA=1\n',
-        ],
-    )
-    def test_every_real_annotation_form_still_opens_the_gate(
-        self, tmp_path, monkeypatch, annotation
-    ):
+    @pytest.mark.parametrize("annotation", [
+        '# @sensitive @proxy(domain="api.github.com")\nA=1\n',
+        "# @sensitive @proxy=passthrough\nA=1\n",
+        '# @proxyConfig={egress="strict"}\n# ---\n# @sensitive\nA=1\n',
+    ])
+    def test_every_real_annotation_form_still_opens_the_gate(self, tmp_path, monkeypatch,
+                                                             annotation):
         """The inverse risk of tightening the gate: a pattern narrow enough to miss a real
         annotation makes the whole warning fail silent, which is the failure mode this file exists
         to prevent. All three forms are ones varlock 1.17.0 acts on."""
         ran: list = []
-        monkeypatch.setattr(
-            launchenv.subprocess,
-            "run",
-            lambda *a, **kw: ran.append(1) or _fake_rules(RULES_OUTPUT)(*a, **kw),
-        )
+        monkeypatch.setattr(launchenv.subprocess, "run",
+                            lambda *a, **kw: ran.append(1) or _fake_rules(RULES_OUTPUT)(*a, **kw))
         launchenv._warn_unproxied_secrets(_schema(tmp_path, annotation))
         assert ran, f"gate closed on a real annotation: {annotation!r}"
 
     def test_an_absent_schema_is_silent(self, tmp_path, capsys, monkeypatch):
-        monkeypatch.setattr(
-            launchenv.subprocess,
-            "run",
-            lambda *a, **kw: (_ for _ in ()).throw(AssertionError("no")),
-        )
+        monkeypatch.setattr(launchenv.subprocess, "run",
+                            lambda *a, **kw: (_ for _ in ()).throw(AssertionError("no")))
         launchenv._warn_unproxied_secrets(tmp_path)
         assert _flat(capsys.readouterr().err) == ""
 
@@ -210,9 +193,8 @@ class TestWhatGetsReported:
         err = _flat(capsys.readouterr().err)
         assert "UNCLASSIFIED_TOKEN" in err
 
-    def test_a_resolver_failure_is_reported_separately_from_a_missing_route(
-        self, tmp_path, capsys, monkeypatch
-    ):
+    def test_a_resolver_failure_is_reported_separately_from_a_missing_route(self, tmp_path, capsys,
+                                                                            monkeypatch):
         """`omit` and `placeholder` fail differently and are fixed differently: one is a broken
         resolver, the other a missing rule. Collapsing them sends the reader to the wrong file."""
         monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules(RULES_OUTPUT))
@@ -223,9 +205,8 @@ class TestWhatGetsReported:
         # The two groups must not be merged into one list.
         assert err.index("DEAD_TOKEN") > err.index("UNCLASSIFIED_TOKEN")
 
-    def test_it_does_not_claim_an_unrouted_secret_is_already_broken(
-        self, tmp_path, capsys, monkeypatch
-    ):
+    def test_it_does_not_claim_an_unrouted_secret_is_already_broken(self, tmp_path, capsys,
+                                                                    monkeypatch):
         """Today `_varlock_resolve` runs `varlock load`, which returns the REAL value whatever the
         proxy mode — so an unrouted item still works. The warning is a readiness report, and
         stating it in the present tense would be false until #388 Phase 1 switches the launch to
@@ -244,12 +225,10 @@ class TestWhatGetsReported:
     def test_an_all_passthrough_schema_raises_no_warning(self, tmp_path, capsys, monkeypatch):
         """Passthrough is a declared decision, not a defect. Warning on it would make the warning
         unreadable for the schemas that opt every item out deliberately."""
-        out = (
-            "Proxy configuration\n  egress mode: permissive\n\nRules (0)\n"
-            "  (none; add @proxy(domain=...) to route a secret)\n\n"
-            "Secrets (2)\n  A  passthrough: real value sent to the child\n"
-            "  B  passthrough: real value sent to the child\n"
-        )
+        out = ("Proxy configuration\n  egress mode: permissive\n\nRules (0)\n"
+               "  (none; add @proxy(domain=...) to route a secret)\n\n"
+               "Secrets (2)\n  A  passthrough: real value sent to the child\n"
+               "  B  passthrough: real value sent to the child\n")
         monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules(out))
         launchenv._warn_unproxied_secrets(_schema(tmp_path))
         assert "warning" not in _flat(capsys.readouterr().err)
@@ -264,18 +243,15 @@ class TestWhatGetsReported:
     def test_an_unknown_mode_is_treated_as_unsafe(self, tmp_path, capsys, monkeypatch):
         """varlock's proxy surface is an explicit preview and its modes may grow. A mode this
         version has never heard of must not be assumed benign."""
-        out = (
-            "Proxy configuration\n  egress mode: permissive\n\nRules (1)\n"
-            "  • h  → inject X\n\nSecrets (1)\n  X  quarantined: something new\n"
-        )
+        out = ("Proxy configuration\n  egress mode: permissive\n\nRules (1)\n"
+               "  • h  → inject X\n\nSecrets (1)\n  X  quarantined: something new\n")
         monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules(out))
         launchenv._warn_unproxied_secrets(_schema(tmp_path))
         err = _flat(capsys.readouterr().err)
         assert "X" in err and "quarantined" in err
 
-    def test_an_unparseable_rules_output_says_so_instead_of_going_quiet(
-        self, tmp_path, capsys, monkeypatch
-    ):
+    def test_an_unparseable_rules_output_says_so_instead_of_going_quiet(self, tmp_path, capsys,
+                                                                       monkeypatch):
         """The failure this whole file exists to prevent is a guard that stops guarding without
         telling anyone (cf. the egress firewall, #429)."""
         monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules("something else entirely\n"))
@@ -295,11 +271,8 @@ class TestWhatGetsReported:
         monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules(RULES_OUTPUT))
         launchenv._warn_unproxied_secrets(_schema(deep))
         err = _flat(capsys.readouterr().err)
-        for phrase in (
-            "declare no @proxy route",
-            "could not be resolved",
-            "still arrive as real values today",
-        ):
+        for phrase in ("declare no @proxy route", "could not be resolved",
+                       "still arrive as real values today"):
             assert phrase in err, f"{phrase!r} did not survive wrapping"
 
     def test_no_secret_value_is_ever_printed(self, tmp_path, capsys, monkeypatch):
@@ -311,9 +284,8 @@ class TestWhatGetsReported:
         assert "op://" not in err
         assert "real value injected on matching hosts" not in err
 
-    def test_it_warns_once_per_dir_even_though_four_call_sites_ask(
-        self, tmp_path, capsys, monkeypatch
-    ):
+    def test_it_warns_once_per_dir_even_though_four_call_sites_ask(self, tmp_path, capsys,
+                                                                   monkeypatch):
         monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules(RULES_OUTPUT))
         d = _schema(tmp_path)
         launchenv._warn_unproxied_secrets(d)

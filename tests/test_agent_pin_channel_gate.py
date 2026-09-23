@@ -25,7 +25,6 @@ from harnessed.schema import SchemaError, _parse_agent_build_args, load_agent
 MANIFEST = Path("/catalog/agents/demo/agent.yaml")
 CATALOG_AGENTS = Path(__file__).resolve().parents[1] / "catalog" / "agents"
 
-
 def _shipped_pins() -> tuple[str, ...]:
     """Every version this catalog actually ships, READ FROM THE CATALOG at test time.
 
@@ -122,8 +121,7 @@ def test_other_legitimate_pin_shapes_are_accepted(version):
 
 
 @pytest.mark.parametrize(
-    "version",
-    ["1.2.3-rc1+build.5", "2.1.223-rc.1+exp.sha.5114f85", "1.0.0-alpha.1+001"],
+    "version", ["1.2.3-rc1+build.5", "2.1.223-rc.1+exp.sha.5114f85", "1.0.0-alpha.1+001"],
 )
 def test_semver_with_both_prerelease_and_build_metadata_is_accepted(version):
     """S-28. Found by adversarial review: the suffix was ONE optional group, so a version carrying
@@ -236,8 +234,7 @@ def test_every_shipped_agent_manifest_still_loads():
 
 
 @pytest.mark.parametrize(
-    "value",
-    [*SHIPPED, *DENYLIST_KNEW, *DENYLIST_MISSED, "v6.0.3", "a" * 40, "feat/x", "@latest"],
+    "value", [*SHIPPED, *DENYLIST_KNEW, *DENYLIST_MISSED, "v6.0.3", "a" * 40, "feat/x", "@latest"],
 )
 def test_the_agent_gate_and_the_refs_gate_agree(value, tmp_path):
     """S-21. ONE vocabulary across the two surfaces that share the instrument — executed, not
@@ -278,8 +275,7 @@ FULLWIDTH = "\uff11.\uff12.\uff13"  # "1.2.3" in U+FF10..U+FF19
 
 
 @pytest.mark.parametrize(
-    "value",
-    [ARABIC_INDIC, ARABIC_INDIC_ZERO, ARABIC_INDIC_MIXED, FULLWIDTH],
+    "value", [ARABIC_INDIC, ARABIC_INDIC_ZERO, ARABIC_INDIC_MIXED, FULLWIDTH],
 )
 def test_non_ascii_digits_are_not_a_version(value):
     """S-24. Python's `\\d` is Unicode-aware, so Arabic-Indic and full-width digits matched the
@@ -357,7 +353,8 @@ def test_every_shipped_recipe_still_loads_after_the_tightening(tmp_path):
 def _agent_manifest(tmp_path: Path, value: str = "1.2.3") -> Path:
     manifest = tmp_path / "agent.yaml"
     manifest.write_text(
-        f'harness: demo\nimage: demo:latest\nbuild_args:\n  BUN_VERSION: {{ value: "{value}" }}\n',
+        "harness: demo\nimage: demo:latest\nbuild_args:\n"
+        f"  BUN_VERSION: {{ value: \"{value}\" }}\n",
         encoding="utf-8",
     )
     return manifest
@@ -394,9 +391,7 @@ def test_the_update_writer_still_applies_a_real_version(tmp_path):
 
 
 @settings(max_examples=200)
-@given(
-    st.text(min_size=1, max_size=24, alphabet=st.characters(min_codepoint=97, max_codepoint=122))
-)
+@given(st.text(min_size=1, max_size=24, alphabet=st.characters(min_codepoint=97, max_codepoint=122)))
 def test_no_bare_word_is_ever_accepted_as_a_pin(word):
     """S-22. The whole point of an allow-list: it does not matter whether anyone enumerated this
     channel. A value made only of letters is never a version, so it is never a pin — including the

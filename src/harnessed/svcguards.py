@@ -7,7 +7,6 @@ exclusive lock, or a data placement that changed since the data was written.
 Each is an assertion about host state, not an action — they read the filesystem and raise. Starting,
 stopping and health-checking the container stays in launcher.py.
 """
-
 from __future__ import annotations
 
 import json

@@ -7,7 +7,6 @@ then launch), refusal (exit 1, no build) and no tty (exit 1, no prompt at all).
 
 A missing/renamed recipe (SchemaError) stays a hard error — no rebuild can resolve it.
 """
-
 from __future__ import annotations
 
 import sys
@@ -50,9 +49,7 @@ class _Sys:
         return getattr(sys, name)
 
 
-def _run(
-    monkeypatch, tmp_path, *, isatty: bool, confirm: bool = True, exc: Exception | None = None
-):
+def _run(monkeypatch, tmp_path, *, isatty: bool, confirm: bool = True, exc: Exception | None = None):
     """Invoke `container-run` with the staleness guard tripped; return (result, builds, prompts)."""
     builds: list[tuple] = []
     prompts: list[str] = []

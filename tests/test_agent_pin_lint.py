@@ -50,14 +50,11 @@ def _body(harness: str) -> str:
 class TestFloatingIsStillRejected:
     """The pre-existing class, now reaching agents. Regression armor, not new behaviour."""
 
-    @pytest.mark.parametrize(
-        "line",
-        [
-            "RUN mise use -g npm:@openai/codex@latest",
-            "RUN git clone --branch main https://example.com/x",
-            "FROM something:latest",
-        ],
-    )
+    @pytest.mark.parametrize("line", [
+        "RUN mise use -g npm:@openai/codex@latest",
+        "RUN git clone --branch main https://example.com/x",
+        "FROM something:latest",
+    ])
     def test_a_floating_ref_raises(self, line):
         with pytest.raises(PinValidationError, match=r"floating|moving"):
             validate_agent_pin("codex", line, unpinnable={})
@@ -91,9 +88,7 @@ class TestTheOtherTwoImmutabilityGatesReachAgentsToo:
         validate_agent_pin("x", body, unpinnable={})
 
     def test_an_archive_at_a_branch_is_rejected(self):
-        body = (
-            "RUN curl -fsSL https://github.com/o/r/archive/refs/heads/main.tar.gz -o /tmp/r.tgz\n"
-        )
+        body = "RUN curl -fsSL https://github.com/o/r/archive/refs/heads/main.tar.gz -o /tmp/r.tgz\n"
         with pytest.raises(PinValidationError, match="archive"):
             validate_agent_pin("x", body, unpinnable={})
 
@@ -118,24 +113,13 @@ class TestAbsentIsRejected:
         with pytest.raises(PinValidationError, match="no version"):
             validate_agent_pin("claude", body, unpinnable={})
 
-    @pytest.mark.parametrize(
-        "var",
-        [
-            "$HOME",
-            "${HOME}",
-            "${TARGETARCH}",
-            "$INSTALL_DIR",
-            "${PATH}",
-            # A name that merely ENDS in a suffix token is not a version. Raised in review of PR #335:
-            # the alternation runs case-insensitively, so `SERVER`, `DRIVER` and `driver` all end in
-            # `VER` and were read as pins — a false CLEARANCE, the direction this gate must never err.
-            "$SERVER",
-            "${DRIVER}",
-            "$driver",
-            "$WHATEVER",
-            "${SEMVER_LIKE_NAME}",
-        ],
-    )
+    @pytest.mark.parametrize("var", [
+        "$HOME", "${HOME}", "${TARGETARCH}", "$INSTALL_DIR", "${PATH}",
+        # A name that merely ENDS in a suffix token is not a version. Raised in review of PR #335:
+        # the alternation runs case-insensitively, so `SERVER`, `DRIVER` and `driver` all end in
+        # `VER` and were read as pins — a false CLEARANCE, the direction this gate must never err.
+        "$SERVER", "${DRIVER}", "$driver", "$WHATEVER", "${SEMVER_LIKE_NAME}",
+    ])
     def test_an_irrelevant_variable_is_not_version_evidence(self, var):
         """A `$VAR` is only a pin if it plausibly NAMES a version.
 
@@ -148,23 +132,18 @@ class TestAbsentIsRejected:
         with pytest.raises(PinValidationError, match="no version"):
             validate_agent_pin("x", body, unpinnable={})
 
-    @pytest.mark.parametrize(
-        "var", ["${OPENCODE_VERSION}", "$CLAUDE_VERSION", "${TOOL_REF}", "${PKG_TAG}", "$AGY_VER"]
-    )
+    @pytest.mark.parametrize("var", ["${OPENCODE_VERSION}", "$CLAUDE_VERSION", "${TOOL_REF}",
+                                     "${PKG_TAG}", "$AGY_VER"])
     def test_a_version_named_variable_is_evidence(self, var):
         """The naming convention is the signal, and it is the one `build_args` already uses —
         every pin in the catalog is `<TOOL>_VERSION` (D7 fixes that namespace for `unpinnable:`
         too). A variable named for a version is the only kind that can be carrying one."""
-        validate_agent_pin(
-            "x", f'RUN curl -fsSL https://x.example/i.sh | bash -s -- "{var}"\n', unpinnable={}
-        )
+        validate_agent_pin("x", f'RUN curl -fsSL https://x.example/i.sh | bash -s -- "{var}"\n',
+                           unpinnable={})
 
     def test_an_explicit_version_flag_is_still_evidence(self):
-        validate_agent_pin(
-            "x",
-            "RUN curl -fsSL https://x.example/i.sh | bash -s -- --version 1.2.3\n",
-            unpinnable={},
-        )
+        validate_agent_pin("x", "RUN curl -fsSL https://x.example/i.sh | bash -s -- --version 1.2.3\n",
+                           unpinnable={})
 
     def test_the_error_names_the_agent_and_the_installer_url(self):
         """A gate that says 'something is unpinned' sends the reader hunting; this one must not.
@@ -187,19 +166,16 @@ class TestAbsentIsRejected:
 class TestPinnedIsAccepted:
     """Whatever else it does, it must not reject the agents that ARE correctly pinned."""
 
-    @pytest.mark.parametrize(
-        "body",
-        [
-            'RUN mise use -g "github:can1357/oh-my-pi@${OMP_VERSION}"\n',
-            # BALANCED single quotes must not read as an unbalanced-quote truncation. Mutation testing
-            # found the `% 2` on the single-quote count unasserted in the passing direction — every
-            # existing quoted-spec test used double quotes, so a `'`-quoted pin would have been
-            # reported as unverifiable: a false alarm on a correctly pinned line.
-            "RUN mise use -g 'github:can1357/oh-my-pi@${OMP_VERSION}'\n",
-            'RUN curl -fsSL https://opencode.ai/install | bash -s -- --version "${OPENCODE_VERSION}"\n',
-            "RUN mise use -g npm:@openai/codex@0.139.0\n",
-        ],
-    )
+    @pytest.mark.parametrize("body", [
+        'RUN mise use -g "github:can1357/oh-my-pi@${OMP_VERSION}"\n',
+        # BALANCED single quotes must not read as an unbalanced-quote truncation. Mutation testing
+        # found the `% 2` on the single-quote count unasserted in the passing direction — every
+        # existing quoted-spec test used double quotes, so a `'`-quoted pin would have been
+        # reported as unverifiable: a false alarm on a correctly pinned line.
+        "RUN mise use -g 'github:can1357/oh-my-pi@${OMP_VERSION}'\n",
+        'RUN curl -fsSL https://opencode.ai/install | bash -s -- --version "${OPENCODE_VERSION}"\n',
+        "RUN mise use -g npm:@openai/codex@0.139.0\n",
+    ])
     def test_a_versioned_acquisition_passes(self, body):
         validate_agent_pin("x", body, unpinnable={})
 
@@ -235,14 +211,11 @@ class TestTheCarveOutIsNarrow:
         """What `emit.py` writes for derived images."""
         validate_agent_pin("omp", "FROM harnessed-${HARNESS}:latest\nRUN true\n", unpinnable={})
 
-    @pytest.mark.parametrize(
-        "line",
-        [
-            "FROM ubuntu:latest",
-            "FROM harnessedfoo:latest",
-            "FROM docker.io/harnessed-base:latest",
-        ],
-    )
+    @pytest.mark.parametrize("line", [
+        "FROM ubuntu:latest",
+        "FROM harnessedfoo:latest",
+        "FROM docker.io/harnessed-base:latest",
+    ])
     def test_a_third_party_latest_still_fails(self, line):
         with pytest.raises(PinValidationError, match="floating"):
             validate_agent_pin("x", line + "\nRUN true\n", unpinnable={})
@@ -314,7 +287,7 @@ class TestEverySpecOnALineIsExamined:
         `mise use` invocations on one line — and `A && B` on one RUN is the most ordinary shell
         there is. The second command's specs would simply never have been examined.
         """
-        body = "RUN mise use -g node@20 && mise use -g python\n"
+        body = 'RUN mise use -g node@20 && mise use -g python\n'
         with pytest.raises(PinValidationError, match="python"):
             validate_agent_pin("x", body, unpinnable={})
 
@@ -348,9 +321,7 @@ class TestEverySpecOnALineIsExamined:
         such test made the bad token the only one. One unreadable spec must not blind the gate to
         everything after it — that would turn a fail-closed report into a fail-open one."""
         with pytest.raises(PinValidationError, match="2 unversioned"):
-            validate_agent_pin(
-                "x", "RUN mise use -g @scope/pkg bun\n", unpinnable={"ONE": "reason"}
-            )
+            validate_agent_pin("x", "RUN mise use -g @scope/pkg bun\n", unpinnable={"ONE": "reason"})
 
     def test_a_pipe_inside_a_quoted_spec_does_not_hide_what_follows(self):
         """Found by adversarial review round 2: the tail stops at any `|`, including one inside
@@ -396,13 +367,10 @@ class TestMultiStageBaseIsExempt:
     def test_the_alias_form_is_exempt(self):
         validate_agent_pin("x", "FROM harnessed-base:latest AS builder\nRUN true\n", unpinnable={})
 
-    @pytest.mark.parametrize(
-        "line",
-        [
-            "FROM --platform=$TARGETPLATFORM harnessed-base:latest",
-            "FROM --platform=linux/amd64 harnessed-base:latest AS builder",
-        ],
-    )
+    @pytest.mark.parametrize("line", [
+        "FROM --platform=$TARGETPLATFORM harnessed-base:latest",
+        "FROM --platform=linux/amd64 harnessed-base:latest AS builder",
+    ])
     def test_a_platform_flag_does_not_break_the_exemption(self, line):
         """Raised in review of PR #335 — the same defect class as `AS builder`, which adversarial
         review had already found: a legitimate first-party line failed a rule that exists to catch
@@ -412,9 +380,8 @@ class TestMultiStageBaseIsExempt:
 
     def test_a_platform_flag_does_not_smuggle_a_third_party_image(self):
         with pytest.raises(PinValidationError, match="floating"):
-            validate_agent_pin(
-                "x", "FROM --platform=linux/amd64 ubuntu:latest\nRUN true\n", unpinnable={}
-            )
+            validate_agent_pin("x", "FROM --platform=linux/amd64 ubuntu:latest\nRUN true\n",
+                               unpinnable={})
 
     def test_the_alias_form_of_a_third_party_image_still_fails(self):
         with pytest.raises(PinValidationError, match="floating"):
@@ -455,10 +422,8 @@ class TestUnpinnableSuppresses:
         the count: each conceded acquisition costs one declared, reviewable entry. That keeps the
         exception explicit and diff-visible, which is the property AC-9 asks of it.
         """
-        body = (
-            "RUN curl -fsSL https://antigravity.google/cli/install.sh | bash\n"
-            "RUN mise use -g npm:@openai/codex\n"
-        )
+        body = ("RUN curl -fsSL https://antigravity.google/cli/install.sh | bash\n"
+                "RUN mise use -g npm:@openai/codex\n")
         with pytest.raises(PinValidationError, match="2 unversioned"):
             validate_agent_pin("antigravity", body, unpinnable={"AGY_VERSION": "one reason"})
 
@@ -469,23 +434,16 @@ class TestUnpinnableSuppresses:
         with pytest.raises(PinValidationError, match="2 unversioned"):
             validate_agent_pin("x", "RUN mise use -g bun deno\n", unpinnable={"ONE": "reason"})
 
-    @pytest.mark.parametrize(
-        "body",
-        [
-            # separate RUN lines
-            (
-                "RUN curl -fsSL https://a.example/install.sh | bash\n"
-                "RUN curl -fsSL https://b.example/install.sh | bash\n"
-            ),
-            # ...and both on ONE line, which the per-line `search` could not reach. Raised in review of
-            # PR #335: this is the same defect class as the multi-spec `mise` bug — one match per line,
-            # so the second installer was invisible and an unrelated `unpinnable:` entry excused it.
-            (
-                "RUN curl -fsSL https://a.example/install.sh | bash && "
-                "curl -fsSL https://b.example/install.sh | bash\n"
-            ),
-        ],
-    )
+    @pytest.mark.parametrize("body", [
+        # separate RUN lines
+        ("RUN curl -fsSL https://a.example/install.sh | bash\n"
+         "RUN curl -fsSL https://b.example/install.sh | bash\n"),
+        # ...and both on ONE line, which the per-line `search` could not reach. Raised in review of
+        # PR #335: this is the same defect class as the multi-spec `mise` bug — one match per line,
+        # so the second installer was invisible and an unrelated `unpinnable:` entry excused it.
+        ("RUN curl -fsSL https://a.example/install.sh | bash && "
+         "curl -fsSL https://b.example/install.sh | bash\n"),
+    ])
     def test_two_distinct_piped_installers_owe_two_declarations(self, body):
         with pytest.raises(PinValidationError, match="2 unversioned"):
             validate_agent_pin("x", body, unpinnable={"ONE": "reason"})
@@ -496,23 +454,16 @@ class TestUnpinnableSuppresses:
         The evidence check ran over the whole logical line, so any pinned installer anywhere on it
         vouched for every other. Same scoping error as the count itself.
         """
-        body = (
-            "RUN curl -fsSL https://a.example/i.sh | bash -s -- --version 1.2.3 && "
-            "curl -fsSL https://b.example/i.sh | bash\n"
-        )
+        body = ("RUN curl -fsSL https://a.example/i.sh | bash -s -- --version 1.2.3 && "
+                "curl -fsSL https://b.example/i.sh | bash\n")
         with pytest.raises(PinValidationError, match=r"b\.example"):
             validate_agent_pin("x", body, unpinnable={})
 
     def test_two_declarations_cover_two_acquisitions(self):
-        body = (
-            "RUN curl -fsSL https://antigravity.google/cli/install.sh | bash\n"
-            "RUN mise use -g npm:@openai/codex\n"
-        )
-        validate_agent_pin(
-            "antigravity",
-            body,
-            unpinnable={"AGY_VERSION": "reason one", "CODEX_VERSION": "reason two"},
-        )
+        body = ("RUN curl -fsSL https://antigravity.google/cli/install.sh | bash\n"
+                "RUN mise use -g npm:@openai/codex\n")
+        validate_agent_pin("antigravity", body,
+                           unpinnable={"AGY_VERSION": "reason one", "CODEX_VERSION": "reason two"})
 
     def test_the_declaration_is_what_suppresses_it(self):
         """AC-9 names this explicitly: an UNDECLARED unpinned agent must still fail. Without this
@@ -558,15 +509,9 @@ class TestAgainstTheRealBodies:
         rather than the bare package name: a loose match constrains only that SOME complaint named
         codex, never which one (the tightening CodeRabbit raised on PR #362).
         """
-        crippled = _body("codex").replace(
-            '"npm:@openai/codex@${CODEX_VERSION}"', "npm:@openai/codex"
-        )
-        assert crippled != _body("codex"), (
-            "the codex token was not found — this control tested nothing"
-        )
-        with pytest.raises(
-            PinValidationError, match=r"acquires 'npm:@openai/codex' with no version"
-        ):
+        crippled = _body("codex").replace('"npm:@openai/codex@${CODEX_VERSION}"', "npm:@openai/codex")
+        assert crippled != _body("codex"), "the codex token was not found — this control tested nothing"
+        with pytest.raises(PinValidationError, match=r"acquires 'npm:@openai/codex' with no version"):
             validate_agent_pin("codex", crippled, unpinnable={})
 
     def test_codex_declares_no_unpinnable_escape_hatch(self):
@@ -634,7 +579,6 @@ class TestAgainstTheRealBodies:
         """
         assert load_agent("omp", root=REPO / "catalog").unpinnable == {}
 
-
 class TestA3TheClaudePinIsWiredEndToEnd:
     """A3 — a pin is only real if the value the MANIFEST declares is the value the INSTALLER gets.
 
@@ -656,9 +600,7 @@ class TestA3TheClaudePinIsWiredEndToEnd:
         conceded = set(self._claude_agent().unpinnable)
         args = set(re.findall(r"^ARG\s+([A-Za-z_]\w*)", body, re.MULTILINE))
         assert conceded, "claude concedes nothing — the 2026-09-23 reversal was undone"
-        assert conceded.isdisjoint(args), (
-            f"conceded but still declared as ARG: {sorted(conceded & args)}"
-        )
+        assert conceded.isdisjoint(args), f"conceded but still declared as ARG: {sorted(conceded & args)}"
 
     def test_the_dockerfile_keeps_no_second_copy_of_the_pin(self):
         """`ARG CLAUDE_VERSION=<default>` would be a second pin, free to drift from the manifest.
@@ -677,9 +619,8 @@ class TestA3TheClaudePinIsWiredEndToEnd:
         the author's reading forever, including after the original changes.
         """
         joined = re.sub(r"\\\s*\n\s*", " ", _body("claude"))
-        matches = [
-            ln[4:] for ln in joined.splitlines() if ln.startswith("RUN ") and "install.sh" in ln
-        ]
+        matches = [ln[4:] for ln in joined.splitlines()
+                   if ln.startswith("RUN ") and "install.sh" in ln]
         assert len(matches) == 1, f"expected exactly one installing RUN, found {len(matches)}"
         return matches[0]
 
@@ -696,16 +637,13 @@ class TestA3TheClaudePinIsWiredEndToEnd:
         fake = tmp_path / "fake-install.sh"
         fake.write_text('#!/bin/bash\nprintf "%s\\n" "$@" > "$RECORDER"\n')
         command = self._claude_install_command().replace(
-            "curl -fsSL https://claude.ai/install.sh",
-            f'cat "{fake}"',
-            1,
+            "curl -fsSL https://claude.ai/install.sh", f'cat "{fake}"', 1,
         )
         assert "curl" not in command, "the vendor download was not substituted — refusing to run"
         proc = subprocess.run(
             ["bash", "-c", command],
             env={"PATH": os.environ["PATH"], "RECORDER": str(recorder), "CLAUDE_VERSION": version},
-            capture_output=True,
-            text=True,
+            capture_output=True, text=True,
         )
         return proc, recorder
 
@@ -737,10 +675,8 @@ class TestA3TheClaudePinIsWiredEndToEnd:
     def test_every_agent_is_covered_by_this_file(self):
         """If someone adds a sixth agent, this file must be updated rather than silently not
         covering it — the failure mode A6 exists to prevent is an agent nobody looked at."""
-        shipped = {
-            p.name.removeprefix("Dockerfile.harnessed-")
-            for p in AGENT_DOCKERFILES.glob("Dockerfile.harnessed-*")
-        }
+        shipped = {p.name.removeprefix("Dockerfile.harnessed-")
+                   for p in AGENT_DOCKERFILES.glob("Dockerfile.harnessed-*")}
         assert shipped == {"base", "antigravity", "claude", "codex", "omp", "opencode"}
 
 
@@ -776,7 +712,8 @@ class TestA6Part2TheGateIsActuallyOn:
             "type: agent\n"
             "harness: claude\n"
             "image: harnessed-claude\n"
-            "dockerfile: catalog/base/Dockerfile.harnessed-claude\n" + unpinnable,
+            "dockerfile: catalog/base/Dockerfile.harnessed-claude\n"
+            + unpinnable,
             encoding="utf-8",
         )
         if body is not None:
@@ -793,8 +730,7 @@ class TestA6Part2TheGateIsActuallyOn:
         of it fails.
         """
         self._home_with_agent(
-            tmp_path,
-            monkeypatch,
+            tmp_path, monkeypatch,
             "FROM harnessed-base:latest\nRUN mise use -g npm:@openai/codex\n",
         )
         with pytest.raises(PinValidationError, match="no version"):
@@ -802,8 +738,7 @@ class TestA6Part2TheGateIsActuallyOn:
 
     def test_a_floating_ref_in_an_agent_dockerfile_stops_the_assembly(self, tmp_path, monkeypatch):
         self._home_with_agent(
-            tmp_path,
-            monkeypatch,
+            tmp_path, monkeypatch,
             "FROM harnessed-base:latest\nRUN mise use -g npm:@openai/codex@latest\n",
         )
         with pytest.raises(PinValidationError, match="floating"):
@@ -812,8 +747,7 @@ class TestA6Part2TheGateIsActuallyOn:
     def test_a_pinned_agent_dockerfile_passes(self, tmp_path, monkeypatch):
         """The negative control's counterpart: the gate must not reject a correct image."""
         self._home_with_agent(
-            tmp_path,
-            monkeypatch,
+            tmp_path, monkeypatch,
             "FROM harnessed-base:latest\nRUN mise use -g npm:@openai/codex@0.139.0\n",
         )
         assemble.validate_agent_image("claude")
@@ -853,8 +787,7 @@ class TestA6Part2TheGateIsActuallyOn:
         that still loads normally.
         """
         self._home_with_agent(
-            tmp_path,
-            monkeypatch,
+            tmp_path, monkeypatch,
             "FROM harnessed-base:latest\nRUN mise use -g npm:@openai/codex\n",
         )
         with pytest.raises(PinValidationError, match="no version"):
@@ -867,8 +800,7 @@ class TestA6Part2TheGateIsActuallyOn:
         the test above pass while proving nothing about the gate.
         """
         self._home_with_agent(
-            tmp_path,
-            monkeypatch,
+            tmp_path, monkeypatch,
             "FROM harnessed-base:latest\nRUN mise use -g npm:@openai/codex@0.139.0\n",
         )
         assemble.assemble(REPO / "catalog", "default", tmp_path / "build", "claude")
@@ -890,8 +822,7 @@ class TestA6Part2TheGateIsActuallyOn:
         from harnessed import launcher
 
         self._home_with_agent(
-            tmp_path,
-            monkeypatch,
+            tmp_path, monkeypatch,
             "FROM harnessed-base:latest\nRUN mise use -g npm:@openai/codex\n",
         )
         ran: list[list[str]] = []
@@ -946,7 +877,7 @@ class TestA6Part2TheGateIsActuallyOn:
         body = _body("antigravity")
         with pytest.raises(PinValidationError, match="no version"):
             validate_agent_pin("antigravity", body, unpinnable={})
-        assemble.validate_agent_image("antigravity")  # same body, declaration honoured
+        assemble.validate_agent_image("antigravity")   # same body, declaration honoured
 
 
 class TestA5bTheOmpBunPinIsWiredEndToEnd:
@@ -983,9 +914,8 @@ class TestA5bTheOmpBunPinIsWiredEndToEnd:
         author's reading forever, including after the original changes.
         """
         joined = re.sub(r"\\\s*\n\s*", " ", _body("omp"))
-        matches = [
-            ln[4:] for ln in joined.splitlines() if ln.startswith("RUN ") and "mise use" in ln
-        ]
+        matches = [ln[4:] for ln in joined.splitlines()
+                   if ln.startswith("RUN ") and "mise use" in ln]
         assert len(matches) == 1, f"expected exactly one acquiring RUN, found {len(matches)}"
         # Strip RUN's own options (`--mount=type=cache,…`). These are Dockerfile syntax, not shell:
         # handing them to `bash -c` makes it parse them as its own flags and exit 2 with a usage
@@ -1015,14 +945,9 @@ class TestA5bTheOmpBunPinIsWiredEndToEnd:
             stub.chmod(0o755)
         proc = subprocess.run(
             ["bash", "-c", self._omp_acquire_command()],
-            env={
-                "PATH": f"{tmp_path}:{os.environ['PATH']}",
-                "RECORDER": str(recorder),
-                "OMP_VERSION": omp_version,
-                "BUN_VERSION": bun_version,
-            },
-            capture_output=True,
-            text=True,
+            env={"PATH": f"{tmp_path}:{os.environ['PATH']}", "RECORDER": str(recorder),
+                 "OMP_VERSION": omp_version, "BUN_VERSION": bun_version},
+            capture_output=True, text=True,
         )
         return proc, recorder
 
@@ -1049,9 +974,8 @@ class TestA5bTheOmpBunPinIsWiredEndToEnd:
         assert proc.returncode == 0, proc.stderr
         acquired = recorder.read_text().split()
         assert "bun@0.0.1-not-in-the-tree" in acquired
-        assert not any(a.startswith("bun@1.") for a in acquired), (
+        assert not any(a.startswith("bun@1.") for a in acquired), \
             f"a hardcoded bun version survived the substitution: {acquired}"
-        )
 
     def test_the_version_literal_is_written_exactly_once(self):
         """AC-11, reaching the `hold:` reason as well as comments and `description:`.
@@ -1070,8 +994,7 @@ class TestA5bTheOmpBunPinIsWiredEndToEnd:
 
     @pytest.mark.parametrize("name", ["BUN_VERSION", "OMP_VERSION"])
     def test_an_empty_version_fails_the_build_instead_of_installing_an_unpinned_tool(
-        self, tmp_path, name
-    ):
+            self, tmp_path, name):
         """The worst failure available here, and it must fail CLOSED.
 
         `ARG` with no default yields the empty string on any build path that omits `--build-arg`,
@@ -1089,13 +1012,10 @@ class TestA5bTheOmpBunPinIsWiredEndToEnd:
         single command, and a guard over half of it reads as complete while the other half floats.
         """
         proc, recorder = self._acquire_with(
-            tmp_path,
-            "" if name == "BUN_VERSION" else "1.2.3",
+            tmp_path, "" if name == "BUN_VERSION" else "1.2.3",
             omp_version="" if name == "OMP_VERSION" else "9.9.9",
         )
-        assert proc.returncode != 0, (
-            f"an empty {name} was accepted — the build would install unpinned"
-        )
+        assert proc.returncode != 0, f"an empty {name} was accepted — the build would install unpinned"
         assert not recorder.exists(), "mise ran despite the guard"
         assert name in proc.stderr
 
@@ -1147,12 +1067,11 @@ class TestA2TheCodexPinIsWiredEndToEnd:
         reading forever, including after the original changes.
         """
         joined = re.sub(r"\\\s*\n\s*", " ", _body("codex"))
-        matches = [
-            ln[4:] for ln in joined.splitlines() if ln.startswith("RUN ") and "mise use" in ln
-        ]
+        matches = [ln[4:] for ln in joined.splitlines()
+                   if ln.startswith("RUN ") and "mise use" in ln]
         assert len(matches) == 1, f"expected exactly one installing RUN, found {len(matches)}"
         command = matches[0]
-        while command.startswith("--"):  # RUN's own `--mount=` options are not shell
+        while command.startswith("--"):            # RUN's own `--mount=` options are not shell
             _, _, command = command.partition(" ")
             command = command.lstrip()
         assert not command.startswith("-"), f"RUN options were not fully stripped: {command[:40]!r}"
@@ -1172,13 +1091,9 @@ class TestA2TheCodexPinIsWiredEndToEnd:
         stub.chmod(0o755)
         proc = subprocess.run(
             ["bash", "-c", self._codex_install_command()],
-            env={
-                "PATH": f"{tmp_path}:{os.environ['PATH']}",
-                "RECORDER": str(recorder),
-                "CODEX_VERSION": codex_version,
-            },
-            capture_output=True,
-            text=True,
+            env={"PATH": f"{tmp_path}:{os.environ['PATH']}", "RECORDER": str(recorder),
+                 "CODEX_VERSION": codex_version},
+            capture_output=True, text=True,
         )
         return proc, recorder
 
@@ -1194,12 +1109,11 @@ class TestA2TheCodexPinIsWiredEndToEnd:
         assert proc.returncode == 0, proc.stderr
         installed = recorder.read_text().split()
         assert "npm:@openai/codex@0.0.1-not-in-the-tree" in installed
-        assert not any(a.startswith("npm:@openai/codex@0.1") for a in installed), (
+        assert not any(a.startswith("npm:@openai/codex@0.1") for a in installed), \
             f"a hardcoded codex version survived the substitution: {installed}"
-        )
 
     def test_an_empty_version_fails_the_build_instead_of_installing_an_unpinned_cli(self, tmp_path):
-        """ "Empty is not a pin" — the class found on claude (c77dd60) and again on omp (#362).
+        """"Empty is not a pin" — the class found on claude (c77dd60) and again on omp (#362).
 
         WHAT THIS TEST HOLDS: given an empty value the command exits non-zero and mise is never
         reached. WHAT IT CANNOT HOLD: what a future mise does with a trailing `@` — and it need not.
@@ -1213,9 +1127,7 @@ class TestA2TheCodexPinIsWiredEndToEnd:
         """AC-11: no free-text copy of a pin, in the manifest or the Dockerfile."""
         agent = self._codex_agent()
         value = agent.build_args["CODEX_VERSION"]
-        manifest = (REPO / "catalog" / "agents" / "codex" / "agent.yaml").read_text(
-            encoding="utf-8"
-        )
+        manifest = (REPO / "catalog" / "agents" / "codex" / "agent.yaml").read_text(encoding="utf-8")
         assert manifest.count(value) == 1, f"{value!r} is written more than once in agent.yaml"
         assert value not in _body("codex"), "the Dockerfile restates the pin"
 

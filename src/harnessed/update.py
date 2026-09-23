@@ -112,10 +112,10 @@ _ASSIGN_RE = re.compile(
 # A value that LOOKS like a pin: a 40-hex commit SHA, or a version-ish tag (v6.0.3, 1.2.3-rc.1).
 # Fails closed: an unrecognised shape is not reported as a pin at all, because a false "here is a
 # pin you should bump" on every `FOO=bar` would bury the real ones.
-_IMMUTABLE_LITERAL_RE = re.compile(r"^(?:[0-9a-fA-F]{40}|v?\d+(?:\.\d+)+(?:[-+.][0-9A-Za-z.]+)?)$")
+_IMMUTABLE_LITERAL_RE = re.compile(r'^(?:[0-9a-fA-F]{40}|v?\d+(?:\.\d+)+(?:[-+.][0-9A-Za-z.]+)?)$')
 # Version comparison. Split into numeric and non-numeric runs so `1.10.0` outranks `1.9.0` (a
 # lexicographic compare gets this backwards, which is the classic version-sort bug).
-_NUM_RE = re.compile(r"(\d+)")
+_NUM_RE = re.compile(r'(\d+)')
 
 
 def version_key(v: str) -> tuple:
@@ -208,15 +208,14 @@ class Pin:
     An opaque pin is still a Pin on purpose: it must travel all the way into the report rather than
     being filtered out at discovery, where it would become invisible.
     """
-
     recipe: str
     file: Path
-    spec: str  # the full text as written (`npm:x@1.0.0`, or the bare literal)
-    name: str  # what to ask the backend about (`@scope/pkg`, `owner/repo`, `pulumi`)
-    current: str  # the pinned version/ref
-    backend: str  # npm | pipx | github | mise | opaque
+    spec: str            # the full text as written (`npm:x@1.0.0`, or the bare literal)
+    name: str            # what to ask the backend about (`@scope/pkg`, `owner/repo`, `pulumi`)
+    current: str         # the pinned version/ref
+    backend: str         # npm | pipx | github | mise | opaque
     hold: str | None = None
-    note: str = ""  # where an opaque pin came from, for the human reading the report
+    note: str = ""       # where an opaque pin came from, for the human reading the report
     # Agent pins only: the `build_args`/`unpinnable:` key this came from, so the report can say
     # `<agent>/<KEY>` and an UNPINNABLE row reads as a peer of a pinned one (D7 §namespace).
     key: str = ""
@@ -237,7 +236,6 @@ class Release:
     `published` is None only when a backend genuinely cannot say. That is not treated as "fine" —
     the cooldown cannot be honoured for an undated release, so it is withheld and reported.
     """
-
     version: str
     published: datetime | None = None
 
@@ -318,7 +316,6 @@ class Report:
 
 # --- discovery ------------------------------------------------------------------------------
 
-
 def _split_spec(spec: str) -> tuple[str, str, str]:
     """`npm:@agentmemory/mcp@0.9.27` -> ('npm', '@agentmemory/mcp', '0.9.27').
 
@@ -337,9 +334,8 @@ def _split_spec(spec: str) -> tuple[str, str, str]:
     return backend, name, version
 
 
-def _opaque_pins_from_text(
-    text: str, *, recipe: str, path: Path, note: str, hold: str | None
-) -> list[Pin]:
+def _opaque_pins_from_text(text: str, *, recipe: str, path: Path, note: str,
+                           hold: str | None) -> list[Pin]:
     """Best-effort: pin-shaped literals assigned to a variable in a shell or Dockerfile body."""
     out: list[Pin] = []
     seen: set[str] = set()
@@ -348,18 +344,10 @@ def _opaque_pins_from_text(
         if not _IMMUTABLE_LITERAL_RE.match(value) or value in seen:
             continue
         seen.add(value)
-        out.append(
-            Pin(
-                recipe=recipe,
-                file=path,
-                spec=f"{m.group(1)}={value}",
-                name=m.group(1),
-                current=value,
-                backend="opaque",
-                hold=hold,
-                note=note,
-            )
-        )
+        out.append(Pin(
+            recipe=recipe, file=path, spec=f"{m.group(1)}={value}", name=m.group(1),
+            current=value, backend="opaque", hold=hold, note=note,
+        ))
     return out
 
 
@@ -393,38 +381,21 @@ def discover_agent_pins(agent_dir: Path) -> list[Pin]:
             # No spec means no upstream to query. Opaque — carried into the report rather than
             # dropped at discovery, where it would become invisible.
             backend, name = "opaque", key
-        pins.append(
-            Pin(
-                recipe=agent.name,
-                file=manifest,
-                spec=spec or f"{key}={value}",
-                name=name,
-                current=value,
-                backend=backend,
-                hold=hold,
-                key=key,
-                note="" if spec else "agent build_arg declares no 'spec:' — no upstream to query",
-                harness=True,
-            )
-        )
+        pins.append(Pin(
+            recipe=agent.name, file=manifest, spec=spec or f"{key}={value}", name=name,
+            current=value, backend=backend, hold=hold, key=key,
+            note="" if spec else "agent build_arg declares no 'spec:' — no upstream to query",
+            harness=True,
+        ))
 
     for key, reason in agent.unpinnable.items():
         # An UNPINNABLE entry is a Pin with no version on purpose: it must travel into the report
         # so the human can SEE which agents track upstream, which is what AC-12 exists for.
-        pins.append(
-            Pin(
-                recipe=agent.name,
-                file=manifest,
-                spec=key,
-                name=key,
-                current="",
-                backend="unpinnable",
-                hold=None,
-                key=key,
-                note=reason,
-                harness=True,
-            )
-        )
+        pins.append(Pin(
+            recipe=agent.name, file=manifest, spec=key, name=key, current="",
+            backend="unpinnable", hold=None, key=key, note=reason,
+            harness=True,
+        ))
     return pins
 
 
@@ -445,17 +416,10 @@ def discover_pins(recipe_dir: Path) -> list[Pin]:
 
     for spec in recipe.tools:
         backend, name, current = _split_spec(spec)
-        pins.append(
-            Pin(
-                recipe=recipe.name,
-                file=manifest,
-                spec=spec,
-                name=name,
-                current=current,
-                backend=backend,
-                hold=recipe.tools_hold.get(spec),
-            )
-        )
+        pins.append(Pin(
+            recipe=recipe.name, file=manifest, spec=spec, name=name, current=current,
+            backend=backend, hold=recipe.tools_hold.get(spec),
+        ))
 
     # `install.hold` covers everything the install script fetches — the cache key and the literals
     # inside the script alike, since they are bumped as a unit after a human diff review.
@@ -467,45 +431,29 @@ def discover_pins(recipe_dir: Path) -> list[Pin]:
     # the recipe-wide `install.hold` above cannot express.
     refs = recipe.install.refs if recipe.install else {}
     for key, ref in refs.items():
-        pins.append(
-            Pin(
-                recipe=recipe.name,
-                file=manifest,
-                spec=f"{ref.repo}@{ref.ref}",
-                name=ref.repo,
-                current=ref.ref,
-                backend="github",
-                hold=ref.hold or install_hold,
-                key=key,
-            )
-        )
+        pins.append(Pin(
+            recipe=recipe.name, file=manifest, spec=f"{ref.repo}@{ref.ref}", name=ref.repo,
+            current=ref.ref, backend="github", hold=ref.hold or install_hold, key=key,
+        ))
 
     # A DERIVED cache is not an upstream pin. Reporting it would double-count the refs it is
     # computed from, and offer a bump against a digest no human can act on. A hand-written
     # `cache:` still reports exactly as before (NC-5) — the two cannot co-occur, so this is a
     # clean either/or rather than a precedence rule.
     if recipe.install and recipe.install.cache and not refs:
-        pins.append(
-            Pin(
-                recipe=recipe.name,
-                file=manifest,
-                spec=recipe.install.cache,
-                name="install.cache",
-                current=recipe.install.cache,
-                backend="opaque",
-                hold=install_hold,
-                note="install.cache is a synthetic content-cache key, not an upstream version",
-            )
-        )
+        pins.append(Pin(
+            recipe=recipe.name, file=manifest, spec=recipe.install.cache,
+            name="install.cache", current=recipe.install.cache, backend="opaque",
+            hold=install_hold,
+            note="install.cache is a synthetic content-cache key, not an upstream version",
+        ))
 
     if recipe.install and recipe.install.script:
         script = recipe_dir / recipe.install.script
         if script.is_file():
             pins += _opaque_pins_from_text(
                 script.read_text(encoding="utf-8", errors="replace"),
-                recipe=recipe.name,
-                path=script,
-                hold=install_hold,
+                recipe=recipe.name, path=script, hold=install_hold,
                 note="literal pin in an install script — no backend to query",
             )
 
@@ -513,9 +461,7 @@ def discover_pins(recipe_dir: Path) -> list[Pin]:
     if dockerfile.is_file():
         pins += _opaque_pins_from_text(
             dockerfile.read_text(encoding="utf-8", errors="replace"),
-            recipe=recipe.name,
-            path=dockerfile,
-            hold=None,
+            recipe=recipe.name, path=dockerfile, hold=None,
             note="literal pin in a Dockerfile — no backend to query",
         )
 
@@ -524,10 +470,8 @@ def discover_pins(recipe_dir: Path) -> list[Pin]:
 
 # --- resolution -----------------------------------------------------------------------------
 
-
 def _http_get(url: str) -> str:
     import urllib.request
-
     req = urllib.request.Request(url, headers={"User-Agent": "harnessed-update"})  # noqa: S310 (fixed https registries)
     with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 (fixed https registries)
         return resp.read().decode("utf-8")
@@ -563,12 +507,12 @@ def mise_repo(tool: str, *, run: Callable[[list[str]], str] = _run_mise) -> str 
     """
     for line in run(["mise", "registry"]).splitlines():
         parts = line.split()
-        if len(parts) < 2 or parts[0] != tool:  # exact name match: `pulumi` is not `kubespy`
+        if len(parts) < 2 or parts[0] != tool:   # exact name match: `pulumi` is not `kubespy`
             continue
         for token in parts[1:]:
             for prefix in _REPO_BACKENDS:
                 if token.startswith(prefix):
-                    repo = token[len(prefix) :]
+                    repo = token[len(prefix):]
                     if repo.count("/") == 1:
                         return repo
     return None
@@ -589,13 +533,9 @@ def _github_releases(repo: str, fetch: Callable[[str], str]) -> list[Release]:
     ]
 
 
-def resolve_releases(
-    backend: str,
-    name: str,
-    *,
-    fetch: Callable[[str], str] = _http_get,
-    run: Callable[[list[str]], str] = _run_mise,
-) -> list[Release]:
+def resolve_releases(backend: str, name: str, *,
+                     fetch: Callable[[str], str] = _http_get,
+                     run: Callable[[list[str]], str] = _run_mise) -> list[Release]:
     """Every known release of `name`, each WITH its publish date.
 
     Dates are not garnish — they are what the minimum-release-age gate is enforced on — and the
@@ -632,12 +572,10 @@ def resolve_releases(
                 # installable, therefore not a candidate.
                 if not files:
                     continue
-                out.append(
-                    Release(
-                        version=version,
-                        published=_parse_ts(files[0].get("upload_time_iso_8601")),
-                    )
-                )
+                out.append(Release(
+                    version=version,
+                    published=_parse_ts(files[0].get("upload_time_iso_8601")),
+                ))
             return out
         if backend == "github":
             return _github_releases(name, fetch)
@@ -677,20 +615,14 @@ def _select(pin: Pin, releases: list[Release], now: datetime, min_age_minutes: f
         vendor's latest
       * an undated candidate is never selectable: we cannot honour the age guarantee for it
     """
-
     def age_days(r: Release) -> float | None:
         return None if r.published is None else (now - r.published).total_seconds() / 86400
 
     def finding(r: Release, **kw) -> Finding:
         # Normalise ONCE so the report shows exactly the string `apply` will write: a GitHub tag
         # arrives `v`-prefixed and the pin's own convention wins (see _match_v_prefix).
-        return Finding(
-            pin=pin,
-            latest=_match_v_prefix(pin.current, r.version),
-            published=r.published,
-            age_days=age_days(r),
-            **kw,
-        )
+        return Finding(pin=pin, latest=_match_v_prefix(pin.current, r.version),
+                       published=r.published, age_days=age_days(r), **kw)
 
     current_key = version_key(pin.current)
     candidates = []
@@ -699,7 +631,7 @@ def _select(pin: Pin, releases: list[Release], now: datetime, min_age_minutes: f
             if version_key(r.version) > current_key:
                 candidates.append(r)
         except (ValueError, AttributeError, TypeError):
-            continue  # an unparseable tag is not a candidate
+            continue                      # an unparseable tag is not a candidate
     if not candidates:
         return "current", Finding(pin=pin, latest=pin.current)
 
@@ -730,11 +662,10 @@ def _select(pin: Pin, releases: list[Release], now: datetime, min_age_minutes: f
 
     if all(r.published is None for r in candidates):
         return "unresolved", Finding(
-            pin=pin,
-            latest=_match_v_prefix(pin.current, newest.version),
+            pin=pin, latest=_match_v_prefix(pin.current, newest.version),
             error=f"{newest.version} is newer, but {pin.backend} gave no publish date, so its "
-            f"release age cannot be checked against the {min_days:g}-day minimum — review "
-            "it by hand",
+                  f"release age cannot be checked against the {min_days:g}-day minimum — review "
+                  "it by hand",
         )
 
     f = finding(newest)
@@ -781,29 +712,21 @@ def discover_extra_tools_pins(path) -> list[Pin]:
     pins: list[Pin] = []
     for spec in specs:
         backend, name, current = _split_spec(spec)
-        pins.append(
-            Pin(
-                recipe=EXTRA_TOOLS_LABEL,
-                file=path,
-                spec=spec,
-                name=name,
-                current=current,
-                backend=backend,
-            )
-        )
+        pins.append(Pin(
+            recipe=EXTRA_TOOLS_LABEL, file=path, spec=spec, name=name,
+            current=current, backend=backend,
+        ))
     return pins
 
 
-def build_report(
-    recipe_dirs,
-    *,
-    agent_dirs=None,
-    extra_tools: Path | None = None,
-    resolve: Callable[[str, str], list[Release]] | None = None,
-    now: datetime | None = None,
-    minimum_release_age_minutes: float = DEFAULT_MINIMUM_RELEASE_AGE_MINUTES,
-    harness_minimum_release_age_minutes: float | None = None,
-) -> Report:
+def build_report(recipe_dirs, *,
+                 agent_dirs=None,
+                 extra_tools: Path | None = None,
+                 resolve: Callable[[str, str], list[Release]] | None = None,
+                 now: datetime | None = None,
+                 minimum_release_age_minutes: float = DEFAULT_MINIMUM_RELEASE_AGE_MINUTES,
+                 harness_minimum_release_age_minutes: float | None = None,
+                 ) -> Report:
     """Classify every pin across `recipe_dirs`. Reads only — nothing here writes.
 
     `minimum_release_age_minutes` follows pnpm's `minimumReleaseAge`, unit included. Pass 0 to
@@ -818,11 +741,9 @@ def build_report(
     if resolve is None:
         resolve = resolve_releases
     now = now or datetime.now(timezone.utc)
-    harness_age = (
-        harness_minimum_release_age_minutes
-        if harness_minimum_release_age_minutes is not None
-        else HARNESS_MINIMUM_RELEASE_AGE_MINUTES
-    )
+    harness_age = (harness_minimum_release_age_minutes
+                   if harness_minimum_release_age_minutes is not None
+                   else HARNESS_MINIMUM_RELEASE_AGE_MINUTES)
 
     # The extra-tools pins ride the same classification path as recipe pins — same cooldown, same
     # hold semantics, same buckets. Anything less and `--check` would report them differently from
@@ -868,9 +789,8 @@ def build_report(
             (report.held if pin.hold else report.unresolved).append(f)
             continue
 
-        kind, f = _select(
-            pin, releases, now, harness_age if pin.harness else minimum_release_age_minutes
-        )
+        kind, f = _select(pin, releases, now,
+                          harness_age if pin.harness else minimum_release_age_minutes)
         # The hold outranks the age gate: a held pin is never offered whatever its age, but it
         # is still LISTED with whatever newer version exists.
         if pin.hold and kind != "current":
@@ -882,7 +802,6 @@ def build_report(
 
 
 # --- what to verify after a bump (bd harnessed-czo) -------------------------------------------
-
 
 def affected_stacks(recipe_names) -> dict[str, list[str]]:
     """Stacks whose `recipes:` includes any of `recipe_names` → that stack's declared harnesses.
@@ -897,7 +816,7 @@ def affected_stacks(recipe_names) -> dict[str, list[str]]:
         if not stacks.is_dir():
             continue
         for manifest in sorted(stacks.glob("*/stack.yaml")):
-            if manifest.parent.name in out:  # user overlay wins, as everywhere else
+            if manifest.parent.name in out:      # user overlay wins, as everywhere else
                 continue
             try:
                 stack = load_stack(manifest.parent)
@@ -922,7 +841,6 @@ def verify_commands(stacks: dict[str, list[str]]) -> list[str]:
 
 
 # --- rewriting ------------------------------------------------------------------------------
-
 
 def _match_v_prefix(current: str, latest: str) -> str:
     """Rewrite `latest` to use whatever `v`-prefix convention `current` already used.
@@ -966,7 +884,7 @@ def _rewrite_tools_entry(manifest: Path, old_spec: str, new_spec: str) -> bool:
     for i, entry in enumerate(tools):
         if isinstance(entry, dict):
             if entry.get("spec") == old_spec:
-                entry["spec"] = new_spec  # in place: `hold` and its comments stay put
+                entry["spec"] = new_spec   # in place: `hold` and its comments stay put
                 changed = True
         elif entry == old_spec:
             tools[i] = new_spec
@@ -1001,7 +919,7 @@ def _rewrite_install_ref(manifest: Path, key: str, new_ref: str) -> bool:
     refs = install.get("refs") if isinstance(install, dict) else None
     if not isinstance(refs, dict) or key not in refs or not isinstance(refs[key], dict):
         return False
-    refs[key]["ref"] = new_ref  # in place: `repo`, `hold` and their comments stay put
+    refs[key]["ref"] = new_ref   # in place: `repo`, `hold` and their comments stay put
     with manifest.open("w", encoding="utf-8") as fh:
         yaml.dump(data, fh)
     return True
@@ -1046,7 +964,7 @@ def _rewrite_agent_build_arg(manifest: Path, key: str, new_value: str) -> bool:
         return False
     entry = args[key]
     if isinstance(entry, dict):
-        entry["value"] = new_value  # in place: `spec`, `hold` and their comments stay put
+        entry["value"] = new_value    # in place: `spec`, `hold` and their comments stay put
     else:
         args[key] = new_value
     with manifest.open("w", encoding="utf-8") as fh:
@@ -1128,9 +1046,7 @@ def _relock_recipe(manifest: Path) -> bool:
         # each platform's artifact to verify its provenance, so it needs a far longer one.
         proc = subprocess.run(
             ["mise", "lock", "--cd", str(root)],
-            capture_output=True,
-            text=True,
-            timeout=900,
+            capture_output=True, text=True, timeout=900,
         )
         if proc.returncode != 0:
             return False
@@ -1166,16 +1082,12 @@ def apply(findings) -> list[Finding]:
         if f.pin.key and f.pin.file.name in ("agent.yaml", "recipe.yaml"):
             new_value = _match_v_prefix(f.pin.current, f.latest)
             rewrite_field = (
-                _rewrite_agent_build_arg
-                if f.pin.file.name == "agent.yaml"
-                else _rewrite_install_ref
+                _rewrite_agent_build_arg if f.pin.file.name == "agent.yaml" else _rewrite_install_ref
             )
             if new_value != f.pin.current and rewrite_field(f.pin.file, f.pin.key, new_value):
                 done.append(f)
             continue
-        new_spec = f.pin.spec.replace(
-            f"@{f.pin.current}", f"@{_match_v_prefix(f.pin.current, f.latest)}"
-        )
+        new_spec = f.pin.spec.replace(f"@{f.pin.current}", f"@{_match_v_prefix(f.pin.current, f.latest)}")
         if new_spec == f.pin.spec:
             continue
         # Dispatch on the file being written, not on the pin's label: `_rewrite_tools_entry` is a

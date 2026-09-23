@@ -50,10 +50,7 @@ def _recorder(sink, *, with_kwargs: bool = False):
     def _run(cmd, *a, **k):
         sink.append((list(cmd), dict(k)) if with_kwargs else list(cmd))
         return _Recorded()
-
     return _run
-
-
 from harnessed.hosthome import _HOST_STACK_FINGERPRINT
 from harnessed.schema import load_recipe
 from support import patch_all
@@ -328,9 +325,8 @@ class TestEverythingElseJoinsTheAnchor:
 
     def test_the_two_runtimes_do_not_share_a_placement(self):
         """Guard the guard: if these ever returned the same list, one of the two is wrong."""
-        assert launcher._agent_placement_args("podman", "p", "i") != launcher._agent_placement_args(
-            "docker", "p", "i"
-        )
+        assert (launcher._agent_placement_args("podman", "p", "i")
+                != launcher._agent_placement_args("docker", "p", "i"))
 
 
 class TestTheFirewallRunnerSharesTheAgentsMapping:
@@ -393,26 +389,17 @@ class TestEveryInstallStepMatchesItsRuntime:
     def _argv(self, rt: str, tmp_path, monkeypatch) -> list[list[str]]:
         d = tmp_path / "r"
         d.mkdir(parents=True, exist_ok=True)
-        (d / "recipe.yaml").write_text(
-            'name: r\ntools: ["npm:x@1"]\ninstall:\n  script: install.sh\n'
-        )
+        (d / "recipe.yaml").write_text('name: r\ntools: ["npm:x@1"]\ninstall:\n  script: install.sh\n')
         (d / "install.sh").write_text("true\n")
         load_recipe(d, strict=True)
         calls: list[list[str]] = []
         patch_all(monkeypatch, "_run", _recorder(calls))
         monkeypatch.setattr(
-            launcher.paths,
-            "install_cache_dir",
+            launcher.paths, "install_cache_dir",
             lambda name, key: tmp_path / "cache" / name / key,
         )
         launcher._run_container_installs(
-            rt,
-            "s",
-            "claude",
-            "img",
-            [load_recipe(d, strict=True)],
-            "cfgvol",
-            "toolsvol",
+            rt, "s", "claude", "img", [load_recipe(d, strict=True)], "cfgvol", "toolsvol",
         )
         return calls
 
@@ -456,9 +443,7 @@ class TestRootlessDockerIsRefusedBeforeAnythingIsCreated:
         assert ei.value.exit_code == 1
         captured = capsys.readouterr()
         msg = (captured.out + captured.err).lower()
-        assert "docker info" in msg, (
-            "must name the probe that could not be read, not blame rootless"
-        )
+        assert "docker info" in msg, "must name the probe that could not be read, not blame rootless"
 
     def test_rootful_docker_passes_the_preflight(self, monkeypatch):
         _pin(monkeypatch, "docker", rootless=False)
@@ -517,10 +502,7 @@ class TestTheRootlessProbeItself:
         paths._probe_docker_rootless()
 
         assert seen["cmd"] == [
-            "docker",
-            "info",
-            "--format",
-            "{{range .SecurityOptions}}{{.}} {{end}}",
+            "docker", "info", "--format", "{{range .SecurityOptions}}{{.}} {{end}}",
         ], "the probe must ask docker for SecurityOptions, spelled exactly as docker spells it"
         # stdout must be captured as TEXT, or the membership test below explodes on None/bytes.
         assert seen["capture_output"] is True
@@ -529,34 +511,18 @@ class TestTheRootlessProbeItself:
         assert seen["timeout"] == paths._DOCKER_INFO_TIMEOUT
 
     def test_a_rootless_daemon_is_detected(self, monkeypatch):
-        monkeypatch.setattr(
-            paths.subprocess,
-            "run",
-            lambda *a, **k: subprocess.CompletedProcess(
-                a[0] if a else [],
-                0,
-                stdout="name=seccomp name=rootless name=cgroupns\n",
-                stderr="",
-            ),
-        )
+        monkeypatch.setattr(paths.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(
+            a[0] if a else [], 0, stdout="name=seccomp name=rootless name=cgroupns\n", stderr="",
+        ))
         assert paths._probe_docker_rootless() is True
 
     def test_a_rootful_daemon_is_detected(self, monkeypatch):
-        monkeypatch.setattr(
-            paths.subprocess,
-            "run",
-            lambda *a, **k: subprocess.CompletedProcess(
-                a[0] if a else [],
-                0,
-                stdout="name=seccomp name=cgroupns\n",
-                stderr="",
-            ),
-        )
+        monkeypatch.setattr(paths.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(
+            a[0] if a else [], 0, stdout="name=seccomp name=cgroupns\n", stderr="",
+        ))
         assert paths._probe_docker_rootless() is False
 
-    def test_a_userns_remapped_daemon_is_rootful_because_we_opt_out_per_container(
-        self, monkeypatch
-    ):
+    def test_a_userns_remapped_daemon_is_rootful_because_we_opt_out_per_container(self, monkeypatch):
         """A daemon started with `--userns-remap` reports `name=userns`, NOT `name=rootless`.
 
         It is a THIRD state, and classifying it as rootful is only correct because harnessed passes
@@ -565,16 +531,9 @@ class TestTheRootlessProbeItself:
         classification becomes a fail-open — `pod_host_uid` would answer 1000 for a container whose
         host writer is a subuid like 165536. `TestTheAgentContainerActuallyGetsTheMapping` and
         `TestTheFirewallRunnerSharesTheAgentsMapping` are what hold the other half."""
-        monkeypatch.setattr(
-            paths.subprocess,
-            "run",
-            lambda *a, **k: subprocess.CompletedProcess(
-                a[0] if a else [],
-                0,
-                stdout="name=seccomp name=userns name=cgroupns\n",
-                stderr="",
-            ),
-        )
+        monkeypatch.setattr(paths.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(
+            a[0] if a else [], 0, stdout="name=seccomp name=userns name=cgroupns\n", stderr="",
+        ))
         assert paths._probe_docker_rootless() is False
         assert paths.DOCKER_USERNS_ARG == "--userns=host", (
             "the rootful classification above is only sound while this flag is what we emit"
@@ -583,33 +542,21 @@ class TestTheRootlessProbeItself:
     def test_a_daemon_that_cannot_be_reached_is_undetermined(self, monkeypatch):
         """`docker info` exits nonzero — daemon down, or the socket refuses this user. NOT False:
         answering "rootful" here would be a guess, and the guess is the fail-open direction."""
-        monkeypatch.setattr(
-            paths.subprocess,
-            "run",
-            lambda *a, **k: subprocess.CompletedProcess(
-                a[0] if a else [],
-                1,
-                stdout="",
-                stderr="Cannot connect to the Docker daemon",
-            ),
-        )
+        monkeypatch.setattr(paths.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(
+            a[0] if a else [], 1, stdout="", stderr="Cannot connect to the Docker daemon",
+        ))
         assert paths._probe_docker_rootless() is None
 
-    @pytest.mark.parametrize(
-        "boom",
-        [
-            FileNotFoundError("docker"),  # vanished between PATH check and here
-            PermissionError("/var/run/docker.sock"),  # socket not readable by this user
-            subprocess.TimeoutExpired(["docker", "info"], 30),  # daemon wedged
-        ],
-    )
+    @pytest.mark.parametrize("boom", [
+        FileNotFoundError("docker"),                       # vanished between PATH check and here
+        PermissionError("/var/run/docker.sock"),           # socket not readable by this user
+        subprocess.TimeoutExpired(["docker", "info"], 30),  # daemon wedged
+    ])
     def test_a_probe_that_raises_is_undetermined(self, monkeypatch, boom):
         """Every one of these is a live failure mode, and none may become an exception escaping
         into a launch: the caller's contract is three-valued, and this is the third value."""
-
         def _raise(*_a, **_k):
             raise boom
-
         monkeypatch.setattr(paths.subprocess, "run", _raise)
         assert paths._probe_docker_rootless() is None
 
@@ -628,14 +575,10 @@ class TestTheFirewallRunnerArgvIsPinnedElementForElement:
 
     def _expected_tail(self):
         return [
-            "--cap-add",
-            "NET_ADMIN",
-            "--user",
-            "root",
-            "-v",
-            f"{launcher._catalog_base('egress-firewall.sh')}:/usr/local/sbin/egress-firewall:ro",
-            "--entrypoint",
-            "",
+            "--cap-add", "NET_ADMIN",
+            "--user", "root",
+            "-v", f"{launcher._catalog_base('egress-firewall.sh')}:/usr/local/sbin/egress-firewall:ro",
+            "--entrypoint", "",
             "img",
         ]
 
@@ -650,11 +593,8 @@ class TestTheFirewallRunnerArgvIsPinnedElementForElement:
         configures returns EPERM, so the rules confine nothing and the agent runs wide open."""
         argv = launcher._firewall_runner_argv("docker", "theinst", "img")
         assert argv == [
-            "docker",
-            "run",
-            "--rm",
-            "--network=container:theinst",
-            "--userns=host",
+            "docker", "run", "--rm",
+            "--network=container:theinst", "--userns=host",
             *self._expected_tail(),
         ]
 
@@ -698,13 +638,11 @@ class TestTheApiEndpointHostsAreParsedNotGuessed:
         assert launchenv.api_endpoint_egress_hosts({"ANTHROPIC_BASE_URL": "   "}) == []
 
     def test_all_three_variables_are_read_and_duplicates_collapse(self):
-        assert launchenv.api_endpoint_egress_hosts(
-            {
-                "ANTHROPIC_BASE_URL": "https://one.example",
-                "ANTHROPIC_BEDROCK_BASE_URL": "https://two.example",
-                "ANTHROPIC_VERTEX_BASE_URL": "https://one.example",
-            }
-        ) == ["one.example", "two.example"]
+        assert launchenv.api_endpoint_egress_hosts({
+            "ANTHROPIC_BASE_URL": "https://one.example",
+            "ANTHROPIC_BEDROCK_BASE_URL": "https://two.example",
+            "ANTHROPIC_VERTEX_BASE_URL": "https://one.example",
+        }) == ["one.example", "two.example"]
 
 
 class TestCapabilityRuntimeDelegates:
@@ -804,19 +742,13 @@ class TestNoRuntimeAtAll:
         monkeypatch.setattr(paths.shutil, "which", lambda _name: None)
         assert paths._detect_runtime() is None
 
-    @pytest.mark.parametrize(
-        "installed, expected",
-        [
-            ({"podman"}, "podman"),
-            ({"docker"}, "docker"),
-            ({"podman", "docker"}, "podman"),  # PREFERENCE, not accident of iteration
-        ],
-    )
+    @pytest.mark.parametrize("installed, expected", [
+        ({"podman"}, "podman"),
+        ({"docker"}, "docker"),
+        ({"podman", "docker"}, "podman"),  # PREFERENCE, not accident of iteration
+    ])
     def test_it_looks_for_the_right_binaries_and_prefers_podman(
-        self,
-        monkeypatch,
-        installed,
-        expected,
+        self, monkeypatch, installed, expected,
     ):
         """The binary NAMES and their ORDER are both behaviour.
 
@@ -826,9 +758,7 @@ class TestNoRuntimeAtAll:
         ordering is a real preference (pods, pasta, keep-id), not an implementation detail.
         """
         monkeypatch.setattr(
-            paths.shutil,
-            "which",
-            lambda name: f"/usr/bin/{name}" if name in installed else None,
+            paths.shutil, "which", lambda name: f"/usr/bin/{name}" if name in installed else None,
         )
         assert paths._detect_runtime() == expected
 
@@ -849,8 +779,7 @@ class TestTheBuildPathRefusesToo:
         _pin(monkeypatch, "docker", rootless=True)
         looked_up: list[str] = []
         monkeypatch.setattr(
-            launcher.paths,
-            "find_in_catalog",
+            launcher.paths, "find_in_catalog",
             lambda kind, name: looked_up.append(name),  # type: ignore[func-returns-value]
         )
         with pytest.raises(typer.Exit) as ei:
@@ -937,20 +866,9 @@ class TestDockerNamedVolumesAreChowned:
         either produces a container that does not start."""
         argv, _ = self._invocations(monkeypatch, "docker")[0]
         assert argv == [
-            "docker",
-            "run",
-            "--rm",
-            "--userns=host",
-            "--user",
-            "0:0",
-            "-v",
-            "thevol:/home/harnessed/.claude",
-            "--entrypoint",
-            "chown",
-            "img",
-            "-R",
-            f"{self.OWNER_UID}:{self.OWNER_GID}",
-            "/home/harnessed/.claude",
+            "docker", "run", "--rm", "--userns=host", "--user", "0:0",
+            "-v", "thevol:/home/harnessed/.claude", "--entrypoint", "chown", "img",
+            "-R", f"{self.OWNER_UID}:{self.OWNER_GID}", "/home/harnessed/.claude",
         ]
 
     def test_the_volume_is_mounted_where_it_will_actually_live(self, monkeypatch):
@@ -968,9 +886,7 @@ class TestDockerNamedVolumesAreChowned:
         """
         argv, _ = self._invocations(monkeypatch, "docker")[0]
         mount = argv[argv.index("-v") + 1]
-        assert mount.endswith("/home/harnessed/.claude"), (
-            f"the volume must be mounted where it lives: {argv}"
-        )
+        assert mount.endswith("/home/harnessed/.claude"), f"the volume must be mounted where it lives: {argv}"
         assert "/mnt" not in argv, (
             f"a scratch mount path puts the chown before copy-up, which then overwrites it: {argv}"
         )
@@ -1126,17 +1042,13 @@ class TestTheAgentsOwnApiEndpointIsAllowlisted:
     def test_a_bare_host_with_no_scheme_still_yields_a_host(self):
         """`urlsplit` parses a scheme-less value as a PATH, so hostname is None. Dropping it there
         would silently reinstate the defect for anyone who omits https://."""
-        assert launchenv.api_endpoint_egress_hosts({"ANTHROPIC_BASE_URL": "api.z.ai"}) == [
-            "api.z.ai"
-        ]
+        assert launchenv.api_endpoint_egress_hosts({"ANTHROPIC_BASE_URL": "api.z.ai"}) == ["api.z.ai"]
 
     def test_the_bedrock_and_vertex_forms_count_too(self):
-        hosts = launchenv.api_endpoint_egress_hosts(
-            {
-                "ANTHROPIC_BEDROCK_BASE_URL": "https://bedrock.example",
-                "ANTHROPIC_VERTEX_BASE_URL": "https://vertex.example",
-            }
-        )
+        hosts = launchenv.api_endpoint_egress_hosts({
+            "ANTHROPIC_BEDROCK_BASE_URL": "https://bedrock.example",
+            "ANTHROPIC_VERTEX_BASE_URL": "https://vertex.example",
+        })
         assert sorted(hosts) == ["bedrock.example", "vertex.example"]
 
     def test_an_unset_or_empty_endpoint_adds_nothing(self):
@@ -1145,12 +1057,10 @@ class TestTheAgentsOwnApiEndpointIsAllowlisted:
         assert launchenv.api_endpoint_egress_hosts({"ANTHROPIC_BASE_URL": "   "}) == []
 
     def test_duplicates_collapse(self):
-        hosts = launchenv.api_endpoint_egress_hosts(
-            {
-                "ANTHROPIC_BASE_URL": "https://gw.example/v1",
-                "ANTHROPIC_VERTEX_BASE_URL": "https://gw.example/other",
-            }
-        )
+        hosts = launchenv.api_endpoint_egress_hosts({
+            "ANTHROPIC_BASE_URL": "https://gw.example/v1",
+            "ANTHROPIC_VERTEX_BASE_URL": "https://gw.example/other",
+        })
         assert hosts == ["gw.example"]
 
 
@@ -1168,9 +1078,7 @@ class TestAgainstARealDockerDaemon:
         premise of this whole change moved."""
         proc = subprocess.run(
             ["docker", "run", "--rm", paths.USERNS_ARG, "--entrypoint", "true", self.IMAGE],
-            capture_output=True,
-            text=True,
-            timeout=180,
+            capture_output=True, text=True, timeout=180,
         )
         assert proc.returncode == 125, f"expected docker to reject keep-id, got {proc.returncode}"
         assert "invalid USER mode" in proc.stderr
@@ -1185,23 +1093,10 @@ class TestAgainstARealDockerDaemon:
         # off a uid-1000 box -- it failed on the runner (uid 1001) with "Permission denied", which
         # is the very error #456/#457 exist to remove.
         proc = subprocess.run(
-            [
-                "docker",
-                "run",
-                "--rm",
-                *paths.userns_args("docker"),
-                *paths.container_user_args("docker"),
-                "-v",
-                f"{target}:/data:rw",
-                "--entrypoint",
-                "mkdir",
-                self.IMAGE,
-                "-p",
-                "/data/dolt",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=180,
+            ["docker", "run", "--rm", *paths.userns_args("docker"),
+             *paths.container_user_args("docker"),
+             "-v", f"{target}:/data:rw", "--entrypoint", "mkdir", self.IMAGE, "-p", "/data/dolt"],
+            capture_output=True, text=True, timeout=180,
         )
         assert proc.returncode == 0, proc.stderr
         # The INVOKER owns it. That is the whole point of the docker `--user` mapping.

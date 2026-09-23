@@ -43,16 +43,12 @@ _BASE_IMAGE = "localhost/harnessed-base:latest"
 
 
 def _image_present(image: str) -> bool:
-    return (
-        subprocess.run(
-            [launcher._runtime(), "image", "exists", image], capture_output=True
-        ).returncode
-        == 0
-    )
+    return subprocess.run(
+        [launcher._runtime(), "image", "exists", image], capture_output=True
+    ).returncode == 0
 
 
 # --- harnessed-de7: the report survives the container it was produced in -------------------------
-
 
 @podman
 @pytest.mark.skipif(
@@ -65,7 +61,9 @@ def test_scan_report_is_copied_out_before_the_container_is_removed(tmp_path):
     the ordering wrong and the scan still 'succeeds' while the report silently never lands — which
     is exactly how de7's original symptom (a green all-clear next to a real finding) reads."""
     dest = tmp_path / "profile" / "scan-report.json"
-    ok = launcher._scan_image_in_container(launcher._runtime(), _BASE_IMAGE, report_dest=dest)
+    ok = launcher._scan_image_in_container(
+        launcher._runtime(), _BASE_IMAGE, report_dest=dest
+    )
     assert ok, "harnessed-scan is advisory and must always exit 0"
     assert dest.is_file(), (
         "the scan container was removed without its report being copied out — the --cidfile/`cp` "
@@ -83,7 +81,6 @@ def test_the_copied_report_is_the_real_schema(tmp_path):
     """A file landing is not the same as a report landing. Assert the shape the launcher and the
     summary both depend on, including the coverage block bd harnessed-wx9 added."""
     import json
-
     dest = tmp_path / "scan-report.json"
     launcher._scan_image_in_container(launcher._runtime(), _BASE_IMAGE, report_dest=dest)
     report = json.loads(dest.read_text())
@@ -99,16 +96,12 @@ def test_no_scan_containers_are_left_behind(tmp_path):
     across every build on the machine."""
     rt = launcher._runtime()
     before = subprocess.run(
-        [rt, "ps", "-aq"],
-        capture_output=True,
-        text=True,
+        [rt, "ps", "-aq"], capture_output=True, text=True,
     ).stdout.split()
     if _image_present(_BASE_IMAGE):
         launcher._scan_image_in_container(rt, _BASE_IMAGE, report_dest=tmp_path / "r.json")
     after = subprocess.run(
-        [rt, "ps", "-aq"],
-        capture_output=True,
-        text=True,
+        [rt, "ps", "-aq"], capture_output=True, text=True,
     ).stdout.split()
     assert set(after) <= set(before), f"scan leaked container(s): {set(after) - set(before)}"
 
@@ -117,7 +110,6 @@ def test_no_scan_containers_are_left_behind(tmp_path):
 #
 # Host-side and podman-free on purpose: host mode never starts a container. These run in the normal
 # suite, because the reason 8px.7 went unverified is that nothing ever executed the path.
-
 
 class TestHostHomeShim:
     def test_the_shim_is_a_sibling_so_it_survives_the_home_wipe(self, tmp_path):
@@ -154,13 +146,8 @@ class TestHostHomeShim:
         from harnessed.schema import Recipe
 
         env = install_env(
-            Recipe(name="r", root=tmp_path),
-            mode=mode,
-            harness="claude",
-            config_dir="/cfg",
-            cache_dir="",
-            bin_dir="/bin-dir",
-            home_shim="/shim",
+            Recipe(name="r", root=tmp_path), mode=mode, harness="claude",
+            config_dir="/cfg", cache_dir="", bin_dir="/bin-dir", home_shim="/shim",
         )
         assert env["HARNESSED_BIN_DIR"] == "/bin-dir"
         assert env["HARNESSED_HOME_SHIM"] == "/shim"
@@ -170,12 +157,7 @@ class TestHostHomeShim:
         CONFIGURES it (serena's `uv tool install` + `serena init`). That only works if the freshly
         installed executable resolves, so bin_dir must LEAD PATH — not merely be exported."""
         env = launcher._script_env(
-            "s",
-            tmp_path,
-            {},
-            mode="host",
-            harness="claude",
-            bin_dir=tmp_path / "bin",
+            "s", tmp_path, {}, mode="host", harness="claude", bin_dir=tmp_path / "bin",
         )
         assert env["HARNESSED_BIN_DIR"] == str(tmp_path / "bin")
         assert env["PATH"].split(os.pathsep)[0] == str(tmp_path / "bin"), (
@@ -201,7 +183,6 @@ class TestHostHomeShim:
 
 # --- harnessed-aio: a stopped sidecar is revived, by the code, not by hand -----------------------
 
-
 @podman
 class TestSidecarRevival:
     """bd harnessed-aio was closed on a manual `podman start`. That proves podman works, not that
@@ -217,9 +198,7 @@ class TestSidecarRevival:
         subprocess.run([rt, "rm", "-f", name], capture_output=True)
         subprocess.run(
             [rt, "run", "-d", "--name", name, self.IMAGE, "sleep", "300"],
-            capture_output=True,
-            text=True,
-            check=True,
+            capture_output=True, text=True, check=True,
         )
         subprocess.run([rt, "stop", "-t", "1", name], capture_output=True)
         yield name
@@ -228,8 +207,7 @@ class TestSidecarRevival:
     def _state(self, name: str) -> str:
         return subprocess.run(
             [launcher._runtime(), "inspect", "-f", "{{.State.Status}}", name],
-            capture_output=True,
-            text=True,
+            capture_output=True, text=True,
         ).stdout.strip()
 
     def test_the_fixture_really_produces_a_stopped_container(self, stopped_container):
@@ -242,19 +220,15 @@ class TestSidecarRevival:
         away the sidecar's state, which for a beads sidecar is the project database."""
         rt = launcher._runtime()
         before_id = subprocess.run(
-            [rt, "inspect", "-f", "{{.Id}}", stopped_container],
-            capture_output=True,
-            text=True,
+            [rt, "inspect", "-f", "{{.Id}}", stopped_container], capture_output=True, text=True,
         ).stdout.strip()
         subprocess.run([rt, "start", stopped_container], capture_output=True)
-        for _ in range(50):  # podman start returns before the state settles
+        for _ in range(50):                     # podman start returns before the state settles
             if self._state(stopped_container) == "running":
                 break
             time.sleep(0.1)
         after_id = subprocess.run(
-            [rt, "inspect", "-f", "{{.Id}}", stopped_container],
-            capture_output=True,
-            text=True,
+            [rt, "inspect", "-f", "{{.Id}}", stopped_container], capture_output=True, text=True,
         ).stdout.strip()
         assert self._state(stopped_container) == "running"
         assert before_id == after_id, "the container was recreated — its data would be gone"
@@ -264,7 +238,6 @@ class TestSidecarRevival:
         actually routes through it, so a refactor cannot quietly drop the revive and leave
         re-attach starting a dead sidecar."""
         import inspect
-
         assert "_ensure_service" in inspect.getsource(launcher._ensure_services)
         plan = inspect.getsource(launcher)
         assert "_ensure_services" in plan

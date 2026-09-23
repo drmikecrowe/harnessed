@@ -115,15 +115,12 @@ def test_both_exec_paths_acknowledge_before_handing_over_the_terminal():
     with open(src, encoding="utf-8") as f:
         lines = f.readlines()
 
-    exec_lines = [
-        i
-        for i, ln in enumerate(lines)
-        if "os.execvp(rt, exec_argv)" in ln or "os.execvpe(argv[0], argv, env)" in ln
-    ]
+    exec_lines = [i for i, ln in enumerate(lines) if "os.execvp(rt, exec_argv)" in ln
+                  or "os.execvpe(argv[0], argv, env)" in ln]
     assert len(exec_lines) == 2, "expected exactly two exec handoff sites"
 
     for idx in exec_lines:
-        preceding = "".join(lines[max(0, idx - 5) : idx])
+        preceding = "".join(lines[max(0, idx - 5):idx])
         assert "_acknowledge_warnings()" in preceding, (
             "exec at line %d is not preceded by _acknowledge_warnings()" % (idx + 1)
         )

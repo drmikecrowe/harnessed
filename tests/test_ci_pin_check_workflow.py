@@ -49,7 +49,9 @@ class TestItIsNotAPullRequestGate:
 
 class TestItActuallyChecksPins:
     def test_the_check_command_is_invoked(self, workflow):
-        runs = " ".join(s.get("run", "") for s in workflow["jobs"]["pins"]["steps"])
+        runs = " ".join(
+            s.get("run", "") for s in workflow["jobs"]["pins"]["steps"]
+        )
         assert "harnessed update --check" in runs
 
     def test_mise_is_installed_so_registered_tools_resolve(self, workflow):

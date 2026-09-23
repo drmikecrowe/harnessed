@@ -44,13 +44,13 @@ _MARKER = "# unbounded:"
 # duration is the user's session, not podman's latency — a deadline here kills working sessions.
 # Two entries for `aws_sso`: the interactive credential prompt and the foreground server.
 _EXPECTED_EXEMPT = {
-    ("launcher.py", "_launch_host"),  # the agent itself, host mode (--rm supervise branch)
-    ("launcher.py", "_attach"),  # the interactive container session (--rm supervise branch)
-    ("launcher.py", "test_stack"),  # capability suite; child enforces DEFAULT_TEST_TIMEOUT
-    ("launcher.py", "svc"),  # catalog-authored `sync:`; a DB import is legitimately long
-    ("launcher.py", "aws_sso"),  # `aws-sso setup ecs auth` + `aws-sso ecs server`
-    ("proc.py", "_run"),  # imposes no policy; callers opt in via timeout=
-    ("proc.py", "_run_tagged"),  # Popen does not block; its deadline is on wait(timeout=…)
+    ("launcher.py", "_launch_host"),   # the agent itself, host mode (--rm supervise branch)
+    ("launcher.py", "_attach"),        # the interactive container session (--rm supervise branch)
+    ("launcher.py", "test_stack"),     # capability suite; child enforces DEFAULT_TEST_TIMEOUT
+    ("launcher.py", "svc"),            # catalog-authored `sync:`; a DB import is legitimately long
+    ("launcher.py", "aws_sso"),        # `aws-sso setup ecs auth` + `aws-sso ecs server`
+    ("proc.py", "_run"),               # imposes no policy; callers opt in via timeout=
+    ("proc.py", "_run_tagged"),        # Popen does not block; its deadline is on wait(timeout=…)
     # The OAuth consent, attached to the operator's terminal: a timeout on the call would be a
     # timeout on a human finishing a browser flow. Bounded by its own deadline loop instead, and
     # terminated in a `finally` on every exit path.
@@ -207,11 +207,11 @@ class TestEveryCallIsBoundedOrJustified:
         """
         tree = ast.parse((_SRC / "proc.py").read_text(encoding="utf-8"))
         fn = next(
-            n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_run_tagged"
+            n for n in ast.walk(tree)
+            if isinstance(n, ast.FunctionDef) and n.name == "_run_tagged"
         )
         bounded_waits = [
-            n
-            for n in ast.walk(fn)
+            n for n in ast.walk(fn)
             if isinstance(n, ast.Call)
             and isinstance(n.func, ast.Attribute)
             and n.func.attr == "wait"

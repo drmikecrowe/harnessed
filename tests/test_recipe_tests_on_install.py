@@ -41,14 +41,8 @@ def _plain(text: str) -> str:
     return _ANSI.sub("", text)
 
 
-def _recipe(
-    tmp_path,
-    name="r",
-    *,
-    script_body: str = "true\n",
-    tests: dict[str, str] | None = None,
-    others: dict[str, str] | None = None,
-):
+def _recipe(tmp_path, name="r", *, script_body: str = "true\n", tests: dict[str, str] | None = None,
+            others: dict[str, str] | None = None):
     """A loadable recipe dir with an `install.script` and, optionally, a `tests/` dir."""
     d = tmp_path / name
     d.mkdir(parents=True, exist_ok=True)
@@ -190,9 +184,7 @@ def test_the_failure_message_cannot_leak_an_earlier_secret(tmp_path, monkeypatch
     """S-8 / T-02-07. One truncated tail line, never the transcript."""
     r = _recipe(
         tmp_path,
-        tests={
-            "leaky.sh": "echo 'AKIAIOSFODNN7EXAMPLE tok'\necho 'assertion failed' >&2\nexit 1\n"
-        },
+        tests={"leaky.sh": "echo 'AKIAIOSFODNN7EXAMPLE tok'\necho 'assertion failed' >&2\nexit 1\n"},
     )
 
     with pytest.raises(typer.Exit):
@@ -215,7 +207,9 @@ def test_the_test_sees_the_same_environment_its_install_saw(tmp_path, monkeypatc
 
     _host_install(tmp_path, [r], monkeypatch, home=home)
 
-    seen = dict(line.partition("=")[::2] for line in dump.read_text().splitlines() if "=" in line)
+    seen = dict(
+        line.partition("=")[::2] for line in dump.read_text().splitlines() if "=" in line
+    )
     assert seen["HARNESS"] == "claude"
     assert seen["HARNESSED_MODE"] == "host"
     assert seen["HARNESSED_CONFIG_DIR"] == str(home)
@@ -231,8 +225,8 @@ def test_a_binary_the_install_landed_is_on_the_tests_path(tmp_path, monkeypatch)
     r = _recipe(
         tmp_path,
         script_body='mkdir -p "$HARNESSED_BIN_DIR" && '
-        'printf "#!/usr/bin/env bash\\nexit 0\\n" > "$HARNESSED_BIN_DIR/only-here" && '
-        'chmod +x "$HARNESSED_BIN_DIR/only-here"\n',
+                    'printf "#!/usr/bin/env bash\\nexit 0\\n" > "$HARNESSED_BIN_DIR/only-here" && '
+                    'chmod +x "$HARNESSED_BIN_DIR/only-here"\n',
         tests={"find.sh": "command -v only-here\n"},
     )
 
@@ -284,8 +278,7 @@ def test_a_recipes_test_runs_before_the_next_recipe_installs(tmp_path, monkeypat
     order = tmp_path / "order.txt"
     a = _recipe(tmp_path, "a", script_body=f"echo install-a >> {order}\n")
     b = _recipe(
-        tmp_path,
-        "b",
+        tmp_path, "b",
         script_body=f"echo install-b >> {order}\n",
         tests={"t.sh": f"echo test-b >> {order}\n"},
     )
@@ -311,9 +304,8 @@ def test_a_failing_test_stops_the_remaining_recipes(tmp_path, monkeypatch):
 # --- Container seam: argv, because the suite runs no podman -------------------------------------
 
 
-def _container_argv(
-    tmp_path, recipes, monkeypatch, fail_tests: str | None = None, fail_stderr: str = "it failed"
-):
+def _container_argv(tmp_path, recipes, monkeypatch, fail_tests: str | None = None,
+                    fail_stderr: str = "it failed"):
     """Capture the podman command lines the container executor would run, in order.
 
     TWO boundaries, deliberately: install steps still go through `proc._run` (their output is meant
@@ -330,25 +322,15 @@ def _container_argv(
     def _fake_test_run(cmd, *a, **k):
         calls.append(list(cmd))
         failed = fail_tests is not None and cmd[-1].endswith(fail_tests)
-        return subprocess.CompletedProcess(
-            cmd, 1 if failed else 0, "", fail_stderr if failed else ""
-        )
+        return subprocess.CompletedProcess(cmd, 1 if failed else 0, "", fail_stderr if failed else "")
 
     monkeypatch.setattr(capability.subprocess, "run", _fake_test_run)
     patch_all(monkeypatch, "_run", _fake_run)
     monkeypatch.setattr(
-        launcher.paths,
-        "install_cache_dir",
-        lambda name, key: tmp_path / "cache" / name / key,
+        launcher.paths, "install_cache_dir", lambda name, key: tmp_path / "cache" / name / key,
     )
     launcher._run_container_installs(
-        "podman",
-        "s",
-        "claude",
-        "img",
-        list(recipes),
-        "cfgvol",
-        "toolsvol",
+        "podman", "s", "claude", "img", list(recipes), "cfgvol", "toolsvol",
     )
     return calls
 
@@ -363,9 +345,7 @@ def test_the_container_runs_each_test_script_from_the_mounted_recipe(tmp_path, m
     install = next(c for c in calls if c[-1].endswith("install.sh"))
     test = next(c for c in calls if c[-1].endswith("tests/t.sh"))
     assert test[-1] == f"{emit.CTR_RECIPE_DIR}/r/tests/t.sh"
-    assert test[:-1] == install[:-1], (
-        "the test step must differ from the install step only in the script"
-    )
+    assert test[:-1] == install[:-1], "the test step must differ from the install step only in the script"
 
 
 def test_the_container_test_runs_after_the_container_install(tmp_path, monkeypatch):
@@ -423,7 +403,6 @@ def test_a_script_that_cannot_be_spawned_is_a_failed_test_not_a_crash(tmp_path, 
 def test_a_container_test_that_times_out_fails_the_install(tmp_path, monkeypatch):
     """S-18. The container seam fails closed on a hang exactly as the host seam does -- otherwise a
     stack whose test hangs would build 'successfully' forever."""
-
     def _timeout(cmd, *a, **k):
         raise subprocess.TimeoutExpired(cmd, capability.DEFAULT_TEST_TIMEOUT)
 
@@ -431,20 +410,12 @@ def test_a_container_test_that_times_out_fails_the_install(tmp_path, monkeypatch
     monkeypatch.setattr(capability.subprocess, "run", _timeout)
     patch_all(monkeypatch, "_run", lambda cmd, *a, **k: subprocess.CompletedProcess(cmd, 0, "", ""))
     monkeypatch.setattr(
-        launcher.paths,
-        "install_cache_dir",
-        lambda name, key: tmp_path / "cache" / name / key,
+        launcher.paths, "install_cache_dir", lambda name, key: tmp_path / "cache" / name / key,
     )
 
     with pytest.raises(typer.Exit):
         launcher._run_container_installs(
-            "podman",
-            "s",
-            "claude",
-            "img",
-            [r],
-            "cfgvol",
-            "toolsvol",
+            "podman", "s", "claude", "img", [r], "cfgvol", "toolsvol",
         )
 
 
@@ -453,9 +424,7 @@ def test_binary_output_from_a_test_does_not_crash_the_install(tmp_path, monkeypa
     prints one stray byte is a FAILING TEST, not a traceback out of somebody's launch."""
     r = _recipe(
         tmp_path,
-        tests={
-            "binary.sh": "printf 'noise \\xff\\xfe\\n' >&2\necho 'the readable reason' >&2\nexit 1\n"
-        },
+        tests={"binary.sh": "printf 'noise \\xff\\xfe\\n' >&2\necho 'the readable reason' >&2\nexit 1\n"},
     )
 
     with pytest.raises(typer.Exit):
@@ -477,9 +446,7 @@ def test_the_container_seam_decodes_a_tests_output_leniently(tmp_path, monkeypat
     monkeypatch.setattr(capability.subprocess, "run", _spy)
     patch_all(monkeypatch, "_run", lambda cmd, *a, **k: subprocess.CompletedProcess(cmd, 0, "", ""))
     monkeypatch.setattr(
-        launcher.paths,
-        "install_cache_dir",
-        lambda name, key: tmp_path / "cache" / name / key,
+        launcher.paths, "install_cache_dir", lambda name, key: tmp_path / "cache" / name / key,
     )
 
     launcher._run_container_installs("podman", "s", "claude", "img", [r], "cfgvol", "toolsvol")
@@ -499,10 +466,7 @@ def test_a_container_tests_output_is_never_echoed_to_the_terminal(tmp_path, monk
 
     with pytest.raises(typer.Exit):
         _container_argv(
-            tmp_path,
-            [r],
-            monkeypatch,
-            fail_tests="tests/t.sh",
+            tmp_path, [r], monkeypatch, fail_tests="tests/t.sh",
             fail_stderr="AKIAIOSFODNN7EXAMPLE super secret\nthe readable reason",
         )
 
@@ -528,14 +492,9 @@ def test_cavemans_shipped_test_passes_under_a_host_install(tmp_path):
 
     proc = subprocess.run(
         ["bash", str(script)],
-        capture_output=True,
-        text=True,
-        timeout=60,
-        env={
-            "PATH": "/usr/bin:/bin",
-            "HOME": str(tmp_path),
-            "HARNESSED_CONFIG_DIR": str(config_dir),
-        },
+        capture_output=True, text=True, timeout=60,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path),
+             "HARNESSED_CONFIG_DIR": str(config_dir)},
     )
 
     assert proc.returncode == 0, f"caveman's test fails host-side: {proc.stdout}{proc.stderr}"

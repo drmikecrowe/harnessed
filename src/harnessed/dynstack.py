@@ -9,7 +9,6 @@ profile location, volume labels, staleness checks, `harnessed list`, and BOTH ga
 already keyed on "a stack that resolves in the catalog". Minting the file makes all of them work
 unchanged; skipping it would mean teaching five subsystems about a new kind of thing.
 """
-
 from __future__ import annotations
 
 import hashlib
@@ -151,9 +150,7 @@ def mint(
     # for. Refuse rather than shadow. (Reported on PR #176.)
     existing = paths.find_in_catalog("stacks", name)
     generated_root = paths.generated_catalog_root().resolve()
-    if (existing / "stack.yaml").is_file() and not existing.resolve().is_relative_to(
-        generated_root
-    ):
+    if (existing / "stack.yaml").is_file() and not existing.resolve().is_relative_to(generated_root):
         raise ValueError(
             f"derived name {name!r} collides with an authored stack at {existing} — that stack "
             f"would win resolution and be launched instead. Rename it, or change the recipe set."

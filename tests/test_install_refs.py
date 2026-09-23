@@ -69,9 +69,7 @@ class TestRule1KeySyntax:
         body = f"name: r\ninstall:\n  script: install.sh\n  refs:\n    {key}:\n      repo: o/r\n      ref: v1.0.0\n"
         assert key in _install(tmp_path, body).refs
 
-    @pytest.mark.parametrize(
-        "key", ["Oakoss", "OAKOSS", "1oak", "_oak", "oak-oss", "oak.oss", "oak oss", ""]
-    )
+    @pytest.mark.parametrize("key", ["Oakoss", "OAKOSS", "1oak", "_oak", "oak-oss", "oak.oss", "oak oss", ""])
     def test_an_invalid_key_is_a_schema_error_naming_the_key(self, tmp_path, key):
         body = f"name: r\ninstall:\n  script: install.sh\n  refs:\n    {key!r}:\n      repo: o/r\n      ref: v1.0.0\n"
         with pytest.raises(SchemaError) as exc:
@@ -79,6 +77,7 @@ class TestRule1KeySyntax:
         assert "refs" in str(exc.value)
         if key:
             assert key in str(exc.value), "the error must name the offending key"
+
 
     def test_a_duplicate_key_is_a_SchemaError_not_a_yaml_crash(self, tmp_path):
         """Rule 1 says keys are UNIQUE, and the contract says to assert it rather than trust it.
@@ -89,11 +88,9 @@ class TestRule1KeySyntax:
         the user as an unhandled traceback from the launcher — the exact failure mode rule 1 exists
         to prevent, since a YAML editor does not warn on a repeated key.
         """
-        body = (
-            "name: r\ninstall:\n  script: install.sh\n  refs:\n"
-            "    foo:\n      repo: o/r1\n      ref: v1.0.0\n"
-            "    foo:\n      repo: o/r2\n      ref: v2.0.0\n"
-        )
+        body = ("name: r\ninstall:\n  script: install.sh\n  refs:\n"
+                "    foo:\n      repo: o/r1\n      ref: v1.0.0\n"
+                "    foo:\n      repo: o/r2\n      ref: v2.0.0\n")
         with pytest.raises(SchemaError) as exc:
             load_recipe(_recipe(tmp_path, body))
         assert "foo" in str(exc.value), "the error must name the duplicated key"
@@ -122,15 +119,8 @@ class TestRule3NamespaceReservation:
         from harnessed.emit import install_env
 
         recipe = load_recipe(_recipe(tmp_path, "name: r\ninstall:\n  script: install.sh\n"))
-        env = install_env(
-            recipe,
-            mode="container",
-            harness="claude",
-            config_dir="/c",
-            cache_dir="/x",
-            bin_dir="/b",
-            home_shim="/h",
-        )
+        env = install_env(recipe, mode="container", harness="claude", config_dir="/c",
+                          cache_dir="/x", bin_dir="/b", home_shim="/h")
         offenders = [k for k in env if _re.match(r"^HARNESSED_(REF|REPO)_", k)]
         assert not offenders, (
             f"{offenders} collide with the namespace `install.refs:` owns — a recipe ref of that "
@@ -141,16 +131,13 @@ class TestRule3NamespaceReservation:
 class TestRefFieldsAreImmutable:
     """D1a: `ref` is a tag or a FULL SHA; floating is rejected exactly as for `tools:`."""
 
-    @pytest.mark.parametrize(
-        "ref", ["v1.2.3", "1.2.3", "v2.0.0-rc.1", "0283bed313563d5677a0838f4bf921b03296cf6c"]
-    )
+    @pytest.mark.parametrize("ref", ["v1.2.3", "1.2.3", "v2.0.0-rc.1",
+                                     "0283bed313563d5677a0838f4bf921b03296cf6c"])
     def test_an_immutable_ref_is_accepted(self, tmp_path, ref):
         body = f"name: r\ninstall:\n  script: install.sh\n  refs:\n    k:\n      repo: o/r\n      ref: {ref}\n"
         assert _install(tmp_path, body).refs["k"].ref == ref
 
-    @pytest.mark.parametrize(
-        "ref", ["main", "master", "HEAD", "latest", "feat/some-work", "0283bed"]
-    )
+    @pytest.mark.parametrize("ref", ["main", "master", "HEAD", "latest", "feat/some-work", "0283bed"])
     def test_a_moving_or_abbreviated_ref_is_rejected(self, tmp_path, ref):
         """An abbreviated SHA is rejected with the moving ones: it is not a stable identifier,
         and `_IMMUTABLE_REF_RE` already fails closed on anything it does not recognise."""
@@ -161,10 +148,8 @@ class TestRefFieldsAreImmutable:
     def test_repo_must_be_owner_slash_repo_not_a_url(self, tmp_path):
         """Rule 2: `HARNESSED_REPO_*` carries `owner/repo`, NOT a URL — the script composes the
         URL, so a recipe switching from `git clone` to a tarball needs no manifest change."""
-        body = (
-            "name: r\ninstall:\n  script: install.sh\n  refs:\n    k:\n"
-            "      repo: https://github.com/o/r.git\n      ref: v1.0.0\n"
-        )
+        body = ("name: r\ninstall:\n  script: install.sh\n  refs:\n    k:\n"
+                "      repo: https://github.com/o/r.git\n      ref: v1.0.0\n")
         with pytest.raises(SchemaError, match="repo"):
             load_recipe(_recipe(tmp_path, body))
 
@@ -188,19 +173,11 @@ class TestRefFieldsAreImmutable:
         with pytest.raises(SchemaError, match="mapping"):
             load_recipe(_recipe(tmp_path, body))
 
-    @pytest.mark.parametrize(
-        "missing,body",
-        [
-            (
-                "repo",
-                "name: r\ninstall:\n  script: install.sh\n  refs:\n    k:\n      ref: v1.0.0\n",
-            ),
-            ("ref", "name: r\ninstall:\n  script: install.sh\n  refs:\n    k:\n      repo: o/r\n"),
-        ],
-    )
-    def test_a_missing_repo_or_ref_is_an_error_that_does_not_invent_a_value(
-        self, tmp_path, missing, body
-    ):
+    @pytest.mark.parametrize("missing,body", [
+        ("repo", "name: r\ninstall:\n  script: install.sh\n  refs:\n    k:\n      ref: v1.0.0\n"),
+        ("ref", "name: r\ninstall:\n  script: install.sh\n  refs:\n    k:\n      repo: o/r\n"),
+    ])
+    def test_a_missing_repo_or_ref_is_an_error_that_does_not_invent_a_value(self, tmp_path, missing, body):
         """Asserting the MESSAGE, not just the raise.
 
         Mutation testing: replacing the `or ""` fallback with any other placeholder survived,
@@ -213,9 +190,7 @@ class TestRefFieldsAreImmutable:
             load_recipe(_recipe(tmp_path, body, name=f"r_{missing}"))
         message = str(exc.value)
         assert missing in message and "'k'" in message
-        assert "XX" not in message, (
-            "the error must not report a value the manifest does not contain"
-        )
+        assert "XX" not in message, "the error must not report a value the manifest does not contain"
         assert "''" in message, "an absent field should be shown as empty, not as a substitute"
 
 
@@ -223,29 +198,23 @@ class TestRule5HoldIsPerRef:
     """`hold:` scope is the single ref — three refs may hold one and auto-bump two."""
 
     def test_a_hold_attaches_to_its_own_ref(self, tmp_path):
-        body = (
-            "name: r\ninstall:\n  script: install.sh\n  refs:\n"
-            "    held:\n      repo: o/r\n      ref: v1.0.0\n      hold: 'structural: no tags'\n"
-            "    free:\n      repo: o/s\n      ref: v2.0.0\n"
-        )
+        body = ("name: r\ninstall:\n  script: install.sh\n  refs:\n"
+                "    held:\n      repo: o/r\n      ref: v1.0.0\n      hold: 'structural: no tags'\n"
+                "    free:\n      repo: o/s\n      ref: v2.0.0\n")
         refs = _install(tmp_path, body).refs
         assert refs["held"].hold == "structural: no tags"
         assert refs["free"].hold is None
 
     def test_an_empty_hold_reason_is_an_error(self, tmp_path):
-        body = (
-            "name: r\ninstall:\n  script: install.sh\n  refs:\n"
-            "    k:\n      repo: o/r\n      ref: v1.0.0\n      hold: ''\n"
-        )
+        body = ("name: r\ninstall:\n  script: install.sh\n  refs:\n"
+                "    k:\n      repo: o/r\n      ref: v1.0.0\n      hold: ''\n")
         with pytest.raises(SchemaError, match="hold"):
             load_recipe(_recipe(tmp_path, body))
 
     def test_a_hold_does_not_license_a_floating_ref(self, tmp_path):
         """`tools:` already establishes this; refs must not become the exception."""
-        body = (
-            "name: r\ninstall:\n  script: install.sh\n  refs:\n"
-            "    k:\n      repo: o/r\n      ref: main\n      hold: 'because'\n"
-        )
+        body = ("name: r\ninstall:\n  script: install.sh\n  refs:\n"
+                "    k:\n      repo: o/r\n      ref: main\n      hold: 'because'\n")
         with pytest.raises(SchemaError, match="ref"):
             load_recipe(_recipe(tmp_path, body))
 
@@ -254,10 +223,8 @@ class TestRule7RefsAndHandWrittenCacheConflict:
     """NC-5: two sources for one key is a schema error, not a precedence rule."""
 
     def test_declaring_both_is_an_error(self, tmp_path):
-        body = (
-            "name: r\ninstall:\n  script: install.sh\n  cache: v1.0.0\n  refs:\n"
-            "    k:\n      repo: o/r\n      ref: v1.0.0\n"
-        )
+        body = ("name: r\ninstall:\n  script: install.sh\n  cache: v1.0.0\n  refs:\n"
+                "    k:\n      repo: o/r\n      ref: v1.0.0\n")
         with pytest.raises(SchemaError, match="cache"):
             load_recipe(_recipe(tmp_path, body))
 
@@ -292,20 +259,14 @@ class TestTheJsonSchemaAgreesWithThePythonParser:
     def _install_schema(self):
         import json
         from pathlib import Path
-
         root = Path(__file__).resolve().parent.parent
-        return json.loads((root / "schemas" / "recipe.schema.json").read_text())["properties"][
-            "install"
-        ]
+        return json.loads((root / "schemas" / "recipe.schema.json").read_text())["properties"]["install"]
 
     def test_refs_is_declared(self):
         assert "refs" in self._install_schema()["properties"]
 
     def test_the_key_pattern_matches_rule_1(self):
-        assert (
-            self._install_schema()["properties"]["refs"]["propertyNames"]["pattern"]
-            == "^[a-z][a-z0-9_]*$"
-        )
+        assert self._install_schema()["properties"]["refs"]["propertyNames"]["pattern"] == "^[a-z][a-z0-9_]*$"
 
     def test_refs_requires_a_script_like_cache_does(self):
         assert self._install_schema()["dependentRequired"]["refs"] == ["script"]
@@ -313,9 +274,7 @@ class TestTheJsonSchemaAgreesWithThePythonParser:
     def test_refs_and_cache_together_are_rejected_by_the_json_schema_too(self):
         """Rule 7 is enforced in BOTH validators — the Python parser raises, and the editor must
         not quietly accept the same manifest."""
-        assert {"required": ["refs", "cache"]} in self._install_schema().get("not", {}).get(
-            "anyOf", []
-        )
+        assert {"required": ["refs", "cache"]} in self._install_schema().get("not", {}).get("anyOf", [])
 
 
 class TestRule6DerivedCacheKey:
@@ -343,20 +302,14 @@ class TestRule6DerivedCacheKey:
         wrong delimiter, sort, or trailing newline fails HERE rather than only through the digest.
         """
         refs = {
-            "oakoss": InstallRef(
-                repo="oakoss/agent-skills", ref="0283bed313563d5677a0838f4bf921b03296cf6c"
-            ),
-            "blader": InstallRef(
-                repo="blader/humanizer", ref="1b48564898e999219882660237fde01bf4843a0f"
-            ),
-            "aminblg": InstallRef(
-                repo="AminBlg/SimpleEnglish", ref="379728b51981b6d2ee1de0f201164483a9648972"
-            ),
+            "oakoss": InstallRef(repo="oakoss/agent-skills",
+                                 ref="0283bed313563d5677a0838f4bf921b03296cf6c"),
+            "blader": InstallRef(repo="blader/humanizer",
+                                 ref="1b48564898e999219882660237fde01bf4843a0f"),
+            "aminblg": InstallRef(repo="AminBlg/SimpleEnglish",
+                                  ref="379728b51981b6d2ee1de0f201164483a9648972"),
         }
-        assert (
-            derived_cache_key(refs)
-            == hashlib.sha256(self.CANONICAL.encode("utf-8")).hexdigest()[:16]
-        )
+        assert derived_cache_key(refs) == hashlib.sha256(self.CANONICAL.encode("utf-8")).hexdigest()[:16]
         assert derived_cache_key(refs) == self.GOLDEN
 
     def test_the_key_is_16_lowercase_hex_characters(self, tmp_path):
@@ -389,9 +342,8 @@ install:
     def test_changing_any_ref_changes_the_key(self, tmp_path, field, value):
         """So a stale cache cannot be served."""
         mutated = _THREE_REFS.replace(
-            "repo: blader/humanizer"
-            if field == "repo"
-            else "ref: 1b48564898e999219882660237fde01bf4843a0f",
+            "repo: blader/humanizer" if field == "repo" else
+            "ref: 1b48564898e999219882660237fde01bf4843a0f",
             f"{field}: {value}",
         )
         assert _install(tmp_path, mutated, name="m").cache != self.GOLDEN

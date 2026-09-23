@@ -26,11 +26,8 @@ def _recipe(*, confirm: str | None, condition: str | None = None) -> Recipe:
     return Recipe(
         name="beads-team",
         setup=SetupSpec(
-            summary="s",
-            reference="https://example.invalid",
-            script="setup.sh",
-            condition=condition,
-            confirm=confirm,
+            summary="s", reference="https://example.invalid",
+            script="setup.sh", condition=condition, confirm=confirm,
         ),
         persist=PersistSpec(),
     )
@@ -72,33 +69,24 @@ class TestGate:
         """CI, the capability test and any scripted launch land here. Nobody objected is not
         consent for a commit into someone's repo."""
         monkeypatch.setattr(launcher.sys.stdin, "isatty", lambda: False)
-        assert (
-            launcher._confirm_setup(
-                _recipe(confirm="commits files"), "s", tmp_path, harness="claude"
-            )
-            is False
-        )
+        assert launcher._confirm_setup(
+            _recipe(confirm="commits files"), "s", tmp_path, harness="claude"
+        ) is False
         assert "needs confirmation" in capsys.readouterr().err
 
     def test_yes_runs_it(self, tmp_path, monkeypatch):
         monkeypatch.setattr(launcher.sys.stdin, "isatty", lambda: True)
         monkeypatch.setattr(launcher.typer, "confirm", lambda *a, **k: True)
-        assert (
-            launcher._confirm_setup(
-                _recipe(confirm="commits files"), "s", tmp_path, harness="claude"
-            )
-            is True
-        )
+        assert launcher._confirm_setup(
+            _recipe(confirm="commits files"), "s", tmp_path, harness="claude"
+        ) is True
 
     def test_no_skips_it(self, tmp_path, monkeypatch):
         monkeypatch.setattr(launcher.sys.stdin, "isatty", lambda: True)
         monkeypatch.setattr(launcher.typer, "confirm", lambda *a, **k: False)
-        assert (
-            launcher._confirm_setup(
-                _recipe(confirm="commits files"), "s", tmp_path, harness="claude"
-            )
-            is False
-        )
+        assert launcher._confirm_setup(
+            _recipe(confirm="commits files"), "s", tmp_path, harness="claude"
+        ) is False
 
     def test_the_warning_text_is_shown_verbatim(self, tmp_path, monkeypatch, capsys):
         """Author prose goes through escape(): rich silently DROPS any `[word]` as a style tag, and
@@ -107,9 +95,7 @@ class TestGate:
         monkeypatch.setattr(launcher.typer, "confirm", lambda *a, **k: False)
         launcher._confirm_setup(
             _recipe(confirm="creates .claude/settings.json and [18 files]"),
-            "s",
-            tmp_path,
-            harness="claude",
+            "s", tmp_path, harness="claude",
         )
         assert "[18 files]" in capsys.readouterr().out
 
@@ -124,25 +110,17 @@ class TestGate:
         repo-changing step on EVERY launch — including the ones where it is already done."""
         monkeypatch.setattr(launcher.sys.stdin, "isatty", lambda: True)
         monkeypatch.setattr(launcher.typer, "confirm", lambda *a, **k: pytest.fail("prompted"))
-        assert (
-            launcher._confirm_setup(
-                _recipe(confirm="commits files", condition="false"),  # false == already done
-                "s",
-                tmp_path,
-                harness="claude",
-            )
-            is False
-        )
+        assert launcher._confirm_setup(
+            _recipe(confirm="commits files", condition="false"),  # false == already done
+            "s", tmp_path, harness="claude",
+        ) is False
 
     def test_an_unsatisfied_condition_does_ask(self, tmp_path, monkeypatch, _no_stack_lookup):
         monkeypatch.setattr(launcher.sys.stdin, "isatty", lambda: True)
         monkeypatch.setattr(launcher.typer, "confirm", lambda *a, **k: True)
-        assert (
-            launcher._confirm_setup(
-                _recipe(confirm="commits files", condition="true"),  # true == still needed
-                "s",
-                tmp_path,
-                harness="claude",
-            )
-            is True
-        )
+        assert launcher._confirm_setup(
+            _recipe(confirm="commits files", condition="true"),  # true == still needed
+            "s", tmp_path, harness="claude",
+        ) is True
+
+

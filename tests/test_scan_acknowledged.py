@@ -37,7 +37,7 @@ def _heredoc() -> str:
     The parser has no import surface — it is a program embedded in a shell script — so every test
     here reaches it either by exec'ing this text or by running it as a subprocess."""
     src = SCRIPT.read_text()
-    match = re.search(r"<<'PY'\n(.*?)\nPY\n", src[src.index("HARNESSED_SCAN_REPORT") :], re.S)
+    match = re.search(r"<<'PY'\n(.*?)\nPY\n", src[src.index("HARNESSED_SCAN_REPORT"):], re.S)
     assert match, "summary heredoc not found in harnessed-scan"
     return match.group(1)
 
@@ -74,12 +74,8 @@ def snyk_vuln(vid, pkg="brace-expansion", severity="high", identifiers=_UNSET):
     testing the same empty dict as everything else and the non-dict guard in `advisory_ids` was
     never exercised by them.
     """
-    return {
-        "id": vid,
-        "packageName": pkg,
-        "severity": severity,
-        "identifiers": {} if identifiers is _UNSET else identifiers,
-    }
+    return {"id": vid, "packageName": pkg, "severity": severity,
+            "identifiers": {} if identifiers is _UNSET else identifiers}
 
 
 class TestAcknowledgedAdvisoriesAreExcluded:
@@ -92,11 +88,9 @@ class TestAcknowledgedAdvisoriesAreExcluded:
 
     def test_matched_by_cve_identifier(self, parsers):
         """Snyk's `identifiers` key set is not guaranteed — CVE is present where GHSA is absent."""
-        doc = {
-            "vulnerabilities": [
-                snyk_vuln("SNYK-JS-BRACEEXPANSION-13579", identifiers={"CVE": [BRACE_CVE]})
-            ]
-        }
+        doc = {"vulnerabilities": [
+            snyk_vuln("SNYK-JS-BRACEEXPANSION-13579", identifiers={"CVE": [BRACE_CVE]})
+        ]}
         assert parsers["parse_snyk"](doc) == []
         assert parsers["acknowledged_hits"] == {BRACE_CVE: "brace-expansion"}
 
@@ -104,11 +98,9 @@ class TestAcknowledgedAdvisoriesAreExcluded:
         """The other half of the pair above. Snyk emits GHSA for some advisories and CVE for
         others, and which one appears is not something this code gets to choose — so both
         vocabularies have to land the same entry."""
-        doc = {
-            "vulnerabilities": [
-                snyk_vuln("SNYK-JS-BRACEEXPANSION-13579", identifiers={"GHSA": [BRACE_GHSA]})
-            ]
-        }
+        doc = {"vulnerabilities": [
+            snyk_vuln("SNYK-JS-BRACEEXPANSION-13579", identifiers={"GHSA": [BRACE_GHSA]})
+        ]}
         assert parsers["parse_snyk"](doc) == []
         assert parsers["acknowledged_hits"] == {BRACE_GHSA: "brace-expansion"}
 
@@ -126,12 +118,10 @@ class TestTheListDoesNotOverreach:
         assert parsers["parse_snyk"](doc) == [("high", "lodash")]
 
     def test_a_mixed_project_keeps_the_unacknowledged_finding(self, parsers):
-        doc = {
-            "vulnerabilities": [
-                snyk_vuln(BRACE_GHSA),
-                snyk_vuln("SNYK-JS-LODASH-1", pkg="lodash", severity="critical"),
-            ]
-        }
+        doc = {"vulnerabilities": [
+            snyk_vuln(BRACE_GHSA),
+            snyk_vuln("SNYK-JS-LODASH-1", pkg="lodash", severity="critical"),
+        ]}
         assert parsers["parse_snyk"](doc) == [("critical", "lodash")]
         assert list(parsers["acknowledged_hits"]) == [BRACE_GHSA]
 
@@ -143,10 +133,8 @@ class TestTheListDoesNotOverreach:
     def test_a_repeated_hit_across_projects_is_counted_once(self, parsers):
         """snyk --json is a LIST when it detects multiple projects, and reports the same
         vulnerability once per project — mirroring the by_id dedup on the reported path."""
-        doc = [
-            {"vulnerabilities": [snyk_vuln(BRACE_GHSA)]},
-            {"vulnerabilities": [snyk_vuln(BRACE_GHSA)]},
-        ]
+        doc = [{"vulnerabilities": [snyk_vuln(BRACE_GHSA)]},
+               {"vulnerabilities": [snyk_vuln(BRACE_GHSA)]}]
         assert parsers["parse_snyk"](doc) == []
         assert parsers["acknowledged_hits"] == {BRACE_GHSA: "brace-expansion"}
 
@@ -175,19 +163,16 @@ class TestScannerJsonIsNotTrustedToHaveAShape:
     `set -uo pipefail` WITHOUT -e, the scan still exits 0. A build would print no summary at all
     and read as though it had nothing to say."""
 
-    @pytest.mark.parametrize(
-        "identifiers",
-        [
-            {"CVE": 12345},  # a number — TypeError: not iterable
-            {"CVE": [["nested"]]},  # a nested list — TypeError: unhashable
-            {"CVE": None},
-            {"CVE": {}},
-            {"CVE": [None, 1, "CVE-X"]},  # mixed
-            [],  # not a dict at all
-            "CVE-2026-14257",  # a bare string where a dict is expected
-            None,
-        ],
-    )
+    @pytest.mark.parametrize("identifiers", [
+        {"CVE": 12345},               # a number — TypeError: not iterable
+        {"CVE": [["nested"]]},        # a nested list — TypeError: unhashable
+        {"CVE": None},
+        {"CVE": {}},
+        {"CVE": [None, 1, "CVE-X"]},  # mixed
+        [],                           # not a dict at all
+        "CVE-2026-14257",             # a bare string where a dict is expected
+        None,
+    ])
     def test_a_hostile_identifiers_shape_does_not_raise(self, parsers, identifiers):
         doc = {"vulnerabilities": [snyk_vuln("SNYK-JS-X-1", identifiers=identifiers)]}
         assert parsers["parse_snyk"](doc) == [("high", "brace-expansion")]
@@ -195,7 +180,9 @@ class TestScannerJsonIsNotTrustedToHaveAShape:
     def test_a_bare_string_identifier_matches_instead_of_iterating_characters(self, parsers):
         """The quiet one. `for value in "CVE-2026-14257"` does not crash — it walks CHARACTERS, so
         the advisory silently never matches and the entry looks broken rather than absent."""
-        doc = {"vulnerabilities": [snyk_vuln("SNYK-JS-X-1", identifiers={"CVE": BRACE_CVE})]}
+        doc = {"vulnerabilities": [
+            snyk_vuln("SNYK-JS-X-1", identifiers={"CVE": BRACE_CVE})
+        ]}
         assert parsers["parse_snyk"](doc) == []
         assert parsers["acknowledged_hits"] == {BRACE_CVE: "brace-expansion"}
 
@@ -208,9 +195,8 @@ class TestScannerJsonIsNotTrustedToHaveAShape:
         no trace anywhere that the scanner had reported anything. A junk id cannot collide with an
         ACKNOWLEDGED key, so counting it is always safe.
         """
-        doc = {
-            "vulnerabilities": [{"id": vid, "packageName": "brace-expansion", "severity": "high"}]
-        }
+        doc = {"vulnerabilities": [{"id": vid, "packageName": "brace-expansion",
+                                    "severity": "high"}]}
         assert parsers["parse_snyk"](doc) == [("high", "brace-expansion")]
         assert parsers["acknowledged_hits"] == {}
 
@@ -224,12 +210,10 @@ class TestScannerJsonIsNotTrustedToHaveAShape:
     def test_unidentified_findings_of_different_severities_are_kept_apart(self, parsers):
         """...but the key must not over-merge either: a critical and a high against the same
         package are two findings, and collapsing them would under-count the worse one."""
-        doc = {
-            "vulnerabilities": [
-                {"id": None, "packageName": "x", "severity": "high"},
-                {"id": None, "packageName": "x", "severity": "critical"},
-            ]
-        }
+        doc = {"vulnerabilities": [
+            {"id": None, "packageName": "x", "severity": "high"},
+            {"id": None, "packageName": "x", "severity": "critical"},
+        ]}
         assert sorted(parsers["parse_snyk"](doc)) == [("critical", "x"), ("high", "x")]
 
     def test_an_unidentified_finding_reaches_the_totals(self, tmp_path):
@@ -238,15 +222,9 @@ class TestScannerJsonIsNotTrustedToHaveAShape:
         block = tmp_path / "report.py"
         block.write_text(_heredoc())
         payload = tmp_path / "snyk.json"
-        payload.write_text(
-            json.dumps(
-                {
-                    "vulnerabilities": [
-                        {"packageName": "ghost-pkg", "severity": "critical"}  # no "id" key at all
-                    ]
-                }
-            )
-        )
+        payload.write_text(json.dumps({"vulnerabilities": [
+            {"packageName": "ghost-pkg", "severity": "critical"}   # no "id" key at all
+        ]}))
         manifest = tmp_path / "manifest"
         manifest.write_text("snyk|node globals|%s\n" % payload)
         ledger = tmp_path / "attempts"
@@ -254,13 +232,9 @@ class TestScannerJsonIsNotTrustedToHaveAShape:
         out = tmp_path / "report.json"
         proc = subprocess.run(
             [sys.executable, str(block), str(manifest)],
-            capture_output=True,
-            text=True,
-            env={
-                "HARNESSED_SCAN_REPORT": str(out),
-                "HARNESSED_SCAN_ATTEMPTS": str(ledger),
-                "PATH": "/usr/bin:/bin",
-            },
+            capture_output=True, text=True,
+            env={"HARNESSED_SCAN_REPORT": str(out), "HARNESSED_SCAN_ATTEMPTS": str(ledger),
+                 "PATH": "/usr/bin:/bin"},
         )
         assert proc.returncode == 0, proc.stderr
         report = json.loads(out.read_text())
@@ -276,23 +250,20 @@ class TestThirdPartyPackageNamesAreBoundedBeforeTheyArePrinted:
 
     def test_control_characters_are_stripped(self, parsers):
         doc = {"vulnerabilities": [snyk_vuln("SNYK-X", pkg="evil\x1b[2Jname\n")]}
-        ((_, pkg),) = parsers["parse_snyk"](doc)
+        (_, pkg), = parsers["parse_snyk"](doc)
         assert "\x1b" not in pkg and "\n" not in pkg
         assert pkg == "evil[2Jname"
 
-    @pytest.mark.parametrize(
-        "hostile",
-        [
-            "\x1b[2J",  # ANSI clear-screen — rewrites the terminal the summary is drawn on
-            "\r\n\t",  # line control, which would forge extra summary rows
-            "\x00",
-            "\x07",  # BEL
-            "\u2028",  # LINE SEPARATOR — a newline that is not \n
-            "\u00a0",  # NBSP
-            "\u200b",  # zero-width space
-            "\u202e",  # RTL override — reverses how the rest of the line renders
-        ],
-    )
+    @pytest.mark.parametrize("hostile", [
+        "\x1b[2J",        # ANSI clear-screen — rewrites the terminal the summary is drawn on
+        "\r\n\t",         # line control, which would forge extra summary rows
+        "\x00",
+        "\x07",           # BEL
+        "\u2028",         # LINE SEPARATOR — a newline that is not \n
+        "\u00a0",         # NBSP
+        "\u200b",         # zero-width space
+        "\u202e",         # RTL override — reverses how the rest of the line renders
+    ])
     def test_each_control_character_class_is_removed(self, parsers, hostile):
         """One case per class, because `isprintable()` is doing the work and its coverage is the
         claim being made. Asserting only on ESC would leave the others as an assumption.
@@ -301,7 +272,7 @@ class TestThirdPartyPackageNamesAreBoundedBeforeTheyArePrinted:
         sequence disappears. `\\x1b[2J` loses its ESC byte and leaves the literal text `[2J`,
         which is inert: it is the ESC that makes a terminal act on the rest."""
         doc = {"vulnerabilities": [snyk_vuln("SNYK-X", pkg="a%sb" % hostile)]}
-        ((_, pkg),) = parsers["parse_snyk"](doc)
+        (_, pkg), = parsers["parse_snyk"](doc)
         assert all(ch.isprintable() for ch in pkg), repr(pkg)
         assert not any(ch in pkg for ch in hostile if not ch.isprintable()), repr(pkg)
         assert pkg.startswith("a") and pkg.endswith("b"), repr(pkg)
@@ -313,7 +284,7 @@ class TestThirdPartyPackageNamesAreBoundedBeforeTheyArePrinted:
 
     def test_an_absurdly_long_name_is_truncated(self, parsers):
         doc = {"vulnerabilities": [snyk_vuln("SNYK-X", pkg="a" * 5000)]}
-        ((_, pkg),) = parsers["parse_snyk"](doc)
+        (_, pkg), = parsers["parse_snyk"](doc)
         assert len(pkg) <= 70, len(pkg)
         assert pkg.endswith("…")
 
@@ -322,7 +293,7 @@ class TestThirdPartyPackageNamesAreBoundedBeforeTheyArePrinted:
         in bytes. Still bounded — which is the property that matters — but 'bounded to 64 bytes'
         would be a false claim, so it is pinned here as what it actually is."""
         doc = {"vulnerabilities": [snyk_vuln("SNYK-X", pkg="\U0001f4a9" * 5000)]}
-        ((_, pkg),) = parsers["parse_snyk"](doc)
+        (_, pkg), = parsers["parse_snyk"](doc)
         assert len(pkg) <= 70
         assert len(pkg.encode("utf-8")) <= 300
 
@@ -340,22 +311,10 @@ class TestThirdPartyPackageNamesAreBoundedBeforeTheyArePrinted:
         block = tmp_path / "report.py"
         block.write_text(_heredoc())
         payload = tmp_path / "osv.json"
-        payload.write_text(
-            json.dumps(
-                {
-                    "results": [
-                        {
-                            "packages": [
-                                {
-                                    "package": {"name": "b" * 5000 + "\x1b[2J"},
-                                    "groups": [{"max_severity": "9.8"}],
-                                }
-                            ]
-                        }
-                    ]
-                }
-            )
-        )
+        payload.write_text(json.dumps({"results": [{"packages": [
+            {"package": {"name": "b" * 5000 + "\x1b[2J"},
+             "groups": [{"max_severity": "9.8"}]}
+        ]}]}))
         manifest = tmp_path / "manifest"
         manifest.write_text("osv|recipe lockfiles|%s\n" % payload)
         ledger = tmp_path / "attempts"
@@ -363,13 +322,9 @@ class TestThirdPartyPackageNamesAreBoundedBeforeTheyArePrinted:
         out = tmp_path / "report.json"
         proc = subprocess.run(
             [sys.executable, str(block), str(manifest)],
-            capture_output=True,
-            text=True,
-            env={
-                "HARNESSED_SCAN_REPORT": str(out),
-                "HARNESSED_SCAN_ATTEMPTS": str(ledger),
-                "PATH": "/usr/bin:/bin",
-            },
+            capture_output=True, text=True,
+            env={"HARNESSED_SCAN_REPORT": str(out), "HARNESSED_SCAN_ATTEMPTS": str(ledger),
+                 "PATH": "/usr/bin:/bin"},
         )
         assert proc.returncode == 0, proc.stderr
         notable = json.loads(out.read_text())["sources"][0]["notable"]
@@ -401,13 +356,9 @@ class TestAcknowledgedIsNeverSilent:
         out = tmp_path / "report.json"
         proc = subprocess.run(
             [sys.executable, str(block), str(manifest)],
-            capture_output=True,
-            text=True,
-            env={
-                "HARNESSED_SCAN_REPORT": str(out),
-                "HARNESSED_SCAN_ATTEMPTS": str(ledger),
-                "PATH": "/usr/bin:/bin",
-            },
+            capture_output=True, text=True,
+            env={"HARNESSED_SCAN_REPORT": str(out), "HARNESSED_SCAN_ATTEMPTS": str(ledger),
+                 "PATH": "/usr/bin:/bin"},
         )
         assert proc.returncode == 0, proc.stderr
         return proc.stdout, json.loads(out.read_text())
@@ -421,11 +372,8 @@ class TestAcknowledgedIsNeverSilent:
     def test_the_report_records_id_package_and_reason(self, tmp_path):
         _, report = self._run(tmp_path, [snyk_vuln(BRACE_GHSA)])
         assert report["acknowledged"] == [
-            {
-                "id": BRACE_GHSA,
-                "package": "brace-expansion",
-                "reason": "brace-expansion <5.0.9 DoS; every npm release bundles 5.0.7",
-            }
+            {"id": BRACE_GHSA, "package": "brace-expansion",
+             "reason": "brace-expansion <5.0.9 DoS; every npm release bundles 5.0.7"}
         ]
 
     def test_totals_exclude_the_acknowledged_high(self, tmp_path):

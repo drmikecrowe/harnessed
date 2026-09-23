@@ -4,7 +4,6 @@ Harness settings files are co-owned: harnessed needs certain keys present, and t
 must survive that. A blind overwrite loses their config; a blind skip loses ours. These two do the
 recursive merge that keeps both, and are separated from the callers that decide WHAT to merge.
 """
-
 from __future__ import annotations
 
 import json

@@ -21,7 +21,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "catalog" / "base" / "harnessed-s
 def parsers():
     """Exec the summary heredoc's function defs (everything above its __main__ tail)."""
     src = SCRIPT.read_text()
-    match = re.search(r"<<'PY'\n(.*?)\nPY\n", src[src.index("HARNESSED_SCAN_REPORT") :], re.S)
+    match = re.search(r"<<'PY'\n(.*?)\nPY\n", src[src.index("HARNESSED_SCAN_REPORT"):], re.S)
     assert match, "summary heredoc not found in harnessed-scan"
     block = match.group(1)
     ns: dict = {}
@@ -37,9 +37,7 @@ REAL_VIEW = {
             "id": "internal:100000",
             "type": "generic",
             "name": "Socket SBOM Resolver",
-            "alerts": [
-                {"type": "missingLockfile", "severity": "high", "category": "supplyChainRisk"}
-            ],
+            "alerts": [{"type": "missingLockfile", "severity": "high", "category": "supplyChainRisk"}],
         },
         {
             "type": "npm",
@@ -70,9 +68,7 @@ class TestParseSocket:
         assert ("critical", "minimist") in items
         assert ("high", "lodash") in items
         assert sum(1 for s, _ in items if s == "critical") == 1
-        assert (
-            sum(1 for s, _ in items if s == "high") == 1
-        )  # lodash only — see missingLockfile below
+        assert sum(1 for s, _ in items if s == "high") == 1   # lodash only — see missingLockfile below
 
     def test_missing_lockfile_alert_is_not_reported(self, parsers):
         """We synthesize the manifest, so there is never a lockfile beside it. Socket duly flags a
@@ -93,7 +89,4 @@ class TestParseSocket:
         assert parsers["parse_socket"]({"ok": False, "message": "Socket API error"}) == []
 
     def test_a_clean_scan_yields_no_findings(self, parsers):
-        assert (
-            parsers["parse_socket"]({"ok": True, "data": [{"name": "left-pad", "alerts": []}]})
-            == []
-        )
+        assert parsers["parse_socket"]({"ok": True, "data": [{"name": "left-pad", "alerts": []}]}) == []

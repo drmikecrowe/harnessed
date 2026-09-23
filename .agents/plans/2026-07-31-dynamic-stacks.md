@@ -196,36 +196,17 @@ In the `Recipe` dataclass (`schema.py:827`), after `conflicts` (:847):
 In `KNOWN_RECIPE_FIELDS` (`schema.py:1075`), add `"services"` to the first (typed) line:
 
 ```python
-KNOWN_RECIPE_FIELDS = frozenset(
-    {
-        "name",
-        "description",
-        "mcp",
-        "skills",
-        "commands",
-        "rules",
-        "expect",
-        "persist",
-        "init",  # typed
-        "conflicts",
-        "hooks",
-        "setup",
-        "install",
-        "egress",
-        "tools",
-        "env",
-        "services",  # typed
-        "plugins",
-        "deps",
-        "scripts",  # D-14 forward fields (see _recipe_raw_strings)
-    }
-)
+KNOWN_RECIPE_FIELDS = frozenset({
+    "name", "description", "mcp", "skills", "commands", "rules", "expect", "persist", "init",  # typed
+    "conflicts", "hooks", "setup", "install", "egress", "tools", "env", "services",  # typed
+    "plugins", "deps", "scripts",  # D-14 forward fields (see _recipe_raw_strings)
+})
 ```
 
 In the `Recipe(...)` construction inside `load_recipe` (`schema.py:1350`), beside `conflicts=`:
 
 ```python
-services = (_parse_services(raw.get("services")),)
+        services=_parse_services(raw.get("services")),
 ```
 
 - [ ] **Step 5: Run tests to verify they pass**
@@ -243,7 +224,6 @@ Create `tests/test_launcher_services.py`:
 Before harnessed-7rx.1 a service with no MCP surface (beads-server speaks MySQL) could only be
 attached by a STACK, so a bare recipe list could not describe a working stack.
 """
-
 from __future__ import annotations
 
 import textwrap
@@ -258,20 +238,16 @@ def _catalog(tmp_path, *, recipe_services: str, stack_services: str):
     (rd / "recipe.yaml").write_text(f"name: r1\n{recipe_services}")
     sd = root / "stacks" / "s1"
     sd.mkdir(parents=True)
-    (sd / "stack.yaml").write_text(
-        textwrap.dedent(f"""\
+    (sd / "stack.yaml").write_text(textwrap.dedent(f"""\
         name: s1
         recipes: [r1]
         {stack_services}
-        """)
-    )
+        """))
     return root
 
 
 def test_recipe_declared_service_is_collected(tmp_path, monkeypatch):
-    root = _catalog(
-        tmp_path, recipe_services="services: [beads-server]\n", stack_services="services: []"
-    )
+    root = _catalog(tmp_path, recipe_services="services: [beads-server]\n", stack_services="services: []")
     monkeypatch.setattr("harnessed.paths.catalog_roots", lambda: [root])
     assert _service_refs("s1") == ["beads-server"]
 
@@ -322,7 +298,7 @@ def _service_refs(stack: str) -> list[str]:
         for name in recipe.services:
             if name not in names:
                 names.append(name)
-    for name in stk.services if stk else []:
+    for name in (stk.services if stk else []):
         if name not in names:
             names.append(name)
     return names
@@ -406,7 +382,6 @@ Machine-minted stacks live under XDG DATA, NOT in the user's authoring overlay, 
 can distinguish them and a regenerated manifest can never clobber a hand-written one. It must be
 enumerable, because volume-gc/host-gc define an orphan as "its stack no longer resolves".
 """
-
 from __future__ import annotations
 
 from harnessed import paths
@@ -553,7 +528,6 @@ The name is MACHINE-FACING — it is never typed, only read back out of `harness
 `volume-gc` and `podman images`. So it is optimised for recognisability, not brevity, and falls
 back to a hash only when the readable form would be ambiguous or over-long.
 """
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -566,8 +540,7 @@ from harnessed import dynstack
 class TestNormalize:
     def test_sorts_and_dedupes(self):
         assert dynstack.normalize(["serena", "superpowers", "serena"], None) == (
-            None,
-            ("serena", "superpowers"),
+            None, ("serena", "superpowers"),
         )
 
     def test_keeps_the_base_separate(self):
@@ -758,7 +731,6 @@ profile location, volume labels, staleness checks, `harnessed list`, and BOTH ga
 already keyed on "a stack that resolves in the catalog". Minting the file makes all of them work
 unchanged; skipping it would mean teaching five subsystems about a new kind of thing.
 """
-
 from __future__ import annotations
 
 import hashlib
@@ -878,9 +850,7 @@ def mint(
     # for. Refuse rather than shadow. (Reported on PR #176.)
     existing = paths.find_in_catalog("stacks", name)
     generated_root = paths.generated_catalog_root().resolve()
-    if (existing / "stack.yaml").is_file() and not existing.resolve().is_relative_to(
-        generated_root
-    ):
+    if (existing / "stack.yaml").is_file() and not existing.resolve().is_relative_to(generated_root):
         raise ValueError(
             f"derived name {name!r} collides with an authored stack at {existing} — that stack "
             f"would win resolution and be launched instead. Rename it, or change the recipe set."
@@ -959,7 +929,6 @@ Create `tests/test_run_command.py`:
 
 ```python
 """`harnessed run` — compose a stack from a recipe set at launch (harnessed-7rx.4)."""
-
 from __future__ import annotations
 
 import pytest
@@ -981,13 +950,11 @@ def test_run_mints_builds_then_launches(monkeypatch, tmp_path):
     monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
     monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
     monkeypatch.setattr(
-        launcher,
-        "_build_stack",
+        launcher, "_build_stack",
         lambda rt, stack, harness, root=None, **kw: calls.__setitem__("built", (stack, harness)),
     )
     monkeypatch.setattr(
-        launcher,
-        "launch",
+        launcher, "launch",
         lambda **kw: calls.__setitem__("launched", (kw["stack"], kw["harness"])),
     )
 
@@ -1089,28 +1056,20 @@ In `src/harnessed/launcher.py`, immediately before `@app.command("build")` (:578
 ```python
 @app.command("run")
 def run(
-    harness: str = typer.Argument(
-        ..., help="Harness to use (claude|omp|opencode|antigravity|codex)"
-    ),
+    harness: str = typer.Argument(..., help="Harness to use (claude|omp|opencode|antigravity|codex)"),
     recipe: List[str] = typer.Option(
-        [],
-        "--recipe",
-        "-r",
+        [], "--recipe", "-r",
         help="Recipe to include; repeat for each. Order is irrelevant — the set is sorted.",
     ),
     extends: str = typer.Option(
-        "default",
-        "--extends",
+        "default", "--extends",
         help="Stack to inherit from (baseline recipes, permissions, credential forwarding).",
     ),
     no_extends: bool = typer.Option(
-        False,
-        "--no-extends",
-        help="Inherit from nothing — the recipe list stands alone.",
+        False, "--no-extends", help="Inherit from nothing — the recipe list stands alone.",
     ),
     service: List[str] = typer.Option(
-        [],
-        "--service",
+        [], "--service",
         help="Extra service sidecar. Rarely needed: a recipe declares the services it requires.",
     ),
     path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
@@ -1153,17 +1112,8 @@ def run(
             shutil.rmtree(stack_dir, ignore_errors=True)
         raise
 
-    launch(
-        stack=stack,
-        harness=harness,
-        path=path,
-        fresh=False,
-        rm=False,
-        no_firewall=False,
-        agent_start_folder=None,
-        mount_folder=None,
-        shell=False,
-    )
+    launch(stack=stack, harness=harness, path=path, fresh=False, rm=False, no_firewall=False,
+           agent_start_folder=None, mount_folder=None, shell=False)
 ```
 
 - [ ] **Step 5: Register it**
@@ -1172,26 +1122,9 @@ In `_COMMANDS` (`launcher.py:6654`) add `"run"`:
 
 ```python
 _COMMANDS = {
-    "launch",
-    "build",
-    "list",
-    "stop",
-    "rm",
-    "prune",
-    "clean",
-    "test",
-    "new",
-    "install",
-    "uninstall",
-    "scan",
-    "rescan",
-    "svc",
-    "aws-sso",
-    "host-gc",
-    "host-run",
-    "update",
-    "volume-gc",
-    "run",
+    "launch", "build", "list", "stop", "rm", "prune", "clean", "test", "new",
+    "install", "uninstall", "scan", "rescan", "svc", "aws-sso", "host-gc", "host-run",
+    "update", "volume-gc", "run",
 }
 ```
 

@@ -93,6 +93,7 @@ class TestSuiteIsolation:
             f"Expected: HOME isolation makes this path unreachable."
         )
 
+
     def test_podman_config_guards_still_execute_under_home_isolation(self) -> None:
         """HOME isolation must not silently stop `TestPodmanConfigIsReachable` from running.
 

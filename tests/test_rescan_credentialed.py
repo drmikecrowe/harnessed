@@ -55,18 +55,14 @@ def no_archive_scan(monkeypatch):
 class TestRescanImageArgument:
     def test_named_image_scans_only_that_image(self, monkeypatch, no_archive_scan, podman):
         scanned: list[str] = []
-        monkeypatch.setattr(
-            launcher, "_scan_image", lambda rt, run_env, image: scanned.append(image) or True
-        )
+        monkeypatch.setattr(launcher, "_scan_image", lambda rt, run_env, image: scanned.append(image) or True)
         result = runner.invoke(launcher.app, ["rescan", "harnessed-claude-demo:latest"])
         assert result.exit_code == 0
         assert scanned == ["harnessed-claude-demo:latest"]
 
     def test_unknown_image_errors_and_scans_nothing(self, monkeypatch, podman):
         scanned: list[str] = []
-        monkeypatch.setattr(
-            launcher, "_scan_image", lambda rt, run_env, image: scanned.append(image) or True
-        )
+        monkeypatch.setattr(launcher, "_scan_image", lambda rt, run_env, image: scanned.append(image) or True)
         result = runner.invoke(launcher.app, ["rescan", "harnessed-nope:latest"])
         assert result.exit_code == 1
         assert "no such image 'harnessed-nope:latest'" in plain(result.output)
@@ -75,9 +71,7 @@ class TestRescanImageArgument:
     def test_omitted_image_still_scans_every_labelled_image(self, monkeypatch, podman):
         """Regression guard: adding the optional arg must not break the bare, scan-everything form."""
         scanned: list[str] = []
-        monkeypatch.setattr(
-            launcher, "_scan_image", lambda rt, run_env, image: scanned.append(image) or True
-        )
+        monkeypatch.setattr(launcher, "_scan_image", lambda rt, run_env, image: scanned.append(image) or True)
         result = runner.invoke(launcher.app, ["rescan"])
         assert result.exit_code == 0
         assert scanned == ["harnessed-claude-demo:latest", "harnessed-codex-demo:latest"]
@@ -86,9 +80,7 @@ class TestRescanImageArgument:
 class TestCredentialedContainerScan:
     """`_scan_image_in_container` — the only path that hands snyk/socket a token."""
 
-    def test_resolved_env_files_are_passed_and_harnessed_scan_is_the_command(
-        self, monkeypatch, tmp_path
-    ):
+    def test_resolved_env_files_are_passed_and_harnessed_scan_is_the_command(self, monkeypatch, tmp_path):
         envf = tmp_path / "resolved.env"
         envf.write_text("SNYK_TOKEN=t\nSOCKET_CLI_API_TOKEN=s\n")
         patch_all(monkeypatch, "_resolve_launch_secrets", lambda project_path=None: ([envf], []))
@@ -112,9 +104,7 @@ class TestCredentialedContainerScan:
         """Resolved secrets must never outlive the scan — including on a non-zero exit."""
         secret = tmp_path / "secret.env"
         secret.write_text("SNYK_TOKEN=t\n")
-        patch_all(
-            monkeypatch, "_resolve_launch_secrets", lambda project_path=None: ([secret], [secret])
-        )
+        patch_all(monkeypatch, "_resolve_launch_secrets", lambda project_path=None: ([secret], [secret]))
         monkeypatch.setattr(
             launcher.subprocess, "run", lambda cmd, *a, **kw: subprocess.CompletedProcess(cmd, 1)
         )
@@ -134,8 +124,8 @@ class TestCredentialedContainerScan:
 
         out = plain(capsys.readouterr().out)
         assert "snyk and socket have no tokens" in out
-        assert "--env-file" not in seen[0]  # nothing to inject
-        assert seen[0][-1] == "harnessed-scan"  # ...but the credential-free scanners still run
+        assert "--env-file" not in seen[0]          # nothing to inject
+        assert seen[0][-1] == "harnessed-scan"      # ...but the credential-free scanners still run
 
 
 class TestGlobalScannerTokenSources:
@@ -146,11 +136,11 @@ class TestGlobalScannerTokenSources:
         (home / ".config" / "harnessed").mkdir(parents=True)
         (home / ".config" / "harnessed" / ".env").write_text('SNYK_TOKEN="tok"\n')
         monkeypatch.setenv("HOME", str(home))
-        monkeypatch.setattr(launcher.shutil, "which", lambda _: None)  # no varlock on PATH
+        monkeypatch.setattr(launcher.shutil, "which", lambda _: None)   # no varlock on PATH
 
         env_files, temp_files = launcher._resolve_launch_secrets(project_path=None)
         assert len(env_files) == 1
-        assert "SNYK_TOKEN=tok" in env_files[0].read_text()  # surrounding quotes stripped
+        assert "SNYK_TOKEN=tok" in env_files[0].read_text()   # surrounding quotes stripped
         assert env_files[0] in temp_files
 
     def test_schema_wins_over_a_bare_env(self, monkeypatch, tmp_path):

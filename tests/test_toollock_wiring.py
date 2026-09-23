@@ -9,11 +9,12 @@ reads". That claim is worth making precisely, because the two ways to get it wro
 wrong directory — both fail SILENTLY, with mise installing unverified and exiting 0.
 """
 
+
 import pytest
 
 from harnessed.toollock import stack_lock_body, write_stack_lock
 
-_LOCK = """# @generated
+_LOCK = '''# @generated
 
 [[tools.pulumi]]
 version = "3.255.0"
@@ -22,7 +23,7 @@ backend = "pulumi"
 [tools.pulumi."platforms.linux-x64"]
 checksum = "sha256:abc"
 url = "https://example/pulumi"
-"""
+'''
 
 
 class _Recipe:
@@ -93,13 +94,7 @@ class TestTheContainerCommand:
         monkeypatch.setattr(volumes, "_run", lambda cmd, **kw: captured.append(cmd))
         monkeypatch.setattr(volumes, "_say", lambda *a, **k: None)
         volumes._run_container_installs(
-            "podman",
-            "stack",
-            "claude",
-            "img",
-            recipes,
-            "cfgvol",
-            "toolvol",
+            "podman", "stack", "claude", "img", recipes, "cfgvol", "toolvol",
         )
         return captured[-1] if captured else []
 
@@ -174,21 +169,13 @@ class TestARecipeConflictIsReportedNotRaised:
         # The real signature is (tools_root, bin_dir, uv_tool_dir); a 1-tuple stub was enough
         # while only [0] was read, and `_stack_tool_path_prefix` now reads [1] too (#449).
         monkeypatch.setattr(
-            hostrun,
-            "_stack_tools_dirs",
-            lambda _s: (
-                tmp_path / "tools",
-                tmp_path / "tools" / "bin",
-                tmp_path / "tools" / "uv-tools",
-            ),
+            hostrun, "_stack_tools_dirs",
+            lambda _s: (tmp_path / "tools", tmp_path / "tools" / "bin",
+                        tmp_path / "tools" / "uv-tools"),
         )
-        monkeypatch.setattr(
-            hostrun,
-            "_apply_host_mise_env",
-            lambda env, _s: env.__setitem__(
-                "MISE_CONFIG_DIR", str(tmp_path / "tools" / "mise" / "config")
-            ),
-        )
+        monkeypatch.setattr(hostrun, "_apply_host_mise_env",
+                            lambda env, _s: env.__setitem__(
+                                "MISE_CONFIG_DIR", str(tmp_path / "tools" / "mise" / "config")))
         errors: list[str] = []
         monkeypatch.setattr(hostrun._err, "print", lambda m, *a, **k: errors.append(str(m)))
         recipes = [_recipe(tmp_path, "a", _CONFLICT_A), _recipe(tmp_path, "b", _CONFLICT_B)]
@@ -219,27 +206,18 @@ class TestTheHostPath:
             stderr = ""
 
         monkeypatch.setattr(hostrun.shutil, "which", lambda _n: "/usr/bin/mise")
-        monkeypatch.setattr(
-            hostrun.subprocess, "run", lambda cmd, **kw: (calls.append(cmd), _Ok())[1]
-        )
+        monkeypatch.setattr(hostrun.subprocess, "run",
+                            lambda cmd, **kw: (calls.append(cmd), _Ok())[1])
         # The real signature is (tools_root, bin_dir, uv_tool_dir); a 1-tuple stub was enough
         # while only [0] was read, and `_stack_tool_path_prefix` now reads [1] too (#449).
         monkeypatch.setattr(
-            hostrun,
-            "_stack_tools_dirs",
-            lambda _s: (
-                tmp_path / "tools",
-                tmp_path / "tools" / "bin",
-                tmp_path / "tools" / "uv-tools",
-            ),
+            hostrun, "_stack_tools_dirs",
+            lambda _s: (tmp_path / "tools", tmp_path / "tools" / "bin",
+                        tmp_path / "tools" / "uv-tools"),
         )
-        monkeypatch.setattr(
-            hostrun,
-            "_apply_host_mise_env",
-            lambda env, _s: env.__setitem__(
-                "MISE_CONFIG_DIR", str(tmp_path / "tools" / "mise" / "config")
-            ),
-        )
+        monkeypatch.setattr(hostrun, "_apply_host_mise_env",
+                            lambda env, _s: env.__setitem__(
+                                "MISE_CONFIG_DIR", str(tmp_path / "tools" / "mise" / "config")))
         hostrun._host_install_tools("stack", recipes)
         return calls
 

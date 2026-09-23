@@ -132,17 +132,12 @@ class TestNormalizePlainEnvFile:
 
     def test_quotes_are_stripped_and_comments_pass_through(self, tmp_path):
         src = tmp_path / ".env"
-        src.write_text("# keep me\n\nexport QUOTED=\"v1\"\nSINGLE='v2'\nPLAIN=v3\nNOEQUALS\n")
+        src.write_text('# keep me\n\nexport QUOTED="v1"\nSINGLE=\'v2\'\nPLAIN=v3\nNOEQUALS\n')
         out = launchenv._normalize_plain_env_file(src)
         try:
             assert out != src
             assert out.read_text().splitlines() == [
-                "# keep me",
-                "",
-                "QUOTED=v1",
-                "SINGLE=v2",
-                "PLAIN=v3",
-                "NOEQUALS",
+                "# keep me", "", "QUOTED=v1", "SINGLE=v2", "PLAIN=v3", "NOEQUALS",
             ]
             # The source is copied, never rewritten — the caller unlinks the temp, not the user's file.
             assert '"v1"' in src.read_text()
@@ -172,9 +167,7 @@ class TestNormalizePlainEnvFile:
             return fd, path
 
         monkeypatch.setattr(launchenv.tempfile, "mkstemp", _mkstemp)
-        monkeypatch.setattr(
-            launchenv.os, "chmod", lambda *a, **kw: (_ for _ in ()).throw(OSError("boom"))
-        )
+        monkeypatch.setattr(launchenv.os, "chmod", lambda *a, **kw: (_ for _ in ()).throw(OSError("boom")))
 
         with pytest.raises(OSError):
             launchenv._normalize_plain_env_file(src)

@@ -166,9 +166,7 @@ class TestEveryLockfileMatchesThePinBesideIt:
             pinned = {spec.rpartition("@")[2] for spec in r.tools}
             locked = set(re.findall(r'^version = "([^"]+)"', lock.read_text(), re.M))
             if locked - pinned:
-                offenders.append(
-                    f"{r.name}: lock has {sorted(locked)}, tools: pin {sorted(pinned)}"
-                )
+                offenders.append(f"{r.name}: lock has {sorted(locked)}, tools: pin {sorted(pinned)}")
         assert offenders == [], (
             f"mise.lock has drifted from the `tools:` pin beside it: {offenders}. "
             "Regenerate the lockfile in the same commit as the bump — `harnessed update` does "

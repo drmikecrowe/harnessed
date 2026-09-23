@@ -8,7 +8,6 @@ out the persist mounts.
 Credentials are REFERENCED, never replicated (ARCHITECTURE.md §Constraints): these emit mount specs
 and env vars pointing at the live store, and never copy a secret into a per-stack home.
 """
-
 from __future__ import annotations
 
 import hashlib
@@ -50,7 +49,6 @@ from .schema import load_stack_with_recipes
 # than imported from launcher so the dependency points INTO this module; `paths.CONTAINER_HOME`
 # stays the single source of truth for the value itself.
 _CONTAINER_HOME_STR = str(CONTAINER_HOME)
-
 
 def _build_mount_args(
     harness: str,
@@ -121,13 +119,8 @@ def _build_mount_args(
 
     # History dirs (rw) — sourced from host $HOME for session persistence.
     home = str(Path.home())
-    for rel in (
-        ".claude/projects",
-        ".claude/file-history",
-        ".claude/tasks",
-        ".claude/session-env",
-        ".claude/todos",
-    ):
+    for rel in (".claude/projects", ".claude/file-history", ".claude/tasks",
+                ".claude/session-env", ".claude/todos"):
         host_d = Path(home) / rel
         host_d.mkdir(parents=True, exist_ok=True)
         args += ["-v", f"{host_d}:{ctr_home}/{rel}:rw"]
@@ -191,15 +184,13 @@ def _claude_config_seed_mount(harness: str, inst: str, isolated_auth: bool = Fal
     state_dir.mkdir(parents=True, exist_ok=True)
     stub = state_dir / "claude.json"
     stub.write_text(
-        json.dumps(
-            {
-                "hasCompletedOnboarding": True,
-                "firstStartTime": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                "numStartups": 1,
-                "oauthAccount": oauth_account,
-                "userID": user_id,
-            }
-        ),
+        json.dumps({
+            "hasCompletedOnboarding": True,
+            "firstStartTime": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "numStartups": 1,
+            "oauthAccount": oauth_account,
+            "userID": user_id,
+        }),
         encoding="utf-8",
     )
     return ["-v", f"{stub}:{_CONTAINER_HOME_STR}/.claude.json:rw"]
@@ -518,7 +509,7 @@ def _mcp_remote_callback_port(argv: list[str]) -> int | None:
     idx = next((n for n, a in enumerate(argv) if _MCP_REMOTE_SPEC.match(a)), None)
     if idx is None:
         return None
-    rest = argv[idx + 1 :]
+    rest = argv[idx + 1:]
     positional: list[str] = []
     n = 0
     while n < len(rest):
@@ -698,11 +689,8 @@ def _mcp_remote_pasta_net_args(
 
 
 def _mcp_remote_pod_args(
-    servers: Sequence,
-    net: str,
-    port_free: "Callable[[int], bool] | None" = None,
-    *,
-    broker: bool = False,
+    servers: Sequence, net: str, port_free: "Callable[[int], bool] | None" = None,
+    *, broker: bool = False,
 ) -> list[str]:
     """Everything `pod create` needs for mcp-remote's OAuth callback, as ONE list.
 
@@ -754,7 +742,7 @@ def _mcp_remote_server_url(argv: Sequence[str]) -> str | None:
     idx = next((n for n, a in enumerate(argv) if _MCP_REMOTE_SPEC.match(a)), None)
     if idx is None:
         return None
-    rest = list(argv[idx + 1 :])
+    rest = list(argv[idx + 1:])
     positional: list[str] = []
     n = 0
     while n < len(rest):
@@ -962,7 +950,7 @@ def _keyring_init(harness: str) -> str:
     return (
         "export $(dbus-launch) "
         "&& printf '' | gnome-keyring-daemon --unlock --components=secrets "
-        "&& eval \"$(printf '' | gnome-keyring-daemon --start --components=secrets)\""
+        '&& eval "$(printf \'\' | gnome-keyring-daemon --start --components=secrets)"'
     )
 
 
@@ -1106,9 +1094,7 @@ def _ccstatusline_settings_mount(home: Path | None = None) -> list[str]:
 AWS_SSO_ECS_PORT = 4144
 
 
-def _aws_sso_ecs_forward_args(
-    port: int = AWS_SSO_ECS_PORT, token_file: Path | None = None
-) -> list[str]:
+def _aws_sso_ecs_forward_args(port: int = AWS_SSO_ECS_PORT, token_file: Path | None = None) -> list[str]:
     """Wire the container to the host's aws-sso ECS server (default slot) for stacks that opt in with
     `forward_aws_sso: true`.
 
@@ -1131,10 +1117,8 @@ def _aws_sso_ecs_forward_args(
         return []
     uri = f"http://host.containers.internal:{port}/"
     return [
-        "-e",
-        f"AWS_CONTAINER_CREDENTIALS_FULL_URI={uri}",
-        "-e",
-        f"AWS_CONTAINER_AUTHORIZATION_TOKEN=Bearer {token}",
+        "-e", f"AWS_CONTAINER_CREDENTIALS_FULL_URI={uri}",
+        "-e", f"AWS_CONTAINER_AUTHORIZATION_TOKEN=Bearer {token}",
     ]
 
 

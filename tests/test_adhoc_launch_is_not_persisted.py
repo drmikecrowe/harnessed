@@ -9,7 +9,6 @@ Both are one-offs. Persisting a `<harness>-<stack>-<verb>` script into the user'
 leaves a file naming a stack they were trying out, and a dashboard row for one is the same noise
 `aoe._SKIP_STACKS` already suppresses for the `default` baseline.
 """
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -33,9 +32,7 @@ def _generated_stack(tmp_path: Path, name: str) -> Path:
     """Put a manifest where `mint` would put it, without running a launch."""
     stack_dir = tmp_path / "data" / "harnessed" / "generated" / "stacks" / name
     stack_dir.mkdir(parents=True)
-    (stack_dir / "stack.yaml").write_text(
-        f"name: {name}\nrecipes: []\nservices: []\n", encoding="utf-8"
-    )
+    (stack_dir / "stack.yaml").write_text(f"name: {name}\nrecipes: []\nservices: []\n", encoding="utf-8")
     return stack_dir
 
 
@@ -82,9 +79,7 @@ class TestIsAdhocReadsTheLocation:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
         first_name, first_dir = dynstack.mint(["greet"], "default")
         second_name, second_dir = dynstack.mint(["greet"], "default")
-        assert (second_name, second_dir) == (first_name, first_dir), (
-            "precondition: mint is idempotent"
-        )
+        assert (second_name, second_dir) == (first_name, first_dir), "precondition: mint is idempotent"
         assert dynstack.is_adhoc(second_name) is True
 
 
@@ -112,14 +107,10 @@ class TestIsAdhocReadsTheName:
         """`-test.` is not a prefix. A stack called `contrast-test.foo` is somebody's real stack."""
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-        _overlay_stack(
-            tmp_path, "contrast-test.foo", "name: contrast-test.foo\nrecipes: []\nservices: []\n"
-        )
+        _overlay_stack(tmp_path, "contrast-test.foo", "name: contrast-test.foo\nrecipes: []\nservices: []\n")
         assert dynstack.is_adhoc("contrast-test.foo") is False
 
-    def test_a_name_beginning_with_test_but_not_the_component_is_not_adhoc(
-        self, tmp_path, monkeypatch
-    ):
+    def test_a_name_beginning_with_test_but_not_the_component_is_not_adhoc(self, tmp_path, monkeypatch):
         """`testing` starts with `test` as a STRING and is not a test stack. The dot is what makes
         it a component boundary; without this the rule would eat every name starting with those
         four letters."""
@@ -211,9 +202,7 @@ class TestHostRunLeavesNothingBehind:
         whole block below the gate would pass both tests above."""
         result, _project, _rows = self._launch(tmp_path, monkeypatch)
         assert result.exit_code == 0, result.output
-        assert paths.is_built("test.hostspike", "claude"), (
-            "the profile assembled and the agent exec'd"
-        )
+        assert paths.is_built("test.hostspike", "claude"), "the profile assembled and the agent exec'd"
 
     def test_an_aoe_title_brings_both_back(self, tmp_path, monkeypatch):
         """The hatch, at the call site: the row is asked for by name, so the script it points at

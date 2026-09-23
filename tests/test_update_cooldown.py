@@ -47,10 +47,7 @@ class TestCooldownWithholdsFreshReleases:
     def test_a_release_younger_than_the_window_is_not_offered(self, tmp_path):
         d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.0.0\n")
         report = update.build_report(
-            [d],
-            resolve=_resolver("2.0.0", _ago(2)),
-            now=NOW,
-            minimum_release_age_minutes=7 * 1440,
+            [d], resolve=_resolver("2.0.0", _ago(2)), now=NOW, minimum_release_age_minutes=7 * 1440,
         )
         assert not report.stale, "a 2-day-old release must not be in the bump set"
         assert len(report.cooling) == 1
@@ -58,47 +55,32 @@ class TestCooldownWithholdsFreshReleases:
     def test_a_release_older_than_the_window_is_offered(self, tmp_path):
         d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.0.0\n")
         report = update.build_report(
-            [d],
-            resolve=_resolver("2.0.0", _ago(30)),
-            now=NOW,
-            minimum_release_age_minutes=7 * 1440,
+            [d], resolve=_resolver("2.0.0", _ago(30)), now=NOW, minimum_release_age_minutes=7 * 1440,
         )
         assert len(report.stale) == 1 and not report.cooling
 
-    @pytest.mark.parametrize(
-        "age,expected_bucket",
-        [
-            (6.9, "cooling"),
-            (7.1, "stale"),
-        ],
-    )
+    @pytest.mark.parametrize("age,expected_bucket", [
+        (6.9, "cooling"),
+        (7.1, "stale"),
+    ])
     def test_the_boundary_is_the_configured_window(self, tmp_path, age, expected_bucket):
         d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.0.0\n")
         report = update.build_report(
-            [d],
-            resolve=_resolver("2.0.0", _ago(age)),
-            now=NOW,
-            minimum_release_age_minutes=7 * 1440,
+            [d], resolve=_resolver("2.0.0", _ago(age)), now=NOW, minimum_release_age_minutes=7 * 1440,
         )
         assert len(getattr(report, expected_bucket)) == 1
 
     def test_the_window_is_configurable(self, tmp_path):
         d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.0.0\n")
         report = update.build_report(
-            [d],
-            resolve=_resolver("2.0.0", _ago(10)),
-            now=NOW,
-            minimum_release_age_minutes=30 * 1440,
+            [d], resolve=_resolver("2.0.0", _ago(10)), now=NOW, minimum_release_age_minutes=30 * 1440,
         )
         assert report.cooling and not report.stale
 
     def test_zero_disables_the_cooldown(self, tmp_path):
         d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.0.0\n")
         report = update.build_report(
-            [d],
-            resolve=_resolver("2.0.0", _ago(0.1)),
-            now=NOW,
-            minimum_release_age_minutes=0,
+            [d], resolve=_resolver("2.0.0", _ago(0.1)), now=NOW, minimum_release_age_minutes=0,
         )
         assert report.stale and not report.cooling
 
@@ -106,10 +88,7 @@ class TestCooldownWithholdsFreshReleases:
         """The user has to decide whether to wait, so the report must say HOW fresh it is."""
         d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.0.0\n")
         report = update.build_report(
-            [d],
-            resolve=_resolver("2.0.0", _ago(2)),
-            now=NOW,
-            minimum_release_age_minutes=7 * 1440,
+            [d], resolve=_resolver("2.0.0", _ago(2)), now=NOW, minimum_release_age_minutes=7 * 1440,
         )
         f = report.cooling[0]
         assert f.latest == "2.0.0"
@@ -120,10 +99,7 @@ class TestCooldownWithholdsFreshReleases:
         week through no fault of the repo."""
         d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.0.0\n")
         report = update.build_report(
-            [d],
-            resolve=_resolver("2.0.0", _ago(1)),
-            now=NOW,
-            minimum_release_age_minutes=7 * 1440,
+            [d], resolve=_resolver("2.0.0", _ago(1)), now=NOW, minimum_release_age_minutes=7 * 1440,
         )
         assert report.check_exit_code() == 0
 
@@ -132,10 +108,7 @@ class TestCooldownWithholdsFreshReleases:
         body = "name: r\ntools:\n  - npm:x@1.0.0\n"
         d = _recipe_dir(tmp_path, "r", body)
         report = update.build_report(
-            [d],
-            resolve=_resolver("2.0.0", _ago(1)),
-            now=NOW,
-            minimum_release_age_minutes=7 * 1440,
+            [d], resolve=_resolver("2.0.0", _ago(1)), now=NOW, minimum_release_age_minutes=7 * 1440,
         )
         update.apply(report.cooling)
         assert (d / "recipe.yaml").read_text() == body
@@ -145,10 +118,7 @@ class TestCooldownWithholdsFreshReleases:
         and say so rather than offering an unaged bump under a rule that promises otherwise."""
         d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.0.0\n")
         report = update.build_report(
-            [d],
-            resolve=_resolver("2.0.0", None),
-            now=NOW,
-            minimum_release_age_minutes=7 * 1440,
+            [d], resolve=_resolver("2.0.0", None), now=NOW, minimum_release_age_minutes=7 * 1440,
         )
         assert not report.stale
         assert report.unresolved
@@ -159,25 +129,17 @@ class TestCooldownWithholdsFreshReleases:
         """With no cooldown there is no promise to break, so a missing date is not disqualifying."""
         d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.0.0\n")
         report = update.build_report(
-            [d],
-            resolve=_resolver("2.0.0", None),
-            now=NOW,
-            minimum_release_age_minutes=0,
+            [d], resolve=_resolver("2.0.0", None), now=NOW, minimum_release_age_minutes=0,
         )
         assert len(report.stale) == 1
 
     def test_a_held_pin_stays_held_regardless_of_age(self, tmp_path):
         """The hold outranks the cooldown — a held pin is never offered whatever its age."""
         d = _recipe_dir(
-            tmp_path,
-            "r",
-            "name: r\ntools:\n  - spec: npm:x@1.0.0\n    hold: 'frozen'\n",
+            tmp_path, "r", "name: r\ntools:\n  - spec: npm:x@1.0.0\n    hold: 'frozen'\n",
         )
         report = update.build_report(
-            [d],
-            resolve=_resolver("2.0.0", _ago(90)),
-            now=NOW,
-            minimum_release_age_minutes=7 * 1440,
+            [d], resolve=_resolver("2.0.0", _ago(90)), now=NOW, minimum_release_age_minutes=7 * 1440,
         )
         assert report.held and not report.stale and not report.cooling
 
@@ -188,11 +150,9 @@ class TestHarnessesTrackLatest:
     every newer release is younger than that, the newest is offered anyway and flagged `fresh`.
     Recipe pins keep the full 7-day gate in the same report."""
 
-    AGENT = (
-        "type: agent\nharness: cx\nimage: harnessed-cx\n"
-        "dockerfile: catalog/base/Dockerfile.harnessed-cx\n"
-        'build_args:\n  CX_VERSION: { value: "1.0.0", spec: "npm:cx" }\n'
-    )
+    AGENT = ("type: agent\nharness: cx\nimage: harnessed-cx\n"
+             "dockerfile: catalog/base/Dockerfile.harnessed-cx\n"
+             'build_args:\n  CX_VERSION: { value: "1.0.0", spec: "npm:cx" }\n')
 
     def _agent_dir(self, tmp_path, body=AGENT):
         d = tmp_path / "catalog" / "agents" / "cx"
@@ -205,8 +165,7 @@ class TestHarnessesTrackLatest:
         recipe = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.0.0\n")
         agent = self._agent_dir(tmp_path)
         return update.build_report(
-            [recipe],
-            agent_dirs=[agent],
+            [recipe], agent_dirs=[agent],
             resolve=lambda backend, name: [update.Release(version="2.0.0", published=published)],
             now=NOW,
         )
@@ -231,8 +190,7 @@ class TestHarnessesTrackLatest:
         that refusal (an undated RECIPE release is still unresolved, pinned by the class above)."""
         agent = self._agent_dir(tmp_path)
         report = update.build_report(
-            [],
-            agent_dirs=[agent],
+            [], agent_dirs=[agent],
             resolve=lambda backend, name: [update.Release(version="2.0.0", published=None)],
             now=NOW,
         )
@@ -242,8 +200,7 @@ class TestHarnessesTrackLatest:
     def test_the_window_prefers_mature_and_names_what_it_skipped(self, tmp_path):
         agent = self._agent_dir(tmp_path)
         report = update.build_report(
-            [],
-            agent_dirs=[agent],
+            [], agent_dirs=[agent],
             resolve=lambda backend, name: [
                 update.Release(version="2.0.0", published=_ago(30)),
                 update.Release(version="2.1.0", published=_ago(0.5)),
@@ -257,16 +214,13 @@ class TestHarnessesTrackLatest:
     def test_a_held_agent_pin_stays_held_whatever_its_age(self, tmp_path):
         """The hold outranks the harness exception too — BUN_VERSION in the real omp manifest
         is the standing example."""
-        body = (
-            "type: agent\nharness: cx\nimage: harnessed-cx\n"
-            "dockerfile: catalog/base/Dockerfile.harnessed-cx\n"
-            "build_args:\n"
-            '  CX_VERSION: { value: "1.0.0", spec: "npm:cx", hold: "resolver cannot date it" }\n'
-        )
+        body = ("type: agent\nharness: cx\nimage: harnessed-cx\n"
+                "dockerfile: catalog/base/Dockerfile.harnessed-cx\n"
+                "build_args:\n"
+                '  CX_VERSION: { value: "1.0.0", spec: "npm:cx", hold: "resolver cannot date it" }\n')
         agent = self._agent_dir(tmp_path, body)
         report = update.build_report(
-            [],
-            agent_dirs=[agent],
+            [], agent_dirs=[agent],
             resolve=lambda backend, name: [update.Release(version="2.0.0", published=_ago(1))],
             now=NOW,
         )
@@ -278,11 +232,9 @@ class TestHarnessesTrackLatest:
         number for both windows; this pins that contract at the module boundary."""
         agent = self._agent_dir(tmp_path)
         report = update.build_report(
-            [],
-            agent_dirs=[agent],
+            [], agent_dirs=[agent],
             resolve=lambda backend, name: [update.Release(version="2.0.0", published=_ago(1))],
-            now=NOW,
-            minimum_release_age_minutes=30 * 1440,
+            now=NOW, minimum_release_age_minutes=30 * 1440,
             harness_minimum_release_age_minutes=30 * 1440,
         )
         assert [(f.latest, f.fresh) for f in report.stale] == [("2.0.0", True)]
@@ -292,8 +244,7 @@ class TestHarnessesTrackLatest:
         `fresh` marks it informed, not withheld (that is `cooling`, which apply still refuses)."""
         agent = self._agent_dir(tmp_path)
         report = update.build_report(
-            [],
-            agent_dirs=[agent],
+            [], agent_dirs=[agent],
             resolve=lambda backend, name: [update.Release(version="2.0.0", published=_ago(1))],
             now=NOW,
         )
@@ -312,17 +263,13 @@ class TestPublishDates:
         """`/latest` carries the version but no date — the full packument is the only source of
         `time`, so the URL must not keep the old `/latest` suffix."""
         import json
-
         seen = {}
 
         def fetch(url):
             seen["url"] = url
-            return json.dumps(
-                {
-                    "versions": {"1.0.0": {}},
-                    "time": {"1.0.0": "2026-01-01T00:00:00Z"},
-                }
-            )
+            return json.dumps({
+                "versions": {"1.0.0": {}}, "time": {"1.0.0": "2026-01-01T00:00:00Z"},
+            })
 
         update.resolve_releases("npm", "ccstatusline", fetch=fetch)
         assert seen["url"] == "https://registry.npmjs.org/ccstatusline"
@@ -330,13 +277,9 @@ class TestPublishDates:
     def test_a_date_is_parsed_off_the_z_suffix(self):
         """npm stamps `...Z`, which older stdlib `fromisoformat` rejects outright."""
         import json
-
-        payload = json.dumps(
-            {
-                "versions": {"2.2.26": {}},
-                "time": {"2.2.26": "2026-07-25T07:13:18.627Z"},
-            }
-        )
+        payload = json.dumps({
+            "versions": {"2.2.26": {}}, "time": {"2.2.26": "2026-07-25T07:13:18.627Z"},
+        })
         rel = update.resolve_releases("npm", "ccstatusline", fetch=lambda url: payload)[0]
         assert rel.published == datetime(2026, 7, 25, 7, 13, 18, 627000, tzinfo=timezone.utc)
 
@@ -376,16 +319,8 @@ class TestMiseGetsADateViaItsOwnRegistry:
 
         def fetch(url):
             assert "/repos/pulumi/pulumi/releases" in url
-            return json.dumps(
-                [
-                    {
-                        "tag_name": "v3.254.0",
-                        "published_at": "2026-07-23T15:10:53Z",
-                        "prerelease": False,
-                        "draft": False,
-                    }
-                ]
-            )
+            return json.dumps([{"tag_name": "v3.254.0", "published_at": "2026-07-23T15:10:53Z",
+                                "prerelease": False, "draft": False}])
 
         rel = update.resolve_releases("mise", "pulumi", fetch=fetch, run=run)[0]
         assert rel.version == "v3.254.0"
@@ -396,9 +331,8 @@ class TestMiseGetsADateViaItsOwnRegistry:
         instead of silently falling back to an undated `mise latest`."""
         registry = "weirdtool                     asdf:someone/asdf-weirdtool\n"
         with pytest.raises(update.ResolveError):
-            update.resolve_releases(
-                "mise", "weirdtool", fetch=lambda url: "{}", run=lambda cmd: registry
-            )
+            update.resolve_releases("mise", "weirdtool", fetch=lambda url: "{}",
+                                  run=lambda cmd: registry)
 
 
 class TestTagPrefixIsNormalisedToThePinsOwnConvention:
@@ -410,10 +344,7 @@ class TestTagPrefixIsNormalisedToThePinsOwnConvention:
     def _bump(self, tmp_path, current_spec, latest):
         d = _recipe_dir(tmp_path, "r", f"name: r\ntools:\n  - {current_spec}\n")
         report = update.build_report(
-            [d],
-            resolve=_resolver(latest, _ago(30)),
-            now=NOW,
-            minimum_release_age_minutes=7 * 1440,
+            [d], resolve=_resolver(latest, _ago(30)), now=NOW, minimum_release_age_minutes=7 * 1440,
         )
         update.apply(report.stale)
         return (d / "recipe.yaml").read_text()
@@ -437,10 +368,7 @@ class TestTagPrefixIsNormalisedToThePinsOwnConvention:
         classification and let the report and the write agree."""
         d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - pulumi@3.251.0\n")
         report = update.build_report(
-            [d],
-            resolve=_resolver("v3.254.0", _ago(30)),
-            now=NOW,
-            minimum_release_age_minutes=7 * 1440,
+            [d], resolve=_resolver("v3.254.0", _ago(30)), now=NOW, minimum_release_age_minutes=7 * 1440,
         )
         assert report.stale[0].latest == "3.254.0"
 
@@ -448,10 +376,7 @@ class TestTagPrefixIsNormalisedToThePinsOwnConvention:
         """The cooling bucket is a preview of a future bump — same rule applies."""
         d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - pulumi@3.251.0\n")
         report = update.build_report(
-            [d],
-            resolve=_resolver("v3.254.0", _ago(2)),
-            now=NOW,
-            minimum_release_age_minutes=7 * 1440,
+            [d], resolve=_resolver("v3.254.0", _ago(2)), now=NOW, minimum_release_age_minutes=7 * 1440,
         )
         assert report.cooling[0].latest == "3.254.0"
 

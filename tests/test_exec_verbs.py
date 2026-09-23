@@ -11,7 +11,6 @@ name is the first half — twenty-odd options across the two verbs, and a forwar
 second signature to keep in step and a guaranteed drift. That it takes the non-interactive branch
 everywhere is the second.
 """
-
 from __future__ import annotations
 
 import pytest
@@ -66,8 +65,7 @@ class TestExecModeNeverBlocksOnAQuestion:
         monkeypatch.setattr(console, "_EXEC_MODE", True)
         monkeypatch.setattr(launcher, "_collect_setup_notices", lambda *a, **k: ["a recipe"])
         monkeypatch.setattr(
-            launcher.typer,
-            "prompt",
+            launcher.typer, "prompt",
             lambda *a, **k: pytest.fail("exec mode must not prompt"),
         )
         assert launcher._prompt_setup_notices([], tmp_path, "s", "claude") is False
@@ -79,8 +77,7 @@ class TestExecModeNeverBlocksOnAQuestion:
         monkeypatch.setattr(launcher._out, "warnings", 3)
         monkeypatch.setattr(launcher._err, "warnings", 0)
         monkeypatch.setattr(
-            launcher.typer,
-            "prompt",
+            launcher.typer, "prompt",
             lambda *a, **k: pytest.fail("exec mode must not wait for a keypress"),
         )
         launcher._acknowledge_warnings()
@@ -94,8 +91,7 @@ class TestExecModeNeverBlocksOnAQuestion:
         monkeypatch.setattr(console.sys.stdin, "isatty", lambda: True)
         monkeypatch.setattr(console, "_EXEC_MODE", True)
         monkeypatch.setattr(
-            setupenv.typer,
-            "confirm",
+            setupenv.typer, "confirm",
             lambda *a, **k: pytest.fail("exec mode must not ask to change the repo"),
         )
         recipe = Recipe(name="r", root=tmp_path)
@@ -180,12 +176,7 @@ class TestTheContainerExecAllocatesNoPty:
         monkeypatch.setattr(launcher.os, "execvp", _never_returns)
         with pytest.raises(self._Execed):
             launcher._attach(
-                "podman",
-                "claude",
-                "inst",
-                tmp_path,
-                stack="s",
-                mount_path=tmp_path,
+                "podman", "claude", "inst", tmp_path, stack="s", mount_path=tmp_path,
                 extra=["-p", "hi"],
             )
         assert captured, "_attach must have reached the exec handoff"
@@ -211,11 +202,7 @@ class TestTheLauncherScriptStillNamesTheLaunch:
     def test_an_exec_invocation_captions_its_run_verbs_script(self, monkeypatch):
         monkeypatch.setattr(launcher, "_invocation", ["host-exec", "claude", "-s", "x"])
         assert launcher._typed_invocation("host-run") == [
-            "harnessed",
-            "host-exec",
-            "claude",
-            "-s",
-            "x",
+            "harnessed", "host-exec", "claude", "-s", "x",
         ]
 
     def test_the_other_backends_exec_verb_is_still_refused(self, monkeypatch):

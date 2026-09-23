@@ -52,9 +52,7 @@ class TestBuildSharedOnce:
                 concurrent -= 1
 
         threads = [
-            threading.Thread(
-                target=lambda: launcher._build_shared_once("harnessed-base:latest", slow_build)
-            )
+            threading.Thread(target=lambda: launcher._build_shared_once("harnessed-base:latest", slow_build))
             for _ in range(6)
         ]
         for t in threads:
@@ -83,8 +81,7 @@ class TestReconcileParallel:
 
     def _stale(self, monkeypatch, pairs):
         monkeypatch.setattr(
-            launcher,
-            "_stale_pairs",
+            launcher, "_stale_pairs",
             lambda rt, root, *, strict, force=False: [(s, h, "no built image") for s, h in pairs],
         )
 
@@ -104,11 +101,7 @@ class TestReconcileParallel:
         prereqs = events[:first_stack]
         assert prereqs[0] == "base"
         assert sorted(prereqs[1:]) == ["agent:claude", "agent:omp"]
-        assert sorted(e for e in events if e.startswith("stack:")) == [
-            "stack:a",
-            "stack:b",
-            "stack:c",
-        ]
+        assert sorted(e for e in events if e.startswith("stack:")) == ["stack:a", "stack:b", "stack:c"]
 
     def test_stacks_actually_run_concurrently(self, monkeypatch, harness_stubs):
         concurrent = 0

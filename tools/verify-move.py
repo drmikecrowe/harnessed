@@ -38,7 +38,7 @@ def _defs(source: str, origin: str) -> dict[str, tuple[str, str]]:
             start = node.decorator_list[0].lineno - 1 if node.decorator_list else node.lineno - 1
             if node.end_lineno is None:
                 raise RuntimeError(f"AST node {node.name!r} has no end_lineno")
-            out[node.name] = ("".join(lines[start : node.end_lineno]).rstrip("\n"), origin)
+            out[node.name] = ("".join(lines[start:node.end_lineno]).rstrip("\n"), origin)
     return out
 
 
@@ -47,26 +47,19 @@ def main() -> int:
 
     before_text = subprocess.run(
         ["git", "show", f"{base}:src/harnessed/launcher.py"],
-        capture_output=True,
-        text=True,
-        check=True,
+        capture_output=True, text=True, check=True,
     ).stdout
     before = _defs(before_text, f"{base}:launcher.py")
 
     # Only launcher.py and modules that did not exist at `base` are extraction targets. Every other
     # module is pre-existing and may legitimately define an unrelated function of the same name
     # (`_run`, `main`), which is not a collision this check is about.
-    at_base = set(
-        subprocess.run(
-            ["git", "ls-tree", "--name-only", f"{base}", "src/harnessed/"],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.split()
-    )
+    at_base = set(subprocess.run(
+        ["git", "ls-tree", "--name-only", f"{base}", "src/harnessed/"],
+        capture_output=True, text=True, check=True,
+    ).stdout.split())
     targets = [
-        p
-        for p in sorted(SRC.glob("*.py"))
+        p for p in sorted(SRC.glob("*.py"))
         if p.name == "launcher.py" or f"src/harnessed/{p.name}" not in at_base
     ]
 

@@ -10,7 +10,6 @@ silently lost its binary on `launch --host`. These tests state that requirement 
 recipes: the subject is the executor, not any catalog entry. Catalog-wide recipe rules live in
 test_recipe_uniformity.py.
 """
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -85,9 +84,7 @@ class TestHostLaunchHonoursTools:
         # config file rather than about a stack, and scoping it here threw the user's trust away on
         # every launch — see TestHostLaunchKeepsTheUsersMiseTrustStore.
         for var in ("MISE_DATA_DIR", "MISE_CONFIG_DIR"):
-            assert env.get(var, "").startswith(stack_root), (
-                f"{var}={env.get(var)!r} escapes the stack"
-            )
+            assert env.get(var, "").startswith(stack_root), f"{var}={env.get(var)!r} escapes the stack"
 
     def test_no_tools_means_no_mise_invocation(self, tmp_path, monkeypatch):
         calls: list = []
@@ -132,13 +129,7 @@ class TestContainerExecutorInstallsToolsBeforeInstallScripts:
         calls: list[list[str]] = []
         patch_all(monkeypatch, "_run", lambda cmd, *a, **k: calls.append(cmd))
         launcher._run_container_installs(
-            "podman",
-            "s",
-            "claude",
-            "img",
-            list(recipes),
-            "cfgvol",
-            "toolsvol",
+            "podman", "s", "claude", "img", list(recipes), "cfgvol", "toolsvol",
         )
         return [" ".join(c) for c in calls]
 
@@ -194,13 +185,7 @@ class TestNpmToolsResolveThroughPnpmNotAube:
         calls: list[list[str]] = []
         patch_all(monkeypatch, "_run", lambda cmd, *a, **k: calls.append(cmd))
         launcher._run_container_installs(
-            "podman",
-            "s",
-            "claude",
-            "img",
-            [r],
-            "cfgvol",
-            "toolsvol",
+            "podman", "s", "claude", "img", [r], "cfgvol", "toolsvol",
         )
         assert f"{self.ENV_VAR}=pnpm" in calls[0], (
             f"the tools: step must set {self.ENV_VAR}=pnpm, got: {calls[0]}"
@@ -212,9 +197,9 @@ class TestNpmToolsResolveThroughPnpmNotAube:
 
         r = Recipe(name="a", root=tmp_path, tools=["npm:context-mode@1.0.169"])
         body = write_derived_dockerfile(tmp_path, "s", "claude", [r]).read_text(encoding="utf-8")
-        assert not any(ln.startswith("ENV") and self.ENV_VAR in ln for ln in body.splitlines()), (
-            f"{self.ENV_VAR} must be inline on the RUN, not a persistent image ENV"
-        )
+        assert not any(
+            ln.startswith("ENV") and self.ENV_VAR in ln for ln in body.splitlines()
+        ), f"{self.ENV_VAR} must be inline on the RUN, not a persistent image ENV"
 
 
 class TestNpmToolsBootstrapAPnpmTheShimsCanResolve:
@@ -247,7 +232,9 @@ class TestNpmToolsBootstrapAPnpmTheShimsCanResolve:
         # dirs on PATH, so the install subprocesses must run with the stack's shims dir first.
         calls: list = []
         TestHostLaunchHonoursTools()._fake_mise(monkeypatch, calls)
-        launcher._host_install_tools("s", [Recipe(name="a", root=tmp_path, tools=["npm:x@1"])])
+        launcher._host_install_tools(
+            "s", [Recipe(name="a", root=tmp_path, tools=["npm:x@1"])]
+        )
         specs_calls = [c for c in calls if "use" in c[0] and "npm:x@1" in c[0]]
         installs = [c for c in calls if c[0][:2] == ["mise", "install"]]
         assert specs_calls + installs, "the tools install never ran"
@@ -318,6 +305,8 @@ class TestMiseShimsResolveAtRunTimeNotJustInstallTime:
             )
 
 
+
+
 class TestTheToolPathIsScopedToTheStacksOwnTools:
     """#449 — the launch PATH carries the tools' REAL install dirs, never mise's shims dir.
 
@@ -336,9 +325,7 @@ class TestTheToolPathIsScopedToTheStacksOwnTools:
 
     def test_only_the_declared_tools_reach_the_path(self, monkeypatch):
         env = {"PATH": "/usr/bin"}
-        _fake_bin_paths(
-            monkeypatch, ["/t/installs/rtk/0.45.0", "/t/installs/pulumi/3.251.0/pulumi"]
-        )
+        _fake_bin_paths(monkeypatch, ["/t/installs/rtk/0.45.0", "/t/installs/pulumi/3.251.0/pulumi"])
         hostrun._apply_host_tool_path(env, "s")
         bin_dir = str(hostrun._stack_tools_dirs("s")[1])
         assert env["PATH"] == ":".join(
@@ -428,10 +415,7 @@ class TestTheSessionGetsTheUsersOwnMiseBack:
     def test_the_snapshot_covers_every_variable_the_redirect_touches(self):
         # A variable restored on one side only leaves the session half-redirected, which is worse
         # than either state.
-        touched = set(launcher._host_mise_env("s")) | {
-            "MISE_STATE_DIR",
-            "MISE_TRUSTED_CONFIG_PATHS",
-        }
+        touched = set(launcher._host_mise_env("s")) | {"MISE_STATE_DIR", "MISE_TRUSTED_CONFIG_PATHS"}
         assert touched <= set(hostrun._MISE_SESSION_VARS)
 
     def test_the_data_dir_shape_is_recognised(self):
@@ -461,6 +445,7 @@ class TestTheStackBinDirLeadsThePath:
         assert entries[1] == "/t/installs/rtk/0.45.0"
         assert entries[-1] == "/usr/bin"
 
+
     def test_an_outer_stacks_tool_dirs_do_not_survive_into_an_inner_launch(self, monkeypatch):
         """Launching a stack from inside another stack's host session is routine.
 
@@ -470,9 +455,7 @@ class TestTheStackBinDirLeadsThePath:
         same fix, as the inherited mise redirect in `_restore_user_mise_env`.
         """
         outer_bin = str(hostrun._stack_tools_dirs("outer")[1])
-        outer_tool = str(
-            hostrun._stack_tools_dirs("outer")[0] / "mise" / "installs" / "node" / "24" / "bin"
-        )
+        outer_tool = str(hostrun._stack_tools_dirs("outer")[0] / "mise" / "installs" / "node" / "24" / "bin")
         env = {"PATH": ":".join([outer_bin, outer_tool, "/home/u/.local/bin", "/usr/bin"])}
         _fake_bin_paths(monkeypatch, ["/t/installs/rtk/0.45.0"])
         hostrun._apply_host_tool_path(env, "inner")

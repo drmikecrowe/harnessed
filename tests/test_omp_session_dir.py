@@ -22,7 +22,8 @@ class TestOmpAttachCmd:
         monkeypatch.setattr(Path, "home", lambda: Path("/home/u"))
         cmd = launcher._omp_attach_cmd(Path("/home/u/Programming/Personal/proj"))
         assert cmd == (
-            f"omp --session-dir '{CONTAINER_HOME}/.omp/agent/sessions/-Programming-Personal-proj'"
+            f"omp --session-dir '{CONTAINER_HOME}/.omp/agent/sessions/"
+            "-Programming-Personal-proj'"
         )
 
     def test_start_dir_outside_the_host_home_keeps_the_full_path(self, monkeypatch):
@@ -55,16 +56,8 @@ class TestAttachShell:
         proj = tmp_path / "proj"
         proj.mkdir()
         with pytest.raises(SystemExit):
-            launcher._attach(
-                "podman",
-                harness,
-                "inst",
-                proj,
-                stack="s",
-                mount_path=tmp_path,
-                shell=False,
-                start_dir=proj,
-            )
+            launcher._attach("podman", harness, "inst", proj,
+                             stack="s", mount_path=tmp_path, shell=False, start_dir=proj)
         return captured["argv"][-1]
 
     def test_omp_attach_pins_the_session_dir(self, tmp_path, monkeypatch):

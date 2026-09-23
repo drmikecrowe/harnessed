@@ -109,9 +109,7 @@ class TestEnsureLocalCatalogLinks:
         for kind in _KINDS:
             assert not (repo / "catalog" / f"{kind}.local").exists(), "stale link must be removed"
             assert not (repo / "catalog" / f"{kind}.local").is_symlink()
-            assert (repo / "catalog-local" / kind).is_symlink(), (
-                "and re-created in the new location"
-            )
+            assert (repo / "catalog-local" / kind).is_symlink(), "and re-created in the new location"
 
     def test_migration_never_deletes_real_content(self, monkeypatch, tmp_path):
         """Only symlinks are unlinked — a real directory named <kind>.local is left alone."""
@@ -252,7 +250,7 @@ class TestStaleLinkIsRepointed:
         assert Path(os.readlink(link)) == other / "catalog" / "agents"
 
     def test_a_stray_pyproject_alone_does_not_make_it_a_checkout(self, monkeypatch, tmp_path):
-        """ "Is a checkout" must mean what `paths.source_checkout` means: BOTH markers, not one.
+        """"Is a checkout" must mean what `paths.source_checkout` means: BOTH markers, not one.
 
         Adversarial review round 2, findings 2 and 6: keying only on `pyproject.toml` makes any XDG
         root that happens to contain one look like a checkout, and the build goes back to aborting —

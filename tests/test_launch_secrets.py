@@ -26,7 +26,6 @@ from support import patch_all
 # helpers
 # ---------------------------------------------------------------------------
 
-
 def _fake_varlock_json(values: dict):
     """Fake subprocess.run result mimicking `varlock load --format json` stdout."""
     return subprocess.CompletedProcess(
@@ -40,7 +39,6 @@ def _fake_varlock_json(values: dict):
 # ---------------------------------------------------------------------------
 # _resolve_launch_secrets
 # ---------------------------------------------------------------------------
-
 
 class TestResolveSecretsNoOp:
     """When no source is present → ([], []), no subprocess."""
@@ -83,8 +81,7 @@ class TestResolveSecretsGlobalSchema:
         monkeypatch.setattr(Path, "home", lambda: home)
         monkeypatch.setattr(launcher.shutil, "which", lambda _: "/usr/bin/varlock")
         monkeypatch.setattr(
-            launcher.subprocess,
-            "run",
+            launcher.subprocess, "run",
             lambda *a, **kw: _fake_varlock_json(values),
         )
         if op_token is not None:
@@ -97,9 +94,7 @@ class TestResolveSecretsGlobalSchema:
         self._setup(monkeypatch, tmp_path, {"SNYK_TOKEN": "abc123"})
         env_files, temp_files = launcher._resolve_launch_secrets()
         assert len(env_files) == 1
-        assert (
-            env_files == temp_files
-        )  # global schema temp is both an env-file and a cleanup target
+        assert env_files == temp_files  # global schema temp is both an env-file and a cleanup target
         assert env_files[0].is_file()
         env_files[0].unlink()
 
@@ -183,7 +178,7 @@ class TestResolveSecretsProject:
         # own file is never handed to podman directly, so it's a cleanup target but the source is not.
         assert called == []
         assert env_files == temp_files and len(env_files) == 1
-        assert env_files[0] != proj / ".env"  # a generated temp, not the user's file
+        assert env_files[0] != proj / ".env"          # a generated temp, not the user's file
         assert (proj / ".env").read_text() == "FOO=bar\n"  # source untouched
         assert env_files[0].read_text() == "FOO=bar\n"
         env_files[0].unlink()
@@ -195,16 +190,20 @@ class TestResolveSecretsProject:
         proj = tmp_path / "proj"
         proj.mkdir()
         (proj / ".env").write_text(
-            "# a comment\nGEMINI_API_KEY=\"xxxxxx\"\nSINGLE='yyy'\nexport EXPORTED=zzz\nPLAIN=raw\n"
+            '# a comment\n'
+            'GEMINI_API_KEY="xxxxxx"\n'
+            "SINGLE='yyy'\n"
+            "export EXPORTED=zzz\n"
+            "PLAIN=raw\n"
         )
         env_files, _ = launcher._resolve_launch_secrets(proj)
         content = env_files[0].read_text()
         assert "GEMINI_API_KEY=xxxxxx\n" in content
         assert "SINGLE=yyy\n" in content
-        assert "EXPORTED=zzz\n" in content  # export prefix dropped
+        assert "EXPORTED=zzz\n" in content        # export prefix dropped
         assert "PLAIN=raw\n" in content
         assert '"' not in content and "'" not in content
-        assert "# a comment" in content  # comments pass through
+        assert "# a comment" in content           # comments pass through
         env_files[0].unlink()
 
     def test_project_schema_resolved_via_varlock(self, monkeypatch, tmp_path):
@@ -215,8 +214,7 @@ class TestResolveSecretsProject:
         proj.mkdir()
         (proj / ".env.schema").write_text("FOO=op(op://Private/Foo/credential)\n")
         monkeypatch.setattr(
-            launcher.subprocess,
-            "run",
+            launcher.subprocess, "run",
             lambda *a, **kw: _fake_varlock_json({"FOO": "resolved"}),
         )
         env_files, temp_files = launcher._resolve_launch_secrets(proj)
@@ -234,8 +232,7 @@ class TestResolveSecretsProject:
         (proj / ".env.schema").write_text("FOO=op(op://Private/Foo/credential)\n")
         (proj / ".env").write_text("FOO=plain\n")
         monkeypatch.setattr(
-            launcher.subprocess,
-            "run",
+            launcher.subprocess, "run",
             lambda *a, **kw: _fake_varlock_json({"FOO": "resolved"}),
         )
         env_files, temp_files = launcher._resolve_launch_secrets(proj)
@@ -254,8 +251,7 @@ class TestResolveSecretsProject:
         monkeypatch.setattr(launcher.shutil, "which", lambda _: "/usr/bin/varlock")
         monkeypatch.delenv("OP_SERVICE_ACCOUNT_TOKEN", raising=False)
         monkeypatch.setattr(
-            launcher.subprocess,
-            "run",
+            launcher.subprocess, "run",
             lambda *a, **kw: _fake_varlock_json({"FOO": "global"}),
         )
         proj = tmp_path / "proj"
@@ -266,7 +262,7 @@ class TestResolveSecretsProject:
         # Global schema resolved first, project .env (normalized) second → podman last-wins.
         assert env_files[0].read_text() == "FOO=global\n"
         assert env_files[1].read_text() == "FOO=project\n"
-        assert temp_files == env_files  # both are generated temps, both cleaned up
+        assert temp_files == env_files                 # both are generated temps, both cleaned up
         for f in env_files:
             f.unlink()
 
@@ -283,8 +279,7 @@ class TestResolveSecretsVarlockFailure:
         monkeypatch.setattr(Path, "home", lambda: home)
         monkeypatch.setattr(launcher.shutil, "which", lambda _: "/usr/bin/varlock")
         monkeypatch.setattr(
-            launcher.subprocess,
-            "run",
+            launcher.subprocess, "run",
             lambda *a, **kw: subprocess.CompletedProcess(
                 args=[], returncode=1, stdout="", stderr="failed to connect to 1Password"
             ),
@@ -298,7 +293,6 @@ class TestResolveSecretsVarlockFailure:
 # emit._hatago_entry with url_env
 # ---------------------------------------------------------------------------
 
-
 class TestHatagoEntryUrlEnv:
     """url_env → emits ${VAR} placeholder (never the resolved value)."""
 
@@ -311,8 +305,7 @@ class TestHatagoEntryUrlEnv:
     def test_url_env_takes_precedence_over_url(self):
         """If both url and url_env are set, url_env wins (secret-free profile)."""
         server = McpServer(
-            name="openbrain",
-            transport="http",
+            name="openbrain", transport="http",
             url="https://example.com/mcp?key=LITERAL_KEY",
             url_env="OB1_URL",
         )
@@ -322,7 +315,9 @@ class TestHatagoEntryUrlEnv:
 
     def test_url_without_url_env_unchanged(self):
         """Regression: existing url-only servers are not affected."""
-        server = McpServer(name="remote", transport="http", url="http://localhost:8080/mcp")
+        server = McpServer(
+            name="remote", transport="http", url="http://localhost:8080/mcp"
+        )
         entry = emit._hatago_entry(server)
         assert entry["url"] == "http://localhost:8080/mcp"
 
@@ -338,7 +333,6 @@ class TestHatagoEntryUrlEnv:
 # _resolve_launch_env — the host-native twin (harnessed-36l)
 # ---------------------------------------------------------------------------
 
-
 class TestResolveLaunchEnvSources:
     """Same sources and same global → project precedence as _resolve_launch_secrets, returned as a
     dict. Host mode has no pod to hand an env-file to, so nothing is written to disk."""
@@ -352,7 +346,9 @@ class TestResolveLaunchEnvSources:
         monkeypatch.setattr(Path, "home", lambda: home)
         monkeypatch.setattr(launcher.shutil, "which", lambda _: "/usr/bin/varlock")
         monkeypatch.delenv("OP_SERVICE_ACCOUNT_TOKEN", raising=False)
-        monkeypatch.setattr(launcher.subprocess, "run", lambda *a, **kw: _fake_varlock_json(values))
+        monkeypatch.setattr(
+            launcher.subprocess, "run", lambda *a, **kw: _fake_varlock_json(values)
+        )
 
     def test_nothing_configured_returns_empty(self, monkeypatch, tmp_path):
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
@@ -373,8 +369,7 @@ class TestResolveLaunchEnvSources:
     def test_varlock_failure_degrades_to_empty(self, monkeypatch, tmp_path):
         self._global_schema(monkeypatch, tmp_path, {})
         monkeypatch.setattr(
-            launcher.subprocess,
-            "run",
+            launcher.subprocess, "run",
             lambda *a, **kw: subprocess.CompletedProcess(
                 args=[], returncode=1, stdout="", stderr="failed to connect to 1Password"
             ),
@@ -393,11 +388,15 @@ class TestResolveLaunchEnvSources:
         monkeypatch.setattr(Path, "home", lambda: tmp_path / "empty-home")
         proj = tmp_path / "proj"
         proj.mkdir()
-        (proj / ".env").write_text("# a comment\n\nexport QUOTED=\"v1\"\nSINGLE='v2'\nPLAIN=v3\n")
+        (proj / ".env").write_text(
+            '# a comment\n'
+            '\n'
+            'export QUOTED="v1"\n'
+            "SINGLE='v2'\n"
+            "PLAIN=v3\n"
+        )
         assert launcher._resolve_launch_env(proj) == {
-            "QUOTED": "v1",
-            "SINGLE": "v2",
-            "PLAIN": "v3",
+            "QUOTED": "v1", "SINGLE": "v2", "PLAIN": "v3",
         }
 
     def test_writes_nothing_to_disk(self, monkeypatch, tmp_path):
@@ -405,11 +404,8 @@ class TestResolveLaunchEnvSources:
         self._global_schema(monkeypatch, tmp_path, {"SNYK_TOKEN": "abc123"})
         made = []
         monkeypatch.setattr(
-            launcher.tempfile,
-            "mkstemp",
-            lambda *a, **kw: (
-                made.append(1)
-                or (_ for _ in ()).throw(AssertionError("host path must not create a temp file"))
+            launcher.tempfile, "mkstemp", lambda *a, **kw: made.append(1) or (_ for _ in ()).throw(
+                AssertionError("host path must not create a temp file")
             ),
         )
         assert launcher._resolve_launch_env()["SNYK_TOKEN"] == "abc123"  # noqa: S105 — fake token name in test assertion
@@ -430,9 +426,7 @@ class TestHostLaunchAppliesSecrets:
         # A stale export in the invoking shell — the schema must beat it.
         monkeypatch.setenv("SNYK_TOKEN", "stale-from-shell")
 
-        patch_all(
-            monkeypatch,
-            "_resolve_launch_env",
+        patch_all(monkeypatch, "_resolve_launch_env",
             lambda project_path=None: {"SNYK_TOKEN": "from-schema", "RECIPE_OWNED": "from-schema"},
         )
         # A recipe declaring the same name must still win — mirroring `podman run -e` beating
@@ -445,8 +439,7 @@ class TestHostLaunchAppliesSecrets:
         # fails only in a checkout that HAS those gitignored trees, which is why it passed in a
         # worktree and broke on main.
         monkeypatch.setattr(
-            launcher,
-            "load_stack_with_recipes",
+            launcher, "load_stack_with_recipes",
             lambda root, stack: (Stack(name="hostspike"), [r]),
         )
 

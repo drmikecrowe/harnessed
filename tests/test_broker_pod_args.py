@@ -19,7 +19,7 @@ import pytest
 from harnessed import mounts
 from harnessed.schema import McpServer
 
-PORT = "32081"  # a positional argv value, so a str — matches tests/test_mcp_remote_auth.py
+PORT = "32081"   # a positional argv value, so a str — matches tests/test_mcp_remote_auth.py
 URL = "https://mcp.atlassian.com/v1/sse"
 SPEC_ARG = "mcp-remote@0.1.29"
 
@@ -35,10 +35,8 @@ _CAPTURE_PROOF = "expected a warning on stderr and captured nothing at all"
 def _atlassian(*extra: str) -> McpServer:
     """An mcp-remote server; with a port argument it wants an OAuth callback publish."""
     return McpServer(
-        name="atlassian",
-        command="pnpm",
-        args=["dlx", SPEC_ARG, URL, *extra],
-        transport="stdio",
+        name="atlassian", command="pnpm",
+        args=["dlx", SPEC_ARG, URL, *extra], transport="stdio",
     )
 
 

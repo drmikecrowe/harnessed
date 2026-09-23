@@ -145,9 +145,9 @@ def guard_ownership(path: Path) -> None:
     nothing and the beads-server entrypoint died on `mkdir -p /data/dolt` (bd harnessed-rv2.1).
     """
     rt = paths.active_runtime()
-    mapping = (paths.DOCKER_USERNS_ARG if rt == "docker" else paths.USERNS_ARG).removeprefix(
-        "--userns="
-    )
+    mapping = (
+        paths.DOCKER_USERNS_ARG if rt == "docker" else paths.USERNS_ARG
+    ).removeprefix("--userns=")
     writer = paths.pod_host_uid()
     if writer is None and rt == "docker":
         # Docker's unresolvable case has a different cause and a different remedy from podman's, so
@@ -159,8 +159,8 @@ def guard_ownership(path: Path) -> None:
             "container's writes is not predictable"
             if paths.docker_is_rootless()
             else "harnessed could not read `docker info`, so it cannot tell whether the daemon is "
-            "rootless (where container uid 1000 maps into your subuid range) or rootful "
-            "(where it does not)"
+                 "rootless (where container uid 1000 maps into your subuid range) or rootful "
+                 "(where it does not)"
         )
         raise PersistOwnershipError(
             f"harnessed will not risk a silent permission error on {path}: {why}. Run harnessed "

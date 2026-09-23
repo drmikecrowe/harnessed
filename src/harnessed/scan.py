@@ -81,18 +81,14 @@ def _cvss3_base(vector: str) -> float | None:
         scope_changed = metrics.get("S", "U") == "C"
         pr_table = _PR_CHANGED if scope_changed else _PR_UNCHANGED
         exploitability = (
-            8.22
-            * _AV[metrics["AV"]]
-            * _AC[metrics["AC"]]
-            * pr_table[metrics["PR"]]
-            * _UI[metrics["UI"]]
+            8.22 * _AV[metrics["AV"]] * _AC[metrics["AC"]] * pr_table[metrics["PR"]] * _UI[metrics["UI"]]
         )
-        isc = 1 - ((1 - _CIA[metrics["C"]]) * (1 - _CIA[metrics["I"]]) * (1 - _CIA[metrics["A"]]))
+        isc = 1 - (
+            (1 - _CIA[metrics["C"]]) * (1 - _CIA[metrics["I"]]) * (1 - _CIA[metrics["A"]])
+        )
         if isc <= 0:
             return 0.0
-        impact = (
-            (7.52 * (isc - 0.029) - 3.25 * (isc - 0.02) ** 15) if scope_changed else (6.42 * isc)
-        )
+        impact = (7.52 * (isc - 0.029) - 3.25 * (isc - 0.02) ** 15) if scope_changed else (6.42 * isc)
         base = (1.08 * (impact + exploitability)) if scope_changed else (impact + exploitability)
         return _roundup(min(base, 10.0))
     except (KeyError, ValueError):
@@ -102,7 +98,7 @@ def _cvss3_base(vector: str) -> float | None:
 def _max_cvss(vuln: dict) -> float:
     """Max CVSS score for one OSV finding (RESEARCH A3: score may be a CVSS vector string)."""
     best = 0.0
-    for sev in vuln.get("severity") or []:
+    for sev in (vuln.get("severity") or []):
         score = sev.get("score")
         if isinstance(score, (int, float)):
             best = max(best, float(score))

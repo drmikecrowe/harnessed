@@ -8,7 +8,6 @@ These tests state the REQUIREMENT (which refs may reach a build), not the implem
 through the two public gates authors actually hit — `validate_pin` for Dockerfile bodies and
 `validate_install_script` / `validate_setup_script` for the .sh bodies those Dockerfiles moved into.
 """
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -68,9 +67,7 @@ class TestImmutableCloneRefs:
             validate_pin("r", "RUN git clone --branch main https://example.com/repo")
 
     def test_comment_explaining_a_branch_does_not_trigger(self):
-        validate_pin(
-            "r", '# never do: git clone --branch develop\nRUN git clone --branch "v1.0.0" x'
-        )
+        validate_pin("r", '# never do: git clone --branch develop\nRUN git clone --branch "v1.0.0" x')
 
 
 class TestShellVariableRefs:
@@ -80,9 +77,7 @@ class TestShellVariableRefs:
     """
 
     def test_variable_resolving_to_a_tag_passes(self, tmp_path):
-        body = (
-            'set -e\nX_REF="v6.0.3"\ngit clone --depth 1 --branch "$X_REF" https://e.com/x.git /o\n'
-        )
+        body = 'set -e\nX_REF="v6.0.3"\ngit clone --depth 1 --branch "$X_REF" https://e.com/x.git /o\n'
         validate_install_script(_script_recipe(tmp_path, body))
 
     def test_variable_resolving_to_a_sha_passes(self, tmp_path):
@@ -226,10 +221,10 @@ class TestFetchByShaIsGatedLikeAClone:
         # FETCH_HEAD. The ref is the LAST argument, which is what makes it invisible to a gate
         # looking for a flag.
         return (
-            "git init -q d\n"
-            "git -C d remote add origin https://e.com/x.git\n"
-            f"git -C d fetch -q --depth 1 origin {ref}\n"
-            "git -C d checkout -q FETCH_HEAD\n"
+            'git init -q d\n'
+            'git -C d remote add origin https://e.com/x.git\n'
+            f'git -C d fetch -q --depth 1 origin {ref}\n'
+            'git -C d checkout -q FETCH_HEAD\n'
         )
 
     @pytest.mark.parametrize("ref", [SHA, '"' + SHA + '"', "v1.2.3", '"v2.0.0-rc.1"'])
@@ -425,9 +420,7 @@ class TestTheFetchWalkSeesWhatGitSees:
     def test_recurse_submodules_leaves_the_remote_slot_where_git_leaves_it(self):
         # The same rule from the other side: with `yes` as the remote, `origin` is a REFSPEC, and a
         # branch named `origin` moves like any other. Rejecting it is correct, not over-eager.
-        assert (
-            _mutable_fetch_ref(f"git fetch --recurse-submodules yes origin {SHA}\n") == "'origin'"
-        )
+        assert _mutable_fetch_ref(f"git fetch --recurse-submodules yes origin {SHA}\n") == "'origin'"
 
     def test_the_equals_form_of_recurse_submodules_consumes_nothing_either(self):
         assert _mutable_fetch_ref("git fetch --recurse-submodules=yes origin main\n") == "'main'"

@@ -4,7 +4,6 @@ The name is MACHINE-FACING — it is never typed, only read back out of `harness
 `volume-gc` and `podman images`. So it is optimised for recognisability, not brevity, and falls
 back to a hash only when the readable form would be ambiguous or over-long.
 """
-
 from __future__ import annotations
 
 import re
@@ -19,8 +18,7 @@ from harnessed import dynstack
 class TestNormalize:
     def test_sorts_and_dedupes(self):
         assert dynstack.normalize(["serena", "superpowers", "serena"], None) == (
-            None,
-            ("serena", "superpowers"),
+            None, ("serena", "superpowers"),
         )
 
     def test_keeps_the_base_separate(self):
@@ -129,18 +127,15 @@ class TestImageReferenceSafety:
         died with 'invalid reference format' because `+` is not in the OCI alphabet."""
         self._assert_taggable(dynstack.derive_name(["superpowers", "beads/team"], "default"))
 
-    @pytest.mark.parametrize(
-        "recipes,base,services",
-        [
-            (["serena"], None, None),
-            (["superpowers", "serena"], "default", None),
-            (["beads/team"], None, None),
-            (["Foo Bar"], None, None),
-            (["a_b"], "c.d", None),
-            (["serena"], "default", ["beads-server"]),
-            ([f"recipe-number-{i}" for i in range(20)], "default", None),
-        ],
-    )
+    @pytest.mark.parametrize("recipes,base,services", [
+        (["serena"], None, None),
+        (["superpowers", "serena"], "default", None),
+        (["beads/team"], None, None),
+        (["Foo Bar"], None, None),
+        (["a_b"], "c.d", None),
+        (["serena"], "default", ["beads-server"]),
+        ([f"recipe-number-{i}" for i in range(20)], "default", None),
+    ])
     def test_every_derived_name_is_taggable(self, recipes, base, services):
         self._assert_taggable(dynstack.derive_name(recipes, base, services=services))
 
@@ -260,7 +255,9 @@ class TestTheDefaultBaselineShips:
     def test_the_default_stack_composes_the_default_recipe(self):
         from ruamel.yaml import YAML
 
-        raw = YAML(typ="safe").load(self._repo() / "catalog" / "stacks" / "default" / "stack.yaml")
+        raw = YAML(typ="safe").load(
+            self._repo() / "catalog" / "stacks" / "default" / "stack.yaml"
+        )
         assert raw["recipes"] == ["default"]
 
     def test_the_default_recipe_ships_the_authoring_skill(self):

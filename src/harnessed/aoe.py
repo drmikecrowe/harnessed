@@ -72,7 +72,6 @@ making, so the reads that decide *whether* to write happen inline and the writes
 detached process that outlives the `os.execvp`. The one exception is `--create-aoe-only`, where
 registering IS the command the user ran and they are entitled to its exit status.
 """
-
 from __future__ import annotations
 
 import itertools
@@ -177,9 +176,7 @@ def _bin() -> str | None:
     return exe
 
 
-def _run(
-    exe: str, args: list[str], *, timeout: int = _READ_TIMEOUT
-) -> subprocess.CompletedProcess[str] | None:
+def _run(exe: str, args: list[str], *, timeout: int = _READ_TIMEOUT) -> subprocess.CompletedProcess[str] | None:
     """Run one aoe subcommand and wait. Returns None if it could not be run at all."""
     try:
         return subprocess.run(
@@ -286,14 +283,8 @@ def replay_command(verb: str, stack: str, harness: str, project_path: Path) -> s
 
 
 def command_for(
-    verb: str,
-    stack: str,
-    harness: str,
-    project_path: Path,
-    *,
-    group: str | None = None,
-    title: str | None = None,
-    no_strict_mcp: bool = False,
+    verb: str, stack: str, harness: str, project_path: Path,
+    *, group: str | None = None, title: str | None = None, no_strict_mcp: bool = False,
 ) -> str:
     """The harnessed invocation — the `run` line of the project's `mise run <harness>` task, which
     is what a row invokes (see `mise_command`). Still the string a restart ultimately executes.
@@ -337,13 +328,8 @@ def command_for(
 
 
 def title_for(
-    verb: str,
-    stack: str,
-    harness: str,
-    project_path: Path,
-    *,
-    title: str | None = None,
-    no_strict_mcp: bool = False,
+    verb: str, stack: str, harness: str, project_path: Path,
+    *, title: str | None = None, no_strict_mcp: bool = False,
 ) -> str:
     """The dashboard label — and, unavoidably, half of aoe's own uniqueness key.
 
@@ -473,9 +459,7 @@ def _has_group(exe: str, group: str) -> bool:
     result = _run(exe, ["group", "list", "-p", PROFILE])
     if result is None:
         return False
-    return group in {
-        m.group(1) for m in (_GROUP_LINE.match(ln) for ln in result.stdout.splitlines()) if m
-    }
+    return group in {m.group(1) for m in (_GROUP_LINE.match(ln) for ln in result.stdout.splitlines()) if m}
 
 
 def _sessions(exe: str) -> list[dict]:
@@ -526,12 +510,8 @@ def _trashed_ids(exe: str) -> frozenset[str]:
 
 
 def _registered(
-    sessions: list[dict],
-    command: str,
-    project_path: Path,
-    *,
-    group: str | None = None,
-    title: str | None = None,
+    sessions: list[dict], command: str, project_path: Path,
+    *, group: str | None = None, title: str | None = None,
 ) -> bool:
     """Whether this (path, harness) already has a row.
 
@@ -703,14 +683,12 @@ def _drift_message(row: dict, ours: str, *, renamed_to: str | None, blocked: boo
         f"  ours:   {ours}",
     ]
     if blocked:
-        return "\n".join(
-            [
-                *lines,
-                "  NOT repaired: another row at this title and path is not one harnessed writes, so",
-                "  the registration cannot land whatever we do here. Nothing was changed.",
-                f"  fix: aoe session rename {sid} -t '<any other title>' -p {PROFILE}   then relaunch",
-            ]
-        )
+        return "\n".join([
+            *lines,
+            "  NOT repaired: another row at this title and path is not one harnessed writes, so",
+            "  the registration cannot land whatever we do here. Nothing was changed.",
+            f"  fix: aoe session rename {sid} -t '<any other title>' -p {PROFILE}   then relaunch",
+        ])
     if renamed_to is not None:
         # PRESENT TENSE, DELIBERATELY. On a launch the batch is fired detached and its outcome is
         # never examined, so claiming the rename HAPPENED would be asserting something this
@@ -748,15 +726,8 @@ def _report(on_drift: Callable[[str, bool], None] | None, message: str, *, repai
 
 
 def sync_session(
-    verb: str,
-    stack: str,
-    harness: str,
-    project_path: Path,
-    *,
-    background: bool = True,
-    group: str | None = None,
-    title: str | None = None,
-    no_strict_mcp: bool = False,
+    verb: str, stack: str, harness: str, project_path: Path, *, background: bool = True,
+    group: str | None = None, title: str | None = None, no_strict_mcp: bool = False,
     on_drift: Callable[[str, bool], None] | None = None,
 ) -> bool:
     """Register this launch with aoe, creating the profile and repo group on the way.
@@ -858,21 +829,16 @@ def sync_session(
         # After the group exists, before the re-add: the rows aoe would otherwise refuse against.
         batch.extend(repairs)
         add = [
-            "add",
-            str(project_path),
-            "-p",
-            PROFILE,
-            "-g",
-            group_name,
-            "-t",
-            row_title,
+            "add", str(project_path),
+            "-p", PROFILE,
+            "-g", group_name,
+            "-t", row_title,
             # `--cmd-override`, NOT `--cmd`. `--cmd` is validated against aoe's own tool list and
             # SILENTLY substitutes the configured default for anything it does not recognise, so a
             # harnessed invocation came back stored as `claude-with-env` — losing both the replay
             # and the identity key. `--cmd-override` stores the string verbatim, and also accepts
             # harnesses aoe has no notion of, like `omp`. Verified against aoe 2026-08-01.
-            "--cmd-override",
-            command,
+            "--cmd-override", command,
             # No view flag: `aoe add` already defaults to the terminal (raw tmux/PTY) view, which is
             # the one we need — `--structured-view` would drive the agent over ACP, which cannot
             # reach through a `podman exec` attach. There is no flag to request the default, and an
@@ -909,9 +875,9 @@ def sync_session(
         # Re-reading settles it against any aoe: the row is there or it is not. Only on the blocking
         # path, where the writes have finished; a detached batch has not necessarily run yet, so
         # there `applied` remains the only answer available.
-        return (
-            _registered(_sessions(exe), command, project_path, group=group, title=title) or applied
-        )
+        return _registered(
+            _sessions(exe), command, project_path, group=group, title=title
+        ) or applied
     except Exception:  # noqa: BLE001 — an optional dashboard must never break a launch.
         return False
 
@@ -971,17 +937,19 @@ def _replays_stack(tokens: list[str], verb: str, stack: str) -> bool:
     # not-found guard swallowed that branch and it never ran. A sentinel that collides with a real
     # answer is a bug even when the colliding input is rare.
     if content.startswith("exec "):
-        statement = content[len("exec ") :]
+        statement = content[len("exec "):]
     else:
         index = content.find("\nexec ")
         if index == -1:
             return False
-        statement = content[index + len("\nexec ") :]
+        statement = content[index + len("\nexec "):]
     try:
         script_tokens = shlex.split(statement)
     except ValueError:
         return False
-    return any(a == _STACK_FLAG[0] and b == stack for a, b in itertools.pairwise(script_tokens))
+    return any(
+        a == _STACK_FLAG[0] and b == stack for a, b in itertools.pairwise(script_tokens)
+    )
 
 
 def forget_stack(verb: str, stack: str, *, background: bool = True) -> None:

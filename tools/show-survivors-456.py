@@ -59,14 +59,10 @@ def main() -> int:
             missing += 1
             continue
         diff = difflib.unified_diff(
-            funcs[orig_name].splitlines(),
-            funcs[mutant].splitlines(),
-            lineterm="",
-            n=0,
+            funcs[orig_name].splitlines(), funcs[mutant].splitlines(),
+            lineterm="", n=0,
         )
-        body = [
-            ln for ln in diff if ln.startswith(("+", "-")) and not ln.startswith(("+++", "---"))
-        ]
+        body = [ln for ln in diff if ln.startswith(("+", "-")) and not ln.startswith(("+++", "---"))]
         print(f"### {full}")
         for ln in body:
             print(f"    {ln}")

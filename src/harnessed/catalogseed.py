@@ -5,7 +5,6 @@ and edit — the overlay catalog links, a starter recipe, the extra-tools list, 
 each is idempotent and NON-destructive: an existing user file is never overwritten, because it is
 theirs once it exists.
 """
-
 from __future__ import annotations
 
 import os
@@ -238,10 +237,7 @@ def _ensure_docs_wiki_clone() -> None:
     try:
         origin_url = subprocess.run(
             ["git", "remote", "get-url", "origin"],
-            cwd=checkout,
-            capture_output=True,
-            text=True,
-            check=True,
+            cwd=checkout, capture_output=True, text=True, check=True,
         ).stdout.strip()
     except subprocess.CalledProcessError:
         return
@@ -249,9 +245,7 @@ def _ensure_docs_wiki_clone() -> None:
     try:
         _run(["git", "clone", wiki_url, str(docs_dir)])
     except subprocess.CalledProcessError:
-        _err.print(
-            f"[yellow]warning:[/yellow] could not clone docs wiki ({wiki_url}); docs/ left missing"
-        )
+        _err.print(f"[yellow]warning:[/yellow] could not clone docs wiki ({wiki_url}); docs/ left missing")
 
 
 def _ensure_extra_tools() -> None:
@@ -287,7 +281,7 @@ def _update_recipe_dirs() -> list[Path]:
             continue
         for manifest in sorted(recipes.rglob("recipe.yaml")):
             ref = str(manifest.parent.relative_to(recipes))
-            if ref in seen:  # user overlay wins, exactly as everywhere else
+            if ref in seen:        # user overlay wins, exactly as everywhere else
                 continue
             seen.add(ref)
             dirs.append(manifest.parent)

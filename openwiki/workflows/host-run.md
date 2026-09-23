@@ -969,13 +969,11 @@ After `wire_mcp`, the sequencer builds the final environment:
 
 ```python
 env = dict(os.environ)
-_restore_user_mise_env(
-    env, user_mise_env
-)  # the stack's mise provisioned; the session is the user's
-env[config_dir_var] = str(home)  # CLAUDE_CONFIG_DIR or PI_CODING_AGENT_DIR
+_restore_user_mise_env(env, user_mise_env)  # the stack's mise provisioned; the session is the user's
+env[config_dir_var] = str(home)          # CLAUDE_CONFIG_DIR or PI_CODING_AGENT_DIR
 if harness == "omp":
     env["CLAUDE_CONFIG_DIR"] = str(_host_omp_claude_dir(home))
-os.chdir(cwd)  # the project
+os.chdir(cwd)                             # the project
 ```
 
 Then either:

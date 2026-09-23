@@ -9,7 +9,6 @@ sees it: same tools in, same work out, regardless of which recipe declared what 
 Sorting also keeps the step comparable across runs, which is what makes the fingerprint gate in
 harnessed-8px.21.3 stable for an unchanged stack.
 """
-
 from __future__ import annotations
 
 from harnessed import launcher, volumes
@@ -25,13 +24,7 @@ def _tools_line(tmp_path, recipes, stack="s", monkeypatch=None):
     volumes._run = lambda cmd, *a, **k: calls.append(cmd)
     try:
         launcher._run_container_installs(
-            "podman",
-            stack,
-            "claude",
-            "img",
-            list(recipes),
-            "cfgvol",
-            "toolsvol",
+            "podman", stack, "claude", "img", list(recipes), "cfgvol", "toolsvol",
         )
     finally:
         volumes._run = orig

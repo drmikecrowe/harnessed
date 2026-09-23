@@ -15,7 +15,6 @@ Exit status is the assertion, and 1 vs 2 is the distinction that matters: 1 mean
 ADDED" (an ordinary gate failure), so a schema error surfacing as 1 — which is what an uncaught
 AttributeError would do — reads as a normal red build and gets triaged as a lint problem forever.
 """
-
 from __future__ import annotations
 
 import importlib.util
@@ -104,11 +103,8 @@ class TestPyrightSchemaIsRejectedNotAbsorbed:
     def test_a_non_string_rule_exits_2(self, tmp_path):
         path = _write(
             tmp_path,
-            {
-                "generalDiagnostics": [
-                    {"severity": "error", "file": "a.py", "message": "m", "rule": 17}
-                ]
-            },
+            {"generalDiagnostics": [{"severity": "error", "file": "a.py", "message": "m",
+                                     "rule": 17}]},
         )
         assert _exit_code(lint_findings.normalize_pyright, path) == 2
 
@@ -127,8 +123,8 @@ class TestLegitimateInputIsStillAccepted:
     def test_pyright_missing_rule_is_accepted(self, tmp_path):
         """`rule` is documented as present only when a rule is associated with the diagnostic."""
         path = _write(
-            tmp_path,
-            {"generalDiagnostics": [{"severity": "error", "file": "a.py", "message": "m"}]},
+            tmp_path, {"generalDiagnostics": [{"severity": "error", "file": "a.py",
+                                               "message": "m"}]},
         )
         assert lint_findings.normalize_pyright(path) == ["a.py\t\tm"]
 
@@ -148,16 +144,8 @@ class TestOneFindingIsOneLine:
         new error with a three-line message reported "+3 added"."""
         path = _write(
             tmp_path,
-            {
-                "generalDiagnostics": [
-                    {
-                        "severity": "error",
-                        "file": "a.py",
-                        "rule": "reportX",
-                        "message": 'Type "int" not assignable\n  to "str"',
-                    }
-                ]
-            },
+            {"generalDiagnostics": [{"severity": "error", "file": "a.py", "rule": "reportX",
+                                     "message": 'Type "int" not assignable\n  to "str"'}]},
         )
         identities = lint_findings.normalize_pyright(path)
         assert len(identities) == 1

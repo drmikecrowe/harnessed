@@ -78,18 +78,10 @@ class TestOnlyHarnesses:
         _make_rule_dir(root_a, "shared", "omp flavour")
         _make_rule_dir(root_b, "shared", "claude flavour")
         syncer = LinkSyncer(harness="claude")
-        syncer.add_recipe(
-            Recipe(
-                name="a", root=root_a, rules=[FileExt(path="rules/shared", only_harnesses=["omp"])]
-            )
-        )
-        syncer.add_recipe(
-            Recipe(
-                name="b",
-                root=root_b,
-                rules=[FileExt(path="rules/shared", only_harnesses=["claude"])],
-            )
-        )
+        syncer.add_recipe(Recipe(name="a", root=root_a,
+                                rules=[FileExt(path="rules/shared", only_harnesses=["omp"])]))
+        syncer.add_recipe(Recipe(name="b", root=root_b,
+                                 rules=[FileExt(path="rules/shared", only_harnesses=["claude"])]))
         claude_dir = tmp_path / "profile" / ".claude"
         syncer.fan(claude_dir)
         assert "claude flavour" in (claude_dir / "rules" / "shared" / "shared.md").read_text()

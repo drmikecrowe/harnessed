@@ -151,8 +151,7 @@ class TestEveryMappedContainerAlsoStatesItsUser:
             else:
                 continue
             names = {
-                c.value.func.attr
-                for c in children
+                c.value.func.attr for c in children
                 if isinstance(c, ast.Starred)
                 and isinstance(c.value, ast.Call)
                 and isinstance(c.value.func, ast.Attribute)
@@ -160,8 +159,7 @@ class TestEveryMappedContainerAlsoStatesItsUser:
             if "userns_args" not in names:
                 continue
             literals = {
-                e.value
-                for e in ast.walk(node)
+                e.value for e in ast.walk(node)
                 if isinstance(e, ast.Constant) and isinstance(e.value, str)
             }
             yield node.lineno, names, literals
@@ -178,8 +176,7 @@ class TestEveryMappedContainerAlsoStatesItsUser:
         found = list(self._mapped_argvs(SRC / "volumes.py"))
         assert found, "the sweep found no mapped containers at all; it is measuring nothing"
         offenders = [
-            line
-            for line, names, literals in found
+            line for line, names, literals in found
             if "container_user_args" not in names and "0:0" not in literals
         ]
         assert not offenders, (
@@ -193,8 +190,7 @@ class TestEveryMappedContainerAlsoStatesItsUser:
         if "mutants" in SRC.parts:
             pytest.skip("mutmut's instrumented copy multiplies the exempt container")
         exempt = [
-            line
-            for line, names, literals in self._mapped_argvs(SRC / "volumes.py")
+            line for line, names, literals in self._mapped_argvs(SRC / "volumes.py")
             if "container_user_args" not in names and "0:0" in literals
         ]
         assert len(exempt) == 1, f"expected only the chown container to run as root: {exempt}"
@@ -207,26 +203,17 @@ class TestVolumeStepsCarryTheMapping:
     def _argv(self, tmp_path, monkeypatch) -> list[list[str]]:
         d = tmp_path / "r"
         d.mkdir(parents=True, exist_ok=True)
-        (d / "recipe.yaml").write_text(
-            'name: r\ntools: ["npm:x@1"]\ninstall:\n  script: install.sh\n'
-        )
+        (d / "recipe.yaml").write_text('name: r\ntools: ["npm:x@1"]\ninstall:\n  script: install.sh\n')
         (d / "install.sh").write_text("true\n")
         recipe = load_recipe(d, strict=True)
         calls: list[list[str]] = []
         patch_all(monkeypatch, "_run", lambda cmd, *a, **k: calls.append(list(cmd)))
         monkeypatch.setattr(
-            launcher.paths,
-            "install_cache_dir",
+            launcher.paths, "install_cache_dir",
             lambda name, key: tmp_path / "cache" / name / key,
         )
         launcher._run_container_installs(
-            "podman",
-            "s",
-            "claude",
-            "img",
-            [recipe],
-            "cfgvol",
-            "toolsvol",
+            "podman", "s", "claude", "img", [recipe], "cfgvol", "toolsvol",
         )
         return calls
 
@@ -271,10 +258,8 @@ class TestEveryCreationSiteEnumerated:
         for n in ast.walk(node):
             if isinstance(n, ast.Call):
                 func = n.func
-                name = (
-                    func.attr
-                    if isinstance(func, ast.Attribute)
-                    else (func.id if isinstance(func, ast.Name) else None)
+                name = func.attr if isinstance(func, ast.Attribute) else (
+                    func.id if isinstance(func, ast.Name) else None
                 )
                 if name == "userns_args" or name in self._ALLOWED_HELPERS:
                     return True
@@ -324,8 +309,7 @@ class TestEveryCreationSiteEnumerated:
     def _spliced_names(node) -> set:
         """Names spliced into this list as `*name` (the `common` idiom) — worth resolving."""
         return {
-            e.value.id
-            for e in node.elts
+            e.value.id for e in node.elts
             if isinstance(e, ast.Starred) and isinstance(e.value, ast.Name)
         }
 
@@ -336,12 +320,8 @@ class TestEveryCreationSiteEnumerated:
         if fn is None:
             return None
         for stmt in ast.walk(fn):
-            if (
-                isinstance(stmt, ast.Assign)
-                and stmt.value is node
-                and len(stmt.targets) == 1
-                and isinstance(stmt.targets[0], ast.Name)
-            ):
+            if isinstance(stmt, ast.Assign) and stmt.value is node and len(stmt.targets) == 1 \
+                    and isinstance(stmt.targets[0], ast.Name):
                 return stmt.targets[0].id
         return None
 
@@ -413,8 +393,7 @@ class TestPodMembersCarryNoUserns:
             paths.USERNS_ARG,
             "--userns=keep-id",
             "--userns=keep-id:uid=1001,gid=1001",
-            "-v",
-            "a:b",
+            "-v", "a:b",
         ]
         kept = launcher._without_userns(args)
         assert not any(a.startswith("--userns") for a in kept)
@@ -432,17 +411,8 @@ class TestPodMembersCarryNoUserns:
         justification for leaving it to a structural guard was simply wrong.
         """
         backend = launcher.ContainerBackend(
-            "podman",
-            "inst",
-            "pod",
-            tmp_path / "prof",
-            "img",
-            tmp_path / "proj",
-            [],
-            [],
-            None,
-            stack_from_overlay=False,
-            headless=True,
+            "podman", "inst", "pod", tmp_path / "prof", "img", tmp_path / "proj",
+            [], [], None, stack_from_overlay=False, headless=True,
         )
         backend.mount_args = [paths.USERNS_ARG, "-v", "/host/a:/ctr/a", "-e", "FOO=1"]
 
@@ -475,24 +445,10 @@ class TestTheMappingActuallyFixesTheWrite:
         target = tmp_path / userns.replace("=", "_").replace(":", "_").replace(",", "_")
         target.mkdir()
         proc = subprocess.run(
-            [
-                "podman",
-                "run",
-                "--rm",
-                userns,
-                "--user",
-                "1000:1000",
-                "-v",
-                f"{target}:/data:rw",
-                "--entrypoint",
-                "sh",
-                self.IMAGE,
-                "-c",
-                "mkdir -p /data/dolt && echo WRITE_OK || echo WRITE_FAIL",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=180,
+            ["podman", "run", "--rm", userns, "--user", "1000:1000",
+             "-v", f"{target}:/data:rw", "--entrypoint", "sh", self.IMAGE,
+             "-c", "mkdir -p /data/dolt && echo WRITE_OK || echo WRITE_FAIL"],
+            capture_output=True, text=True, timeout=180,
         )
         return proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else proc.stderr.strip()
 

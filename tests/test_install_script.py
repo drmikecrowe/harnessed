@@ -84,15 +84,8 @@ def _code_only(raw: str) -> str:
     )
 
 
-def _recipe(
-    tmp_path,
-    name="r",
-    *,
-    install: str | None = None,
-    script_body: str = "true\n",
-    env: str = "",
-    extra: str = "",
-):
+def _recipe(tmp_path, name="r", *, install: str | None = None, script_body: str = "true\n",
+            env: str = "", extra: str = ""):
     """A loadable recipe dir carrying an `install:` block and its script file."""
     d = tmp_path / name
     d.mkdir(parents=True, exist_ok=True)
@@ -131,9 +124,7 @@ class TestInstallField:
         with pytest.raises(SchemaError, match="relative path inside the recipe dir"):
             _recipe(tmp_path, install=f"install:\n  script: {bad}\n")
 
-    @pytest.mark.parametrize(
-        "bad", ["latest", "main", "HEAD", "master", "node:latest", "pkg@latest"]
-    )
+    @pytest.mark.parametrize("bad", ["latest", "main", "HEAD", "master", "node:latest", "pkg@latest"])
     def test_floating_cache_key_is_rejected(self, tmp_path, bad):
         """A cache keyed by a MOVING ref never refreshes — it would pin the user to whatever the
         ref meant on the day the cache was first populated. `_FLOATING_REF_RE` alone does not catch
@@ -165,52 +156,20 @@ class TestEnvContract:
         "HARNESSED_RECIPE_DIR",
         "HARNESSED_CONFIG_DIR",
         "HARNESSED_INSTALL_CACHE",
-        "HARNESSED_BIN_DIR",  # portable destination for an executable (bd harnessed-8px.7)
+        "HARNESSED_BIN_DIR",   # portable destination for an executable (bd harnessed-8px.7)
         "HARNESSED_HOME_SHIM",  # stable $HOME whose .claude is the config dir (bd harnessed-8px.9)
     }
 
     def test_identical_keys_in_both_modes(self, tmp_path):
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n")
-        host = emit.install_env(
-            r,
-            mode="host",
-            harness="claude",
-            config_dir="/h",
-            cache_dir="",
-            bin_dir="/hbin",
-            home_shim="/hshim",
-        )
-        ctr = emit.install_env(
-            r,
-            mode="container",
-            harness="claude",
-            config_dir="/c",
-            cache_dir="",
-            bin_dir="/cbin",
-            home_shim="/cshim",
-        )
+        host = emit.install_env(r, mode="host", harness="claude", config_dir="/h", cache_dir="", bin_dir="/hbin", home_shim="/hshim")
+        ctr = emit.install_env(r, mode="container", harness="claude", config_dir="/c", cache_dir="", bin_dir="/cbin", home_shim="/cshim")
         assert set(host) == set(ctr) == self.KEYS
 
     def test_recipe_dir_is_the_catalog_dir_on_host_and_the_copy_target_in_container(self, tmp_path):
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n")
-        host = emit.install_env(
-            r,
-            mode="host",
-            harness="claude",
-            config_dir="/h",
-            cache_dir="",
-            bin_dir="/hbin",
-            home_shim="/hshim",
-        )
-        ctr = emit.install_env(
-            r,
-            mode="container",
-            harness="claude",
-            config_dir="/c",
-            cache_dir="",
-            bin_dir="/cbin",
-            home_shim="/cshim",
-        )
+        host = emit.install_env(r, mode="host", harness="claude", config_dir="/h", cache_dir="", bin_dir="/hbin", home_shim="/hshim")
+        ctr = emit.install_env(r, mode="container", harness="claude", config_dir="/c", cache_dir="", bin_dir="/cbin", home_shim="/cshim")
         assert host["HARNESSED_RECIPE_DIR"] == str(r.root)
         assert ctr["HARNESSED_RECIPE_DIR"] == f"{emit.CTR_RECIPE_DIR}/r"
 
@@ -220,21 +179,9 @@ class TestEnvContract:
         silently expands to empty in a build: the exact mode-asymmetry this epic removes. A script
         needing project context belongs in `setup.script`, whose phase has one."""
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n")
-        env = emit.install_env(
-            r,
-            mode="host",
-            harness="claude",
-            config_dir="/h",
-            cache_dir="",
-            bin_dir="/hbin",
-            home_shim="/hshim",
-        )
-        for absent in (
-            "PROJECT_DIR",
-            "MAIN_REPO_DIR",
-            "HOST_WORKSPACE_DIR",
-            "HARNESSED_PROJECT_DIR",
-        ):
+        env = emit.install_env(r, mode="host", harness="claude", config_dir="/h", cache_dir="", bin_dir="/hbin", home_shim="/hshim")
+        for absent in ("PROJECT_DIR", "MAIN_REPO_DIR", "HOST_WORKSPACE_DIR",
+                       "HARNESSED_PROJECT_DIR"):
             assert absent not in env
 
     def test_recipe_dir_agrees_with_the_setup_script_mount(self):
@@ -257,25 +204,16 @@ class TestContainerExecutor:
         calls: list[list[str]] = []
         patch_all(monkeypatch, "_run", lambda cmd, *a, **k: calls.append(cmd))
         monkeypatch.setattr(
-            launcher.paths,
-            "install_cache_dir",
+            launcher.paths, "install_cache_dir",
             lambda name, key: tmp_path / "cache" / name / key,
         )
         launcher._run_container_installs(
-            "podman",
-            "s",
-            "claude",
-            "img",
-            recipes,
-            "cfgvol",
-            "toolsvol",
+            "podman", "s", "claude", "img", recipes, "cfgvol", "toolsvol",
         )
         return calls
 
     def _install_argv(self, tmp_path, recipes, monkeypatch):
-        return [
-            c for c in self._argv(tmp_path, recipes, monkeypatch) if "install.sh" in " ".join(c)
-        ]
+        return [c for c in self._argv(tmp_path, recipes, monkeypatch) if "install.sh" in " ".join(c)]
 
     def test_bind_mounts_the_recipe_dir_and_runs_the_script(self, tmp_path, monkeypatch):
         """A bind mount replaces the build's COPY — there is no build context at runtime, and the
@@ -302,7 +240,9 @@ class TestContainerExecutor:
         assert "HARNESSED_MODE=container" in cmd
         prof = tmp_path / "prof"
         prof.mkdir(exist_ok=True)
-        dockerfile = emit.write_derived_dockerfile(prof, "s", "claude", [r]).read_text()
+        dockerfile = emit.write_derived_dockerfile(
+            prof, "s", "claude", [r]
+        ).read_text()
         assert "HARNESSED_MODE" not in dockerfile
         assert "HARNESSED_CONFIG_DIR" not in dockerfile
 
@@ -351,9 +291,9 @@ class TestContainerExecutor:
         cmd = self._install_argv(tmp_path, [r], monkeypatch)[0]
         ctr_leaf = f"{emit.CTR_INSTALL_CACHE}/r/v6.0.3"
         targets = [a.split(":")[1] for a in cmd if a.count(":") == 2 and a.endswith(":rw")]
-        assert any(t == str(PurePosixPath(ctr_leaf).parent) for t in targets), (
-            "the leaf's parent must be the mount point, so leaf and `<leaf>.partial` share it"
-        )
+        assert any(
+            t == str(PurePosixPath(ctr_leaf).parent) for t in targets
+        ), "the leaf's parent must be the mount point, so leaf and `<leaf>.partial` share it"
 
     def test_no_cache_declared_means_empty_cache_var_and_no_mount(self, tmp_path, monkeypatch):
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n")
@@ -378,9 +318,7 @@ class TestContainerExecutor:
         The mapping the pod uses is pinned to the image uid (bd harnessed-rv2.1), so the assertion
         is that this step MATCHES THE POD — which is what it always meant — rather than that it
         carries one particular spelling."""
-        r = _recipe(
-            tmp_path, install="install:\n  script: install.sh\n", extra='tools: ["npm:x@1"]\n'
-        )
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n", extra='tools: ["npm:x@1"]\n')
         for cmd in self._argv(tmp_path, [r], monkeypatch):
             assert paths.USERNS_ARG in cmd
 
@@ -400,10 +338,9 @@ class TestHostExecutor:
 
     def test_runs_the_same_file_the_build_runs(self, tmp_path, monkeypatch):
         r = _recipe(
-            tmp_path,
-            install="install:\n  script: install.sh\n",
+            tmp_path, install="install:\n  script: install.sh\n",
             script_body='set -eu\nmkdir -p "$HARNESSED_CONFIG_DIR/skills"\n'
-            'echo "$HARNESS/$HARNESSED_MODE" > "$HARNESSED_CONFIG_DIR/skills/marker"\n',
+                        'echo "$HARNESS/$HARNESSED_MODE" > "$HARNESSED_CONFIG_DIR/skills/marker"\n',
         )
         home = self._run(tmp_path, r, monkeypatch)
         assert (home / "skills" / "marker").read_text().strip() == "claude/host"
@@ -421,23 +358,19 @@ class TestHostExecutor:
         foreign.mkdir()
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(foreign))
         r = _recipe(
-            tmp_path,
-            install="install:\n  script: install.sh\n",
+            tmp_path, install="install:\n  script: install.sh\n",
             script_body='set -eu\nmkdir -p "$CLAUDE_CONFIG_DIR/skills"\n'
-            'echo landed > "$CLAUDE_CONFIG_DIR/skills/marker"\n',
+                        'echo landed > "$CLAUDE_CONFIG_DIR/skills/marker"\n',
         )
         home = self._run(tmp_path, r, monkeypatch)
-        assert (home / "skills" / "marker").exists(), (
+        assert (home / "skills" / "marker").exists(), \
             "install did not land in this stack's own home"
-        )
-        assert not (foreign / "skills").exists(), (
+        assert not (foreign / "skills").exists(), \
             "install escaped into the config dir inherited from the launching process"
-        )
 
     def test_recipe_dir_lets_a_script_cp_where_a_dockerfile_copied(self, tmp_path, monkeypatch):
         r = _recipe(
-            tmp_path,
-            install="install:\n  script: install.sh\n",
+            tmp_path, install="install:\n  script: install.sh\n",
             script_body='set -eu\ncp "$HARNESSED_RECIPE_DIR/payload.txt" "$HARNESSED_CONFIG_DIR/"\n',
         )
         (r.root / "payload.txt").write_text("shipped")
@@ -445,7 +378,8 @@ class TestHostExecutor:
         assert (home / "payload.txt").read_text() == "shipped"
 
     def test_a_failing_install_aborts_the_launch_loudly(self, tmp_path, monkeypatch):
-        r = _recipe(tmp_path, install="install:\n  script: install.sh\n", script_body="exit 3\n")
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n",
+                    script_body="exit 3\n")
         with pytest.raises(Exception) as exc:
             self._run(tmp_path, r, monkeypatch)
         assert "Exit" in type(exc.value).__name__
@@ -493,16 +427,15 @@ class TestOrderingAfterMaterialize:
         (prof / ".claude" / "skills").mkdir(parents=True)
         (prof / ".claude" / "skills" / "declarative").write_text("from the assembler")
         r = _recipe(
-            tmp_path,
-            install="install:\n  script: install.sh\n",
+            tmp_path, install="install:\n  script: install.sh\n",
             script_body='set -eu\nmkdir -p "$HARNESSED_CONFIG_DIR/skills"\n'
-            'touch "$HARNESSED_CONFIG_DIR/skills/from-install"\n',
+                        'touch "$HARNESSED_CONFIG_DIR/skills/from-install"\n',
         )
         patch_all(monkeypatch, "load_stack_with_recipes", lambda root, s: (None, [r]))
         launcher._materialize_host_home(prof, home)
         launcher._host_run_installs("s", tmp_path, harness="claude", home=home)
-        assert (home / "skills" / "from-install").exists()  # the install's own output
-        assert (home / "skills" / "declarative").exists()  # and it did not clobber the profile
+        assert (home / "skills" / "from-install").exists()   # the install's own output
+        assert (home / "skills" / "declarative").exists()    # and it did not clobber the profile
 
 
 class TestCache:
@@ -512,14 +445,14 @@ class TestCache:
     INSTALL = "install:\n  script: install.sh\n  cache: v6.0.3\n"
     # Cache MISS is "the dir does not exist". Populate it, then copy out of it — and count clones.
     BODY = (
-        "set -eu\n"
+        'set -eu\n'
         'if [ ! -d "$HARNESSED_INSTALL_CACHE" ]; then\n'
         '  mkdir -p "$HARNESSED_INSTALL_CACHE"\n'
         '  echo payload > "$HARNESSED_INSTALL_CACHE/content"\n'
         '  echo miss >> "$HARNESSED_CONFIG_DIR/log"\n'
-        "else\n"
+        'else\n'
         '  echo hit >> "$HARNESSED_CONFIG_DIR/log"\n'
-        "fi\n"
+        'fi\n'
         'cp "$HARNESSED_INSTALL_CACHE/content" "$HARNESSED_CONFIG_DIR/content"\n'
     )
 
@@ -555,21 +488,15 @@ class TestCache:
         self, tmp_path, monkeypatch
     ):
         monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
-        r = _recipe(
-            tmp_path,
-            install=self.INSTALL,
-            script_body='set -eu\ntest ! -d "$HARNESSED_INSTALL_CACHE"\n'
-            'test -d "$(dirname "$HARNESSED_INSTALL_CACHE")"\n',
-        )
+        r = _recipe(tmp_path, install=self.INSTALL,
+                    script_body='set -eu\ntest ! -d "$HARNESSED_INSTALL_CACHE"\n'
+                                'test -d "$(dirname "$HARNESSED_INSTALL_CACHE")"\n')
         patch_all(monkeypatch, "load_stack_with_recipes", lambda root, s: (None, [r]))
         launcher._host_run_installs("s", tmp_path, harness="claude", home=tmp_path / "home")
 
     def test_no_cache_declared_hands_the_script_an_empty_string(self, tmp_path, monkeypatch):
-        r = _recipe(
-            tmp_path,
-            install="install:\n  script: install.sh\n",
-            script_body='test -z "$HARNESSED_INSTALL_CACHE"\n',
-        )
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n",
+                    script_body='test -z "$HARNESSED_INSTALL_CACHE"\n')
         patch_all(monkeypatch, "load_stack_with_recipes", lambda root, s: (None, [r]))
         launcher._host_run_installs("s", tmp_path, harness="claude", home=tmp_path / "home")
 
@@ -581,49 +508,34 @@ class TestLint:
     was added to close."""
 
     def test_floating_ref_in_an_install_script_is_rejected(self, tmp_path):
-        r = _recipe(
-            tmp_path,
-            install="install:\n  script: install.sh\n",
-            script_body="git clone --branch main https://example.com/x.git /tmp/x\n",
-        )
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n",
+                    script_body="git clone --branch main https://example.com/x.git /tmp/x\n")
         with pytest.raises(PinValidationError, match="floating ref"):
             validate_install_script(r)
 
     def test_at_latest_in_an_install_script_is_rejected(self, tmp_path):
-        r = _recipe(
-            tmp_path,
-            install="install:\n  script: install.sh\n",
-            script_body="pnpm add -g some-tool@latest\n",
-        )
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n",
+                    script_body="pnpm add -g some-tool@latest\n")
         with pytest.raises(PinValidationError, match="floating ref"):
             validate_install_script(r)
 
     def test_raw_npm_in_an_install_script_is_rejected(self, tmp_path):
-        r = _recipe(
-            tmp_path,
-            install="install:\n  script: install.sh\n",
-            script_body="npm install -g some-tool@1.2.3\n",
-        )
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n",
+                    script_body="npm install -g some-tool@1.2.3\n")
         with pytest.raises(RecipeLintError, match="pnpm install"):
             validate_install_script(r)
 
     def test_raw_npx_in_an_install_script_is_rejected(self, tmp_path):
-        r = _recipe(
-            tmp_path,
-            install="install:\n  script: install.sh\n",
-            script_body="npx some-tool@1.2.3\n",
-        )
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n",
+                    script_body="npx some-tool@1.2.3\n")
         with pytest.raises(RecipeLintError, match="pnpm dlx"):
             validate_install_script(r)
 
     def test_comments_do_not_self_trigger(self, tmp_path):
         """Same carve-out `validate_pin` makes: a comment explaining the :latest convention must not
         trip the gate that forbids it."""
-        r = _recipe(
-            tmp_path,
-            install="install:\n  script: install.sh\n",
-            script_body="# never use --branch main or @latest here\ngit clone -b v1.0.0 u d\n",
-        )
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n",
+                    script_body="# never use --branch main or @latest here\ngit clone -b v1.0.0 u d\n")
         validate_install_script(r)
 
     def test_missing_script_file_is_rejected(self, tmp_path):
@@ -634,17 +546,13 @@ class TestLint:
             validate_install_script(load_recipe(d, strict=True))
 
     def test_pinned_ref_passes(self, tmp_path):
-        r = _recipe(
-            tmp_path,
-            install="install:\n  script: install.sh\n  cache: v6.0.3\n",
-            script_body='git clone --depth 1 --branch "v6.0.3" https://x/y.git /tmp/y\n',
-        )
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n  cache: v6.0.3\n",
+                    script_body='git clone --depth 1 --branch "v6.0.3" https://x/y.git /tmp/y\n')
         validate_install_script(r)
 
     def test_assemble_wires_the_gate(self):
         """A lint nobody calls is not a lint."""
         from harnessed import assemble as _asm
-
         assert "validate_install_script(recipe)" in inspect.getsource(_asm.assemble)
 
 
@@ -658,10 +566,8 @@ class TestSystemLevelHostPolicy:
     the recipe name plus the author's own reason string and continues. harnessed never sudos.
     """
 
-    INSTALL = (
-        "install:\n  script: install.sh\n"
-        "  system: 'apt-get install cmake pkg-config (needs root)'\n"
-    )
+    INSTALL = ("install:\n  script: install.sh\n"
+               "  system: 'apt-get install cmake pkg-config (needs root)'\n")
 
     def _capture(self, tmp_path, monkeypatch, capsys, body="true\n"):
         r = _recipe(tmp_path, "sysrecipe", install=self.INSTALL, script_body=body)
@@ -674,13 +580,12 @@ class TestSystemLevelHostPolicy:
         # width, so a long phrase can arrive with a newline through the middle of it.
         err = self._capture(tmp_path, monkeypatch, capsys)
         assert "WARNING" in err and "SKIPPED" in err
-        assert "sysrecipe" in err  # the recipe is NAMED
-        assert "cmake" in err  # the author's own reason string is reproduced
+        assert "sysrecipe" in err    # the recipe is NAMED
+        assert "cmake" in err        # the author's own reason string is reproduced
 
     def test_launch_continues_and_the_portable_half_still_runs(self, tmp_path, monkeypatch, capsys):
-        self._capture(
-            tmp_path, monkeypatch, capsys, body='touch "$HARNESSED_CONFIG_DIR/portable-part-ran"\n'
-        )
+        self._capture(tmp_path, monkeypatch, capsys,
+                      body='touch "$HARNESSED_CONFIG_DIR/portable-part-ran"\n')
         assert (tmp_path / "home" / "portable-part-ran").exists()
 
     def test_no_warning_when_nothing_needs_root(self, tmp_path, monkeypatch, capsys):
@@ -708,21 +613,12 @@ class TestPrecedence:
         """Since bd harnessed-8px.21.4 the container executor merges `{**recipe_env, **contract}`
         and passes the result as `-e`, so this can assert the VALUE rather than the ordering of two
         Dockerfile lines — a stricter check than the emitted-text version it replaces."""
-        r = _recipe(
-            tmp_path,
-            install="install:\n  script: install.sh\n",
-            env='env:\n  HARNESSED_MODE: "recipe-tried-to-win"\n',
-        )
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n",
+                    env='env:\n  HARNESSED_MODE: "recipe-tried-to-win"\n')
         calls: list[list[str]] = []
         patch_all(monkeypatch, "_run", lambda cmd, *a, **k: calls.append(cmd))
         launcher._run_container_installs(
-            "podman",
-            "s",
-            "claude",
-            "img",
-            [r],
-            "cfgvol",
-            "toolsvol",
+            "podman", "s", "claude", "img", [r], "cfgvol", "toolsvol",
         )
         cmd = calls[0]
         assert "HARNESSED_MODE=container" in cmd
@@ -735,12 +631,9 @@ class TestPrecedence:
         )
 
     def test_host_contract_actually_wins_over_recipe_env(self, tmp_path, monkeypatch):
-        r = _recipe(
-            tmp_path,
-            install="install:\n  script: install.sh\n",
-            env='env:\n  HARNESSED_MODE: "recipe-tried-to-win"\n',
-            script_body='set -eu\necho "$HARNESSED_MODE" > "$HARNESSED_CONFIG_DIR/mode"\n',
-        )
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n",
+                    env='env:\n  HARNESSED_MODE: "recipe-tried-to-win"\n',
+                    script_body='set -eu\necho "$HARNESSED_MODE" > "$HARNESSED_CONFIG_DIR/mode"\n')
         patch_all(monkeypatch, "load_stack_with_recipes", lambda root, s: (None, [r]))
         home = tmp_path / "home"
         launcher._host_run_installs("s", tmp_path, harness="claude", home=home)
@@ -748,12 +641,9 @@ class TestPrecedence:
 
     def test_recipe_env_still_beats_the_inherited_environment(self, tmp_path, monkeypatch):
         monkeypatch.setenv("RECIPE_DECLARED", "inherited-wrong")
-        r = _recipe(
-            tmp_path,
-            install="install:\n  script: install.sh\n",
-            env='env:\n  RECIPE_DECLARED: "from-the-recipe"\n',
-            script_body='set -eu\necho "$RECIPE_DECLARED" > "$HARNESSED_CONFIG_DIR/v"\n',
-        )
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n",
+                    env='env:\n  RECIPE_DECLARED: "from-the-recipe"\n',
+                    script_body='set -eu\necho "$RECIPE_DECLARED" > "$HARNESSED_CONFIG_DIR/v"\n')
         patch_all(monkeypatch, "load_stack_with_recipes", lambda root, s: (None, [r]))
         home = tmp_path / "home"
         launcher._host_run_installs("s", tmp_path, harness="claude", home=home)
@@ -790,7 +680,9 @@ class TestSuperpowersMigrated:
         # comment explaining what was removed may name `SUPERPOWERS_REF` without recreating it. A
         # VALUE is checked against the raw file, comments included, because a comment carrying the
         # version drifts exactly like an assignment does (learned the hard way in #352).
-        code = "\n".join(ln for ln in raw.splitlines() if not ln.lstrip().startswith("#"))
+        code = "\n".join(
+            ln for ln in raw.splitlines() if not ln.lstrip().startswith("#")
+        )
         assert "SUPERPOWERS_REF=" not in code
         for key, ref in r.install.refs.items():
             assert ref.ref not in raw and ref.repo not in raw
@@ -823,6 +715,8 @@ class TestSuperpowersMigrated:
             f"recipe Dockerfiles referencing ~/.claude: {offenders}. That content is invisible to a "
             "host launch and hidden by the bind-mount in a container — deliver it from install.script."
         )
+
+
 
 
 class TestGstackMigrated:
@@ -893,7 +787,8 @@ class TestGstackMigrated:
         # The non-vacuous half: bump the ref and the key must move. A derivation that ignored the
         # ref would return the same digest here and leave an upgrade reading stale cached content.
         bumped = {
-            k: InstallRef(repo=v.repo, ref="0" * 40, hold=v.hold) for k, v in r.install.refs.items()
+            k: InstallRef(repo=v.repo, ref="0" * 40, hold=v.hold)
+            for k, v in r.install.refs.items()
         }
         assert derived_cache_key(bumped) != r.install.cache
 
@@ -945,23 +840,14 @@ class TestGstackMigrated:
             "PATH": os.environ["PATH"],
             "HOME": str(tmp_path),
             "HARNESSED_CONFIG_DIR": str(tmp_path / "config"),
-            **emit.install_env(
-                r,
-                harness="claude",
-                mode="host",
-                config_dir=str(tmp_path / "config"),
-                cache_dir="",
-                bin_dir=str(tmp_path / "bin"),
-                home_shim=str(tmp_path / "shim"),
-            ),
+            **emit.install_env(r, harness="claude", mode="host",
+                               config_dir=str(tmp_path / "config"),
+                               cache_dir="", bin_dir=str(tmp_path / "bin"),
+                               home_shim=str(tmp_path / "shim")),
         }
         env[missing] = ""
         proc = subprocess.run(
-            ["bash", str(script)],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=60,
+            ["bash", str(script)], env=env, capture_output=True, text=True, timeout=60,
         )
         assert proc.returncode != 0
         assert missing in proc.stderr
@@ -985,10 +871,7 @@ class TestGstackMigrated:
         script = r.root / r.install.script
         literals = update._opaque_pins_from_text(
             script.read_text(encoding="utf-8"),
-            recipe="gstack",
-            path=script,
-            note="",
-            hold=None,
+            recipe="gstack", path=script, note="", hold=None,
         )
         assert [p.spec for p in literals] == []
 
@@ -1031,7 +914,7 @@ class TestGstackMigrated:
 
         report = update.build_report(
             [CATALOG / "recipes" / "gstack"],
-            resolve=lambda _b, _n: [],  # 0 releases, 0 tags — the measured upstream state
+            resolve=lambda _b, _n: [],   # 0 releases, 0 tags — the measured upstream state
             minimum_release_age_minutes=0,
         )
         assert [f.pin.name for f in report.unresolved] == []
@@ -1120,7 +1003,9 @@ class TestMikesUniversalSetupMigrated:
                 f"{key} is Class C — a POLICY hold, and calling it structural would freeze "
                 "something that is resolvable in mechanism"
             )
-            assert self.D8_REASON in reason, f"{key}: D8's ruling is to be QUOTED, not paraphrased"
+            assert self.D8_REASON in reason, (
+                f"{key}: D8's ruling is to be QUOTED, not paraphrased"
+            )
 
     def test_the_mashed_cache_key_is_gone_and_the_key_is_derived(self):
         r = self._recipe()
@@ -1172,23 +1057,15 @@ class TestMikesUniversalSetupMigrated:
             "HARNESSED_CONFIG_DIR": str(tmp_path / "config"),
             # Built from the manifest, never typed in — a literal copy of a pin here would be the
             # same drift defect this unit deletes, relocated into the suite.
-            **emit.install_env(
-                r,
-                harness="claude",
-                mode="host",
-                config_dir=str(tmp_path / "config"),
-                cache_dir="",
-                bin_dir=str(tmp_path / "bin"),
-                home_shim=str(tmp_path / "shim"),
-            ),
+            **emit.install_env(r, harness="claude", mode="host",
+                               config_dir=str(tmp_path / "config"),
+                               cache_dir="", bin_dir=str(tmp_path / "bin"),
+                               home_shim=str(tmp_path / "shim")),
         }
         env[missing] = ""
         proc = subprocess.run(
             ["bash", str(r.root / r.install.script)],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=60,
+            env=env, capture_output=True, text=True, timeout=60,
         )
         assert proc.returncode != 0
         assert missing in proc.stderr
@@ -1204,10 +1081,7 @@ class TestMikesUniversalSetupMigrated:
         script = r.root / r.install.script
         literals = update._opaque_pins_from_text(
             script.read_text(encoding="utf-8"),
-            recipe="mikes-universal-setup",
-            path=script,
-            note="",
-            hold=None,
+            recipe="mikes-universal-setup", path=script, note="", hold=None,
         )
         assert [p.spec for p in literals] == []
 
@@ -1225,7 +1099,6 @@ class TestMikesUniversalSetupMigrated:
         EVIDENCE rather than pinned here as if it were intended: ordering a SHA against a tag needs
         GitHub's compare endpoint, which D8 named as a follow-on, not this unit.
         """
-
         def _resolve(_backend, name):
             if name == "oakoss/agent-skills":
                 return []
@@ -1233,8 +1106,7 @@ class TestMikesUniversalSetupMigrated:
 
         report = update.build_report(
             [CATALOG / "recipes" / "mikes-universal-setup"],
-            resolve=_resolve,
-            minimum_release_age_minutes=0,
+            resolve=_resolve, minimum_release_age_minutes=0,
         )
         assert [f.pin.name for f in report.unresolved] == []
         assert [f.pin.name for f in report.stale] == [], (
@@ -1280,14 +1152,11 @@ class TestTheArchiveGateNowBitesOnANamedRef:
     resolved against `install.refs:` and fails closed when it cannot be shown immutable.
     """
 
-    ARCHIVE = (
-        'curl -fsSL "https://github.com/${{HARNESSED_REPO_X}}/archive/{ref}.tar.gz" -o a.tgz\n'
-    )
+    ARCHIVE = 'curl -fsSL "https://github.com/${{HARNESSED_REPO_X}}/archive/{ref}.tar.gz" -o a.tgz\n'
 
     def _recipe_with(self, tmp_path, name, ref_expr, declared: str):
         return _recipe(
-            tmp_path,
-            name,
+            tmp_path, name,
             install=f"install:\n  script: install.sh\n{declared}",
             script_body=self.ARCHIVE.format(ref=ref_expr),
         )
@@ -1310,9 +1179,7 @@ class TestTheArchiveGateNowBitesOnANamedRef:
     def test_a_named_ref_declared_as_a_commit_passes(self, tmp_path):
         sha = "deadbeef" * 5
         r = self._recipe_with(
-            tmp_path,
-            "declared",
-            "${HARNESSED_REF_X}",
+            tmp_path, "declared", "${HARNESSED_REF_X}",
             f"  refs:\n    x:\n      repo: o/r\n      ref: {sha}\n",
         )
         validate_install_script(r)
@@ -1325,10 +1192,12 @@ class TestTheArchiveGateNowBitesOnANamedRef:
         """
         sha = "deadbeef" * 5
         r = _recipe(
-            tmp_path,
-            "shadowed",
+            tmp_path, "shadowed",
             install=f"install:\n  script: install.sh\n  refs:\n    x:\n      repo: o/r\n      ref: {sha}\n",
-            script_body=("HARNESSED_REF_X=main\n" + self.ARCHIVE.format(ref="${HARNESSED_REF_X}")),
+            script_body=(
+                'HARNESSED_REF_X=main\n'
+                + self.ARCHIVE.format(ref="${HARNESSED_REF_X}")
+            ),
         )
         with pytest.raises(PinValidationError, match="main"):
             validate_install_script(r)
@@ -1371,10 +1240,10 @@ class TestPhase3ClosesAC2AcrossTheCatalog:
             )
 
     def test_every_held_ref_states_a_class(self):
-        """ "Held" alone is not a stated reason — AC-2 says so explicitly."""
+        """"Held" alone is not a stated reason — AC-2 says so explicitly."""
         for name, key, ref in self._all_refs():
             if ref.hold is None:
-                continue  # resolvable, which AC-2 accepts as the other outcome
+                continue   # resolvable, which AC-2 accepts as the other outcome
             assert "structural" in ref.hold.lower() or "policy" in ref.hold.lower(), (
                 f"{name}/{key} is held without naming its class: {ref.hold!r}"
             )
@@ -1397,7 +1266,6 @@ class TestPhase3ClosesAC2AcrossTheCatalog:
         entries — otherwise this also sweeps every `tools:` pin, which this fixture cannot answer
         for either.
         """
-
         def _resolve(_backend, name):
             if name in self.NO_RELEASES:
                 return []
@@ -1419,11 +1287,9 @@ class TestPhase3ClosesAC2AcrossTheCatalog:
         """
         report = update.build_report(
             sorted(p.parent for p in (CATALOG / "recipes").glob("*/recipe.yaml")),
-            resolve=lambda _b, name: (
-                []
-                if name in self.NO_RELEASES
-                else [update.Release(version="v9.9.9", published=None)]
-            ),
+            resolve=lambda _b, name: [] if name in self.NO_RELEASES else [
+                update.Release(version="v9.9.9", published=None)
+            ],
             minimum_release_age_minutes=0,
         )
         held = {f.pin.name for f in report.held}
@@ -1492,18 +1358,17 @@ class TestRawDownloadsAreIntegrityAnchored:
         # the comment-vs-code distinction for its NEGATIVE assertions and not for its positive ones.
         body = _code_only(script_path.read_text(encoding="utf-8"))
         consumed = [r for k, r in refs.items() if f"HARNESSED_REF_{k.upper()}" in body]
-        return bool(consumed) and all(re.fullmatch(r"[0-9a-f]{40}", r.ref) for r in consumed)
+        return bool(consumed) and all(
+            re.fullmatch(r"[0-9a-f]{40}", r.ref) for r in consumed
+        )
 
     def test_a_manifest_ref_that_is_a_TAG_is_not_an_anchor(self, tmp_path):
         """The negative control. A pin is not integrity — that is this class's whole thesis — so
         the manifest route must accept a COMMIT, never merely a version."""
         tagged = _recipe(
-            tmp_path,
-            "tagged",
-            install=(
-                "install:\n  script: install.sh\n  refs:\n    x:\n      repo: o/r\n"
-                "      ref: v1.2.3\n"
-            ),
+            tmp_path, "tagged",
+            install=("install:\n  script: install.sh\n  refs:\n    x:\n      repo: o/r\n"
+                     "      ref: v1.2.3\n"),
             script_body='curl -fsSL "https://github.com/$X/archive/${HARNESSED_REF_X}.tar.gz" -o a.tgz\n',
         )
         assert not self._anchored_by_a_manifest_commit_ref(tagged.root / "install.sh")
@@ -1518,12 +1383,9 @@ class TestRawDownloadsAreIntegrityAnchored:
         """
         sha = "deadbeef" * 5
         commented = _recipe(
-            tmp_path,
-            "commented",
-            install=(
-                "install:\n  script: install.sh\n  refs:\n    x:\n      repo: o/r\n"
-                f"      ref: {sha}\n"
-            ),
+            tmp_path, "commented",
+            install=("install:\n  script: install.sh\n  refs:\n    x:\n      repo: o/r\n"
+                     f"      ref: {sha}\n"),
             script_body=(
                 "# provenance: this content comes from HARNESSED_REF_X\n"
                 'curl -fsSL "https://github.com/o/r/archive/main.tar.gz" -o a.tgz\n'
@@ -1541,12 +1403,9 @@ class TestRawDownloadsAreIntegrityAnchored:
         """
         sha = "deadbeef" * 5
         inline = _recipe(
-            tmp_path,
-            "inline",
-            install=(
-                "install:\n  script: install.sh\n  refs:\n    x:\n      repo: o/r\n"
-                f"      ref: {sha}\n"
-            ),
+            tmp_path, "inline",
+            install=("install:\n  script: install.sh\n  refs:\n    x:\n      repo: o/r\n"
+                     f"      ref: {sha}\n"),
             script_body=(
                 "true  # provenance: content comes from HARNESSED_REF_X\n"
                 'curl -fsSL "https://github.com/o/r/archive/main.tar.gz" -o a.tgz\n'
@@ -1568,12 +1427,9 @@ class TestRawDownloadsAreIntegrityAnchored:
         """
         sha = "deadbeef" * 5
         expanded = _recipe(
-            tmp_path,
-            "expanded",
-            install=(
-                "install:\n  script: install.sh\n  refs:\n    x:\n      repo: o/r\n"
-                f"      ref: {sha}\n"
-            ),
+            tmp_path, "expanded",
+            install=("install:\n  script: install.sh\n  refs:\n    x:\n      repo: o/r\n"
+                     f"      ref: {sha}\n"),
             script_body=(
                 'root="${HARNESSED_REPO_X##*/}-${HARNESSED_REF_X}"\n'
                 'curl -fsSL "https://github.com/o/r/archive/$root.tar.gz" -o a.tgz\n'
@@ -1588,12 +1444,9 @@ class TestRawDownloadsAreIntegrityAnchored:
         # subject — using a realistic SHA keeps this control aimed at the anchor rule.
         sha = "deadbeef" * 5
         pinned = _recipe(
-            tmp_path,
-            "pinned",
-            install=(
-                "install:\n  script: install.sh\n  refs:\n    x:\n      repo: o/r\n"
-                f"      ref: {sha}\n"
-            ),
+            tmp_path, "pinned",
+            install=("install:\n  script: install.sh\n  refs:\n    x:\n      repo: o/r\n"
+                     f"      ref: {sha}\n"),
             script_body='curl -fsSL "https://github.com/$X/archive/${HARNESSED_REF_X}.tar.gz" -o a.tgz\n',
         )
         assert self._anchored_by_a_manifest_commit_ref(pinned.root / "install.sh")
@@ -1631,13 +1484,8 @@ class TestContextModeFindsItsSkillsInPnpmsContentAddressedLayout:
     """
 
     SKILLS: ClassVar[tuple[str, ...]] = (
-        "context-mode",
-        "ctx-doctor",
-        "ctx-index",
-        "ctx-insight",
-        "ctx-purge",
-        "ctx-search",
-        "ctx-stats",
+        "context-mode", "ctx-doctor", "ctx-index", "ctx-insight",
+        "ctx-purge", "ctx-search", "ctx-stats",
     )
 
     def _package_on_disk(self, tmp_path: Path) -> Path:
@@ -1674,9 +1522,7 @@ class TestContextModeFindsItsSkillsInPnpmsContentAddressedLayout:
                 "HARNESSED_CONFIG_DIR": str(tmp_path / "config"),
                 "HARNESS": "claude",
             },
-            capture_output=True,
-            text=True,
-            timeout=60,
+            capture_output=True, text=True, timeout=60,
         )
 
     def test_the_skills_are_delivered_from_a_two_level_pnpm_tree(self, tmp_path):
@@ -1693,3 +1539,4 @@ class TestContextModeFindsItsSkillsInPnpmsContentAddressedLayout:
         body = (tmp_path / "config" / "skills" / "ctx-search" / "SKILL.md").read_text()
         assert "/ctx-x" in body and "/context-mode:ctx-" not in body
         assert "ctx_x" in body and "mcp__context-mode__ctx_" not in body
+

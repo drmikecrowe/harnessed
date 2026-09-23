@@ -43,9 +43,7 @@ _KINDS = {
 
 # The canonical `$schema` ref. Pinned to `main` deliberately: an editor hint must describe the parser
 # you are authoring against, and the "pin every download" rule covers image-build inputs, not this.
-_SCHEMA_URL = (
-    "https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/{kind}.schema.json"
-)
+_SCHEMA_URL = "https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/{kind}.schema.json"
 
 
 def _manifests(kind: str):

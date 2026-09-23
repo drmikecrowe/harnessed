@@ -13,7 +13,6 @@ evidence, so the score now has one.
 
 Restores every file it touches and verifies the tree came back clean with `git diff`.
 """
-
 from __future__ import annotations
 
 import subprocess
@@ -30,56 +29,33 @@ CONTAINER_CALL = "    _warn_capability_gaps(ContainerBackend.name, launch_recipe
 
 # (label, file, find, replace)
 MUTANTS = [
-    (
-        "host call site disabled by a dead-code guard",
-        LAUNCHER,
-        HOST_CALL,
-        "    if False:\n    " + HOST_CALL,
-    ),
-    (
-        "container call site disabled by a dead-code guard",
-        LAUNCHER,
-        CONTAINER_CALL,
-        "    if False:\n    " + CONTAINER_CALL,
-    ),
+    ("host call site disabled by a dead-code guard", LAUNCHER, HOST_CALL,
+     "    if False:\n    " + HOST_CALL),
+    ("container call site disabled by a dead-code guard", LAUNCHER, CONTAINER_CALL,
+     "    if False:\n    " + CONTAINER_CALL),
     ("host call site deleted", LAUNCHER, HOST_CALL, "    pass"),
     ("container call site deleted", LAUNCHER, CONTAINER_CALL, "    pass"),
-    (
-        "host egress cell flipped to SUPPORTED (feature off)",
-        CAPMATRIX,
-        '        "egress": DEGRADED,',
-        '        "egress": SUPPORTED,',
-    ),
-    (
-        "gap detection inverted",
-        CAPMATRIX,
-        "            if column.get(primitive) == DEGRADED:",
-        "            if column.get(primitive) == SUPPORTED:",
-    ),
-    (
-        "only the first gap per recipe reported",
-        CAPMATRIX,
-        "        for primitive in sorted(declared_primitives(recipe)):",
-        "        for primitive in sorted(declared_primitives(recipe))[:1]:",
-    ),
-    (
-        "mcp service refs no longer count as declaring services",
-        CAPMATRIX,
-        '    if recipe.services or any(getattr(s, "service", None) for s in recipe.servers):',
-        "    if recipe.services:",
-    ),
-    (
-        "unknown backend returns [] instead of raising",
-        CAPMATRIX,
-        "        raise KeyError(",
-        "        return []  # noqa\n    if False:\n        raise KeyError(",
-    ),
+    ("host egress cell flipped to SUPPORTED (feature off)", CAPMATRIX,
+     '        "egress": DEGRADED,', '        "egress": SUPPORTED,'),
+    ("gap detection inverted", CAPMATRIX,
+     "            if column.get(primitive) == DEGRADED:",
+     "            if column.get(primitive) == SUPPORTED:"),
+    ("only the first gap per recipe reported", CAPMATRIX,
+     "        for primitive in sorted(declared_primitives(recipe)):",
+     "        for primitive in sorted(declared_primitives(recipe))[:1]:"),
+    ("mcp service refs no longer count as declaring services", CAPMATRIX,
+     '    if recipe.services or any(getattr(s, "service", None) for s in recipe.servers):',
+     "    if recipe.services:"),
+    ("unknown backend returns [] instead of raising", CAPMATRIX,
+     "        raise KeyError(", "        return []  # noqa\n    if False:\n        raise KeyError("),
 ]
 
 
 def run_suite() -> bool:
     """True when the suite passes."""
-    proc = subprocess.run(["tools/run-tests.sh", TESTS], cwd=ROOT, capture_output=True, text=True)
+    proc = subprocess.run(
+        ["tools/run-tests.sh", TESTS], cwd=ROOT, capture_output=True, text=True
+    )
     return proc.returncode == 0
 
 

@@ -120,15 +120,9 @@ def check_sidebar(docs: Path) -> list[str]:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    ap.add_argument(
-        "--check", action="store_true", help="report only; exit 1 if changes are needed"
-    )
-    ap.add_argument(
-        "--docs", type=Path, default=None, help="path to the wiki clone (default: <repo>/docs)"
-    )
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--check", action="store_true", help="report only; exit 1 if changes are needed")
+    ap.add_argument("--docs", type=Path, default=None, help="path to the wiki clone (default: <repo>/docs)")
     args = ap.parse_args()
 
     docs = (args.docs or Path(__file__).resolve().parent.parent / "docs").resolve()
@@ -138,10 +132,7 @@ def main() -> int:
     repo = docs.parent
     if not docs.is_dir():
         print(f"error: no docs/ wiki clone at {docs}", file=sys.stderr)
-        print(
-            "hint: it is gitignored and exists only in the main checkout -- see CLAUDE.md",
-            file=sys.stderr,
-        )
+        print("hint: it is gitignored and exists only in the main checkout -- see CLAUDE.md", file=sys.stderr)
         return 2
 
     total = 0

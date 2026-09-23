@@ -37,7 +37,7 @@ def extract_extra_tools_filter(dockerfile_text: str) -> str:
     what the image runs. Raises if it cannot find the step: a silent fallback would hand every test
     below a pipeline nobody verified, which is exactly the failure this extraction exists to stop.
     """
-    joined = dockerfile_text.replace("\\\n", " ")  # undo Dockerfile line continuations
+    joined = dockerfile_text.replace("\\\n", " ")          # undo Dockerfile line continuations
     for line in joined.splitlines():
         # Not a temp file this test creates — it is the literal path the Dockerfile COPYs to, and
         # matching on it is the whole point of reading the step out of the real file.
@@ -80,9 +80,9 @@ class TestParseExtraTools:
             parse_extra_tools("dua\n")
         msg = str(exc.value)
         assert "version" in msg.lower()
-        assert "dua@2.41.1" in msg  # a concrete example of the accepted shape
-        assert "@latest" in msg  # names what an unpinned entry actually becomes
-        assert "harnessed-2o9" in msg  # where to read the history
+        assert "dua@2.41.1" in msg          # a concrete example of the accepted shape
+        assert "@latest" in msg             # names what an unpinned entry actually becomes
+        assert "harnessed-2o9" in msg       # where to read the history
 
     def test_explicit_latest_is_rejected(self):
         with pytest.raises(PinValidationError):
@@ -104,9 +104,7 @@ class TestParseExtraTools:
 
     def test_a_backend_prefixed_pin_is_accepted(self):
         """mise accepts backend-prefixed specs; pinning is the rule, not the spelling."""
-        assert parse_extra_tools("npm:markdownlint-cli2@0.23.2\n") == [
-            "npm:markdownlint-cli2@0.23.2"
-        ]
+        assert parse_extra_tools("npm:markdownlint-cli2@0.23.2\n") == ["npm:markdownlint-cli2@0.23.2"]
 
     def test_one_bad_entry_among_good_ones_still_raises(self):
         with pytest.raises(PinValidationError) as exc:
@@ -130,10 +128,8 @@ class TestParseExtraToolsProperties:
     # honest fix; widening the RULE to admit unicode would give back the separators (U+2028/U+2029)
     # the rule exists to exclude.
     _names = st.text(
-        alphabet=st.characters(min_codepoint=97, max_codepoint=122)
-        | st.sampled_from("0123456789-_"),
-        min_size=1,
-        max_size=12,
+        alphabet=st.characters(min_codepoint=97, max_codepoint=122) | st.sampled_from("0123456789-_"),
+        min_size=1, max_size=12,
     ).filter(lambda s: not s.startswith("#"))
 
     @_MUTMUT_SAFE
@@ -172,26 +168,19 @@ class TestGuardAgreesWithTheDockerfile:
         reshaped, this must be re-derived deliberately rather than drifting.
         """
         import subprocess
-
         filt = extract_extra_tools_filter(DOCKERFILE.read_text(encoding="utf-8"))
         out = subprocess.run(
-            ["/bin/bash", "-c", filt],
-            input=raw,
-            capture_output=True,
+            ["/bin/bash", "-c", filt], input=raw, capture_output=True,
         ).stdout
         return [line for line in out.split(b"\n") if line]
 
-    @pytest.mark.parametrize(
-        "raw",
-        [
-            b"bat@0.26.1\ndua@2.41.1\n",  # plain LF
-            b"bat@0.26.1\r\ndua@2.41.1\r\n",  # CRLF
-            "\ufeffbat@0.26.1\ndua@2.41.1\n".encode(),  # UTF-8 BOM
-            b"bat@0.26.1   # cat\r\ndua@2.41.1  # du\r\n",  # CRLF with trailing comments
-            b"\tbat@0.26.1\ndua@2.41.1",  # leading tab, no trailing newline
-        ],
-        ids=["lf", "crlf", "bom", "crlf-comments", "tab-no-eol"],
-    )
+    @pytest.mark.parametrize("raw", [
+        b"bat@0.26.1\ndua@2.41.1\n",                    # plain LF
+        b"bat@0.26.1\r\ndua@2.41.1\r\n",                # CRLF
+        "\ufeffbat@0.26.1\ndua@2.41.1\n".encode(),      # UTF-8 BOM
+        b"bat@0.26.1   # cat\r\ndua@2.41.1  # du\r\n",  # CRLF with trailing comments
+        b"\tbat@0.26.1\ndua@2.41.1",                    # leading tab, no trailing newline
+    ], ids=["lf", "crlf", "bom", "crlf-comments", "tab-no-eol"])
     def test_the_parsed_specs_match_what_the_build_pipeline_extracts(self, raw):
         """Whatever the guard blesses must be exactly what mise is handed."""
         parsed = parse_extra_tools(raw.decode("utf-8"))
@@ -206,14 +195,7 @@ class TestGuardAgreesWithTheDockerfile:
     # Every character `str.splitlines()` breaks on that awk's record separator does not. Enumerated
     # rather than sampled: this is the whole class, and the class already produced three defects.
     PYTHON_ONLY_BREAKS: ClassVar[tuple[str, ...]] = (
-        "\x0b",
-        "\x0c",
-        "\x1c",
-        "\x1d",
-        "\x1e",
-        "\x85",
-        "\u2028",
-        "\u2029",
+        "\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029",
     )
     _SEP_IDS: ClassVar[list[str]] = [f"U+{ord(c):04X}" for c in PYTHON_ONLY_BREAKS]
 
@@ -369,9 +351,8 @@ class TestStagedBuildContextRejectsUnpinned:
                 pass
         assert "delete it and rebuild" in str(exc.value)
 
-    def test_a_bom_and_non_ascii_comment_stage_as_utf8_whatever_the_locale(
-        self, monkeypatch, tmp_path
-    ):
+    def test_a_bom_and_non_ascii_comment_stage_as_utf8_whatever_the_locale(self, monkeypatch,
+                                                                          tmp_path):
         """Read and write are pinned to UTF-8, so the locale cannot change what the build receives.
 
         Under a non-UTF-8 locale the default decode turns a BOM into 'ï»¿', which survives the
@@ -466,7 +447,6 @@ class TestExtraToolsInReport:
     def _releases(self, *versions):
         from harnessed.update import Release
         from datetime import datetime, timezone
-
         return [
             Release(version=v, published=datetime(2020, 1, 1, tzinfo=timezone.utc))
             for v in versions
@@ -476,9 +456,7 @@ class TestExtraToolsInReport:
         f = tmp_path / "extra-tools.default.txt"
         f.write_text("dua@2.41.1\n")
         report = pinupdate.build_report(
-            [],
-            extra_tools=f,
-            resolve=lambda b, n: self._releases("2.42.0"),
+            [], extra_tools=f, resolve=lambda b, n: self._releases("2.42.0"),
         )
         assert [x.pin.name for x in report.stale] == ["dua"]
 
@@ -486,9 +464,7 @@ class TestExtraToolsInReport:
         f = tmp_path / "extra-tools.default.txt"
         f.write_text("dua@2.41.1\n")
         report = pinupdate.build_report(
-            [],
-            extra_tools=f,
-            resolve=lambda b, n: self._releases("2.42.0"),
+            [], extra_tools=f, resolve=lambda b, n: self._releases("2.42.0"),
         )
         assert report.check_exit_code() != 0
 
@@ -496,9 +472,7 @@ class TestExtraToolsInReport:
         f = tmp_path / "extra-tools.default.txt"
         f.write_text("dua@2.41.1\n")
         report = pinupdate.build_report(
-            [],
-            extra_tools=f,
-            resolve=lambda b, n: self._releases("2.41.1"),
+            [], extra_tools=f, resolve=lambda b, n: self._releases("2.41.1"),
         )
         assert report.stale == []
 
@@ -518,7 +492,6 @@ class TestExtraToolsRewrite:
         wrong-neighbour bug these tests exist to catch.
         """
         from harnessed.update import Finding
-
         pin = next(p for p in pinupdate.discover_extra_tools_pins(path) if p.name == name)
         return Finding(pin=pin, latest="2.42.0")
 
@@ -560,7 +533,9 @@ class TestExtraToolsRewrite:
         f = tmp_path / "extra-tools.default.txt"
         f.write_text("dua@2.41.1   # pinned at dua@2.41.1 after bd harnessed-2o9\n")
         pinupdate.apply([self._stale(f)])
-        assert f.read_text() == ("dua@2.42.0   # pinned at dua@2.41.1 after bd harnessed-2o9\n")
+        assert f.read_text() == (
+            "dua@2.42.0   # pinned at dua@2.41.1 after bd harnessed-2o9\n"
+        )
 
     @pytest.mark.parametrize("suffix", [".yaml", ".yml"])
     def test_a_yaml_manifest_still_goes_through_the_yaml_rewriter(self, tmp_path, suffix):
@@ -574,14 +549,8 @@ class TestExtraToolsRewrite:
 
         manifest = tmp_path / f"recipe{suffix}"
         manifest.write_text("name: demo\ntools:\n  - dua@2.41.1   # du replacement\n")
-        pin = Pin(
-            recipe="demo",
-            file=manifest,
-            spec="dua@2.41.1",
-            name="dua",
-            current="2.41.1",
-            backend="mise",
-        )
+        pin = Pin(recipe="demo", file=manifest, spec="dua@2.41.1", name="dua",
+                  current="2.41.1", backend="mise")
         assert pinupdate.apply([Finding(pin=pin, latest="2.42.0")])
         written = manifest.read_text()
         assert "dua@2.42.0" in written
@@ -598,14 +567,8 @@ class TestExtraToolsRewrite:
         script = tmp_path / "install.sh"
         original = "FOO=dua@2.41.1\n"
         script.write_text(original)
-        pin = Pin(
-            recipe="demo",
-            file=script,
-            spec="dua@2.41.1",
-            name="dua",
-            current="2.41.1",
-            backend="mise",
-        )
+        pin = Pin(recipe="demo", file=script, spec="dua@2.41.1", name="dua",
+                  current="2.41.1", backend="mise")
         assert pinupdate.apply([Finding(pin=pin, latest="2.42.0")]) == []
         assert script.read_text() == original
 

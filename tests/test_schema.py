@@ -50,9 +50,7 @@ class TestValidateNoRawNpm:
         validate_no_raw_npm(r)  # must not raise
 
     def test_npm_in_arg_raises(self):
-        r = _make_recipe(
-            servers=[McpServer(name="s", command="bash", args=["-c", "npm install foo"])]
-        )
+        r = _make_recipe(servers=[McpServer(name="s", command="bash", args=["-c", "npm install foo"])])
         with pytest.raises(RecipeLintError):
             validate_no_raw_npm(r)
 
@@ -238,11 +236,7 @@ class TestLoadAgent:
 
     def test_build_args_parsed_and_stringified(self, tmp_path):
         # Unquoted 16.1.2 is a YAML string (two dots); the loader must stringify scalars for --build-arg.
-        self._write(
-            tmp_path,
-            "omp",
-            "harness: omp\nimage: harnessed-omp\nbuild_args:\n  OMP_VERSION: 16.1.2\n",
-        )
+        self._write(tmp_path, "omp", "harness: omp\nimage: harnessed-omp\nbuild_args:\n  OMP_VERSION: 16.1.2\n")
         agent = load_agent("omp", root=tmp_path)
         assert agent.build_args == {"OMP_VERSION": "16.1.2"}
 
@@ -251,9 +245,7 @@ class TestLoadAgent:
         assert load_agent("claude", root=tmp_path).build_args == {}
 
     def test_build_args_non_mapping_raises(self, tmp_path):
-        self._write(
-            tmp_path, "omp", "harness: omp\nimage: harnessed-omp\nbuild_args: [OMP_VERSION]\n"
-        )
+        self._write(tmp_path, "omp", "harness: omp\nimage: harnessed-omp\nbuild_args: [OMP_VERSION]\n")
         with pytest.raises(SchemaError, match="build_args"):
             load_agent("omp", root=tmp_path)
 
@@ -294,16 +286,8 @@ class TestLoadAgent:
             load_stack(d)
 
     def test_all_valid_permissions_load(self, tmp_path):
-        for permissions in (
-            "prompt",
-            "auto",
-            "yolo",
-            "acceptEdits",
-            "default",
-            "bypassPermissions",
-            "dontAsk",
-            "plan",
-        ):
+        for permissions in ("prompt", "auto", "yolo", "acceptEdits", "default",
+                            "bypassPermissions", "dontAsk", "plan"):
             d = tmp_path / f"{permissions}-stack"
             d.mkdir()
             (d / "stack.yaml").write_text(
@@ -342,28 +326,24 @@ class TestParseServerTransportValidation:
 
     def test_grpc_raises(self, tmp_path):
         from harnessed.schema import load_recipe
-
         d = self._make_recipe_file(tmp_path, "grpc")
         with pytest.raises(SchemaError, match="grpc"):
             load_recipe(d)
 
     def test_websocket_raises(self, tmp_path):
         from harnessed.schema import load_recipe
-
         d = self._make_recipe_file(tmp_path, "websocket")
         with pytest.raises(SchemaError, match="websocket"):
             load_recipe(d)
 
     def test_stdio_passes(self, tmp_path):
         from harnessed.schema import load_recipe
-
         d = self._make_recipe_file(tmp_path, "stdio")
         r = load_recipe(d)
         assert r.servers[0].transport == "stdio"
 
     def test_http_passes(self, tmp_path):
         from harnessed.schema import load_recipe
-
         d = tmp_path / "recipe-http"
         d.mkdir()
         (d / "recipe.yaml").write_text(
@@ -378,7 +358,6 @@ class TestParseServerTransportValidation:
         the error must be actionable: which recipe, which server, which field, what to write
         instead."""
         from harnessed.schema import load_recipe
-
         d = tmp_path / "recipe-sse"
         d.mkdir()
         manifest = d / "recipe.yaml"
@@ -406,9 +385,7 @@ class TestParseServerTransportValidation:
         from harnessed.schema import _parse_servers
 
         with pytest.raises(SchemaError) as exc:
-            _parse_servers(
-                {"servers": [{"name": "srv", "transport": "sse", "url": "http://x/sse"}]}
-            )
+            _parse_servers({"servers": [{"name": "srv", "transport": "sse", "url": "http://x/sse"}]})
         msg = str(exc.value)
         assert msg.startswith("mcp server 'srv':")
 
@@ -424,37 +401,29 @@ class TestRecipeEgressAndTools:
 
     def test_egress_and_tools_parse(self, tmp_path):
         from harnessed.schema import load_recipe
-
-        r = load_recipe(
-            self._recipe(
-                tmp_path,
-                "name: pulumi\negress: [api.pulumi.com, get.pulumi.com]\ntools: [pulumi@3.140.0]\n",
-            )
-        )
+        r = load_recipe(self._recipe(
+            tmp_path, "name: pulumi\negress: [api.pulumi.com, get.pulumi.com]\ntools: [pulumi@3.140.0]\n"
+        ))
         assert r.egress == ["api.pulumi.com", "get.pulumi.com"]
         assert r.tools == ["pulumi@3.140.0"]
 
     def test_absent_defaults_empty(self, tmp_path):
         from harnessed.schema import load_recipe
-
         r = load_recipe(self._recipe(tmp_path, "name: bare\n"))
         assert r.egress == [] and r.tools == []
 
     def test_egress_rejects_url(self, tmp_path):
         from harnessed.schema import load_recipe
-
         with pytest.raises(SchemaError, match="bare hostname"):
             load_recipe(self._recipe(tmp_path, "name: x\negress: ['https://api.pulumi.com/x']\n"))
 
     def test_tools_rejects_latest(self, tmp_path):
         from harnessed.schema import load_recipe
-
         with pytest.raises(SchemaError, match="pinned"):
             load_recipe(self._recipe(tmp_path, "name: x\ntools: [pulumi@latest]\n"))
 
     def test_tools_rejects_bare_name(self, tmp_path):
         from harnessed.schema import load_recipe
-
         with pytest.raises(SchemaError, match="pinned"):
             load_recipe(self._recipe(tmp_path, "name: x\ntools: [pulumi]\n"))
 
@@ -464,7 +433,6 @@ class TestParseServerServiceCommandExclusion:
 
     def test_service_and_command_raises(self, tmp_path):
         from harnessed.schema import load_recipe
-
         d = tmp_path / "recipe"
         d.mkdir()
         (d / "recipe.yaml").write_text(
@@ -476,7 +444,6 @@ class TestParseServerServiceCommandExclusion:
 
     def test_service_without_command_passes(self, tmp_path):
         from harnessed.schema import load_recipe
-
         d = tmp_path / "recipe"
         d.mkdir()
         (d / "recipe.yaml").write_text(
@@ -488,7 +455,6 @@ class TestParseServerServiceCommandExclusion:
 
     def test_command_without_service_passes(self, tmp_path):
         from harnessed.schema import load_recipe
-
         d = tmp_path / "recipe"
         d.mkdir()
         (d / "recipe.yaml").write_text(
@@ -618,10 +584,7 @@ class TestPersistParse:
 
     def test_workspace_vcs_on_host_rejected(self, tmp_path):
         with pytest.raises(SchemaError, match="'vcs' is only valid for location: in_repo"):
-            self._load(
-                tmp_path,
-                self._yaml_entry(scope="workspace", name=".foo", location="host", vcs="ignored"),
-            )
+            self._load(tmp_path, self._yaml_entry(scope="workspace", name=".foo", location="host", vcs="ignored"))
 
     # --- scope: project + location: host ---
 
@@ -633,50 +596,32 @@ class TestPersistParse:
     # --- location: in_repo + vcs ---
 
     def test_workspace_in_repo_tracked_parsed(self, tmp_path):
-        r = self._load(
-            tmp_path,
-            self._yaml_entry(scope="workspace", name="notes.md", location="in_repo", vcs="tracked"),
-        )
+        r = self._load(tmp_path, self._yaml_entry(scope="workspace", name="notes.md", location="in_repo", vcs="tracked"))
         e = r.persist.entries[0]
         assert e.scope == "workspace" and e.location == "in_repo" and e.vcs == "tracked"
 
     def test_workspace_in_repo_ignored_parsed(self, tmp_path):
-        r = self._load(
-            tmp_path,
-            self._yaml_entry(scope="workspace", name=".scratch", location="in_repo", vcs="ignored"),
-        )
+        r = self._load(tmp_path, self._yaml_entry(scope="workspace", name=".scratch", location="in_repo", vcs="ignored"))
         e = r.persist.entries[0]
         assert e.vcs == "ignored"
 
     def test_in_repo_missing_vcs_rejected(self, tmp_path):
         with pytest.raises(SchemaError, match="requires a 'vcs' field"):
-            self._load(
-                tmp_path, self._yaml_entry(scope="workspace", name=".foo", location="in_repo")
-            )
+            self._load(tmp_path, self._yaml_entry(scope="workspace", name=".foo", location="in_repo"))
 
     def test_in_repo_unknown_vcs_rejected(self, tmp_path):
         with pytest.raises(SchemaError, match="unknown vcs"):
-            self._load(
-                tmp_path,
-                self._yaml_entry(scope="workspace", name=".foo", location="in_repo", vcs="symlink"),
-            )
+            self._load(tmp_path, self._yaml_entry(scope="workspace", name=".foo", location="in_repo", vcs="symlink"))
 
     def test_in_repo_allows_nested_paths(self, tmp_path):
-        r = self._load(
-            tmp_path,
-            self._yaml_entry(
-                scope="workspace", name="data/notes.md", location="in_repo", vcs="tracked"
-            ),
-        )
+        r = self._load(tmp_path, self._yaml_entry(scope="workspace", name="data/notes.md", location="in_repo", vcs="tracked"))
         assert r.persist.entries[0].name == "data/notes.md"
 
     # --- reserved location: external ---
 
     def test_reserved_location_external_rejected(self, tmp_path):
         with pytest.raises(SchemaError, match="reserved for a future release"):
-            self._load(
-                tmp_path, self._yaml_entry(scope="workspace", name=".foo", location="external")
-            )
+            self._load(tmp_path, self._yaml_entry(scope="workspace", name=".foo", location="external"))
 
     # --- scope: global ---
 
@@ -688,10 +633,7 @@ class TestPersistParse:
 
     def test_global_with_location_rejected(self, tmp_path):
         with pytest.raises(SchemaError, match="'location' is not valid for scope: global"):
-            self._load(
-                tmp_path,
-                "name: r\npersist:\n  - scope: global\n    path: ~/.gbrain\n    location: host\n",
-            )
+            self._load(tmp_path, "name: r\npersist:\n  - scope: global\n    path: ~/.gbrain\n    location: host\n")
 
     def test_global_with_name_rejected(self, tmp_path):
         with pytest.raises(SchemaError, match="use 'path'"):
@@ -709,10 +651,7 @@ class TestPersistParse:
 
     def test_unknown_field_rejected(self, tmp_path):
         with pytest.raises(SchemaError, match="unknown field"):
-            self._load(
-                tmp_path,
-                self._yaml_entry(scope="workspace", name=".foo", location="host", typo="x"),
-            )
+            self._load(tmp_path, self._yaml_entry(scope="workspace", name=".foo", location="host", typo="x"))
 
     # --- multiple entries ---
 
@@ -772,7 +711,11 @@ class TestStrictRecipeFields:
         assert "totally_made_up" in msg and "Known fields" in msg and "--no-strict" in msg
 
     def test_strict_allows_init_field(self, tmp_path):
-        body = "name: r\ninit:\n  run: bd list >/dev/null 2>&1 || bd init --quiet --stealth\n"
+        body = (
+            "name: r\n"
+            "init:\n"
+            "  run: bd list >/dev/null 2>&1 || bd init --quiet --stealth\n"
+        )
         r = self._load(tmp_path, body, strict=True)
         assert r.name == "r"
 
@@ -855,14 +798,18 @@ class TestHooksParse:
         assert r.hooks == {}
 
     def test_session_start_without_matcher(self, tmp_path):
-        body = "name: r\nhooks:\n  SessionStart:\n    - command: /usr/local/bin/caveman-remind\n"
+        body = (
+            "name: r\nhooks:\n  SessionStart:\n"
+            "    - command: /usr/local/bin/caveman-remind\n"
+        )
         r = self._load(tmp_path, body)
-        assert r.hooks["SessionStart"] == [
-            HookCommand(command="/usr/local/bin/caveman-remind", matcher=None)
-        ]
+        assert r.hooks["SessionStart"] == [HookCommand(command="/usr/local/bin/caveman-remind", matcher=None)]
 
     def test_pre_tool_use_with_matcher(self, tmp_path):
-        body = "name: r\nhooks:\n  PreToolUse:\n    - matcher: Bash\n      command: some-hook\n"
+        body = (
+            "name: r\nhooks:\n  PreToolUse:\n"
+            "    - matcher: Bash\n      command: some-hook\n"
+        )
         r = self._load(tmp_path, body)
         assert r.hooks["PreToolUse"] == [HookCommand(command="some-hook", matcher="Bash")]
 
@@ -890,7 +837,11 @@ class TestHooksParse:
             self._load(tmp_path, body)
 
     def test_skip_harnesses_parsed_and_not_treated_as_an_event(self, tmp_path):
-        body = "name: r\nhooks:\n  skip_harnesses: [omp]\n  SessionStart:\n    - command: hook-a\n"
+        body = (
+            "name: r\nhooks:\n"
+            "  skip_harnesses: [omp]\n"
+            "  SessionStart:\n    - command: hook-a\n"
+        )
         r = self._load(tmp_path, body)
         assert r.hooks_skip_harnesses == ["omp"]
         assert set(r.hooks) == {"SessionStart"}
@@ -962,7 +913,9 @@ class TestHooksParse:
     def test_per_entry_skip_harnesses_empty_list_rejected(self, tmp_path):
         # Same guarantee at the entry level — the per-entry key doubled the number of places this
         # could fail open.
-        body = "name: r\nhooks:\n  PreToolUse:\n    - command: h\n      skip_harnesses: []\n"
+        body = (
+            "name: r\nhooks:\n  PreToolUse:\n    - command: h\n      skip_harnesses: []\n"
+        )
         with pytest.raises(SchemaError, match=r"hooks\.PreToolUse\[\]\.skip_harnesses"):
             self._load(tmp_path, body)
 
@@ -983,7 +936,9 @@ class TestHooksParse:
     def test_per_entry_skip_harnesses_unknown_harness_rejected(self, tmp_path):
         # Same fail-at-parse-time guarantee as the recipe-wide key: a typo would silently emit the
         # entry it was meant to suppress. The message must name the ENTRY path, not the recipe key.
-        body = "name: r\nhooks:\n  PreToolUse:\n    - command: h\n      skip_harnesses: [ompp]\n"
+        body = (
+            "name: r\nhooks:\n  PreToolUse:\n    - command: h\n      skip_harnesses: [ompp]\n"
+        )
         with pytest.raises(SchemaError, match=r"hooks\.PreToolUse\[\]\.skip_harnesses"):
             self._load(tmp_path, body)
 

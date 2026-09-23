@@ -49,23 +49,19 @@ def _fake_resolver(table, *, fail=(), age_days=365):
             raise update.ResolveError(f"registry said no: {name}")
         version = table.get((backend, name))
         return [] if version is None else [update.Release(version=version, published=published)]
-
     return resolve
 
 
 class TestPinDiscovery:
     """`tools:` is the resolvable surface — the spec names its own backend."""
 
-    @pytest.mark.parametrize(
-        "spec,backend,name,current",
-        [
-            ("npm:context-mode@1.0.169", "npm", "context-mode", "1.0.169"),
-            ("npm:@agentmemory/mcp@0.9.27", "npm", "@agentmemory/mcp", "0.9.27"),
-            ("pipx:serena-agent@1.5.3", "pipx", "serena-agent", "1.5.3"),
-            ("github:rtk-ai/rtk@0.43.0", "github", "rtk-ai/rtk", "0.43.0"),
-            ("pulumi@3.251.0", "mise", "pulumi", "3.251.0"),
-        ],
-    )
+    @pytest.mark.parametrize("spec,backend,name,current", [
+        ("npm:context-mode@1.0.169", "npm", "context-mode", "1.0.169"),
+        ("npm:@agentmemory/mcp@0.9.27", "npm", "@agentmemory/mcp", "0.9.27"),
+        ("pipx:serena-agent@1.5.3", "pipx", "serena-agent", "1.5.3"),
+        ("github:rtk-ai/rtk@0.43.0", "github", "rtk-ai/rtk", "0.43.0"),
+        ("pulumi@3.251.0", "mise", "pulumi", "3.251.0"),
+    ])
     def test_every_tools_backend_is_parsed(self, tmp_path, spec, backend, name, current):
         """A scoped npm package (`@agentmemory/mcp@0.9.27`) is the parse that a naive rsplit on '@'
         gets wrong — the version is after the LAST '@', not the first."""
@@ -81,8 +77,7 @@ class TestPinDiscovery:
 
     def test_a_held_tools_pin_carries_its_reason(self, tmp_path):
         d = _recipe_dir(
-            tmp_path,
-            "r",
+            tmp_path, "r",
             "name: r\ntools:\n  - spec: npm:x@1.0.0\n    hold: 'upstream 2.x drops our API'\n",
         )
         assert update.discover_pins(d)[0].hold == "upstream 2.x drops our API"
@@ -99,8 +94,7 @@ class TestOpaquePinsAreReportedNotSkipped:
         """`install.cache` is a synthetic content-cache key ('oak0283bed3-hum1b485648'), not a
         version any registry knows. It is still a PIN, so it must surface."""
         d = _recipe_dir(
-            tmp_path,
-            "r",
+            tmp_path, "r",
             "name: r\ninstall:\n  script: install.sh\n  cache: 'oak0283bed3'\n",
             install_sh="true\n",
         )
@@ -113,13 +107,12 @@ class TestOpaquePinsAreReportedNotSkipped:
         """The real shape from mikes-universal-setup: a SHA assigned to a shell var, consumed by a
         pinned archive fetch. Not machine-resolvable — but it must not vanish."""
         d = _recipe_dir(
-            tmp_path,
-            "r",
+            tmp_path, "r",
             "name: r\ninstall:\n  script: install.sh\n",
             install_sh=(
                 "set -euo pipefail\n"
                 "OAKOSS_SHA=0283bed313563d5677a0838f4bf921b03296cf6c\n"
-                'TOOL_REF="v6.0.3"\n'
+                "TOOL_REF=\"v6.0.3\"\n"
             ),
         )
         found = {p.current for p in update.discover_pins(d) if p.backend == "opaque"}
@@ -128,9 +121,7 @@ class TestOpaquePinsAreReportedNotSkipped:
 
     def test_literal_pins_in_a_dockerfile_are_reported(self, tmp_path):
         d = _recipe_dir(
-            tmp_path,
-            "r",
-            "name: r\n",
+            tmp_path, "r", "name: r\n",
             dockerfile="FROM base\nARG FOO_REF=v1.2.3\nRUN echo $FOO_REF\n",
         )
         assert any(p.current == "v1.2.3" for p in update.discover_pins(d))
@@ -139,8 +130,7 @@ class TestOpaquePinsAreReportedNotSkipped:
         """An opaque pin has no backend to ask, so it lands in `unresolved` with a reason — it is
         never reported as up-to-date, which would be a lie."""
         d = _recipe_dir(
-            tmp_path,
-            "r",
+            tmp_path, "r",
             "name: r\ninstall:\n  script: install.sh\n  cache: 'abc123'\n",
             install_sh="true\n",
         )
@@ -170,15 +160,12 @@ class TestStaleness:
         report = update.build_report([d], resolve=_fake_resolver({("npm", "x"): "1.9.0"}))
         assert not report.stale
 
-    @pytest.mark.parametrize(
-        "a,b",
-        [
-            ("1.9.0", "1.10.0"),  # numeric, not lexicographic — the classic ordering bug
-            ("v1.2.3", "v1.2.4"),  # a leading v must not change the ordering
-            ("1.2.3", "1.2.3.1"),
-            ("1.0.0-rc.1", "1.0.0"),  # a release outranks its own prerelease
-        ],
-    )
+    @pytest.mark.parametrize("a,b", [
+        ("1.9.0", "1.10.0"),    # numeric, not lexicographic — the classic ordering bug
+        ("v1.2.3", "v1.2.4"),   # a leading v must not change the ordering
+        ("1.2.3", "1.2.3.1"),
+        ("1.0.0-rc.1", "1.0.0"),  # a release outranks its own prerelease
+    ])
     def test_version_ordering(self, a, b):
         assert update.version_key(a) < update.version_key(b), f"{a} should sort below {b}"
 
@@ -186,8 +173,7 @@ class TestStaleness:
         """A registry timeout must never read as 'up to date'."""
         d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.0.0\n")
         report = update.build_report(
-            [d],
-            resolve=_fake_resolver({}, fail=[("npm", "x")]),
+            [d], resolve=_fake_resolver({}, fail=[("npm", "x")]),
         )
         assert not report.current and not report.stale
         assert len(report.unresolved) == 1
@@ -206,8 +192,7 @@ class TestHeldPinsAreInformationalOnly:
 
     def test_a_stale_held_tools_pin_is_listed_but_not_offered(self, tmp_path):
         d = _recipe_dir(
-            tmp_path,
-            "r",
+            tmp_path, "r",
             "name: r\ntools:\n  - spec: npm:x@1.0.0\n    hold: 'pinned deliberately'\n",
         )
         report = update.build_report([d], resolve=_fake_resolver({("npm", "x"): "9.9.9"}))
@@ -219,8 +204,7 @@ class TestHeldPinsAreInformationalOnly:
 
     def test_install_hold_holds_the_pins_behind_that_script(self, tmp_path):
         d = _recipe_dir(
-            tmp_path,
-            "r",
+            tmp_path, "r",
             "name: r\ninstall:\n  script: install.sh\n  cache: 'oak0283bed3'\n"
             "  hold: 'skill content: no scanner vets it'\n",
             install_sh="OAKOSS_SHA=0283bed313563d5677a0838f4bf921b03296cf6c\n",
@@ -235,8 +219,7 @@ class TestHeldPinsAreInformationalOnly:
     def test_check_ignores_held_pins(self, tmp_path):
         """CI must stay green on a deliberately-frozen pin, or the hold is worthless."""
         d = _recipe_dir(
-            tmp_path,
-            "r",
+            tmp_path, "r",
             "name: r\ntools:\n  - spec: npm:x@1.0.0\n    hold: 'frozen'\n",
         )
         report = update.build_report([d], resolve=_fake_resolver({("npm", "x"): "9.9.9"}))
@@ -258,9 +241,7 @@ class TestCheckMode:
         """Every recipe with a Dockerfile pin has an unresolvable pin. Failing on those would make
         CI permanently red and teach everyone to ignore it — they are reported, not fatal."""
         d = _recipe_dir(
-            tmp_path,
-            "r",
-            "name: r\n",
+            tmp_path, "r", "name: r\n",
             dockerfile="FROM base\nARG REF=v1.2.3\n",
         )
         report = update.build_report([d], resolve=_fake_resolver({}))
@@ -324,9 +305,7 @@ class TestRewrite:
         """The acceptance criterion is 'a subsequent build picks up the new version' — so the file
         must still parse, and re-reading it must show the bump."""
         d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.0.0\n")
-        update.apply(
-            update.build_report([d], resolve=_fake_resolver({("npm", "x"): "1.2.0"})).stale
-        )
+        update.apply(update.build_report([d], resolve=_fake_resolver({("npm", "x"): "1.2.0"})).stale)
         assert update.discover_pins(d)[0].current == "1.2.0"
 
     def test_comments_and_surrounding_fields_survive_the_rewrite(self, tmp_path):
@@ -335,7 +314,7 @@ class TestRewrite:
         body = (
             "# leading file comment\n"
             "name: r\n"
-            'description: "a recipe"\n'
+            "description: \"a recipe\"\n"
             "\n"
             "# why this tool is here\n"
             "tools:\n"
@@ -345,9 +324,7 @@ class TestRewrite:
             "  - example.com\n"
         )
         d = _recipe_dir(tmp_path, "r", body)
-        update.apply(
-            update.build_report([d], resolve=_fake_resolver({("npm", "x"): "1.2.0"})).stale
-        )
+        update.apply(update.build_report([d], resolve=_fake_resolver({("npm", "x"): "1.2.0"})).stale)
         after = (d / "recipe.yaml").read_text()
         assert "# leading file comment" in after
         assert "# why this tool is here" in after
@@ -364,14 +341,17 @@ class TestRewrite:
             "Serena — LSP-backed semantic code intelligence (symbol retrieval, editing, "
             "refactoring, references) over the project via a stdio MCP server."
         )
-        body = f"name: r\ndescription: {long_desc}\ntools:\n  - npm:x@1.0.0\n"
-        d = _recipe_dir(tmp_path, "r", body)
-        update.apply(
-            update.build_report([d], resolve=_fake_resolver({("npm", "x"): "1.2.0"})).stale
+        body = (
+            f"name: r\ndescription: {long_desc}\n"
+            "tools:\n  - npm:x@1.0.0\n"
         )
+        d = _recipe_dir(tmp_path, "r", body)
+        update.apply(update.build_report([d], resolve=_fake_resolver({("npm", "x"): "1.2.0"})).stale)
         before_lines = body.splitlines()
         after_lines = (d / "recipe.yaml").read_text().splitlines()
-        changed = [(a, b) for a, b in zip(before_lines, after_lines, strict=False) if a != b]
+        changed = [
+            (a, b) for a, b in zip(before_lines, after_lines, strict=False) if a != b
+        ]
         assert len(before_lines) == len(after_lines), (
             f"line count changed — the file was reflowed:\n{after_lines}"
         )
@@ -382,8 +362,7 @@ class TestRewrite:
         single-pin bump — rewriting the mapping form must not flatten it back to a string and
         silently drop the hold."""
         d = _recipe_dir(
-            tmp_path,
-            "r",
+            tmp_path, "r",
             "name: r\ntools:\n  - spec: npm:x@1.0.0\n    hold: 'frozen'\n",
         )
         report = update.build_report([d], resolve=_fake_resolver({("npm", "x"): "1.2.0"}))
@@ -392,9 +371,7 @@ class TestRewrite:
         assert "npm:x@1.2.0" in after and "frozen" in after
         assert update.discover_pins(d)[0].hold == "frozen"
 
-    def test_a_recipe_with_a_lockfile_is_relocked_after_the_pin_is_written(
-        self, tmp_path, monkeypatch
-    ):
+    def test_a_recipe_with_a_lockfile_is_relocked_after_the_pin_is_written(self, tmp_path, monkeypatch):
         """The bug this exists to prevent: `apply` bumped the pin and left `mise.lock` naming the
         OLD version, so every later `mise install` had to migrate the lock — re-resolving every
         platform in it and tripping mise's provenance-downgrade guard on machines that bumped
@@ -406,9 +383,7 @@ class TestRewrite:
         monkeypatch.setattr(
             update, "_relock_recipe", lambda m: bool(seen.append((m, m.read_text()))) or True
         )
-        update.apply(
-            update.build_report([d], resolve=_fake_resolver({("npm", "x"): "1.2.0"})).stale
-        )
+        update.apply(update.build_report([d], resolve=_fake_resolver({("npm", "x"): "1.2.0"})).stale)
         assert [m for m, _ in seen] == [d / "recipe.yaml"]
         assert "npm:x@1.2.0" in seen[0][1], "relocked against a half-written recipe.yaml"
 
@@ -416,17 +391,13 @@ class TestRewrite:
         """Most recipes ship no `mise.lock`. Relocking one into existence would invent a
         supply-chain claim nobody authored, so absent must stay absent."""
         d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.0.0\n")
-        update.apply(
-            update.build_report([d], resolve=_fake_resolver({("npm", "x"): "1.2.0"})).stale
-        )
+        update.apply(update.build_report([d], resolve=_fake_resolver({("npm", "x"): "1.2.0"})).stale)
         assert not (d / "mise.lock").exists()
 
     def test_the_generated_mise_config_splits_a_scoped_spec_at_the_last_at(self):
         """`npm:@agentmemory/mcp@1.2.3` carries an `@` in the tool half too. Splitting from the
         left would name the tool `npm:` and lock the wrong thing."""
-        cfg = update._mise_config(
-            ["npm:@scope/pkg@1.2.3", "github:owner/repo@0.4.0", "pulumi@3.1.0"]
-        )
+        cfg = update._mise_config(["npm:@scope/pkg@1.2.3", "github:owner/repo@0.4.0", "pulumi@3.1.0"])
         assert '"npm:@scope/pkg" = "1.2.3"' in cfg
         assert '"github:owner/repo" = "0.4.0"' in cfg
         assert '"pulumi" = "3.1.0"' in cfg
@@ -464,12 +435,10 @@ class TestResolvers:
 
         def fetch(url):
             seen["url"] = url
-            return json.dumps(
-                {
-                    "dist-tags": {"latest": "0.9.28"},
-                    "time": {"0.9.28": "2026-01-01T00:00:00Z"},
-                }
-            )
+            return json.dumps({
+                "dist-tags": {"latest": "0.9.28"},
+                "time": {"0.9.28": "2026-01-01T00:00:00Z"},
+            })
 
         update.resolve_releases("npm", "@agentmemory/mcp", fetch=fetch)
         assert seen["url"] == "https://registry.npmjs.org/@agentmemory/mcp"
@@ -486,7 +455,6 @@ class TestCatalogSweep:
 
     def test_every_catalog_recipe_discovers_without_error(self):
         from harnessed import paths
-
         roots = [r / "recipes" for r in paths.catalog_roots()]
         seen = 0
         for root in roots:
@@ -501,7 +469,6 @@ class TestCatalogSweep:
         """End-to-end against the real marker: mikes-universal-setup's install.hold must keep its
         SHA pins out of the bump set."""
         from harnessed import paths
-
         d = paths.find_in_catalog("recipes", "mikes-universal-setup")
         report = update.build_report([d], resolve=_fake_resolver({}))
         assert report.held, "mikes-universal-setup declares install.hold — its pins must be held"

@@ -153,9 +153,7 @@ class TestMaterialize:
 
         launcher._materialize_host_home(prof, home)
 
-        assert (state / marker).is_file(), (
-            f"{marker} alone did not identify the dir as daemon state"
-        )
+        assert (state / marker).is_file(), f"{marker} alone did not identify the dir as daemon state"
 
     def test_every_projects_daemon_state_survives_not_just_one(self, tmp_path):
         """bd harnessed-8px.20 AC3. One config dir holds a state dir PER PROJECT, so a user with
@@ -303,16 +301,10 @@ class TestHostClaudeSource:
 
         launcher._share_host_claude_state(home)
 
-        for name in (
-            "projects",
-            "file-history",
-            "todos",
-            "tasks",
-            "session-env",
-            "shell-snapshots",
-        ):
+        for name in ("projects", "file-history", "todos", "tasks", "session-env", "shell-snapshots"):
             assert (home / name).is_symlink(), f"{name} was not shared"
         assert (home / "projects" / "p.jsonl").read_text() == "the session to resume"
+
 
     def test_launching_a_stack_from_inside_itself_does_not_copy_its_account_over_itself(
         self, monkeypatch, tmp_path
@@ -383,9 +375,7 @@ class TestShareClaudeState:
         assert (home / ".claude.json").is_file()
         assert not (home / ".claude.json").is_symlink()
 
-    def test_a_configured_oauth_token_suppresses_the_credential_symlink(
-        self, monkeypatch, tmp_path
-    ):
+    def test_a_configured_oauth_token_suppresses_the_credential_symlink(self, monkeypatch, tmp_path):
         """`CLAUDE_CODE_OAUTH_TOKEN` takes precedence over the credentials file, so with one
         configured the file is dead weight — and maintaining it carries the whole 8px.10
         symlink-replacement failure mode for nothing. The container path already refuses to mount a
@@ -470,10 +460,8 @@ class TestShareClaudeState:
         # The account file is $HOME/.claude.json — NOT ~/.claude/.claude.json. Seed from the right one.
         fake_home = tmp_path / "home"
         (fake_home / ".claude").mkdir(parents=True)
-        (fake_home / ".claude.json").write_text('{"account":"real"}')  # HOME-level (correct)
-        (fake_home / ".claude" / ".claude.json").write_text(
-            '{"account":"WRONG"}'
-        )  # decoy inside dir
+        (fake_home / ".claude.json").write_text('{"account":"real"}')            # HOME-level (correct)
+        (fake_home / ".claude" / ".claude.json").write_text('{"account":"WRONG"}')  # decoy inside dir
         (fake_home / ".claude" / ".credentials.json").write_text('{"t":"x"}')
         monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
         monkeypatch.setenv("HOME", str(fake_home))
@@ -491,32 +479,28 @@ class TestShareClaudeState:
         indistinguishable from the gutted file the gate exists to reject). The invariants these tests
         assert are unchanged — only the fixtures had to become credential-shaped.
         """
-        return json.dumps(
-            {
-                "claudeAiOauth": {
-                    "accessToken": f"at-{marker}",
-                    "refreshToken": f"rt-{marker}",
-                    "expiresAt": 1784662315830,
-                    "scopes": ["user:inference"],
-                }
+        return json.dumps({
+            "claudeAiOauth": {
+                "accessToken": f"at-{marker}",
+                "refreshToken": f"rt-{marker}",
+                "expiresAt": 1784662315830,
+                "scopes": ["user:inference"],
             }
-        )
+        })
 
     @staticmethod
     def _gutted() -> str:
         """The real-world poison (observed 2026-07-21): envelope intact, tokens emptied, expiry 0."""
-        return json.dumps(
-            {
-                "claudeAiOauth": {
-                    "accessToken": "",
-                    "refreshToken": "",
-                    "expiresAt": 0,
-                    "refreshTokenExpiresAt": 1787005628797,
-                    "scopes": ["user:inference"],
-                    "subscriptionType": 3,
-                }
+        return json.dumps({
+            "claudeAiOauth": {
+                "accessToken": "",
+                "refreshToken": "",
+                "expiresAt": 0,
+                "refreshTokenExpiresAt": 1787005628797,
+                "scopes": ["user:inference"],
+                "subscriptionType": 3,
             }
-        )
+        })
 
     def _shared(self, monkeypatch, tmp_path, body=None, mtime=None):
         """Point HOME at a fake home and optionally seed the SHARED ~/.claude credential."""
@@ -627,15 +611,9 @@ class TestShareClaudeState:
         """The gate must NOT reject on expiry. An expired ACCESS token whose refresh token is still
         good is the normal healthy state — it is precisely what the refresh flow exists to renew, so
         discarding it would throw away the credential we most need to keep."""
-        expired = json.dumps(
-            {
-                "claudeAiOauth": {
-                    "accessToken": "at-expired",
-                    "refreshToken": "rt-still-good",
-                    "expiresAt": 1,
-                }
-            }
-        )
+        expired = json.dumps({"claudeAiOauth": {
+            "accessToken": "at-expired", "refreshToken": "rt-still-good", "expiresAt": 1,
+        }})
         real = self._shared(monkeypatch, tmp_path, self._cred("older"), 100_000)
         self._stack_cred("s", "proj1", expired, 900_000)
         launcher._rescue_host_credentials()
@@ -676,7 +654,7 @@ class TestShareClaudeState:
         home = tmp_path / "home"
         home.mkdir()
         launcher._share_host_claude_state(home)  # must not raise
-        assert (home / "projects").is_symlink()  # created + linked
+        assert (home / "projects").is_symlink()          # created + linked
         assert not (home / ".credentials.json").exists()  # no token to share
 
 
@@ -767,14 +745,10 @@ class TestHostCliRouting:
         # genuine SchemaError — the fake service ref above is only here to prove the CALL happens.
         # Socket resolution has its own coverage in test_project_scoped_services.py.
         patch_all(monkeypatch, "svc_socket_env", lambda *_a, **_k: {})
-        monkeypatch.setattr(
-            launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0))
-        )
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
 
-        result = runner.invoke(
-            launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"]
-        )
+        result = runner.invoke(launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"])
 
         assert result.exit_code == 0, result.output
         assert ensured == [("podman", "hostspike")]
@@ -788,14 +762,10 @@ class TestHostCliRouting:
 
         patch_all(monkeypatch, "_service_refs", lambda _s: [])
         patch_all(monkeypatch, "_host_run_inits", lambda *a, **k: ran.append(a[0]))
-        monkeypatch.setattr(
-            launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0))
-        )
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
 
-        result = runner.invoke(
-            launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"]
-        )
+        result = runner.invoke(launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"])
         assert result.exit_code == 0, result.output
         assert ran == ["hostspike"]
 
@@ -826,14 +796,10 @@ class TestHostCliRouting:
 
         patch_all(monkeypatch, "_service_refs", lambda _s: [])
         patch_all(monkeypatch, "_runtime", boom)
-        monkeypatch.setattr(
-            launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0))
-        )
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
 
-        result = runner.invoke(
-            launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"]
-        )
+        result = runner.invoke(launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"])
         assert result.exit_code == 0, result.output
 
     def test_host_settings_inherit_the_host_claude_default_mode(self, monkeypatch, tmp_path):
@@ -853,9 +819,7 @@ class TestHostCliRouting:
         monkeypatch.setenv("HOME", str(fake_home))  # _merge_host_claude_settings reads Path.home()
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
-        monkeypatch.setattr(
-            launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0))
-        )
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
 
         result = runner.invoke(
@@ -892,16 +856,13 @@ class TestHostCliRouting:
         env = captured["env"]
         assert env["HARNESS"] == "claude"
         assert env["PROJECT_DIR"] == str(tmp_path.resolve())
-        for var in (
-            "MAIN_REPO_DIR",
-            "HARNESSED_GIT_COMMON_DIR",
-            "HOST_WORKSPACE_DIR",
-            "CONTAINER_WORKSPACE_DIR",
-            "HOST_HOME",
-        ):
+        for var in ("MAIN_REPO_DIR", "HARNESSED_GIT_COMMON_DIR", "HOST_WORKSPACE_DIR",
+                    "CONTAINER_WORKSPACE_DIR", "HOST_HOME"):
             assert env[var]
         # git consumes GIT_COMMON_DIR itself — exporting it would hijack common-dir resolution.
         assert "GIT_COMMON_DIR" not in env
+
+
 
 
 class TestStackFingerprintGate:
@@ -962,7 +923,6 @@ class TestStackFingerprintGate:
         """A host launch has no image build to force a refresh, so a change to what emit writes —
         with a byte-identical recipe closure — would otherwise serve stale content forever."""
         from harnessed import __version__
-
         src = inspect.getsource(launcher._host_stack_fingerprint)
         assert "__version__" in src and __version__
 
@@ -986,9 +946,7 @@ class TestLegacyPerProjectMigration:
         legacy = self._legacy(home, "a1b2c3d4")
         scrubbed = []
         real_scrub = launcher._scrub_host_home
-        patch_all(
-            monkeypatch,
-            "_scrub_host_home",
+        patch_all(monkeypatch, "_scrub_host_home",
             lambda p: (scrubbed.append(p.name), real_scrub(p))[1],
         )
         launcher._materialize_host_home(prof, home, fingerprint="fp-1")
@@ -1028,7 +986,7 @@ class TestHostGC:
 
     def test_lists_real_stack_as_ok_and_unknown_stack_as_orphan(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
-        self._home("hostspike")  # a real catalog stack
+        self._home("hostspike")          # a real catalog stack
         self._home("deleted-stack-xyz")  # not in any catalog root
         r = self._run(monkeypatch, tmp_path)
         assert r.exit_code == 0, r.output
@@ -1084,14 +1042,10 @@ class TestSecondLaunchSkipsInstalls:
     def _launch(self, tmp_path, monkeypatch, calls):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
-        patch_all(
-            monkeypatch,
-            "_host_run_installs",
+        patch_all(monkeypatch, "_host_run_installs",
             lambda stack, project_path, *, harness, home: calls.append(stack),
         )
-        monkeypatch.setattr(
-            launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0))
-        )
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
         return runner.invoke(
             launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"]
@@ -1127,7 +1081,6 @@ class TestHostHomeLock:
 
     def test_lock_actually_excludes_a_second_holder(self, tmp_path):
         import fcntl as _f
-
         home = tmp_path / "data" / "harnessed" / "home" / "s" / "claude"
         with launcher._host_home_lock(home):
             other = open(home.parent / f"{home.name}.lock", "w")
@@ -1139,7 +1092,6 @@ class TestHostHomeLock:
 
     def test_lock_is_released_on_exit(self, tmp_path):
         import fcntl as _f
-
         home = tmp_path / "data" / "harnessed" / "home" / "s" / "claude"
         with launcher._host_home_lock(home):
             pass
@@ -1190,13 +1142,9 @@ class TestFailedInstallDoesNotStamp:
                 raise SystemExit(1)  # what _host_run_installs does on a failed script
 
         patch_all(monkeypatch, "_host_run_installs", _installs)
-        monkeypatch.setattr(
-            launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0))
-        )
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
-        return runner.invoke(
-            launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"]
-        )
+        return runner.invoke(launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"])
 
     def test_a_failed_install_leaves_no_stamp(self, monkeypatch, tmp_path):
         self._launch(tmp_path, monkeypatch, install_fails=True)
@@ -1208,18 +1156,12 @@ class TestFailedInstallDoesNotStamp:
     def test_the_next_launch_retries_after_a_failure(self, monkeypatch, tmp_path):
         self._launch(tmp_path, monkeypatch, install_fails=True)
         calls: list[str] = []
-        patch_all(
-            monkeypatch,
-            "_host_run_installs",
+        patch_all(monkeypatch, "_host_run_installs",
             lambda stack, project_path, *, harness, home: calls.append(stack),
         )
-        monkeypatch.setattr(
-            launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0))
-        )
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
-        r = runner.invoke(
-            launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"]
-        )
+        r = runner.invoke(launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"])
         assert r.exit_code == 0, r.output
         assert calls == ["hostspike"], "the retry must actually re-run the installs"
 
@@ -1253,9 +1195,7 @@ class TestSettingsPropagateWithoutARebuild:
 
         home, _a, _c, rebuilt = launcher._host_launch_plan("s", "claude", tmp_path, recipes=[])
         assert rebuilt is False, "unchanged stack must not rebuild"
-        assert (
-            json.loads((home / "settings.json").read_text())["permissions"]["defaultMode"] == "auto"
-        )
+        assert json.loads((home / "settings.json").read_text())["permissions"]["defaultMode"] == "auto"
 
     def test_install_written_keys_survive_the_propagation(self, tmp_path, monkeypatch):
         """The 8px.18 propagation must not delete what an `install:` script wrote into the LIVE home.
@@ -1338,19 +1278,14 @@ class TestHostRunVerb:
 
     def _stub(self, monkeypatch, calls):
         monkeypatch.setattr(
-            launcher,
-            "_launch_host",
-            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False, aoe_group=None, aoe_title=None, exec_mode=False, fresh=False: (
-                calls.append((stack, harness, path, rm, fresh))
-            ),
+            launcher, "_launch_host",
+            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False, aoe_group=None, aoe_title=None, exec_mode=False, fresh=False: calls.append((stack, harness, path, rm, fresh)),
         )
 
     def test_host_run_dispatches_to_the_host_backend(self, monkeypatch, tmp_path):
         calls: list = []
         self._stub(monkeypatch, calls)
-        r = runner.invoke(
-            launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"]
-        )
+        r = runner.invoke(launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"])
         assert r.exit_code == 0, r.output
         assert calls == [("hostspike", "claude", str(tmp_path), False, False)]
 
@@ -1372,9 +1307,7 @@ class TestHostRunVerb:
     def test_rm_is_forwarded(self, monkeypatch, tmp_path):
         calls: list = []
         self._stub(monkeypatch, calls)
-        runner.invoke(
-            launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike", "--rm"]
-        )
+        runner.invoke(launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike", "--rm"])
         assert calls[0][3] is True
 
     def test_unsupported_harness_is_rejected(self, monkeypatch):
@@ -1577,19 +1510,13 @@ class TestMaterializeOmpHome:
         launcher._materialize_host_omp_home(home, identity={"RULES.md": "a\n"}, fingerprint="fp1")
         launcher._stamp_host_home(home, "fp1")
 
-        assert (
-            launcher._materialize_host_omp_home(
-                home, identity={"RULES.md": "b\n"}, fingerprint="fp1"
-            )
-            is False
-        )
+        assert launcher._materialize_host_omp_home(
+            home, identity={"RULES.md": "b\n"}, fingerprint="fp1"
+        ) is False
         assert (home / "RULES.md").read_text() == "a\n"
-        assert (
-            launcher._materialize_host_omp_home(
-                home, identity={"RULES.md": "b\n"}, fingerprint="fp2"
-            )
-            is True
-        )
+        assert launcher._materialize_host_omp_home(
+            home, identity={"RULES.md": "b\n"}, fingerprint="fp2"
+        ) is True
         assert (home / "RULES.md").read_text() == "b\n"
 
     def test_a_live_terminal_resume_pointer_survives_the_rebuild(self, tmp_path):
@@ -1662,14 +1589,8 @@ class TestShareOmpState:
         not exist, so against an empty `omp_real` every assertion below passes vacuously and the
         test would stay green even if the implementation started linking them.
         """
-        isolated = (
-            "config.yml",
-            "settings.json",
-            "RULES.md",
-            "APPEND_SYSTEM.md",
-            "mcp.json",
-            "models.db",
-        )
+        isolated = ("config.yml", "settings.json", "RULES.md", "APPEND_SYSTEM.md", "mcp.json",
+                    "models.db")
         for name in isolated:
             (omp_real / name).write_text("user's own\n")
         (omp_real / "managed-skills").mkdir()
@@ -1708,10 +1629,7 @@ class TestShareOmpState:
         launcher._share_host_omp_state(home)
 
         assert sorted(p.name for p in omp_real.iterdir()) == [
-            "agent.db",
-            "blobs",
-            "memories",
-            "sessions",
+            "agent.db", "blobs", "memories", "sessions"
         ]
 
     def test_a_second_run_repoints_an_existing_link(self, tmp_path, omp_real):
@@ -1722,9 +1640,7 @@ class TestShareOmpState:
         launcher._share_host_omp_state(home)
         assert (home / "agent.db").read_text() == "db"
 
-    def test_a_regular_file_left_by_an_earlier_run_is_replaced_by_the_link(
-        self, tmp_path, omp_real
-    ):
+    def test_a_regular_file_left_by_an_earlier_run_is_replaced_by_the_link(self, tmp_path, omp_real):
         (omp_real / "agent.db").write_text("shared")
         home = tmp_path / "agentdir"
         home.mkdir()
@@ -1803,14 +1719,8 @@ class TestOmpLaunchPlan:
     def test_plan_materializes_the_agent_dir_and_returns_omp_argv(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
         monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "host-omp"))
-        assemble(
-            None,
-            "hostspike",
-            paths.profiles_root().parent,
-            "omp",
-            strict=True,
-            shared_identity=False,
-        )
+        assemble(None, "hostspike", paths.profiles_root().parent, "omp", strict=True,
+                 shared_identity=False)
 
         home, argv, cwd, rebuilt = launcher._host_launch_plan("hostspike", "omp", tmp_path)
 
@@ -1834,14 +1744,8 @@ class TestOmpLaunchPlan:
         monkeypatch.setenv("PI_CODING_AGENT_DIR", str(shared))
         monkeypatch.setenv("HOME", str(tmp_path / "fakehome"))
 
-        assemble(
-            None,
-            "hostspike",
-            paths.profiles_root().parent,
-            "omp",
-            strict=True,
-            shared_identity=False,
-        )
+        assemble(None, "hostspike", paths.profiles_root().parent, "omp", strict=True,
+                 shared_identity=False)
 
         assert not (shared / "APPEND_SYSTEM.md").exists()
         assert not (tmp_path / "fakehome" / ".omp").exists()
@@ -1902,9 +1806,7 @@ class TestOmpHostCliRouting:
         real = tmp_path / "host-omp"
         real.mkdir()
         monkeypatch.setenv("PI_CODING_AGENT_DIR", str(real))
-        monkeypatch.setattr(
-            launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0))
-        )
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
 
         result = runner.invoke(
@@ -1920,9 +1822,7 @@ class TestOmpHostCliRouting:
         real = tmp_path / "host-omp"
         real.mkdir()
         monkeypatch.setenv("PI_CODING_AGENT_DIR", str(real))
-        monkeypatch.setattr(
-            launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0))
-        )
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
 
         result = runner.invoke(
@@ -1933,9 +1833,7 @@ class TestOmpHostCliRouting:
 
     def test_an_unsupported_host_harness_still_names_what_is_supported(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        r = runner.invoke(
-            launcher.app, ["host-run", "codex", str(tmp_path), "--stack", "hostspike"]
-        )
+        r = runner.invoke(launcher.app, ["host-run", "codex", str(tmp_path), "--stack", "hostspike"])
         assert r.exit_code == 1
         assert "claude" in r.output and "omp" in r.output
 
@@ -2021,9 +1919,7 @@ class TestOmpHooksBridgeSurface:
         # Container-only artifacts stay out of it, exactly as on the claude path.
         assert not (bridge / ".mcp.json").exists()
 
-    def test_settings_reach_the_bridge_even_when_the_stack_is_unchanged(
-        self, monkeypatch, tmp_path
-    ):
+    def test_settings_reach_the_bridge_even_when_the_stack_is_unchanged(self, monkeypatch, tmp_path):
         """bd harnessed-8px.18 applies here too, and here settings.json is the ONLY file that
         matters: the bridge reads hooks from it and nothing else."""
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
@@ -2042,6 +1938,7 @@ class TestOmpHooksBridgeSurface:
         assert "SessionStart" in (bridge / "settings.json").read_text()
 
 
+
 class TestHostRunFresh:
     """#452. The stamp gate is the host backend's staleness cache and had no escape hatch: an
     unchanged fingerprint skipped `tools:` and `install:` forever, so a stack whose tool tree was
@@ -2053,14 +1950,10 @@ class TestHostRunFresh:
     def _launch(self, tmp_path, monkeypatch, calls, *args):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
-        patch_all(
-            monkeypatch,
-            "_host_run_installs",
+        patch_all(monkeypatch, "_host_run_installs",
             lambda stack, project_path, *, harness, home: calls.append(stack),
         )
-        monkeypatch.setattr(
-            launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0))
-        )
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
         return runner.invoke(
             launcher.app,

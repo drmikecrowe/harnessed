@@ -158,8 +158,12 @@ class TestCompositeTimeoutBehaviour:
         3 * _PODMAN_QUERY_TIMEOUT.  This test pins that _stopped_leftover returns False rather than
         raising or returning True.
         """
-        timeout_rc = subprocess.CompletedProcess(args=[], returncode=124, stdout=b"", stderr=b"")
-        timeout_text = subprocess.CompletedProcess(args=[], returncode=124, stdout="", stderr="")
+        timeout_rc = subprocess.CompletedProcess(
+            args=[], returncode=124, stdout=b"", stderr=b""
+        )
+        timeout_text = subprocess.CompletedProcess(
+            args=[], returncode=124, stdout="", stderr=""
+        )
         calls: list[list[str]] = []
 
         def _fake_bounded(cmd, *, timeout, warn=True, **kw):

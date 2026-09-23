@@ -103,9 +103,8 @@ class TestWriting:
 
     def test_harness_leads_the_name(self, proj):
         written = launchscript.write("host-run", "serena", "codex", proj)
-        assert written == proj / "codex-serena-host", (
+        assert written == proj / "codex-serena-host", \
             "the harness leads the filename, then the stack, then the backend"
-        )
 
     def test_a_derived_stack_name_with_dots_survives(self, proj):
         """S4 — a dynamic stack name joins on `.` and may carry a digest suffix."""
@@ -212,24 +211,18 @@ class TestTheNameGrammar:
 
     def test_a_three_part_name_parses(self, proj):
         assert launchscript.parse_script_name("claude-serena-container") == (
-            "claude",
-            "serena",
-            "container",
+            "claude", "serena", "container",
         )
 
     def test_a_stack_name_containing_dashes_is_recovered_whole(self, proj):
         """The reason the parse reads from BOTH ends rather than splitting on `-`."""
         assert launchscript.parse_script_name("claude-gsd-core_repowise-host") == (
-            "claude",
-            "gsd-core_repowise",
-            "host",
+            "claude", "gsd-core_repowise", "host",
         )
 
     def test_a_stack_name_containing_the_backend_word_is_not_confused(self, proj):
         assert launchscript.parse_script_name("claude-host-container") == (
-            "claude",
-            "host",
-            "container",
+            "claude", "host", "container",
         )
 
     def test_the_legacy_two_part_name_is_not_a_match(self, proj):
@@ -281,9 +274,7 @@ def test_the_name_round_trips_for_any_stack(harness, verb, stack):
     """
     name = launchscript.script_name(verb, stack, harness)
     assert launchscript.parse_script_name(name) == (
-        harness,
-        stack,
-        launchscript._VERB_SUFFIX[verb],
+        harness, stack, launchscript._VERB_SUFFIX[verb],
     )
 
 
@@ -308,7 +299,7 @@ def test_every_name_we_write_is_recognised_as_a_row(harness, verb, stack):
 # containment property below passed while containment was BROKEN. Adversarial review found that;
 # these are the cases that make the property mean something.
 _ESCAPE_ATTEMPTS = [
-    "x/../../evil",  # the demonstrated escape: resolves above the project
+    "x/../../evil",       # the demonstrated escape: resolves above the project
     "../evil",
     "..",
     ".",
@@ -319,15 +310,12 @@ _ESCAPE_ATTEMPTS = [
 ]
 
 
-@given(
-    stack=st.one_of(
-        st.sampled_from(_ESCAPE_ATTEMPTS),
-        st.text(min_size=1).filter(lambda s: "\x00" not in s),
-    )
-)
-@settings(
-    max_examples=150, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
-)
+@given(stack=st.one_of(
+    st.sampled_from(_ESCAPE_ATTEMPTS),
+    st.text(min_size=1).filter(lambda s: "\x00" not in s),
+))
+@settings(max_examples=150, deadline=None,
+          suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_a_stack_name_never_escapes_the_project(tmp_path_factory, stack):
     """P3 — whatever the stack name, a written launcher lives inside the project folder.
 
@@ -348,23 +336,19 @@ def test_a_stack_name_never_escapes_the_project(tmp_path_factory, stack):
 
     written = launchscript.write("host-run", stack, "claude", proj)
     if written is not None:
-        assert written.resolve().parent == proj.resolve(), (
+        assert written.resolve().parent == proj.resolve(), \
             f"a launcher for stack {stack!r} escaped to {written.resolve()}"
-        )
 
 
 class TestParityWithCommandFor:
     """S2 — the exec line comes from `command_for`, never from re-quoting here."""
 
-    @pytest.mark.parametrize(
-        "title",
-        [
-            "t",
-            "before\rafter",  # the value that broke every reader of this file
-            "nel\x85sep",  # splitlines() breaks here; /bin/sh does not
-            "vt\x0bff\x0c",  # ditto
-        ],
-    )
+    @pytest.mark.parametrize("title", [
+        "t",
+        "before\rafter",      # the value that broke every reader of this file
+        "nel\x85sep",         # splitlines() breaks here; /bin/sh does not
+        "vt\x0bff\x0c",       # ditto
+    ])
     def test_exec_argv_is_command_for_minus_the_separator(self, proj, title):
         kwargs = {"group": "librechat", "title": title, "no_strict_mcp": True}
         written = launchscript.write("host-run", "serena", "claude", proj, **kwargs)
@@ -380,7 +364,7 @@ class TestParityWithCommandFor:
         content = launchscript._read_as_the_shell_does(written)
         exec_line = next(ln for ln in content.split("\n") if ln.startswith("exec "))
         assert exec_line.endswith(' "$@"'), "S4: the script forwards its own argv"
-        body = shlex.split(exec_line[len("exec ") : -len(' "$@"')])
+        body = shlex.split(exec_line[len("exec "):-len(' "$@"')])
         assert body == authority[:-1]
 
 
@@ -391,10 +375,8 @@ class TestProvenanceComment:
         argv = ["harnessed", "host-run", "claude", "-r", "codebase-memory-mcp", "-r", "gh-issues"]
         written = launchscript.write("host-run", "serena", "claude", proj, argv=argv)
         assert written is not None
-        assert (
-            "# as typed: harnessed host-run claude -r codebase-memory-mcp -r gh-issues"
+        assert "# as typed: harnessed host-run claude -r codebase-memory-mcp -r gh-issues" \
             in launchscript._read_as_the_shell_does(written).split("\n")
-        )
 
     def test_absent_when_no_argv_is_supplied(self, proj):
         written = launchscript.write("host-run", "serena", "claude", proj)
@@ -407,11 +389,8 @@ class TestProvenanceComment:
             "host-run", "serena", "claude", proj, argv=["harnessed", hostile]
         )
         assert written is not None
-        typed = [
-            ln
-            for ln in launchscript._read_as_the_shell_does(written).split("\n")
-            if ln.startswith("# as typed:")
-        ]
+        typed = [ln for ln in launchscript._read_as_the_shell_does(written).split("\n")
+                 if ln.startswith("# as typed:")]
         assert len(typed) == 1, "the comment must stay on exactly one line"
         assert all(c not in typed[0] for c in "\r\n\x00\x1b")
 
@@ -424,7 +403,9 @@ class TestProvenanceComment:
         # rewrite any \r in the exec line as \n, so the assertion would be about a script this test
         # damaged rather than about the comment.
         content = launchscript._read_as_the_shell_does(with_comment)
-        stripped = "\n".join(ln for ln in content.split("\n") if not ln.startswith("# as typed:"))
+        stripped = "\n".join(
+            ln for ln in content.split("\n") if not ln.startswith("# as typed:")
+        )
         with_comment.open("w", encoding="utf-8", newline="").write(stripped)
         assert run_script(with_comment) == got_with
 
@@ -444,9 +425,7 @@ class TestPassthrough:
         # `<script> --`, so the separator arrives as an argument to the script.
         argv = run_script(script, "--", "--resume", "abc123")
         assert argv[-3:] == ["--", "--resume", "abc123"]
-        assert argv.index("--") == len(argv) - 3, (
-            "only ONE separator, and the agent's flags follow it"
-        )
+        assert argv.index("--") == len(argv) - 3, "only ONE separator, and the agent's flags follow it"
 
     def test_no_extra_arguments_is_a_plain_launch(self, proj, run_script):
         script = launchscript.write("host-run", "serena", "claude", proj)
@@ -458,9 +437,7 @@ class TestHostileInput:
     """S5 — nothing a user can type may escape the generated script."""
 
     @pytest.mark.parametrize("template", _PAYLOADS)
-    def test_a_hostile_title_survives_as_one_argv_element(
-        self, proj, run_script, template, tmp_path
-    ):
+    def test_a_hostile_title_survives_as_one_argv_element(self, proj, run_script, template, tmp_path):
         canary = tmp_path / "pwned"
         hostile = template.format(canary=canary)
         script = launchscript.write("host-run", "serena", "claude", proj, title=hostile)
@@ -469,9 +446,7 @@ class TestHostileInput:
         assert not canary.exists(), "the payload executed — the value escaped its quoting"
 
     @pytest.mark.parametrize("template", _PAYLOADS)
-    def test_a_hostile_group_survives_as_one_argv_element(
-        self, proj, run_script, template, tmp_path
-    ):
+    def test_a_hostile_group_survives_as_one_argv_element(self, proj, run_script, template, tmp_path):
         canary = tmp_path / "pwned"
         hostile = template.format(canary=canary)
         script = launchscript.write("host-run", "serena", "claude", proj, group=hostile)
@@ -498,9 +473,7 @@ class TestClobberRefusal:
         _git_init(proj)
         victim = proj / "claude-serena-host"
         victim.write_text(f"#!/bin/sh\n{launchscript.SENTINEL}\nexec true\n", encoding="utf-8")
-        subprocess.run(
-            ["git", "add", "claude-serena-host"], cwd=proj, check=True, capture_output=True
-        )
+        subprocess.run(["git", "add", "claude-serena-host"], cwd=proj, check=True, capture_output=True)
         assert launchscript.write("host-run", "serena", "claude", proj) is None
         assert launchscript.SENTINEL in victim.read_text()
 
@@ -516,9 +489,8 @@ class TestClobberRefusal:
         first = launchscript.write("host-run", "serena", "claude", proj)
         second = launchscript.write("host-run", "serena", "claude", proj, no_strict_mcp=True)
         assert first is not None and second == first
-        assert "--no-strict-mcp-config" in first.read_text(), (
+        assert "--no-strict-mcp-config" in first.read_text(), \
             "the second write must have replaced the first file's contents"
-        )
 
 
 class TestNeverFatal:
@@ -614,11 +586,8 @@ class TestExcludeEntry:
 # re-entered many times in one process. Suppressing that check hides a real reproducibility
 # problem; dropping the class removes it.
 
-
 @given(st.lists(st.text(min_size=1), min_size=1, max_size=8))
-@settings(
-    max_examples=200, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
-)
+@settings(max_examples=200, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_the_comment_is_always_exactly_one_line(tmp_path_factory, argv):
     """Whatever argv holds, the `# as typed:` line cannot become two lines.
 
@@ -637,11 +606,8 @@ def test_the_comment_is_always_exactly_one_line(tmp_path_factory, argv):
     assert len(lines) == 5, "shebang, sentinel, comment, exec, trailing empty — never more"
     assert lines[3].startswith("exec ") and lines[4] == ""
 
-
 @given(st.integers(min_value=1, max_value=12))
-@settings(
-    max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
-)
+@settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_repeated_writes_never_grow_the_exclude_file(tmp_path_factory, times):
     """N launches leave exactly one exclude line, for every N."""
     proj = tmp_path_factory.mktemp("p")
@@ -651,14 +617,9 @@ def test_repeated_writes_never_grow_the_exclude_file(tmp_path_factory, times):
     lines = launchscript._read_as_the_shell_does(proj / ".git" / "info" / "exclude").split("\n")
     assert lines.count("/claude-serena-host") == 1
 
-
-@given(
-    st.text(min_size=1).filter(lambda t: "\x00" not in t),
-    st.text(min_size=1).filter(lambda t: "\x00" not in t),
-)
-@settings(
-    max_examples=60, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
-)
+@given(st.text(min_size=1).filter(lambda t: "\x00" not in t),
+       st.text(min_size=1).filter(lambda t: "\x00" not in t))
+@settings(max_examples=60, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_any_flag_value_survives_execution_intact(tmp_path_factory, run_script, group, title):
     """Whatever the flag values, the EXECUTED script hands them over byte-identical.
 
@@ -668,7 +629,9 @@ def test_any_flag_value_survives_execution_intact(tmp_path_factory, run_script, 
     than of the launch. NUL is excluded because execve cannot carry it in an argument at all.
     """
     proj = tmp_path_factory.mktemp("p")
-    written = launchscript.write("host-run", "serena", "claude", proj, group=group, title=title)
+    written = launchscript.write(
+        "host-run", "serena", "claude", proj, group=group, title=title
+    )
     assert written is not None
     argv = run_script(written)
     assert group in argv and title in argv
@@ -687,7 +650,9 @@ class TestCarriageReturnRegression:
     HOSTILE = "before\rafter"
 
     def test_the_exec_line_is_one_line_when_read_as_the_shell_reads(self, proj):
-        written = launchscript.write("host-run", "serena", "claude", proj, title=self.HOSTILE)
+        written = launchscript.write(
+            "host-run", "serena", "claude", proj, title=self.HOSTILE
+        )
         assert written is not None
         content = launchscript._read_as_the_shell_does(written)
         assert sum(ln.startswith("exec ") for ln in content.split("\n")) == 1
@@ -696,13 +661,17 @@ class TestCarriageReturnRegression:
     def test_the_default_python_read_would_have_split_it(self, proj):
         # The negative control for the fix: proves the guarded read is doing something, rather than
         # asserting a property that held anyway.
-        written = launchscript.write("host-run", "serena", "claude", proj, title=self.HOSTILE)
+        written = launchscript.write(
+            "host-run", "serena", "claude", proj, title=self.HOSTILE
+        )
         assert written is not None
         naive = written.read_text(encoding="utf-8")
         assert len(naive.split("\n")) > 4, "if this stops holding, the regression is unfalsifiable"
 
     def test_the_shell_still_receives_it_as_one_argument(self, proj, run_script):
-        written = launchscript.write("host-run", "serena", "claude", proj, title=self.HOSTILE)
+        written = launchscript.write(
+            "host-run", "serena", "claude", proj, title=self.HOSTILE
+        )
         assert written is not None
         assert self.HOSTILE in run_script(written), "the value must survive execution intact"
 
@@ -714,14 +683,11 @@ class TestFailureBranches:
     test suite silently leaves unexecuted and a refactor silently breaks.
     """
 
-    @pytest.mark.parametrize(
-        "exc",
-        [
-            FileNotFoundError("git"),
-            subprocess.TimeoutExpired("git", 5),
-            OSError("fork failed"),
-        ],
-    )
+    @pytest.mark.parametrize("exc", [
+        FileNotFoundError("git"),
+        subprocess.TimeoutExpired("git", 5),
+        OSError("fork failed"),
+    ])
     def test_git_that_does_not_complete_reads_as_no_answer(self, proj, monkeypatch, exc):
         """`_git` returns None rather than propagating — every caller treats None as "not a repo".
 
@@ -729,7 +695,6 @@ class TestFailureBranches:
         nothing: `_ensure_excluded` returns before `_git` is ever called, so the assertion held
         whatever `_git` did. Changed-line coverage is what surfaced that.
         """
-
         def raise_it(*_a, **_k):
             raise exc
 
@@ -778,9 +743,7 @@ class TestFailureBranches:
         assert launchscript.write("host-run", "serena", "claude", proj) is not None
         assert "/claude-serena-host" not in (proj / ".git" / "info" / "exclude").read_text()
 
-    def test_a_script_outside_the_toplevel_writes_no_exclude_line(
-        self, proj, monkeypatch, tmp_path
-    ):
+    def test_a_script_outside_the_toplevel_writes_no_exclude_line(self, proj, monkeypatch, tmp_path):
         # `relative_to` cannot express it, so there is no anchored pattern to write. Fails CLOSED:
         # a wrong pattern in a file every worktree shares is worse than no pattern.
         _git_init(proj)
@@ -826,8 +789,7 @@ class TestMutationGaps:
         )
         assert written is not None
         typed = next(
-            ln
-            for ln in launchscript._read_as_the_shell_does(written).split("\n")
+            ln for ln in launchscript._read_as_the_shell_does(written).split("\n")
             if ln.startswith(_TYPED_PREFIX)
         )
         assert "\t" in typed
@@ -840,7 +802,9 @@ class TestMutationGaps:
         assert "--no-strict-mcp-config" not in written.read_text(encoding="utf-8")
 
     def test_no_strict_mcp_reaches_the_script_when_asked_for(self, proj, run_script):
-        written = launchscript.write("host-run", "serena", "claude", proj, no_strict_mcp=True)
+        written = launchscript.write(
+            "host-run", "serena", "claude", proj, no_strict_mcp=True
+        )
         assert written is not None
         assert "--no-strict-mcp-config" in run_script(written)
 
@@ -859,7 +823,9 @@ class TestMutationGaps:
         # Widening the window to three lines would accept a file whose second line is somebody
         # else's, which is not the format we write.
         victim = proj / "claude-serena-host"
-        victim.write_text(f"#!/bin/sh\necho not ours\n{launchscript.SENTINEL}\n", encoding="utf-8")
+        victim.write_text(
+            f"#!/bin/sh\necho not ours\n{launchscript.SENTINEL}\n", encoding="utf-8"
+        )
         assert launchscript.write("host-run", "serena", "claude", proj) is None
         assert "echo not ours" in victim.read_text(encoding="utf-8")
 
@@ -918,8 +884,7 @@ class TestProvenanceCommentIsBounded:
         )
         assert written is not None
         typed = next(
-            ln
-            for ln in launchscript._read_as_the_shell_does(written).split("\n")
+            ln for ln in launchscript._read_as_the_shell_does(written).split("\n")
             if ln.startswith(_TYPED_PREFIX)
         )
         assert len(typed) <= len(_TYPED_PREFIX) + launchscript._TYPED_LIMIT
@@ -934,8 +899,7 @@ class TestProvenanceCommentIsBounded:
         )
         assert written is not None
         typed = next(
-            ln
-            for ln in launchscript._read_as_the_shell_does(written).split("\n")
+            ln for ln in launchscript._read_as_the_shell_does(written).split("\n")
             if ln.startswith(_TYPED_PREFIX)
         )
         assert len(typed) == len(_TYPED_PREFIX) + launchscript._TYPED_LIMIT
@@ -982,9 +946,7 @@ class TestTheSentinelReadIsBounded:
         # Truncation means the sentinel is not among the first two lines read, so the file is
         # treated as somebody else's and left alone — the safe direction.
         victim = proj / "claude-serena-host"
-        original = (
-            "#" * (launchscript._SENTINEL_READ_LIMIT + 10) + "\n" + launchscript.SENTINEL + "\n"
-        )
+        original = "#" * (launchscript._SENTINEL_READ_LIMIT + 10) + "\n" + launchscript.SENTINEL + "\n"
         victim.write_text(original, encoding="utf-8")
         assert launchscript.write("host-run", "serena", "claude", proj) is None
         assert victim.read_text(encoding="utf-8") == original
@@ -1098,9 +1060,7 @@ class TestTheTargetPathIsCheckedForWhatItIs:
         os.mkfifo(proj / "claude-serena-host")
         try:
             assert self._write_within(proj) is None
-            assert (proj / "claude-serena-host").is_fifo(), (
-                "the FIFO must be left exactly as it was"
-            )
+            assert (proj / "claude-serena-host").is_fifo(), "the FIFO must be left exactly as it was"
         finally:
             (proj / "claude-serena-host").unlink()
 

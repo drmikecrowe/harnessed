@@ -31,9 +31,7 @@ class TestExtendsMerge:
     def test_child_unions_recipes_and_services_with_parent(self, tmp_path):
         _stack(tmp_path, "base", "recipes: [ccstatusline, openbrain]\nservices: [gbrain]\n")
         child = _stack(
-            tmp_path,
-            "kid",
-            "extends: base\nrecipes: [beads-team, serena]\nservices: [beads-server]\n",
+            tmp_path, "kid", "extends: base\nrecipes: [beads-team, serena]\nservices: [beads-server]\n"
         )
         stk = load_stack(child)
         # Parent's entries first, then the child's additions.

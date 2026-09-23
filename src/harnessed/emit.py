@@ -23,7 +23,7 @@ from pathlib import Path
 
 # Matches exactly `ARG HARNESS` (with optional trailing whitespace) — the build-stage scope
 # anchor emitted by the assembler. Must NOT strip ARGs like ARG HARNESS_PROXY_URL (WR-04).
-_ARG_HARNESS_RE = re.compile(r"^ARG\s+HARNESS\s*$", re.IGNORECASE)
+_ARG_HARNESS_RE = re.compile(r'^ARG\s+HARNESS\s*$', re.IGNORECASE)
 
 from . import paths
 from .schema import (
@@ -43,7 +43,6 @@ HATAGO_MCP_KEY = "hatago"
 # The hub binary as it resolves on the container's PATH (pnpm global bin, added in
 # Dockerfile.harnessed-base). Used only by the stdio form, where the harness spawns the hub itself.
 HATAGO_STDIO_COMMAND = "hatago"
-
 
 def reset_profile(profile_dir: Path) -> None:
     """Wipe and recreate the profile dir so emission is fully reproducible."""
@@ -221,7 +220,9 @@ def write_opencode_persona(
     return out
 
 
-def merge_opencode_config(baked: dict, agent_name: str, persona_rel: str, rules_glob: str) -> dict:
+def merge_opencode_config(
+    baked: dict, agent_name: str, persona_rel: str, rules_glob: str
+) -> dict:
     """Merge harnessed's stack identity into the image-baked opencode.json (bd main-rlw).
 
     Mirrors `merge_settings`: the baked config is authoritative (it carries the `mcp.hatago` block
@@ -661,12 +662,7 @@ def _recipe_hooks_settings(recipes: list[Recipe], harness: str | None = None) ->
 # writing `permissions: auto` was silently given a different mode than the one they named. It now
 # means what it says — pass through to Claude's `auto`. Use `acceptEdits` for the old behaviour.
 _CLAUDE_PERMISSION_MODES = (
-    "acceptEdits",
-    "auto",
-    "bypassPermissions",
-    "default",
-    "dontAsk",
-    "plan",
+    "acceptEdits", "auto", "bypassPermissions", "default", "dontAsk", "plan",
 )
 _PERMISSION_DEFAULT_MODE = {
     **{mode: mode for mode in _CLAUDE_PERMISSION_MODES},
@@ -821,10 +817,8 @@ def merge_settings(baked: dict | None, required: dict, *, warn=None) -> dict:
         for grant in grants:
             if isinstance(deny, list) and grant in deny:
                 deny[:] = [d for d in deny if d != grant]
-                _warn(
-                    f"image settings.json denies {grant}; harnessed re-enables it "
-                    "(required for the MCP hub)"
-                )
+                _warn(f"image settings.json denies {grant}; harnessed re-enables it "
+                      "(required for the MCP hub)")
             if grant not in allow:
                 allow.append(grant)
 
@@ -970,7 +964,9 @@ def write_hatago_config(
         {
             "version": 1,
             "logLevel": "info",
-            "mcpServers": {s.name: _hatago_entry(s, project_path) for s in servers if not s.direct},
+            "mcpServers": {
+                s.name: _hatago_entry(s, project_path) for s in servers if not s.direct
+            },
         },
     )
     return out
@@ -999,14 +995,8 @@ CTR_INSTALL_CACHE = "/tmp/harnessed-install-cache"  # noqa: S108 — container-s
 
 
 def install_env(
-    recipe: Recipe,
-    *,
-    mode: str,
-    harness: str,
-    config_dir: str,
-    cache_dir: str,
-    bin_dir: str,
-    home_shim: str,
+    recipe: Recipe, *, mode: str, harness: str, config_dir: str, cache_dir: str,
+    bin_dir: str, home_shim: str,
 ) -> dict[str, str]:
     """THE `install.script` env contract — identical KEYS in host and container mode.
 
@@ -1106,10 +1096,7 @@ CACHE_MOUNTS = " ".join(
 
 
 def write_derived_dockerfile(
-    profile_dir: Path,
-    stack_name: str,
-    harness: str,
-    recipes: list[Recipe],
+    profile_dir: Path, stack_name: str, harness: str, recipes: list[Recipe],
 ) -> Path:
     """Emit profiles/<stack>/<harness>/Dockerfile.harnessed-<stack> for host `podman build` (ASM-03).
 
@@ -1158,9 +1145,9 @@ def write_derived_dockerfile(
             continue  # backward-compat: recipes without Dockerfiles contribute no layer
         body_lines = dockerfile.read_text(encoding="utf-8").splitlines()
         filtered = [
-            ln
-            for ln in body_lines
-            if not ln.strip().upper().startswith("FROM ") and not _ARG_HARNESS_RE.match(ln.strip())
+            ln for ln in body_lines
+            if not ln.strip().upper().startswith("FROM ")
+            and not _ARG_HARNESS_RE.match(ln.strip())
         ]
         lines.append(f"# --- recipe: {recipe.name} ---")
         lines.extend(filtered)
@@ -1178,3 +1165,5 @@ def write_derived_dockerfile(
     out = profile_dir / f"Dockerfile.harnessed-{stack_name}"
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return out
+
+

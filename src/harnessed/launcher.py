@@ -263,31 +263,31 @@ app = typer.Typer(
 # Deleting any of these imports breaks tests — exactly as documented in issue #327 / PR #325.
 # F401 is suppressed via __all__ rather than per-line noqa to keep the contract explicit.
 __all__ = [
-    "_DAEMON_STATE_MARKERS",  # hosthome
-    "_HOST_STACK_FINGERPRINT",  # hosthome
-    "_STABLE_PORT_RANGE",  # svcstate
-    "_claude_creds_expired",  # mounts
-    "_ensure_config_volume",  # volumes
-    "_env_files_value",  # mounts
-    "_gcd_db_name",  # setupenv
+    "_DAEMON_STATE_MARKERS",       # hosthome
+    "_HOST_STACK_FINGERPRINT",     # hosthome
+    "_STABLE_PORT_RANGE",          # svcstate
+    "_claude_creds_expired",       # mounts
+    "_ensure_config_volume",       # volumes
+    "_env_files_value",            # mounts
+    "_gcd_db_name",                # setupenv
     "_gh_hosts_missing_plaintext_token",  # credmounts
-    "_host_mise_env",  # hostrun
-    "_img_differs",  # ctrquery
+    "_host_mise_env",              # hostrun
+    "_img_differs",                # ctrquery
     "_macos_op_socket_mount_source",  # credmounts
     "_migrate_legacy_host_homes",  # hosthome
-    "_op_agent_socket",  # credmounts
-    "_repo_primitives",  # setupenv
-    "_repo_project_hashes",  # svcstate
-    "_run_container_installs",  # volumes
-    "_script_env",  # setupenv
-    "_stack_config_volume",  # volumes
-    "_subst",  # setupenv
-    "_varlock_cache_clear",  # launchenv
-    "_varlock_resolve",  # launchenv
-    "_yubikey_device_args",  # credmounts
+    "_op_agent_socket",            # credmounts
+    "_repo_primitives",            # setupenv
+    "_repo_project_hashes",        # svcstate
+    "_run_container_installs",     # volumes
+    "_script_env",                 # setupenv
+    "_stack_config_volume",        # volumes
+    "_subst",                      # setupenv
+    "_varlock_cache_clear",        # launchenv
+    "_varlock_resolve",            # launchenv
+    "_yubikey_device_args",        # credmounts
     "app",
-    "svc_client_env",  # svcstate
-    "svc_socket_env",  # svcstate
+    "svc_client_env",              # svcstate
+    "svc_socket_env",              # svcstate
 ]
 
 # --- shared image names (base; agent images come from catalog/agents/<h>/agent.yaml) ---
@@ -308,21 +308,15 @@ _CONTAINER_HOME_STR = str(CONTAINER_HOME)
 # shutting-down container is legitimately slower than an `inspect`. The suite runs no real podman
 # (see CLAUDE.md), so nothing here proves these are right under load — only that the mechanism
 # fires. Raise one if a real workload trips it; that is a tuning bug, not a design failure.
-_PODMAN_QUERY_TIMEOUT = 30  # read-only metadata: inspect, ps, images, volume ls, top, exists
-_PODMAN_WRITE_TIMEOUT = 120  # state changes: create, rm -f, stop, pod rm, volume rm, cp
-_PODMAN_EXEC_TIMEOUT = 120  # exec of a bounded in-container command (firewall, CA install)
-_PODMAN_PROBE_TIMEOUT = 10  # an exec'd readiness probe inside a poll loop
+_PODMAN_QUERY_TIMEOUT = 30      # read-only metadata: inspect, ps, images, volume ls, top, exists
+_PODMAN_WRITE_TIMEOUT = 120     # state changes: create, rm -f, stop, pod rm, volume rm, cp
+_PODMAN_EXEC_TIMEOUT = 120      # exec of a bounded in-container command (firewall, CA install)
+_PODMAN_PROBE_TIMEOUT = 10      # an exec'd readiness probe inside a poll loop
 # Distinct, readable on both light and dark terminals. Cycled, so >8 concurrent builds reuse colours
 # (the label still disambiguates).
 _TAG_COLORS = (
-    "cyan",
-    "magenta",
-    "green",
-    "yellow",
-    "bright_blue",
-    "bright_magenta",
-    "bright_cyan",
-    "bright_green",
+    "cyan", "magenta", "green", "yellow",
+    "bright_blue", "bright_magenta", "bright_cyan", "bright_green",
 )
 
 # Concurrent stack builds on a bare `harnessed build`. Deliberately NOT cpu_count: a stack build is
@@ -430,9 +424,7 @@ def _corp_proxy_ca_mount_args() -> list[str]:
     return ["-v", f"{cert}:/run/corp-proxy-ca.crt:ro"]
 
 
-def _install_corp_proxy_ca_in_container(
-    rt: str, container: str, *, best_effort: bool = False
-) -> None:
+def _install_corp_proxy_ca_in_container(rt: str, container: str, *, best_effort: bool = False) -> None:
     """Install the mounted corp CA into the container's system trust store.
 
     Requires _corp_proxy_ca_mount_args() to have mounted the cert at /run/corp-proxy-ca.crt.
@@ -445,13 +437,7 @@ def _install_corp_proxy_ca_in_container(
     if not corp_proxy_ca_path().is_file():
         return
     cmd = [
-        rt,
-        "exec",
-        "--user",
-        "root",
-        container,
-        "bash",
-        "-c",
+        rt, "exec", "--user", "root", container, "bash", "-c",
         "cp /run/corp-proxy-ca.crt /usr/local/share/ca-certificates/corp-proxy-ca.crt"
         " && update-ca-certificates",
     ]
@@ -583,20 +569,7 @@ def _build_images_cmd(rt: str, force: bool = False) -> None:
         for image, dockerfile, build_args in pairs:
             if force or not _image_exists(rt, image):
                 _out.print(f"[blue][INFO][/blue] Building {image} ...")
-                _run(
-                    [
-                        rt,
-                        "build",
-                        "-t",
-                        image,
-                        "-f",
-                        str(dockerfile),
-                        *build_args,
-                        *cache_arg,
-                        *secret_args,
-                        ctx,
-                    ]
-                )
+                _run([rt, "build", "-t", image, "-f", str(dockerfile), *build_args, *cache_arg, *secret_args, ctx])
                 with _SHARED_IMAGES_LOCK:
                     _SHARED_IMAGES_BUILT.add(image)
     _out.print("[green][SUCCESS][/green] harnessed images ready")
@@ -607,26 +580,23 @@ def _build_base_image(rt: str) -> None:
     scan script, extra-tools, scanner installs) propagate into every derived stack image (which is
     `FROM harnessed-base` — agent-last lineage). Layer-cached: a no-op when the base Dockerfile is
     unchanged, and skipped outright once this process has already built it."""
-
     def build() -> None:
         no_cache = os.environ.get("HARNESSED_PODMAN_NO_CACHE") == "true"
         cache_arg = ["--no-cache"] if no_cache else []
         secret_args = _corp_proxy_ca_secret_args()
         _say(f"[blue][INFO][/blue] Building {_BASE_IMAGE} ...")
         with _staged_build_context() as ctx:
-            _run(
-                [
-                    rt,
-                    "build",
-                    "-t",
-                    _BASE_IMAGE,
-                    "-f",
-                    str(Path(ctx) / "catalog" / "base" / "Dockerfile.harnessed-base"),
-                    *cache_arg,
-                    *secret_args,
-                    ctx,
-                ]
-            )
+            _run([
+                rt,
+                "build",
+                "-t",
+                _BASE_IMAGE,
+                "-f",
+                str(Path(ctx) / "catalog" / "base" / "Dockerfile.harnessed-base"),
+                *cache_arg,
+                *secret_args,
+                ctx,
+            ])
 
     _build_shared_once(_BASE_IMAGE, build)
 
@@ -681,8 +651,7 @@ def _build_agent_image(rt: str, harness: str) -> None:
             # agent.dockerfile is home-relative (e.g. catalog/agents/omp/Dockerfile) — and the staged
             # context mirrors catalog/ at its root, so the same relative path resolves inside it.
             dockerfile = (
-                Path(ctx) / agent.dockerfile
-                if agent.dockerfile
+                Path(ctx) / agent.dockerfile if agent.dockerfile
                 else Path(ctx) / "catalog" / "base" / f"Dockerfile.harnessed-{harness}"
             )
             _run([rt, "build", "-t", image, "-f", str(dockerfile), *build_args, *cache_arg, ctx])
@@ -696,9 +665,7 @@ def _ensure_harness_image(rt: str, harness: str) -> None:
         _build_agent_image(rt, harness)
 
 
-def _build_stack(
-    rt: str, stack: str, harness: str, root: Path | None = None, *, strict: bool = True
-) -> None:
+def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *, strict: bool = True) -> None:
     """Assemble a stack IN-PROCESS (host-native, emit-only — no tool container) + build hatago.
 
     `root` is an optional single catalog root (tests); None resolves across the catalog roots
@@ -710,9 +677,7 @@ def _build_stack(
     _preflight_runtime(rt)
     stack_dir = (root / "stacks" / stack) if root else paths.find_in_catalog("stacks", stack)
     if not (stack_dir / "stack.yaml").is_file():
-        _err.print(
-            f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_dir}/stack.yaml)"
-        )
+        _err.print(f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_dir}/stack.yaml)")
         raise typer.Exit(1)
 
     prof = _ensure_profile_dir(stack, harness)
@@ -762,10 +727,8 @@ def _build_stack(
     cfg_vol, tools_vol = _ensure_stack_volumes(rt, stack, harness, prof, derived, build_recipes)
     vol_args = [
         *paths.userns_args(rt),
-        "-v",
-        f"{cfg_vol}:{_CONTAINER_HOME_STR}/.claude",
-        "-v",
-        f"{tools_vol}:{_CONTAINER_HOME_STR}/.local",
+        "-v", f"{cfg_vol}:{_CONTAINER_HOME_STR}/.claude",
+        "-v", f"{tools_vol}:{_CONTAINER_HOME_STR}/.local",
     ]
 
     rescan_report = False
@@ -816,15 +779,12 @@ def _built_image_hash(rt: str, stack: str, harness: str) -> str | None:
     doesn't exist yet or was built before this label existed."""
     result = _bounded(
         [
-            rt,
-            "inspect",
-            "--format",
+            rt, "inspect", "--format",
             '{{if .Config.Labels}}{{index .Config.Labels "harnessed.recipe-hash"}}{{end}}',
             _derived_image(stack, harness),
         ],
         timeout=_PODMAN_QUERY_TIMEOUT,
-        capture_output=True,
-        text=True,
+        capture_output=True, text=True,
     )
     if result.returncode != 0:
         return None
@@ -836,9 +796,7 @@ def _declared_harnesses(stack: str, root: Path | None) -> list[str]:
     """The stack's `harnesses:` list, or [] when it declares none (or cannot be loaded)."""
     stack_dir = (root / "stacks" / stack) if root else paths.find_in_catalog("stacks", stack)
     if not (stack_dir / "stack.yaml").is_file():
-        _err.print(
-            f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_dir}/stack.yaml)"
-        )
+        _err.print(f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_dir}/stack.yaml)")
         raise typer.Exit(1)
     try:
         return load_stack(stack_dir).harnesses
@@ -856,13 +814,10 @@ def _declared_pairs(root: Path | None) -> list[tuple[str, str]]:
     """
     if root:
         stacks_dir = root / "stacks"
-        names = (
-            sorted(
-                d.name for d in stacks_dir.iterdir() if d.is_dir() and (d / "stack.yaml").is_file()
-            )
-            if stacks_dir.is_dir()
-            else []
-        )
+        names = sorted(
+            d.name for d in stacks_dir.iterdir()
+            if d.is_dir() and (d / "stack.yaml").is_file()
+        ) if stacks_dir.is_dir() else []
     else:
         names = paths.list_catalog_stacks()
 
@@ -883,9 +838,7 @@ def _declared_pairs(root: Path | None) -> list[tuple[str, str]]:
 _LOCAL_IMAGE_PREFIX = "localhost/"
 
 
-def parse_built_pairs(
-    repos: Iterable[str], known_harnesses: Iterable[str]
-) -> list[tuple[str, str]]:
+def parse_built_pairs(repos: Iterable[str], known_harnesses: Iterable[str]) -> list[tuple[str, str]]:
     """`(stack, harness)` for each `harnessed-<harness>-<stack>` repository name in `repos`.
 
     Split out of `_stale_pairs` so the live contract test can assert against THIS parser instead of
@@ -903,23 +856,21 @@ def parse_built_pairs(
     for raw in repos:
         repo = raw.strip()
         if repo.startswith(_LOCAL_IMAGE_PREFIX):
-            repo = repo[len(_LOCAL_IMAGE_PREFIX) :]
+            repo = repo[len(_LOCAL_IMAGE_PREFIX):]
         if not repo.startswith("harnessed-"):
             continue
-        tail = repo[len("harnessed-") :]  # <harness>-<stack>
+        tail = repo[len("harnessed-"):]  # <harness>-<stack>
         for harness_candidate in known_harnesses:
             prefix = harness_candidate + "-"
             if tail.startswith(prefix):
-                stack_name = tail[len(prefix) :]
+                stack_name = tail[len(prefix):]
                 if stack_name and (stack_name, harness_candidate) not in pairs:
                     pairs.append((stack_name, harness_candidate))
                 break
     return pairs
 
 
-def _stale_pairs(
-    rt: str, root: Path | None, *, strict: bool, force: bool = False
-) -> list[tuple[str, str, str]]:
+def _stale_pairs(rt: str, root: Path | None, *, strict: bool, force: bool = False) -> list[tuple[str, str, str]]:
     """The (stack, harness, reason) triples a bare `harnessed build` must rebuild. A pair is in
     scope when it is either:
 
@@ -938,8 +889,7 @@ def _stale_pairs(
     result = _bounded(
         [rt, "images", "--filter", "label=harnessed=true", "--format", "{{.Repository}}"],
         timeout=_PODMAN_QUERY_TIMEOUT,
-        capture_output=True,
-        text=True,
+        capture_output=True, text=True,
     )
     if result.returncode == 0:
         # Parse image names of the form harnessed-<harness>-<stack>; see parse_built_pairs.
@@ -961,41 +911,29 @@ def _stale_pairs(
         _out.print("[blue][INFO][/blue] No declared or previously-built stacks found to reconcile.")
         return []
 
-    _out.print(
-        f"[blue][INFO][/blue] Reconciling {len(pairs)} stack(s) against their recipe hash ..."
-    )
+    _out.print(f"[blue][INFO][/blue] Reconciling {len(pairs)} stack(s) against their recipe hash ...")
     stale: list[tuple[str, str, str]] = []
     for name, harness in pairs:
         stack_dir = (root / "stacks" / name) if root else paths.find_in_catalog("stacks", name)
         if not (stack_dir / "stack.yaml").is_file():
-            _err.print(
-                f"[yellow]warn:[/yellow] skipping '{name}' (stack.yaml not found in catalog)"
-            )
+            _err.print(f"[yellow]warn:[/yellow] skipping '{name}' (stack.yaml not found in catalog)")
             continue
         try:
             _, recipes = load_stack_with_recipes(root, name, strict=strict)
             expected = compute_recipe_hash(stack_dir / "stack.yaml", recipes)
         except (SchemaError, CollisionError) as exc:
-            _err.print(
-                f"[yellow]warn:[/yellow] skipping '{name}' (failed to resolve recipes: {exc})"
-            )
+            _err.print(f"[yellow]warn:[/yellow] skipping '{name}' (failed to resolve recipes: {exc})")
             continue
 
         current = _built_image_hash(rt, name, harness)
         if not force and current == expected:
             continue
-        reason = (
-            "forced rebuild"
-            if force
-            else ("no built image" if current is None else "recipe hash changed")
-        )
+        reason = "forced rebuild" if force else ("no built image" if current is None else "recipe hash changed")
         stale.append((name, harness, reason))
     return stale
 
 
-def _reconcile_stacks(
-    rt: str, root: Path | None, *, strict: bool, jobs: int = 1, force: bool = False
-) -> None:
+def _reconcile_stacks(rt: str, root: Path | None, *, strict: bool, jobs: int = 1, force: bool = False) -> None:
     """Rebuild every stale (stack, harness) pair — the reconciliation half of a bare
     `harnessed build`. With `jobs > 1` the stale pairs build CONCURRENTLY.
 
@@ -1023,9 +961,7 @@ def _reconcile_stacks(
 
     jobs = max(1, min(jobs, len(stale)))
     for name, harness, reason in stale:
-        _out.print(
-            f"[blue][INFO][/blue] Rebuilding stale stack '{name}' ({harness}) ({reason}) ..."
-        )
+        _out.print(f"[blue][INFO][/blue] Rebuilding stale stack '{name}' ({harness}) ({reason}) ...")
 
     if jobs == 1:
         failures = [
@@ -1034,31 +970,22 @@ def _reconcile_stacks(
             for exc in _build_stack_guarded(rt, name, harness, root, strict=strict, tag=None)
         ]
     else:
-        _out.print(
-            f"[blue][INFO][/blue] Building {len(stale)} stack(s) with {jobs} parallel job(s) ..."
-        )
+        _out.print(f"[blue][INFO][/blue] Building {len(stale)} stack(s) with {jobs} parallel job(s) ...")
         tags = {
             (name, harness): (f"{name}({harness})", color)
             for (name, harness, _), color in zip(stale, cycle(_TAG_COLORS))
         }
         with ThreadPoolExecutor(max_workers=jobs) as pool:
-            results = list(
-                pool.map(
-                    lambda triple: (
-                        triple[0],
-                        triple[1],
-                        _build_stack_guarded(
-                            rt,
-                            triple[0],
-                            triple[1],
-                            root,
-                            strict=strict,
-                            tag=tags[(triple[0], triple[1])],
-                        ),
+            results = list(pool.map(
+                lambda triple: (
+                    triple[0], triple[1],
+                    _build_stack_guarded(
+                        rt, triple[0], triple[1], root,
+                        strict=strict, tag=tags[(triple[0], triple[1])],
                     ),
-                    stale,
-                )
-            )
+                ),
+                stale,
+            ))
         failures = [(name, harness, exc) for name, harness, excs in results for exc in excs]
 
     if failures:
@@ -1070,12 +997,7 @@ def _reconcile_stacks(
 
 
 def _build_stack_guarded(
-    rt: str,
-    stack: str,
-    harness: str,
-    root: Path | None,
-    *,
-    strict: bool,
+    rt: str, stack: str, harness: str, root: Path | None, *, strict: bool,
     tag: tuple[str, str] | None,
 ) -> list[Exception]:
     """Run _build_stack under `tag`, returning [] on success or [exc] on failure.
@@ -1094,9 +1016,7 @@ def _build_stack_guarded(
         _BUILD_TAG.reset(token)
 
 
-def _build_derived_image(
-    rt: str, derived: str, dockerfile: Path, ctx: str, recipe_hash: str
-) -> None:
+def _build_derived_image(rt: str, derived: str, dockerfile: Path, ctx: str, recipe_hash: str) -> None:
     """Build the derived image. NEVER touches secrets or varlock — building must always succeed
     without credentials, so recipe install / skill / command / rule verification never depends on
     a secret resolving.
@@ -1124,22 +1044,13 @@ def _build_derived_image(
     """
     no_cache = os.environ.get("HARNESSED_PODMAN_NO_CACHE") == "true"
     cache_arg = ["--no-cache"] if no_cache else []
-    _run(
-        [
-            rt,
-            "build",
-            "-t",
-            derived,
-            "-f",
-            str(dockerfile),
-            *cache_arg,
-            "--label",
-            "harnessed=true",
-            "--label",
-            f"harnessed.recipe-hash={recipe_hash}",
-            ctx,
-        ]
-    )
+    _run([
+        rt, "build", "-t", derived, "-f", str(dockerfile),
+        *cache_arg,
+        "--label", "harnessed=true",
+        "--label", f"harnessed.recipe-hash={recipe_hash}",
+        ctx,
+    ])
 
 
 _T = TypeVar("_T")
@@ -1155,9 +1066,7 @@ def _with_image_container(rt: str, image: str, fn: Callable[[str], _T]) -> _T | 
     """
     cid = _bounded(
         [rt, "create", *paths.userns_args(rt), image],
-        timeout=_PODMAN_WRITE_TIMEOUT,
-        capture_output=True,
-        text=True,
+        timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True, text=True
     ).stdout.strip()
     if not cid:
         return None
@@ -1170,11 +1079,7 @@ def _with_image_container(rt: str, image: str, fn: Callable[[str], _T]) -> _T | 
 
 
 def _merge_baked_settings(
-    rt: str,
-    image: str,
-    prof: Path,
-    harness: str = "",
-    volume: str = "",
+    rt: str, image: str, prof: Path, harness: str = "", volume: str = "",
 ) -> None:
     """Replace the assemble-time settings.json FLOOR with the image's installer-written
     settings.json, surgically re-applying harnessed's required grant (emit.merge_settings).
@@ -1264,12 +1169,8 @@ def _merge_baked_opencode(rt: str, image: str, prof: Path, stack: Stack) -> None
         with tempfile.TemporaryDirectory() as td:
             dest = Path(td) / "opencode.json"
             cp = _bounded(
-                [
-                    rt,
-                    "cp",
-                    f"{cid}:{_CONTAINER_HOME_STR}/.config/opencode/opencode.json",
-                    str(dest),
-                ],
+                [rt, "cp",
+                 f"{cid}:{_CONTAINER_HOME_STR}/.config/opencode/opencode.json", str(dest)],
                 timeout=_PODMAN_WRITE_TIMEOUT,
                 capture_output=True,
             )
@@ -1302,7 +1203,9 @@ def _merge_baked_opencode(rt: str, image: str, prof: Path, stack: Stack) -> None
     out.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
 
 
-def _surface_scan_report(rt: str, image: str, prof: Path, *, keep_existing: bool = False) -> None:
+def _surface_scan_report(
+    rt: str, image: str, prof: Path, *, keep_existing: bool = False
+) -> None:
     """Print a one-line advisory summary of the supply-chain report. Advisory — never gates.
 
     The report now comes from the CREDENTIALED post-build scan (`keep_existing=True`), which is the
@@ -1344,16 +1247,13 @@ def _surface_scan_report(rt: str, image: str, prof: Path, *, keep_existing: bool
     except (json.JSONDecodeError, KeyError, OSError):
         return
     if crit or high:
-        _out.print(
-            f"[yellow]⚠ supply-chain (advisory):[/yellow] {crit} critical · {high} high "
-            f"— report: {dest}"
-        )
+        _out.print(f"[yellow]⚠ supply-chain (advisory):[/yellow] {crit} critical · {high} high "
+                   f"— report: {dest}")
     else:
         _out.print(f"[green]✓ supply-chain:[/green] no high/critical advisories — report: {dest}")
 
 
 # --- Pod / container lifecycle helpers -----------------------------------------
-
 
 def _without_userns(args: list[str]) -> list[str]:
     """Drop every `--userns=…` from an argv fragment.
@@ -1537,8 +1437,7 @@ def _firewall_policy_is_drop(rt: str, netns_anchor: str, image: str) -> bool:
     """
     res = _bounded(
         [*_firewall_runner_argv(rt, netns_anchor, image), "iptables", "-S", "OUTPUT"],
-        timeout=_PODMAN_EXEC_TIMEOUT,
-        capture_output=True,
+        timeout=_PODMAN_EXEC_TIMEOUT, capture_output=True,
     )
     if res.returncode != 0:
         return False
@@ -1580,8 +1479,7 @@ def _agent_placement_args(rt: str, pod: str, inst: str) -> list[str]:
     # dangling anchor was never even reached (#458). Owning the netns also makes `--hostname`
     # legal again: docker refuses it for a container joining someone else's UTS namespace.
     return [
-        "--hostname",
-        paths.container_hostname(inst),
+        "--hostname", paths.container_hostname(inst),
         *paths.userns_args(rt),
         *paths.container_user_args(rt),
     ]
@@ -1618,9 +1516,7 @@ def _firewall_runner_argv(rt: str, netns_anchor: str, image: str) -> list[str]:
     `image` is the harness image the member is already running, so nothing is pulled.
     """
     return [
-        rt,
-        "run",
-        "--rm",
+        rt, "run", "--rm",
         # Pod members share the infra container's netns; the pod-less runtimes join the first
         # container's instead. Either way this must land in the SAME namespace as the agent, or
         # the rules confine an empty netns and the agent runs wide open.
@@ -1628,34 +1524,21 @@ def _firewall_runner_argv(rt: str, netns_anchor: str, image: str) -> list[str]:
         # on a pod-less runtime it must be stated here. It must MATCH the agent's, not merely be
         # present — iptables run from a different user namespace than the netns it is configuring
         # returns EPERM, so a mismatch confines nothing and the agent runs wide open (#456).
-        *(
-            ["--pod", netns_anchor]
-            if _rt_uses_pods(rt)
-            else [f"--network=container:{netns_anchor}", *paths.userns_args(rt)]
-        ),
-        "--cap-add",
-        "NET_ADMIN",
+        *(["--pod", netns_anchor] if _rt_uses_pods(rt)
+          else [f"--network=container:{netns_anchor}", *paths.userns_args(rt)]),
+        "--cap-add", "NET_ADMIN",
         # NET_ADMIN in the bounding set is not enough: the image's default user is unprivileged and
         # iptables carries no file capabilities, so an effective set of 0 makes every call fail
         # with "Permission denied (you must be root)" — which is exactly how #429 stayed hidden.
-        "--user",
-        "root",
-        "-v",
-        f"{_catalog_base('egress-firewall.sh')}:/usr/local/sbin/egress-firewall:ro",
-        "--entrypoint",
-        "",
+        "--user", "root",
+        "-v", f"{_catalog_base('egress-firewall.sh')}:/usr/local/sbin/egress-firewall:ro",
+        "--entrypoint", "",
         image,
     ]
 
 
-def _apply_firewall(
-    rt: str,
-    instance: str,
-    domains: list[str] | None = None,
-    *,
-    netns_anchor: str | None = None,
-    image: str | None = None,
-) -> None:
+def _apply_firewall(rt: str, instance: str, domains: list[str] | None = None,
+                    *, netns_anchor: str | None = None, image: str | None = None) -> None:
     if os.environ.get("NO_FIREWALL", "false").lower() == "true":
         return
     # Extra domains (recipe-declared `egress:`) are appended to the script's allowlist — it takes
@@ -1663,14 +1546,9 @@ def _apply_firewall(
     anchor = netns_anchor or instance
     img = image or _agent_image("claude")
     res = _bounded(
-        [
-            *_firewall_runner_argv(rt, anchor, img),
-            "bash",
-            "/usr/local/sbin/egress-firewall",
-            *(domains or []),
-        ],
-        timeout=_PODMAN_EXEC_TIMEOUT,
-        capture_output=True,
+        [*_firewall_runner_argv(rt, anchor, img),
+         "bash", "/usr/local/sbin/egress-firewall", *(domains or [])],
+        timeout=_PODMAN_EXEC_TIMEOUT, capture_output=True,
     )
     # FAIL CLOSED. The script installs a default-DROP policy, so "it did not run" is not a degraded
     # firewall — it is NO firewall, and the container gets unrestricted egress for the whole session.
@@ -1841,8 +1719,7 @@ def _authorize_mcp_remote_servers(
         # the pattern match the hub's command line and not its own.
         _bounded(
             [rt, "exec", inst, "bash", "-lc", "pkill -f '[h]atago-mcp-hub' || true"],
-            timeout=_PODMAN_WRITE_TIMEOUT,
-            capture_output=True,
+            timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True,
         )
     try:
         for name, argv in pending:
@@ -1860,18 +1737,10 @@ def _authorize_mcp_remote_servers(
             # mirrors the entrypoint's own line and `test_the_hub_restart_matches_the_entrypoint`
             # holds the two together, since a drift here would restart a differently-configured hub.
             _bounded(
-                [
-                    rt,
-                    "exec",
-                    "-d",
-                    inst,
-                    "bash",
-                    "-lc",
-                    f"nohup hatago serve --http --port {paths.hatago_port()} "
-                    f"--config {paths.hatago_config_container()} >/tmp/hatago.log 2>&1 &",
-                ],
-                timeout=_PODMAN_WRITE_TIMEOUT,
-                capture_output=True,
+                [rt, "exec", "-d", inst, "bash", "-lc",
+                 f"nohup hatago serve --http --port {paths.hatago_port()} "
+                 f"--config {paths.hatago_config_container()} >/tmp/hatago.log 2>&1 &"],
+                timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True,
             )
 
 
@@ -1895,7 +1764,6 @@ def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int =
     fail, which is correct.
     """
     import time
-
     if port is None:
         port = paths.hatago_port()  # honor the HATAGO_PORT env override (single source: paths)
     _out.print(f"[blue][INFO][/blue] Waiting for hatago hub on :{port} ...")
@@ -1910,14 +1778,8 @@ def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int =
         if remaining <= 0:
             break
         result = _bounded(
-            [
-                rt,
-                "exec",
-                instance,
-                "bash",
-                "-lc",
-                f"timeout 1 bash -c 'echo > /dev/tcp/127.0.0.1/{port}' 2>/dev/null",
-            ],
+            [rt, "exec", instance, "bash", "-lc",
+             f"timeout 1 bash -c 'echo > /dev/tcp/127.0.0.1/{port}' 2>/dev/null"],
             timeout=min(_PODMAN_PROBE_TIMEOUT, remaining),
             capture_output=True,
             warn=False,  # one line per second would bury the single actionable error below
@@ -1938,7 +1800,6 @@ def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int =
 # hatago URL-proxy entry at host.containers.internal:<port>. Something must actually RUN that
 # container. Services are host-published and outlive any instance, so they are started idempotently
 # (skip if already running) and are NOT torn down by `--fresh` (only the pod is).
-
 
 def _build_service_image(rt: str, name: str) -> None:
     """Build a service image (layer-cached: no-op when the Dockerfile is unchanged).
@@ -1968,19 +1829,8 @@ def _build_service_image(rt: str, name: str) -> None:
             # land in /tmp rather than in svc_dir's parent, which may be repo-tracked.
             with tempfile.TemporaryDirectory() as build_ctx:
                 shutil.copytree(svc_dir, build_ctx, dirs_exist_ok=True)
-                _run(
-                    [
-                        rt,
-                        "build",
-                        "-t",
-                        svc.image,
-                        "-f",
-                        str(effective),
-                        *cache_arg,
-                        *_corp_proxy_ca_secret_args(),
-                        build_ctx,
-                    ]
-                )
+                _run([rt, "build", "-t", svc.image, "-f", str(effective),
+                      *cache_arg, *_corp_proxy_ca_secret_args(), build_ctx])
         finally:
             if tmp:
                 tmp.unlink(missing_ok=True)
@@ -2022,15 +1872,7 @@ def _svc_run_cmd(
     # Every service container gets the mapping, not just project-scope ones (#459): a global-scope
     # service under rootful docker with --userns-remap is remapped just the same, and pod_host_uid()
     # is only accurate while every creation site emits this flag (paths.docker_is_rootless docstring).
-    run_cmd = [
-        rt,
-        "run",
-        "-d",
-        "--name",
-        cname,
-        *paths.userns_args(rt),
-        *_corp_proxy_ca_mount_args(),
-    ]
+    run_cmd = [rt, "run", "-d", "--name", cname, *paths.userns_args(rt), *_corp_proxy_ca_mount_args()]
     if svc.is_ephemeral_port:
         # 127.0.0.1 with NO host port: the runtime allocates. That is the whole dynamic-port
         # story — N project-scoped sidecars can never collide, and nothing is written down to go
@@ -2091,12 +1933,8 @@ def _svc_run_cmd(
             #     (XDG) as well as legacy `~/.gitconfig`. The old code mounted only the latter, so a
             #     host that uses the XDG path gave this container NO git config at all — no
             #     user.email, no `includeIf` per-org identity, no signing key.
-            run_cmd += [
-                "-v",
-                f"{mount_path}:{mount_path}:rw",
-                "-e",
-                f"HARNESSED_PROJECT_DIR={project_path}",
-            ]
+            run_cmd += ["-v", f"{mount_path}:{mount_path}:rw",
+                        "-e", f"HARNESSED_PROJECT_DIR={project_path}"]
             home = Path.home()
             run_cmd += _ssh_agent_args(home, _gpg_ssh_socket(), rt=rt)
             run_cmd += _git_identity_config_mount(home)
@@ -2166,14 +2004,8 @@ def _ensure_service(
     # label stamped on the new container. Built before the running-container check precisely so a
     # healthy-looking sidecar can be compared against it.
     want_cmd = _svc_run_cmd(
-        rt,
-        svc,
-        cname,
-        stack,
-        project_path,
-        mount_path,
-        stable_port=stable_port,
-        password=password,
+        rt, svc, cname, stack, project_path, mount_path,
+        stable_port=stable_port, password=password,
     )
     want_hash = _svc_config_hash(want_cmd)
     if _container_running(rt, cname) and not force_recreate:
@@ -2182,9 +2014,7 @@ def _ensure_service(
             return
         headless = os.environ.get("HARNESSED_HEADLESS", "false").lower() == "true"
         _err.print(f"[yellow]warning:[/yellow] service '{name}' needs recreating: {reason}.")
-        _err.print(
-            f"  Will run: {rt} rm -f {cname}  (data — named volume or bind mount — is preserved)"
-        )
+        _err.print(f"  Will run: {rt} rm -f {cname}  (data — named volume or bind mount — is preserved)")
         # `_can_prompt`, not a bare isatty: an `-exec` launch has a real TTY and nobody at it, so
         # this confirm hung a scripted launch after assembly and before the service came back (#450,
         # adversary finding 1). Both backends route here through `wire_services`.
@@ -2233,6 +2063,7 @@ def _ensure_service(
     _wait_service_healthy(rt, cname, svc)
 
 
+
 def _wait_service_healthy(rt: str, cname: str, svc: "ServiceDef", timeout: int = 60) -> None:
     """Wait for the service to accept traffic, then exec svc.healthcheck until it passes.
 
@@ -2259,7 +2090,9 @@ def _wait_service_healthy(rt: str, cname: str, svc: "ServiceDef", timeout: int =
     if not svc.is_socket_only:
         # An ephemeral publish means svc.port is the CONTAINER port; probing it on the host would
         # test a port nothing is listening on (or worse, someone else's). Ask the runtime.
-        probe_port = _svc_published_port(rt, cname, svc.port) if svc.is_ephemeral_port else svc.port
+        probe_port = (
+            _svc_published_port(rt, cname, svc.port) if svc.is_ephemeral_port else svc.port
+        )
         for _ in range(30):
             if not probe_port:
                 probe_port = _svc_published_port(rt, cname, svc.port)
@@ -2308,9 +2141,7 @@ def _wait_service_healthy(rt: str, cname: str, svc: "ServiceDef", timeout: int =
     # goes looking in the one place that cannot tell them.
     detail = ""
     if result is not None:
-        detail = (
-            result.stdout.decode(errors="replace") + result.stderr.decode(errors="replace")
-        ).strip()
+        detail = (result.stdout.decode(errors="replace") + result.stderr.decode(errors="replace")).strip()
     if detail:
         _err.print("[dim]--- last healthcheck output ---[/dim]")
         _err.print(detail)
@@ -2390,12 +2221,9 @@ def _collect_setup_notices(
                 # RECIPE NAME rather than by command text.
                 warn=False,
                 cwd=str(project_path),
-                env={
-                    **os.environ,
-                    **harnessed_env(
-                        stack, project_path, harness=harness, mode="host", recipe=recipe
-                    ),
-                },
+                env={**os.environ, **harnessed_env(
+                    stack, project_path, harness=harness, mode="host", recipe=recipe
+                )},
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
@@ -2532,17 +2360,14 @@ class HostHarness:
 
 _HOST_HARNESSES: dict[str, HostHarness] = {
     "claude": HostHarness(
-        config_dir_var="CLAUDE_CONFIG_DIR",
-        argv0="claude",
+        config_dir_var="CLAUDE_CONFIG_DIR", argv0="claude",
         share_state=_share_host_claude_state,
     ),
     "omp": HostHarness(
-        config_dir_var="PI_CODING_AGENT_DIR",
-        argv0="omp",
+        config_dir_var="PI_CODING_AGENT_DIR", argv0="omp",
         share_state=_share_host_omp_state,
     ),
 }
-
 
 def _plan_host_omp(stack: str, prof: Path, home: Path, *, fingerprint: str | None) -> bool:
     """Materialize the per-stack omp agent dir; return whether it rebuilt (#307).
@@ -2675,15 +2500,8 @@ def _persist_this_launch(
 
 
 def _aoe_register(
-    verb: str,
-    stack: str,
-    harness: str,
-    project_path: Path,
-    *,
-    only: bool,
-    group: Optional[str] = None,
-    title: Optional[str] = None,
-    no_strict_mcp: bool = False,
+    verb: str, stack: str, harness: str, project_path: Path, *, only: bool,
+    group: Optional[str] = None, title: Optional[str] = None, no_strict_mcp: bool = False,
 ) -> None:
     """Mirror this launch into Agent of Empires, and stop here under `--create-aoe-only`.
 
@@ -2706,15 +2524,8 @@ def _aoe_register(
         _err.print(f"[bold yellow]warning:[/bold yellow] {escape(message)}", highlight=False)
 
     registered = aoe.sync_session(
-        verb,
-        stack,
-        harness,
-        project_path,
-        background=not only,
-        group=group,
-        title=title,
-        no_strict_mcp=no_strict_mcp,
-        on_drift=_on_drift,
+        verb, stack, harness, project_path, background=not only,
+        group=group, title=title, no_strict_mcp=no_strict_mcp, on_drift=_on_drift,
     )
     if not only:
         return
@@ -2775,7 +2586,9 @@ def _warn_capability_gaps(backend: str, recipes) -> None:
     it just does not claim the launch needs a decision.
     """
     for gap in capmatrix.gaps(backend, recipes):
-        _err.print(f"[blue][INFO][/blue] {gap.primitive} ({gap.recipe}): {gap.detail}")
+        _err.print(
+            f"[blue][INFO][/blue] {gap.primitive} ({gap.recipe}): {gap.detail}"
+        )
 
 
 def _note_host_omp_skill_gap(harness: str, recipes) -> None:
@@ -2885,9 +2698,7 @@ class HostBackend(ExecutionBackend):
                 # instead of trusting a stamp that certifies content which was never finished.
                 _stamp_host_home(self.home, _host_stack_fingerprint(spec.stack, self.recipes))
             else:
-                _say(
-                    f"[blue][INFO][/blue] Stack unchanged — reusing {self.home} (installs skipped)"
-                )
+                _say(f"[blue][INFO][/blue] Stack unchanged — reusing {self.home} (installs skipped)")
             return
         # Run each recipe's executable first-run setup (e.g. `mytool init --shared-server …`). The tool
         # owns the shared-server daemon lifecycle — harnessed no longer manages any beads process.
@@ -2935,9 +2746,7 @@ class HostBackend(ExecutionBackend):
         # set. --no-strict-mcp-config opts OUT of that isolation: the file is still passed, but
         # claude also reads the project's `.mcp.json` and the user config.
         mcp_path = self.home / ".mcp.json"
-        mcp_path.write_text(
-            json.dumps({"mcpServers": mcp_servers or {}}, indent=2), encoding="utf-8"
-        )
+        mcp_path.write_text(json.dumps({"mcpServers": mcp_servers or {}}, indent=2), encoding="utf-8")
         self.argv = ["claude", "--mcp-config", str(mcp_path)]
         if not spec.no_strict_mcp:
             self.argv.append("--strict-mcp-config")
@@ -2964,9 +2773,7 @@ class HostBackend(ExecutionBackend):
         # `harnessed.svc-config-hash` label — differs by entry point, and alternating host-run with
         # a container launch would flag drift and recreate the container every single time.
         _ensure_services(
-            _runtime(),
-            spec.stack,
-            project_path=spec.project_path,
+            _runtime(), spec.stack, project_path=spec.project_path,
             mount_path=_resolve_mount_path(spec.project_path, None),
         )
 
@@ -2980,18 +2787,11 @@ class HostBackend(ExecutionBackend):
 
 
 def _launch_host(
-    stack: str,
-    harness: str,
-    path: Optional[str],
-    *,
-    rm: bool = False,
-    extra: Optional[list[str]] = None,
-    create_aoe_only: bool = False,
+    stack: str, harness: str, path: Optional[str], *, rm: bool = False,
+    extra: Optional[list[str]] = None, create_aoe_only: bool = False,
     no_strict_mcp: bool = False,
-    aoe_group: Optional[str] = None,
-    aoe_title: Optional[str] = None,
-    exec_mode: bool = False,
-    fresh: bool = False,
+    aoe_group: Optional[str] = None, aoe_title: Optional[str] = None,
+    exec_mode: bool = False, fresh: bool = False,
 ) -> None:
     """Host-native launch: no podman. Materialize the assembled profile into a host CLAUDE_CONFIG_DIR,
     start any host daemons (beads-server, hatago MCP hub), and exec the harness on the host so it sees
@@ -3024,9 +2824,7 @@ def _launch_host(
 
     stack_dir = paths.find_in_catalog("stacks", stack)
     if not (stack_dir / "stack.yaml").is_file():
-        _err.print(
-            f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_dir / 'stack.yaml'})"
-        )
+        _err.print(f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_dir / 'stack.yaml'})")
         raise typer.Exit(1)
 
     # Assemble IN-PROCESS every launch — host-native, emit-only, NO podman and NO image build. This is
@@ -3034,19 +2832,12 @@ def _launch_host(
     # multi-GB image), we only need the profile's content layer. Assembly is sub-second, so a
     # rebuild-per-launch also sidesteps staleness bookkeeping entirely. `build_root` is the dir that
     # CONTAINS profiles/ (assemble emits to <build_root>/profiles/<stack>/<harness>).
-    _err.print(
-        f"[blue][INFO][/blue] Assembling '{stack}' ({harness}) host-native (no container) ..."
-    )
+    _err.print(f"[blue][INFO][/blue] Assembling '{stack}' ({harness}) host-native (no container) ...")
     try:
         # `shared_identity=False`: this backend gives omp a PER-STACK agent dir, so the shared
         # `~/.omp/agent` block write would land where nothing on this path reads (#307).
         assemble(
-            None,
-            stack,
-            paths.profiles_root().parent,
-            harness,
-            strict=True,
-            shared_identity=False,
+            None, stack, paths.profiles_root().parent, harness, strict=True, shared_identity=False,
         )
     except (SchemaError, CollisionError) as exc:
         _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
@@ -3073,13 +2864,8 @@ def _launch_host(
     # Both or neither, and not at all for an ad-hoc stack — see `_persist_this_launch`.
     if _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):
         launchscript.write(
-            "host-run",
-            stack,
-            harness,
-            project_path,
-            group=aoe_group,
-            title=aoe_title,
-            no_strict_mcp=no_strict_mcp,
+            "host-run", stack, harness, project_path,
+            group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
             argv=_typed_invocation("host-run"),
         )
         # AFTER assembly, not before. Assembly is this backend's real validation gate — the analogue
@@ -3088,14 +2874,8 @@ def _launch_host(
         # identically every time it was started from the dashboard. It costs `--create-aoe-only` one
         # assembly, which is sub-second, emit-only and container-free on this path.
         _aoe_register(
-            "host-run",
-            stack,
-            harness,
-            project_path,
-            only=create_aoe_only,
-            group=aoe_group,
-            title=aoe_title,
-            no_strict_mcp=no_strict_mcp,
+            "host-run", stack, harness, project_path, only=create_aoe_only,
+            group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
         )
 
     # Launch-time secrets — the host half of the container path's `--env-file` (see
@@ -3123,12 +2903,8 @@ def _launch_host(
     # The (backend, harness) gap capmatrix's backend-keyed table cannot express — see the function.
     _note_host_omp_skill_gap(harness, host_recipes)
     spec = LaunchSpec(
-        stack=stack,
-        harness=harness,
-        project_path=project_path,
-        extra=tuple(extra or []),
-        no_strict_mcp=no_strict_mcp,
-        ephemeral=rm,
+        stack=stack, harness=harness, project_path=project_path,
+        extra=tuple(extra or []), no_strict_mcp=no_strict_mcp, ephemeral=rm,
     )
 
     # Sidecars — the SAME ones `launch` ensures (bd harnessed-2sm). Ahead of the recipe env and setup
@@ -3138,13 +2914,8 @@ def _launch_host(
     # Hand the PROJECT the same tool env we are about to hand the agent, so a plain `bd` in this
     # repo is configured too. After services, because the client env includes their connection.
     _write_project_tool_env(
-        stack,
-        project_path,
-        harness=harness,
-        verb="host-run",
-        no_strict_mcp=no_strict_mcp,
-        aoe_group=aoe_group,
-        aoe_title=aoe_title,
+        stack, project_path, harness=harness, verb="host-run",
+        no_strict_mcp=no_strict_mcp, aoe_group=aoe_group, aoe_title=aoe_title,
     )
 
     # Recipe `env:` — the host half of what the derived image's ENV does for a container launch.
@@ -3204,9 +2975,7 @@ def _launch_host(
             profile_dir(stack, harness),
             emit.required_settings(
                 _resolve_service_servers(_merge_servers(host_recipes), None),
-                host_recipes,
-                host_stk.permissions,
-                harness,
+                host_recipes, host_stk.permissions, harness,
             ),
             harness,
         )
@@ -3272,9 +3041,7 @@ def _launch_host(
         # Last chance to be read: past the exec, the agent owns the screen.
         _acknowledge_warnings()
         # execvpe REPLACES this process — clean TTY handoff to claude on the host.
-        os.execvpe(
-            argv[0], argv, env
-        )  # never returns  # noqa: S606 — no shell is the POINT: argv is passed as a vector, so nothing is word-split or glob-expanded
+        os.execvpe(argv[0], argv, env)  # never returns  # noqa: S606 — no shell is the POINT: argv is passed as a vector, so nothing is word-split or glob-expanded
     # --rm: supervise (fork claude, wait). No host daemons to tear down — bd owns its shared server.
     # unbounded: this IS the agent session. Its duration is however long the user works; any
     # deadline here kills a live session mid-thought. The non---rm branch above execvpe's for the
@@ -3360,9 +3127,7 @@ def _resolve_stack(
         # the lock is correct; see #287 (reviewed and confirmed).
         derived = dynstack.derive_name(list(recipe), base, services=list(service))
         with _mint_lock(derived):
-            preexisting = (
-                paths.generated_catalog_root() / "stacks" / derived / "stack.yaml"
-            ).is_file()
+            preexisting = (paths.generated_catalog_root() / "stacks" / derived / "stack.yaml").is_file()
             name, stack_dir = dynstack.mint(list(recipe), base, services=list(service))
     except (ValueError, OSError) as exc:
         _err.print(f"[bold red]error:[/bold red] {exc}")
@@ -3372,55 +3137,44 @@ def _resolve_stack(
 
 # Shared by both run verbs so the two grammars cannot drift apart.
 _STACK_OPT = typer.Option(
-    None,
-    "--stack",
-    "-s",
+    None, "--stack", "-s",
     help="Authored stack to run (stacks/<name>/stack.yaml). Mutually exclusive with --recipe.",
 )
 _RECIPE_OPT = typer.Option(
-    [],
-    "--recipe",
-    "-r",
+    [], "--recipe", "-r",
     help="Recipe to include; repeat for each. Order is irrelevant — the set is sorted. "
-    "Mutually exclusive with --stack.",
+         "Mutually exclusive with --stack.",
 )
 # The baseline `--extends` names when the user does not.
 _EXTENDS_DEFAULT = "default"
 _EXTENDS_OPT = typer.Option(
-    _EXTENDS_DEFAULT,
-    "--extends",
+    _EXTENDS_DEFAULT, "--extends",
     help="Stack to inherit from (baseline recipes, permissions, credential forwarding). "
-    "With neither --stack nor --recipe, this baseline is itself the stack that runs.",
+         "With neither --stack nor --recipe, this baseline is itself the stack that runs.",
 )
 _NO_EXTENDS_OPT = typer.Option(
-    False,
-    "--no-extends",
-    help="Inherit from nothing — the recipe list stands alone.",
+    False, "--no-extends", help="Inherit from nothing — the recipe list stands alone.",
 )
 _SERVICE_OPT = typer.Option(
-    [],
-    "--service",
+    [], "--service",
     help="Extra service sidecar. Rarely needed: a recipe declares the services it requires.",
 )
 _NO_STRICT_MCP_OPT = typer.Option(
-    False,
-    "--no-strict-mcp-config",
+    False, "--no-strict-mcp-config",
     help="claude only: drop --strict-mcp-config so claude ALSO loads its own MCP sources (the "
-    "project's .mcp.json, your user config) on top of the stack's. Default is strict — the "
-    "stack's MCP surface is exactly what it declares.",
+         "project's .mcp.json, your user config) on top of the stack's. Default is strict — the "
+         "stack's MCP surface is exactly what it declares.",
 )
 _AOE_GROUP_OPT = typer.Option(
-    None,
-    "--aoe-group",
+    None, "--aoe-group",
     help="Agent of Empires group for this session's row, instead of the repo name it is derived "
-    "from. Created if it does not exist. With --aoe-title, also identifies the row to reuse.",
+         "from. Created if it does not exist. With --aoe-title, also identifies the row to reuse.",
 )
 _AOE_TITLE_OPT = typer.Option(
-    None,
-    "--aoe-title",
+    None, "--aoe-title",
     help="Agent of Empires title for this session's row, instead of the derived "
-    "'<folder> [<harness>/<backend>] <stack>'. With --aoe-group, also identifies the row to "
-    "reuse — the pair is how an existing or hand-written row is adopted rather than duplicated.",
+         "'<folder> [<harness>/<backend>] <stack>'. With --aoe-group, also identifies the row to "
+         "reuse — the pair is how an existing or hand-written row is adopted rather than duplicated.",
 )
 
 
@@ -3438,19 +3192,17 @@ def host_run(
         False, "--rm", help="Stop host daemons this launch started when the session exits"
     ),
     fresh: bool = typer.Option(
-        False,
-        "--fresh",
+        False, "--fresh",
         help="Discard this stack's build stamp and host tool tree, so the config dir rebuilds and "
-        "every `tools:` pin is reinstalled instead of skipped as unchanged.",
+             "every `tools:` pin is reinstalled instead of skipped as unchanged.",
     ),
     no_strict_mcp_config: bool = _NO_STRICT_MCP_OPT,
     aoe_group: Optional[str] = _AOE_GROUP_OPT,
     aoe_title: Optional[str] = _AOE_TITLE_OPT,
     create_aoe_only: bool = typer.Option(
-        False,
-        "--create-aoe-only",
+        False, "--create-aoe-only",
         help="Register the Agent of Empires session for this stack and exit without launching. "
-        "Requires aoe; runs no assembly.",
+             "Requires aoe; runs no assembly.",
     ),
 ) -> None:
     """Run a stack HOST-NATIVELY — no podman, no container.
@@ -3492,17 +3244,10 @@ def host_run(
     stack_name, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
     try:
         _launch_host(
-            stack_name,
-            harness,
-            path,
-            rm=rm,
-            extra=_passthrough,
-            create_aoe_only=create_aoe_only,
-            no_strict_mcp=no_strict_mcp_config,
-            aoe_group=aoe_group,
-            aoe_title=aoe_title,
-            exec_mode=ctx.info_name == "host-exec",
-            fresh=fresh,
+            stack_name, harness, path, rm=rm, extra=_passthrough,
+            create_aoe_only=create_aoe_only, no_strict_mcp=no_strict_mcp_config,
+            aoe_group=aoe_group, aoe_title=aoe_title,
+            exec_mode=ctx.info_name == "host-exec", fresh=fresh,
         )
     except typer.Exit as exc:
         # typer.Exit(0) is a SUCCESS that unwinds like a failure, and it must not clean up:
@@ -3544,19 +3289,8 @@ class ContainerBackend(ExecutionBackend):
     isolation = ISOLATION_CONTAINER
 
     def __init__(
-        self,
-        rt: str,
-        inst: str,
-        pod: str,
-        prof: Path,
-        harness_image: str,
-        mount_path: Path,
-        recipes: list,
-        servers: list,
-        stk,
-        *,
-        stack_from_overlay: bool,
-        headless: bool,
+        self, rt: str, inst: str, pod: str, prof: Path, harness_image: str, mount_path: Path,
+        recipes: list, servers: list, stk, *, stack_from_overlay: bool, headless: bool,
     ) -> None:
         self.rt = rt
         self.inst = inst
@@ -3605,11 +3339,7 @@ class ContainerBackend(ExecutionBackend):
             )
             return
         _run_container_setups(
-            self.rt,
-            self.inst,
-            self.pending_setups,
-            spec.stack,
-            spec.project_path,
+            self.rt, self.inst, self.pending_setups, spec.stack, spec.project_path,
             harness=spec.harness,
         )
 
@@ -3630,8 +3360,7 @@ class ContainerBackend(ExecutionBackend):
         )
         # Seed a token-free ~/.claude.json stub so Claude skips onboarding (auth = the token/credential).
         self.mount_args += _claude_config_seed_mount(
-            spec.harness,
-            self.inst,
+            spec.harness, self.inst,
             # Same gate as seed_auth: an isolated stack gets the onboarding fields WITHOUT the host
             # account's email/uuid/organization, which have no business in a container that
             # authenticates as someone else.
@@ -3646,7 +3375,9 @@ class ContainerBackend(ExecutionBackend):
         # in. Sourced from the host's ~/.mcp-auth, or — for an isolated_auth stack, which runs as a
         # DIFFERENT account — from that instance's own dir, so it never inherits the host's identity.
         # No-op for every stack that runs no mcp-remote. Pairs with the callback publish on the pod.
-        self.mount_args += _mcp_auth_store_mount(self.servers, self.inst, self.stk.isolated_auth)
+        self.mount_args += _mcp_auth_store_mount(
+            self.servers, self.inst, self.stk.isolated_auth
+        )
         # Share omp's state with the host (auth + usage + sessions) via a bind mount of ~/.omp/agent.
         self.mount_args += _omp_agent_mount(spec.harness)
         # Shadow only config.yml when it names the retired local claude-hooks-bridge path; the
@@ -3699,12 +3430,8 @@ class ContainerBackend(ExecutionBackend):
                 # Same guard, same reason as the service confirm above (#450, adversary
                 # finding 2): under `-exec` this took the confirm branch and parked a supervised
                 # launch here. The non-interactive answer is the designed Exit(1).
-                if (
-                    self.headless
-                    or not _can_prompt()
-                    or not typer.confirm(
-                        "Continue launching without AWS credentials?", default=False
-                    )
+                if self.headless or not _can_prompt() or not typer.confirm(
+                    "Continue launching without AWS credentials?", default=False
                 ):
                     raise typer.Exit(1)
             elif aws_args:
@@ -3746,9 +3473,7 @@ class ContainerBackend(ExecutionBackend):
             # Claude auth, last of the mounts: a long-lived CLAUDE_CODE_OAUTH_TOKEN (host env, varlock,
             # or plain .env) supersedes the credential file, so nothing is mounted in that case.
             self.mount_args += _claude_creds_seed_mount(
-                spec.harness,
-                self.inst,
-                _claude_oauth_token_configured(spec.harness, spec.project_path),
+                spec.harness, self.inst, _claude_oauth_token_configured(spec.harness, spec.project_path)
             )
         self.secrets_env_files = secrets_env_files
         self.secrets_temp_files = secrets_temp_files
@@ -3832,9 +3557,7 @@ class ContainerBackend(ExecutionBackend):
             )
             try:
                 _apply_firewall(
-                    self.rt,
-                    self.inst,
-                    egress_domains,
+                    self.rt, self.inst, egress_domains,
                     netns_anchor=_netns_anchor(self.rt, self.pod, self.inst),
                     image=self.harness_image,
                 )
@@ -3876,14 +3599,8 @@ class ContainerBackend(ExecutionBackend):
             # HOST_NAME_MAX (see paths.container_hostname). Set on the POD, not the member — pod
             # members share the pod's UTS namespace, so this is the one that governs.
             pod_cmd = [
-                self.rt,
-                "pod",
-                "create",
-                "--name",
-                self.pod,
-                "--hostname",
-                paths.container_hostname(self.pod),
-                *paths.userns_args(self.rt),
+                self.rt, "pod", "create", "--name", self.pod,
+                "--hostname", paths.container_hostname(self.pod), *paths.userns_args(self.rt),
             ]
             # Publish mcp-remote's OAuth callback port (loopback only) so the redirect can reach the
             # process waiting for it. Without this the pod publishes nothing, the browser opens
@@ -3918,38 +3635,25 @@ class ContainerBackend(ExecutionBackend):
         # on the container so every process in it agrees.
         # (Now the whole folder-env contract, not just the sockets — `_init_shell_prologue` still
         # exports it for the attach shell, but a hook or a `podman exec` never sees that shell.)
-        socket_env = [
-            arg
-            for var, val in harnessed_env(
-                spec.stack,
-                spec.project_path,
-                harness=spec.harness,
-                mode="container",
-                mount_path=self.mount_path,
-            ).items()
-            for arg in ("-e", f"{var}={val}")
-        ]
+        socket_env = [arg for var, val in harnessed_env(
+            spec.stack, spec.project_path, harness=spec.harness, mode="container",
+            mount_path=self.mount_path,
+        ).items() for arg in ("-e", f"{var}={val}")]
         # Same rationale as socket_env: a recipe's setup env belongs to the CONTAINER, not to one exec,
         # so hooks and later execs see what the setup script saw. Resolved here because a `setup.config`
         # item may prompt, which must happen before the container starts.
         self.pending_setups = _pending_setup_scripts(spec.project_path, self.recipes)
-        setup_env = [
-            arg
-            for var, val in _container_setup_env(
-                spec.stack, spec.project_path, self.pending_setups, harness=spec.harness
-            ).items()
-            for arg in ("-e", f"{var}={val}")
-        ]
+        setup_env = [arg for var, val in _container_setup_env(
+                         spec.stack, spec.project_path, self.pending_setups,
+                         harness=spec.harness).items()
+                     for arg in ("-e", f"{var}={val}")]
         # Recipe `env:` — set on the CONTAINER for the third time and the same reason. The image already
         # carries the build-resolvable subset as real ENV (emit.write_derived_dockerfile), but that is
         # not sufficient: a value templated on the PROJECT (`{project_dir}`, an in_repo persist dir) is
         # unknowable at build. Setting the resolved values here makes the running agent's env complete
         # and identical to what the host mode gives it.
-        recipe_env = [
-            arg
-            for var, val in _recipe_env(self.recipes, spec.project_path, mode="container").items()
-            for arg in ("-e", f"{var}={val}")
-        ]
+        recipe_env = [arg for var, val in _recipe_env(self.recipes, spec.project_path, mode="container").items()
+                      for arg in ("-e", f"{var}={val}")]
         # bd harnessed-8px.27. `_write_project_tool_env` puts a `mise.local.toml` in EVERY project, and
         # mise refuses an untrusted config file. The image trusts configs via `mise trust -a` in
         # ~/.bashrc and /etc/profile.d — both of which only run for a LOGIN or interactive shell. Setup
@@ -3964,15 +3668,12 @@ class ContainerBackend(ExecutionBackend):
         # every other login-shell behaviour — a much wider change than the bug warrants.
         mise_trust_env = ["-e", f"MISE_TRUSTED_CONFIG_PATHS={self.mount_path}"]
         harness_run = [
-            self.rt,
-            "run",
-            "-d",
+            self.rt, "run", "-d",
             # No --hostname in the pod branch: a member inherits the pod's UTS namespace, and the pod
             # create above already set it. The pod-less runtime has no infra container to inherit from,
             # so it needs its own bound (same EINVAL, from the container's own name).
             *_agent_placement_args(self.rt, self.pod, self.inst),
-            "--name",
-            self.inst,
+            "--name", self.inst,
             *[arg for f in self.secrets_env_files for arg in ("--env-file", str(f))],
             # ORDER IS PRECEDENCE: podman applies `-e` left-to-right, so the LAST wins. Recipe `env:` goes
             # FIRST — it is catalog-authored and must not be able to clobber harnessed-owned values. That
@@ -3987,11 +3688,8 @@ class ContainerBackend(ExecutionBackend):
             # wrong-account failure that flag prevents (see seed_auth). The harness gate matches
             # seed_auth's — omp reads this same variable, so withholding it there would break auth
             # the flag never claimed to touch.
-            *(
-                []
-                if self.stk.isolated_auth and spec.harness == "claude"
-                else _claude_oauth_token_args(spec.harness, self.secrets_env_files)
-            ),
+            *([] if self.stk.isolated_auth and spec.harness == "claude"
+              else _claude_oauth_token_args(spec.harness, self.secrets_env_files)),
             *socket_env,
             *setup_env,
             *mise_trust_env,
@@ -4003,17 +3701,14 @@ class ContainerBackend(ExecutionBackend):
             # `none` when every declared server is direct: the entrypoint then starts no hub, and
             # the emitted .mcp.json names none either. One value, read by the emitter, the launcher
             # and the entrypoint, so all three agree on whether a hub exists at all.
-            "-e",
-            f"HATAGO_TRANSPORT="
-            f"{self.stk.hub_transport if emit.hub_is_needed(self.servers) else 'none'}",
+            "-e", f"HATAGO_TRANSPORT="
+                  f"{self.stk.hub_transport if emit.hub_is_needed(self.servers) else 'none'}",
             *self.member_mounts,
             # Use harnessed-start (baked into base since hatago-consolidation) when present; fall back
             # to plain `sleep infinity` on older images so the launch degrades gracefully rather than
             # hard-failing on a missing binary. Once the base image is rebuilt, the entrypoint runs
             # hatago automatically and this shell one-liner is a no-op (exec replaces it immediately).
-            self.harness_image,
-            "bash",
-            "-c",
+            self.harness_image, "bash", "-c",
             "exec /usr/local/bin/harnessed-start 2>/dev/null || exec sleep infinity",
         ]
         try:
@@ -4075,9 +3770,7 @@ def _prune_unlaunchable_omp_blocks(harness: str) -> None:
 @app.command("container-run")
 def container_run(
     ctx: typer.Context,
-    harness: str = typer.Argument(
-        ..., help="Harness to use (claude|omp|opencode|antigravity|codex)"
-    ),
+    harness: str = typer.Argument(..., help="Harness to use (claude|omp|opencode|antigravity|codex)"),
     path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
     stack: Optional[str] = _STACK_OPT,
     recipe: list[str] = _RECIPE_OPT,
@@ -4086,47 +3779,39 @@ def container_run(
     service: list[str] = _SERVICE_OPT,
     fresh: bool = typer.Option(False, "--fresh", help="Tear down any existing pod/instance first"),
     reauth: bool = typer.Option(
-        False,
-        "--reauth",
+        False, "--reauth",
         help="Re-run the browser consent for OAuth MCP servers even when a token already exists "
-        "(revoked, wrong account, or a scope change)",
+             "(revoked, wrong account, or a scope change)",
     ),
-    rm: bool = typer.Option(
-        False, "--rm", help="Ephemeral: tear the pod down when the interactive session exits"
-    ),
+    rm: bool = typer.Option(False, "--rm", help="Ephemeral: tear the pod down when the interactive session exits"),
     no_firewall: bool = typer.Option(False, "--no-firewall", help="Skip egress firewall"),
     no_secrets: bool = typer.Option(
-        False,
-        "--no-secrets",
+        False, "--no-secrets",
         help="Skip the host secrets broker and the pod's proxy wiring. Parallel to --no-firewall: "
-        "the launch keeps working, with the pod holding real values as it does today.",
+             "the launch keeps working, with the pod holding real values as it does today.",
     ),
     agent_start_folder: Optional[str] = typer.Option(
-        None,
-        "--agent-start-folder",
+        None, "--agent-start-folder",
         help="Start the agent in this subfolder of the project (root is still mounted in full)",
     ),
     mount_folder: Optional[str] = typer.Option(
-        None,
-        "--mount-folder",
+        None, "--mount-folder",
         help="Mount this folder (must contain the project) instead of the project itself; the agent "
-        "still starts in the project. Exposes a parent dir (e.g. a linked-worktree root) while "
-        "you work in a subfolder.",
+             "still starts in the project. Exposes a parent dir (e.g. a linked-worktree root) while "
+             "you work in a subfolder.",
     ),
     shell: bool = typer.Option(
-        False,
-        "--shell",
+        False, "--shell",
         help="Open an interactive bash shell in the container instead of starting the agent",
     ),
     no_strict_mcp_config: bool = _NO_STRICT_MCP_OPT,
     aoe_group: Optional[str] = _AOE_GROUP_OPT,
     aoe_title: Optional[str] = _AOE_TITLE_OPT,
     create_aoe_only: bool = typer.Option(
-        False,
-        "--create-aoe-only",
+        False, "--create-aoe-only",
         help="Register the Agent of Empires session for this stack and exit without launching. "
-        "Requires aoe; validates the stack first, so the row is only created for a launch "
-        "that would have worked.",
+             "Requires aoe; validates the stack first, so the row is only created for a launch "
+             "that would have worked.",
     ),
 ) -> None:
     """Run a stack in an isolated container against a project directory (container backend).
@@ -4150,9 +3835,7 @@ def container_run(
         # --shell starts no harness and drops into an interactive bash. There is nothing for a
         # non-interactive caller to do with that, and `-i` with no pty would hand it a shell it
         # cannot drive. Refuse rather than silently pick one of the two meanings.
-        _err.print(
-            "[bold red]error:[/bold red] --shell is interactive; use `container-run --shell`"
-        )
+        _err.print("[bold red]error:[/bold red] --shell is interactive; use `container-run --shell`")
         raise typer.Exit(2)
     _require_supported_harness(harness)
     stack, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
@@ -4211,9 +3894,7 @@ def container_run(
         raise typer.Exit(1)
 
     if not is_built(stack, harness):
-        _err.print(
-            f"[bold red]error:[/bold red] stack '{stack}' ({harness}) has no assembled profile (run: harnessed build {stack} {harness})"
-        )
+        _err.print(f"[bold red]error:[/bold red] stack '{stack}' ({harness}) has no assembled profile (run: harnessed build {stack} {harness})")
         raise typer.Exit(1)
 
     # Guard against a stale profile: a recipe referenced by this stack may have been renamed/removed
@@ -4237,9 +3918,7 @@ def container_run(
         if not _can_prompt() or not typer.confirm(
             f"Rebuild '{stack}' ({harness}) now to continue?", default=True
         ):
-            _err.print(
-                f"[bold red]error:[/bold red] cannot launch a stale profile — run: harnessed build {stack} {harness}"
-            )
+            _err.print(f"[bold red]error:[/bold red] cannot launch a stale profile — run: harnessed build {stack} {harness}")
             raise typer.Exit(1) from exc
         _build_stack(rt, stack, harness)
 
@@ -4255,27 +3934,16 @@ def container_run(
     # Both or neither, and not at all for an ad-hoc stack — see `_persist_this_launch`.
     if _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):
         launchscript.write(
-            "container-run",
-            stack,
-            harness,
-            project_path,
-            group=aoe_group,
-            title=aoe_title,
-            no_strict_mcp=no_strict_mcp_config,
+            "container-run", stack, harness, project_path,
+            group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp_config,
             argv=_typed_invocation("container-run"),
         )
         # Mirror into Agent of Empires if the user runs it. Placed after every validation above so a
         # launch that is about to fail never leaves a row behind, and before the podman work so the
         # row exists even if the container half goes wrong. No-op when aoe is absent; never raises.
         _aoe_register(
-            "container-run",
-            stack,
-            harness,
-            project_path,
-            only=create_aoe_only,
-            group=aoe_group,
-            title=aoe_title,
-            no_strict_mcp=no_strict_mcp_config,
+            "container-run", stack, harness, project_path, only=create_aoe_only,
+            group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp_config,
         )
 
     try:
@@ -4329,25 +3997,13 @@ def container_run(
         _err.print(f"[bold red]error:[/bold red] {exc}")
         raise typer.Exit(1) from exc
     backend = ContainerBackend(
-        rt,
-        inst,
-        pod,
-        prof,
-        harness_image,
-        mount_path,
-        launch_recipes,
-        launch_servers,
-        stk,
+        rt, inst, pod, prof, harness_image, mount_path, launch_recipes, launch_servers, stk,
         stack_from_overlay=stack_from_overlay,
         headless=os.environ.get("HARNESSED_HEADLESS", "false").lower() == "true",
     )
     spec = LaunchSpec(
-        stack=stack,
-        harness=harness,
-        project_path=project_path,
-        extra=tuple(_passthrough),
-        no_strict_mcp=no_strict_mcp_config,
-        ephemeral=rm,
+        stack=stack, harness=harness, project_path=project_path,
+        extra=tuple(_passthrough), no_strict_mcp=no_strict_mcp_config, ephemeral=rm,
     )
 
     # --fresh: tear down existing pod.
@@ -4369,13 +4025,8 @@ def container_run(
 
     # Same as the host path: the project gets a config of its own, not just the agent we launch.
     _write_project_tool_env(
-        stack,
-        project_path,
-        harness=harness,
-        verb="container-run",
-        no_strict_mcp=no_strict_mcp_config,
-        aoe_group=aoe_group,
-        aoe_title=aoe_title,
+        stack, project_path, harness=harness, verb="container-run",
+        no_strict_mcp=no_strict_mcp_config, aoe_group=aoe_group, aoe_title=aoe_title,
     )
 
     # Re-attach to a running instance (interactive only) — but if it was built from an older image
@@ -4403,45 +4054,17 @@ def container_run(
                     "[yellow]note:[/yellow] attaching to the existing (older-build) instance — "
                     "run with --fresh to update."
                 )
-                _attach(
-                    rt,
-                    harness,
-                    inst,
-                    project_path,
-                    stack=stack,
-                    mount_path=mount_path,
-                    ephemeral=rm,
-                    pod=pod,
-                    start_dir=start_dir,
-                    shell=shell,
-                    extra=_passthrough,
-                    no_strict_mcp=no_strict_mcp_config,
-                )
+                _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=_passthrough, no_strict_mcp=no_strict_mcp_config)
                 return
         else:
             _out.print(f"[blue][INFO][/blue] Attaching to running instance: {inst}")
-            _attach(
-                rt,
-                harness,
-                inst,
-                project_path,
-                stack=stack,
-                mount_path=mount_path,
-                ephemeral=rm,
-                pod=pod,
-                start_dir=start_dir,
-                shell=shell,
-                extra=_passthrough,
-                no_strict_mcp=no_strict_mcp_config,
-            )
+            _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=_passthrough, no_strict_mcp=no_strict_mcp_config)
             return
     # Stopped leftover: a previous non-ephemeral session exited without tearing down its pod (only
     # --rm cleans up). A same-name `pod create` would fail "name already in use", so remove the
     # stopped instance and recreate. A running instance is re-attached via the guard above.
     if _stopped_leftover(rt, inst, pod):
-        _out.print(
-            f"[blue][INFO][/blue] Recreating stopped instance '{inst}' from a prior session …"
-        )
+        _out.print(f"[blue][INFO][/blue] Recreating stopped instance '{inst}' from a prior session …")
         _pod_teardown(rt, inst, pod)
 
     # Recipe init (Model A) now runs inside the attach shell (_attach → _init_shell_prologue), not a
@@ -4452,9 +4075,7 @@ def container_run(
     if mount_path != project_path:
         _out.print(f"[blue][INFO][/blue] Mounting folder: {mount_path} (project lives under it)")
     if anchor_path != project_path:
-        _out.print(
-            f"[blue][INFO][/blue] Agent start folder: {project_path} (launched from {anchor_path})"
-        )
+        _out.print(f"[blue][INFO][/blue] Agent start folder: {project_path} (launched from {anchor_path})")
 
     required = emit.required_settings(launch_servers, launch_recipes, stk.permissions, harness)
     if harness in ("claude", "omp", "opencode"):
@@ -4494,7 +4115,9 @@ def container_run(
     # cannot be fixed later from here: hatago spawns mcp-remote, mcp-remote wants a browser, and the
     # request for one goes to a grandchild's stderr the harness throws away. Asking now — while a
     # human is still watching the launch — is the only point where the URL can reach them.
-    _authorize_mcp_remote_servers(rt, inst, launch_servers, stk, headless=headless, reauth=reauth)
+    _authorize_mcp_remote_servers(
+        rt, inst, launch_servers, stk, headless=headless, reauth=reauth
+    )
 
     # No hub is started in either of these cases, so probing for one would wait out the full timeout
     # and then report a degraded hub — turning correct configuration into a red herring, and in
@@ -4507,9 +4130,7 @@ def container_run(
 
     if headless:
         if rm:
-            _out.print(
-                "[yellow]note:[/yellow] --rm has no effect in headless mode (no interactive session to exit)"
-            )
+            _out.print("[yellow]note:[/yellow] --rm has no effect in headless mode (no interactive session to exit)")
         if not hatago_up:
             # Headless callers (CI / capability tests) have no terminal to notice a degraded hub, so
             # a dead hatago must be a hard failure here, not a green SUCCESS line.
@@ -4527,20 +4148,7 @@ def container_run(
         _out.print(f"[green][SUCCESS][/green] Isolated pod running headless: {inst} ({hub_where})")
         return
 
-    _attach(
-        rt,
-        harness,
-        inst,
-        project_path,
-        stack=stack,
-        mount_path=mount_path,
-        ephemeral=rm,
-        pod=pod,
-        start_dir=start_dir,
-        shell=shell,
-        extra=_passthrough,
-        no_strict_mcp=no_strict_mcp_config,
-    )
+    _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=_passthrough, no_strict_mcp=no_strict_mcp_config)
 
 
 def _attach(
@@ -4610,19 +4218,11 @@ def _attach(
     # survive land in whatever the caller piped the output into. `-i` stays either way — a piped
     # prompt on stdin has to reach the agent.
     exec_argv = [
-        rt,
-        "exec",
-        "-i",
-        *([] if in_exec_mode() else ["-t"]),
-        "-e",
-        "TERM=xterm-256color",
-        "-w",
-        str(start_dir or project_path),
+        rt, "exec", "-i", *([] if in_exec_mode() else ["-t"]),
+        "-e", "TERM=xterm-256color",
+        "-w", str(start_dir or project_path),
         inst,
-        "bash",
-        "-l",
-        "-c",
-        shell_cmd,
+        "bash", "-l", "-c", shell_cmd,
     ]
 
     if not ephemeral:
@@ -4664,9 +4264,7 @@ Backgrounding is the caller's job — `&`, `nohup`, or whatever supervisor alrea
 app.command(
     "host-exec",
     help=_EXEC_HELP.format(
-        backend="host",
-        verb="host-exec",
-        run_verb="host-run",
+        backend="host", verb="host-exec", run_verb="host-run",
         extra="",
     ),
 )(host_run)
@@ -4674,9 +4272,7 @@ app.command(
 app.command(
     "container-exec",
     help=_EXEC_HELP.format(
-        backend="container",
-        verb="container-exec",
-        run_verb="container-run",
+        backend="container", verb="container-exec", run_verb="container-run",
         extra=(
             " No pty is allocated for the agent, so its output is plain text rather than a "
             "fullscreen redraw. `--shell` is rejected: it starts no harness."
@@ -4688,8 +4284,7 @@ app.command(
 @app.command("build")
 def build(
     stack: Optional[str] = typer.Argument(
-        None,
-        help="Stack to assemble; omit to rebuild base images and reconcile every declared/previously-built stack",
+        None, help="Stack to assemble; omit to rebuild base images and reconcile every declared/previously-built stack"
     ),
     harness: Optional[str] = typer.Argument(
         None,
@@ -4698,27 +4293,20 @@ def build(
     root: Optional[str] = typer.Option(None, "--root", help="Alternate stacks/recipes root"),
     no_scans: bool = typer.Option(False, "--no-security-scans", help="Skip credentialed scans"),
     no_strict: bool = typer.Option(
-        False,
-        "--no-strict",
+        False, "--no-strict",
         help="Allow unknown recipe-manifest fields (disables the typo guardrail)",
     ),
     force: bool = typer.Option(
-        False,
-        "--force",
+        False, "--force",
         help=(
             "Force rebuild: base/claude images, plus (on a bare `build`) every declared/"
             "previously-built container stack regardless of recipe-hash staleness. Bypasses the "
             "podman layer cache (implies --no-cache) so the rebuild is real, not a cache hit."
         ),
     ),
-    no_cache: bool = typer.Option(
-        False, "--no-cache", help="Disable podman layer cache for image builds"
-    ),
+    no_cache: bool = typer.Option(False, "--no-cache", help="Disable podman layer cache for image builds"),
     jobs: int = typer.Option(
-        _DEFAULT_JOBS,
-        "--jobs",
-        "-j",
-        min=1,
+        _DEFAULT_JOBS, "--jobs", "-j", min=1,
         help=(
             "Stacks to build concurrently on a bare `harnessed build` (default: "
             f"{_DEFAULT_JOBS} on this machine). Each build's log is prefixed with its own "
@@ -4867,18 +4455,10 @@ def list_stacks() -> None:
     # Streams straight to the terminal, so there is no stdout to guard with `_listing` — but the
     # same lie is available: a failed query prints the heading above and then nothing, which reads
     # as "no instances". Only the return code tells the two apart.
-    listed = _bounded(
-        [
-            rt,
-            "ps",
-            "-a",
-            "--filter",
-            "name=harnessed-",
-            "--format",
-            "table {{.Names}}\t{{.Status}}\t{{.CreatedAt}}",
-        ],
-        timeout=_PODMAN_QUERY_TIMEOUT,
-    )
+    listed = _bounded([
+        rt, "ps", "-a", "--filter", "name=harnessed-",
+        "--format", "table {{.Names}}\t{{.Status}}\t{{.CreatedAt}}",
+    ], timeout=_PODMAN_QUERY_TIMEOUT)
     if listed.returncode != 0:
         _err.print(
             f"[bold red]warning:[/bold red] the instance list above is INCOMPLETE — the container "
@@ -4888,11 +4468,8 @@ def list_stacks() -> None:
         # absent and reap every live broker. A runtime that cannot be asked is not an answer.
         return
     # A pod on a pods runtime, a plain container otherwise — the same split `_pod_teardown` makes.
-    exists = (
-        (lambda pod: _pod_exists(rt, pod))
-        if _rt_uses_pods(rt)
-        else (lambda pod: _container_exists(rt, pod))
-    )
+    exists = (lambda pod: _pod_exists(rt, pod)) if _rt_uses_pods(rt) else (
+        lambda pod: _container_exists(rt, pod))
     _broker_report(exists)
 
 
@@ -4903,8 +4480,7 @@ def stop(stack: str = typer.Argument(..., help="Stack name")) -> None:
     result = _bounded(
         [rt, "ps", "-a", "--filter", "name=harnessed-", "--format", "{{.Names}}"],
         timeout=_PODMAN_QUERY_TIMEOUT,
-        capture_output=True,
-        text=True,
+        capture_output=True, text=True,
     )
     # Match harnessed-<harness>-<stack>-<hash> — filter for this stack across all harnesses.
     all_names = [n.strip() for n in _listing(result, "instances").splitlines() if n.strip()]
@@ -4923,8 +4499,7 @@ def remove(stack: str = typer.Argument(..., help="Stack name")) -> None:
     result = _bounded(
         [rt, "ps", "-a", "--filter", "name=harnessed-", "--format", "{{.Names}}"],
         timeout=_PODMAN_QUERY_TIMEOUT,
-        capture_output=True,
-        text=True,
+        capture_output=True, text=True,
     )
     # Match harnessed-<harness>-<stack>-<hash> — filter for this stack across all harnesses.
     all_names = [n.strip() for n in _listing(result, "instances").splitlines() if n.strip()]
@@ -4942,12 +4517,8 @@ def remove(stack: str = typer.Argument(..., help="Stack name")) -> None:
 
 @app.command("prune")
 def prune(
-    idle: int = typer.Option(
-        120, "--idle", help="Prune instances detached at least this many minutes"
-    ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", help="Report what would be pruned without tearing down"
-    ),
+    idle: int = typer.Option(120, "--idle", help="Prune instances detached at least this many minutes"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be pruned without tearing down"),
 ) -> None:
     """Tear down instances whose interactive session exited and stayed idle.
 
@@ -4967,8 +4538,7 @@ def prune(
     result = _bounded(
         [rt, "ps", "-a", "--filter", "name=harnessed-", "--format", "{{.Names}}\t{{.State}}"],
         timeout=_PODMAN_QUERY_TIMEOUT,
-        capture_output=True,
-        text=True,
+        capture_output=True, text=True,
     )
     # hatago no longer runs as a separate `{inst}-hatago` member (hatago-consolidation), so every
     # `harnessed-` container listed here is a prunable instance. Carry each container's State so
@@ -5016,7 +4586,6 @@ def clean_profiles() -> None:
         _out.print(f"Profile cache is empty: {prof_root}")
         return
     import shutil as _shutil
-
     _out.print(f"[blue][INFO][/blue] Purging profile cache: {prof_root}")
     _shutil.rmtree(prof_root)
     _out.print("[green][SUCCESS][/green] Profile cache purged")
@@ -5025,7 +4594,6 @@ def clean_profiles() -> None:
 def _print_update_report(report) -> None:
     """Render the buckets. Held and unresolved print even in `--check`, because the whole point of
     this command is that nothing a human should know about stays invisible."""
-
     def where(f) -> str:
         return f"{f.pin.recipe} ({f.pin.file.name})"
 
@@ -5040,8 +4608,7 @@ def _print_update_report(report) -> None:
                 # Offering 1.6.0 while 1.6.1 exists looks like a bug unless we say why.
                 age = (
                     f"{f.skipped_newer_age_days:.1f} days old"
-                    if f.skipped_newer_age_days is not None
-                    else "too new"
+                    if f.skipped_newer_age_days is not None else "too new"
                 )
                 _out.print(
                     f"      [dim]({f.skipped_newer} exists but is {age} — "
@@ -5084,36 +4651,28 @@ def _print_update_report(report) -> None:
         # property rather than a surprise; the agent's own description says the other half.
         _out.print("[bold]Unpinnable (tracks upstream — upgrade by rebuilding):[/bold]")
         for f in report.unpinnable:
-            _out.print(
-                f"  {f.pin.recipe}/{f.pin.key} ({f.pin.file.name})\n      [dim]{f.error}[/dim]"
-            )
+            _out.print(f"  {f.pin.recipe}/{f.pin.key} ({f.pin.file.name})\n      [dim]{f.error}[/dim]")
 
 
 @app.command("update")
 def update_pins(
     check: bool = typer.Option(
-        False,
-        "--check",
+        False, "--check",
         help="CI mode: report and exit non-zero if any pin is outdated. Writes nothing.",
     ),
     yes: bool = typer.Option(
-        False,
-        "--yes",
-        "-y",
-        help="Accept every offered bump without prompting.",
+        False, "--yes", "-y", help="Accept every offered bump without prompting.",
     ),
     minimum_release_age: float = typer.Option(
-        None,
-        "--minimum-release-age",
+        None, "--minimum-release-age",
         help="Minutes a release must have existed before it is offered (default 10080 = 7 days, "
-        "pnpm's `minimumReleaseAge` unit). 0 disables the gate. Harness agent pins default "
-        "to their own shorter window (2880 = 2 days); an explicit value here overrides both.",
+             "pnpm's `minimumReleaseAge` unit). 0 disables the gate. Harness agent pins default "
+             "to their own shorter window (2880 = 2 days); an explicit value here overrides both.",
     ),
     fail_on: str = typer.Option(
-        "any",
-        "--fail-on",
+        "any", "--fail-on",
         help="What `--check` fails on: `any` outdated pin (default), or only bumps that cross a "
-        "major version boundary — drift short of a major is still reported, just not fatal.",
+             "major version boundary — drift short of a major is still reported, just not fatal.",
     ),
 ) -> None:
     """Find outdated pins across the catalog and offer to bump them.
@@ -5162,15 +4721,13 @@ def update_pins(
         resolve=lambda backend, name: pinupdate.resolve_releases(backend, name),
         minimum_release_age_minutes=(
             pinupdate.DEFAULT_MINIMUM_RELEASE_AGE_MINUTES
-            if minimum_release_age is None
-            else minimum_release_age
+            if minimum_release_age is None else minimum_release_age
         ),
         # An explicit --minimum-release-age is ONE knob for every pin, preserving the flag's
         # pre-split contract; absent it, harness pins ride their own shorter window above.
         harness_minimum_release_age_minutes=(
             pinupdate.HARNESS_MINIMUM_RELEASE_AGE_MINUTES
-            if minimum_release_age is None
-            else minimum_release_age
+            if minimum_release_age is None else minimum_release_age
         ),
     )
     _print_update_report(report)
@@ -5231,9 +4788,7 @@ def update_pins(
 @app.command("test")
 def test_stack(
     stack: str = typer.Argument(..., help="Stack name"),
-    harness: str = typer.Argument(
-        ..., help="Harness to test against (claude|omp|opencode|antigravity|codex)"
-    ),
+    harness: str = typer.Argument(..., help="Harness to test against (claude|omp|opencode|antigravity|codex)"),
     project: Optional[str] = typer.Option(None, "--project", help="Scratch project path"),
     keep: bool = typer.Option(False, "--keep", help="Keep instance after test"),
     as_json: bool = typer.Option(False, "--json", help="Emit JSON result"),
@@ -5280,14 +4835,7 @@ def test_stack(
         "HARNESSED_DIR": str(root),
     }
     cmd: list[str] = [
-        sys.executable,
-        "-m",
-        "harnessed.cli",
-        "test",
-        stack,
-        harness,
-        "--root",
-        str(root),
+        sys.executable, "-m", "harnessed.cli", "test", stack, harness, "--root", str(root)
     ]
 
     if project:
@@ -5311,17 +4859,13 @@ def new_stack(
 ) -> None:
     """Scaffold a stack manifest in stacks/<name>/stack.yaml."""
     if stack in HARNESS_CONFIG_DIR:
-        _err.print(
-            f"[bold red]error:[/bold red] stack name '{stack}' conflicts with a harness name — choose a different name"
-        )
+        _err.print(f"[bold red]error:[/bold red] stack name '{stack}' conflicts with a harness name — choose a different name")
         raise typer.Exit(1)
 
     stacks_d = _stacks_dir()
     stack_dir = stacks_d / stack
     if (stack_dir / "stack.yaml").is_file():
-        _err.print(
-            f"[bold red]error:[/bold red] stack '{stack}' already exists ({stack_dir / 'stack.yaml'})"
-        )
+        _err.print(f"[bold red]error:[/bold red] stack '{stack}' already exists ({stack_dir / 'stack.yaml'})")
         raise typer.Exit(1)
 
     stack_dir.mkdir(parents=True, exist_ok=True)
@@ -5366,7 +4910,7 @@ def install_stack(
     # FIRST `--`, sending `--stack mystack` to the agent and leaving the CLI with no stack at all.
     shim.write_text(
         "#!/usr/bin/env bash\n"
-        f'exec {shlex.quote(harnessed_bin)} container-run --stack {shlex.quote(stack)} "$@"\n',
+        f"exec {shlex.quote(harnessed_bin)} container-run --stack {shlex.quote(stack)} \"$@\"\n",
         encoding="utf-8",
     )
     shim.chmod(shim.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
@@ -5374,9 +4918,7 @@ def install_stack(
         f"[green][SUCCESS][/green] Installed shim: {shim} -> harnessed container-run --stack {stack}"
     )
     if str(bin_dir) not in os.environ.get("PATH", "").split(os.pathsep):
-        _out.print(
-            f"[yellow]note:[/yellow] {bin_dir} is not on your PATH — add it to run `{stack}` directly."
-        )
+        _out.print(f"[yellow]note:[/yellow] {bin_dir} is not on your PATH — add it to run `{stack}` directly.")
 
 
 @app.command("uninstall")
@@ -5443,18 +4985,14 @@ def _scan_image_in_container(
         with tempfile.TemporaryDirectory() as td:
             cidfile = Path(td) / "cid"  # must NOT pre-exist — podman refuses to overwrite it
             argv = [
-                rt,
-                "run",
-                "--cidfile",
-                str(cidfile),
+                rt, "run", "--cidfile", str(cidfile),
                 *[arg for f in env_files for arg in ("--env-file", str(f))],
                 # The stack volumes (bd harnessed-8px.21.5). Once `tools:`/`install:` stopped being
                 # image layers, an image-only scan still PASSES and still prints "no high/critical"
                 # while silently covering less — a narrower scan that reports green is worse than a
                 # failing one. Mounting the volumes keeps the report about the whole stack.
                 *(extra_args or []),
-                image,
-                "harnessed-scan",
+                image, "harnessed-scan",
             ]
             # OUTER bound (bd harnessed-8px.28). harnessed-scan now bounds each scanner itself, so
             # this is the backstop for the script wedging somewhere else entirely — and it is not
@@ -5480,12 +5018,8 @@ def _scan_image_in_container(
         if report_dest is not None and cid:
             report_dest.parent.mkdir(parents=True, exist_ok=True)
             _bounded(
-                [
-                    rt,
-                    "cp",
-                    f"{cid}:{_CONTAINER_HOME_STR}/.harnessed/scan-report.json",
-                    str(report_dest),
-                ],
+                [rt, "cp", f"{cid}:{_CONTAINER_HOME_STR}/.harnessed/scan-report.json",
+                 str(report_dest)],
                 timeout=_PODMAN_WRITE_TIMEOUT,
                 capture_output=True,
             )
@@ -5573,9 +5107,7 @@ def scan(
             )
             raise typer.Exit(1)
     if not to_scan:
-        _out.print(
-            f"[yellow]note:[/yellow] stack '{stack}' has no built harnesses — nothing to scan."
-        )
+        _out.print(f"[yellow]note:[/yellow] stack '{stack}' has no built harnesses — nothing to scan.")
         return
 
     rt = _runtime()
@@ -5621,17 +5153,9 @@ def rescan(
         images = [image]
     else:
         result = _bounded(
-            [
-                rt,
-                "images",
-                "--filter",
-                "label=harnessed=true",
-                "--format",
-                "{{.Repository}}:{{.Tag}}",
-            ],
+            [rt, "images", "--filter", "label=harnessed=true", "--format", "{{.Repository}}:{{.Tag}}"],
             timeout=_PODMAN_QUERY_TIMEOUT,
-            capture_output=True,
-            text=True,
+            capture_output=True, text=True,
         )
         # Especially load-bearing here: `rescan` is what the systemd timer fires, so an unanswered
         # listing would print "nothing to rescan", exit 0, and silently skip the whole nightly
@@ -5655,12 +5179,8 @@ def rescan(
 # capability test relies on).
 @app.command("host-gc")
 def host_gc(
-    prune: bool = typer.Option(
-        False, "--prune", help="Remove orphan dirs whose project path no longer exists"
-    ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", help="Show what would be removed without removing it"
-    ),
+    prune: bool = typer.Option(False, "--prune", help="Remove orphan dirs whose project path no longer exists"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be removed without removing it"),
 ) -> None:
     """List host config dirs; optionally remove orphans and scrub stranded credentials.
 
@@ -5708,27 +5228,15 @@ def host_gc(
             age_days = (_time.time() - home.stat().st_mtime) / 86400
             size_kb = sum(f.stat().st_size for f in home.rglob("*") if f.is_file()) / 1024
             cred = home / ".credentials.json"
-            cred_status = (
-                "symlink" if cred.is_symlink() else ("REAL-FILE" if cred.is_file() else "none")
-            )
+            cred_status = "symlink" if cred.is_symlink() else ("REAL-FILE" if cred.is_file() else "none")
             # Pre-8px.12 per-project dirs, now nested inside. The next launch scrubs them; surfacing
             # them here means a user who never relaunches that stack can still see they exist.
             legacy = [
-                c.name
-                for c in sorted(home.iterdir())
+                c.name for c in sorted(home.iterdir())
                 if c.is_dir() and not c.is_symlink() and _LEGACY_PROJECT_DIR_RE.match(c.name)
             ]
             entries.append(
-                (
-                    stack_dir.name,
-                    home.name,
-                    stack_gone,
-                    age_days,
-                    size_kb,
-                    cred_status,
-                    legacy,
-                    home,
-                )
+                (stack_dir.name, home.name, stack_gone, age_days, size_kb, cred_status, legacy, home)
             )
 
     if not entries:
@@ -5738,7 +5246,9 @@ def host_gc(
     for stack, harness, is_orphan, age_days, size_kb, cred_status, legacy, _home in entries:
         status = "[red]ORPHAN[/red]" if is_orphan else "[green]ok[/green]"
         cred_tag = f"  cred:[yellow]{cred_status}[/yellow]" if cred_status != "none" else ""
-        legacy_tag = f"  [yellow]{len(legacy)} legacy per-project dir(s)[/yellow]" if legacy else ""
+        legacy_tag = (
+            f"  [yellow]{len(legacy)} legacy per-project dir(s)[/yellow]" if legacy else ""
+        )
         reason = " (stack no longer in catalog)" if is_orphan else ""
         _out.print(
             f"{status}  {stack}/{harness}  "
@@ -5769,21 +5279,17 @@ def host_gc(
         removed += 1
 
     if dry_run:
-        _out.print(
-            f"\n[dim]{removed} orphan(s) would be removed (--dry-run, nothing deleted).[/dim]"
-        )
+        _out.print(f"\n[dim]{removed} orphan(s) would be removed (--dry-run, nothing deleted).[/dim]")
     else:
         _out.print(f"\n[green][SUCCESS][/green] Removed {removed} orphan(s).")
 
 
+
+
 @app.command("volume-gc")
 def volume_gc(
-    prune: bool = typer.Option(
-        False, "--prune", help="Remove volumes whose stack no longer resolves"
-    ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", help="Show what would be removed without removing it"
-    ),
+    prune: bool = typer.Option(False, "--prune", help="Remove volumes whose stack no longer resolves"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be removed without removing it"),
 ) -> None:
     """List the per-stack volumes; optionally reclaim ones whose stack is gone.
 
@@ -5809,25 +5315,19 @@ def volume_gc(
     """
     rt = _runtime()
     out = _bounded(
-        [
-            rt,
-            "volume",
-            "ls",
-            "--filter",
-            f"label={_VOL_LABEL}",
-            "--format",
-            "{{.Name}}\t{{.Labels}}",
-        ],
+        [rt, "volume", "ls", "--filter", f"label={_VOL_LABEL}",
+         "--format", "{{.Name}}\t{{.Labels}}"],
         timeout=_PODMAN_QUERY_TIMEOUT,
-        capture_output=True,
-        text=True,
+        capture_output=True, text=True,
     )
     rows: list[tuple[str, str, str, str, bool]] = []
     for line in _listing(out, "volumes").splitlines():
         name, _, labels = line.strip().partition("\t")
         if not name:
             continue
-        parsed = dict(kv.split("=", 1) for kv in labels.split(",") if "=" in kv)
+        parsed = dict(
+            kv.split("=", 1) for kv in labels.split(",") if "=" in kv
+        )
         role = parsed.get(_VOL_LABEL, "?")
         stack = parsed.get(_VOL_STACK_LABEL, "")
         harness = parsed.get(_VOL_HARNESS_LABEL, "")
@@ -5836,7 +5336,9 @@ def volume_gc(
             continue
         # `find_in_catalog` NEVER raises — it returns the highest-precedence candidate path even
         # when nothing exists there, so the manifest has to be probed. The same test `host-gc` uses.
-        orphan = not stack or not (paths.find_in_catalog("stacks", stack) / "stack.yaml").is_file()
+        orphan = not stack or not (
+            paths.find_in_catalog("stacks", stack) / "stack.yaml"
+        ).is_file()
         rows.append((name, role, stack, harness, orphan))
 
     if not rows:
@@ -5863,9 +5365,7 @@ def volume_gc(
             _out.print(f"[yellow]would remove[/yellow] {name} (stack '{stack}' no longer resolves)")
             continue
         _out.print(f"[blue][INFO][/blue] Removing {name} (stack '{stack}' no longer resolves)")
-        _bounded(
-            [rt, "volume", "rm", "-f", name], timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True
-        )
+        _bounded([rt, "volume", "rm", "-f", name], timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True)
     if not dry_run:
         _out.print(f"[green][SUCCESS][/green] Removed {len(orphans)} orphan volume(s)")
 
@@ -5875,8 +5375,7 @@ def svc(
     action: str = typer.Argument(..., help=" | ".join(_SVC_ACTIONS)),
     name: str = typer.Argument(..., help="Service name (services/<name>/service.yaml)"),
     stack: str = typer.Option(
-        "",
-        "--stack",
+        "", "--stack",
         help="Stack context (required for scope: project; recreate reads it off the container)",
     ),
 ) -> None:
@@ -5970,11 +5469,7 @@ def svc(
             _resolve_mount_path(project_path, None) if svc_def.scope == "project" else project_path
         )
         _ensure_service(
-            rt,
-            name,
-            stack=stack,
-            project_path=project_path,
-            mount_path=mount_path,
+            rt, name, stack=stack, project_path=project_path, mount_path=mount_path,
             force_recreate=(action == "recreate"),
         )
         verb = "recreated" if action == "recreate" else "is up"
@@ -6054,9 +5549,7 @@ def project_env_path_cmd(
 
 @app.command("aws-sso")
 def aws_sso(
-    action: str = typer.Argument(
-        "serve", help="serve — run the aws-sso ECS credential server for containers"
-    ),
+    action: str = typer.Argument("serve", help="serve — run the aws-sso ECS credential server for containers"),
     port: int = typer.Option(AWS_SSO_ECS_PORT, "--port", help="port the ECS server listens on"),
     bind_ip: str = typer.Option(
         "0.0.0.0",  # noqa: S104 — deliberate and user-overridable: containers reach the ECS server via host.containers.internal, which 127.0.0.1 does not answer. The listener is gated by a bearer token, and --bind-ip 127.0.0.1 turns it host-only.
@@ -6099,16 +5592,12 @@ def aws_sso(
         _out.print(f"[dim]Reusing bearer token from {token_file}.[/dim]")
     else:
         token = _secrets.token_hex(32)
-        _out.print(
-            "Generating a new ECS-server bearer token and loading it into the aws-sso secure store…"
-        )
+        _out.print("Generating a new ECS-server bearer token and loading it into the aws-sso secure store…")
         # unbounded: interactive — this prompts for credentials and waits for the human at the
         # keyboard. A deadline here fails the setup of anyone who pauses to find their phone.
         res = subprocess.run(["aws-sso", "setup", "ecs", "auth", "--bearer-token", token])
         if res.returncode != 0:
-            _err.print(
-                "[bold red]error:[/bold red] `aws-sso setup ecs auth` failed — see output above."
-            )
+            _err.print("[bold red]error:[/bold red] `aws-sso setup ecs auth` failed — see output above.")
             raise typer.Exit(1)
         token_file.parent.mkdir(parents=True, exist_ok=True)
         token_file.write_text(token, encoding="utf-8")

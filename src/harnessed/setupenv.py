@@ -8,7 +8,6 @@ path.
 Shared by both launch modes: the container path hands these to podman, the host path (hostrun.py)
 applies them in-process. That is exactly why they live in one module instead of one per mode.
 """
-
 from __future__ import annotations
 
 import hashlib
@@ -33,7 +32,6 @@ from .schema import load_stack_with_recipes, resolve_recipe_env
 from .svcstate import svc_client_env, svc_socket_env
 
 _CONTAINER_HOME_STR = str(CONTAINER_HOME)
-
 
 def _ensure_gitignore_entry(project_path: Path, name: str) -> None:
     """Idempotently add `name` to project_path/.gitignore, but only when inside a git repo.
@@ -113,9 +111,7 @@ def harnessed_env(
         # reason every other path here is: the container's bin dir is the image's, the host's is
         # the stack's own tools dir.
         "HARNESSED_BIN_DIR": (
-            f"{CONTAINER_HOME}/.local/bin"
-            if mode == "container"
-            else str(_stack_tools_dirs(stack)[1])
+            f"{CONTAINER_HOME}/.local/bin" if mode == "container" else str(_stack_tools_dirs(stack)[1])
         ),
     }
     if sockets:
@@ -205,22 +201,14 @@ def _gcd_db_name(project_path: Path) -> str:
         parts.pop(0)  # drop leading (shallowest) first, keep the specific tail
     name = "_".join(parts) or "beads"
     if len(name) > 64:
-        name = (
-            name[:55].rstrip("_")
-            + "_"
-            + hashlib.sha1(str(root).encode(), usedforsecurity=False).hexdigest()[:8]
-        )
+        name = name[:55].rstrip("_") + "_" + hashlib.sha1(str(root).encode(), usedforsecurity=False).hexdigest()[:8]
     return name
 
 
 def _repo_primitives(project_path: Path) -> dict[str, str]:
     """Repo-identity substitution values for a recipe's `setup.config` derive/prompt templates."""
     gcd = paths.git_common_dir(project_path) or Path(project_path)
-    repo = (
-        gcd.parent.name
-        if (gcd.name in (".bare", ".git") or gcd.name.endswith(".git"))
-        else gcd.name
-    )
+    repo = gcd.parent.name if (gcd.name in (".bare", ".git") or gcd.name.endswith(".git")) else gcd.name
     return {
         "repo": re.sub(r"[^A-Za-z0-9_-]+", "-", repo).strip("-") or "repo",
         "gcd_db": _gcd_db_name(project_path),
@@ -234,9 +222,7 @@ def _subst(template: str, values: dict[str, str]) -> str:
     return re.sub(r"\{([a-zA-Z0-9_.]+)\}", lambda m: values.get(m.group(1), m.group(0)), template)
 
 
-def _resolve_setup_config(
-    setup, primitives: dict[str, str], *, interactive: bool
-) -> dict[str, str]:
+def _resolve_setup_config(setup, primitives: dict[str, str], *, interactive: bool) -> dict[str, str]:
     """Resolve each `setup.config` item → value: derive (silent) or prompt (asked; default when
     non-interactive). Returns primitives + {config.<key>: value}, which `_script_env` turns into the
     HARNESSED_CFG_<KEY> vars a `setup.script` reads."""
@@ -246,11 +232,8 @@ def _resolve_setup_config(
             val = _subst(item.derive, values)
         else:
             default = _subst(item.default or "", values)
-            val = (
-                typer.prompt(_subst(item.prompt, values), default=default)
-                if (interactive and item.prompt)
-                else default
-            )
+            val = typer.prompt(_subst(item.prompt, values), default=default) \
+                if (interactive and item.prompt) else default
         values[f"config.{item.key}"] = val
     return values
 
@@ -290,9 +273,8 @@ def _script_env(
     common dir — `.bare/` — is outside the mount), so they are computed host-side and injected.
     """
     env: dict[str, str] = {
-        **harnessed_env(
-            stack, project_path, harness=harness, mode=mode, recipe=recipe, sockets=False
-        ),
+        **harnessed_env(stack, project_path, harness=harness, mode=mode, recipe=recipe,
+                        sockets=False),
         "HARNESSED_MODE": mode,
         "HARNESSED_STACK": stack,
         "HARNESSED_PROJECT_DIR": str(project_path),
@@ -300,7 +282,7 @@ def _script_env(
     }
     for key, val in values.items():
         if key.startswith("config."):
-            env[f"HARNESSED_CFG_{key[len('config.') :].upper()}"] = val
+            env[f"HARNESSED_CFG_{key[len('config.'):].upper()}"] = val
         else:  # repo-identity primitives: repo, gcd_db, gcd_hash, project_hash
             env[f"HARNESSED_{key.upper()}"] = val
     if bin_dir is not None:
@@ -384,22 +366,14 @@ def project_env_path(project_path: Path) -> Path:
     """
     gcd = paths.git_common_dir_checked(project_path)
     return (
-        paths.xdg_state_home()
-        / "harnessed"
-        / "project-env"
+        paths.xdg_state_home() / "harnessed" / "project-env"
         / f"{paths.project_hash(gcd or project_path)}.env"
     )
 
 
 def _write_project_tool_env(
-    stack: str,
-    project_path: Path,
-    *,
-    harness: str,
-    verb: str,
-    no_strict_mcp: bool = False,
-    aoe_group: Optional[str] = None,
-    aoe_title: Optional[str] = None,
+    stack: str, project_path: Path, *, harness: str, verb: str,
+    no_strict_mcp: bool = False, aoe_group: Optional[str] = None, aoe_title: Optional[str] = None,
 ) -> None:
     """Give the PROJECT the same tool env harnessed gives the agent.
 
@@ -519,9 +493,7 @@ def _recipe_env(recipes, project_path: Path, *, mode: str) -> dict[str, str]:
     return env
 
 
-def _container_setup_env(
-    stack: str, project_path: Path, pending, *, harness: str
-) -> dict[str, str]:
+def _container_setup_env(stack: str, project_path: Path, pending, *, harness: str) -> dict[str, str]:
     """The setup env for a container launch, resolved HOST-side (a `setup.config` item may PROMPT,
     which has to happen before the container starts) and set as REAL CONTAINER ENV.
 
@@ -538,11 +510,9 @@ def _container_setup_env(
         # `_can_prompt`, not a bare isatty — the container half of the same site (#450,
         # adversary finding 3). See the note at the host call in `hostrun._host_run_setups`.
         values = _resolve_setup_config(recipe.setup, primitives, interactive=_can_prompt())
-        env.update(
-            _script_env(
-                stack, project_path, values, mode="container", harness=harness, recipe=recipe
-            )
-        )
+        env.update(_script_env(
+            stack, project_path, values, mode="container", harness=harness, recipe=recipe
+        ))
     return env
 
 
@@ -573,19 +543,13 @@ def _confirm_setup(recipe, stack: str, project_path: Path, *, harness: str) -> b
     # authorize a repo-changing step on EVERY launch, including the ones where it is already done.
     # A prompt that fires when there is nothing to do is how people learn to answer without reading.
     # Same host-side evaluation, same env contract, as _collect_setup_notices.
-    if (
-        setup.condition
-        and subprocess.run(
-            ["bash", "-lc", setup.condition],
-            cwd=str(project_path),
-            capture_output=True,
-            env={
-                **os.environ,
-                **harnessed_env(stack, project_path, harness=harness, mode="host", recipe=recipe),
-            },
-        ).returncode
-        != 0
-    ):
+    if setup.condition and subprocess.run(
+        ["bash", "-lc", setup.condition],
+        cwd=str(project_path), capture_output=True,
+        env={**os.environ, **harnessed_env(
+            stack, project_path, harness=harness, mode="host", recipe=recipe
+        )},
+    ).returncode != 0:
         return False
     if not _can_prompt():
         _err.print(

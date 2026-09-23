@@ -96,15 +96,9 @@ class _Runner:
 
 def _start(runner, inst=INST, pod=POD, schema_dir="/proj", port=PORT):
     return broker.start(
-        inst,
-        pod,
-        schema_dir,
-        spawn=runner.spawn,
-        status=runner.status,
-        kill=runner.kill,
-        port_free=lambda _p: True,
-        candidates=iter([port]),
-        sleep=lambda _s: None,
+        inst, pod, schema_dir,
+        spawn=runner.spawn, status=runner.status, kill=runner.kill,
+        port_free=lambda _p: True, candidates=iter([port]), sleep=lambda _s: None,
     )
 
 
@@ -152,15 +146,9 @@ class TestStartRecordsJustEnoughToFindItAgain:
         # same set the --env-file path does; one --path would silently drop half the secrets.
         runner = _Runner()
         broker.start(
-            INST,
-            POD,
-            ["/global", "/proj"],
-            spawn=runner.spawn,
-            status=runner.status,
-            kill=runner.kill,
-            port_free=lambda _p: True,
-            candidates=iter([PORT]),
-            sleep=lambda _s: None,
+            INST, POD, ["/global", "/proj"],
+            spawn=runner.spawn, status=runner.status, kill=runner.kill,
+            port_free=lambda _p: True, candidates=iter([PORT]), sleep=lambda _s: None,
         )
         argv = runner.spawned[0]
         paths_passed = [argv[i + 1] for i, a in enumerate(argv) if a == "--path"]
@@ -189,14 +177,10 @@ class TestTheSessionIdComesFromStatusNotStdout:
 
     def test_the_session_is_matched_on_the_port_we_chose(self):
         # Two sessions are running; ours is the one on our port, not the first in the list.
-        runner = _Runner(
-            statuses=[
-                [
-                    _status_entry(port=39001, session="other"),
-                    _status_entry(port=PORT, session="ours"),
-                ]
-            ]
-        )
+        runner = _Runner(statuses=[[
+            _status_entry(port=39001, session="other"),
+            _status_entry(port=PORT, session="ours"),
+        ]])
         assert _start(runner).session == "ours"
 
     def test_start_polls_until_the_session_appears(self):
@@ -246,15 +230,9 @@ class TestCtrlCDuringStartupLeavesNoOrphan:
 
         with pytest.raises(KeyboardInterrupt):
             broker.start(
-                INST,
-                POD,
-                "/proj",
-                spawn=runner.spawn,
-                status=runner.status,
-                kill=runner.kill,
-                port_free=lambda _p: True,
-                candidates=iter([PORT]),
-                sleep=interrupt,
+                INST, POD, "/proj",
+                spawn=runner.spawn, status=runner.status, kill=runner.kill,
+                port_free=lambda _p: True, candidates=iter([PORT]), sleep=interrupt,
             )
         assert runner.killed == [4242]
 
@@ -266,15 +244,9 @@ class TestCtrlCDuringStartupLeavesNoOrphan:
 
         with pytest.raises(KeyboardInterrupt):
             broker.start(
-                INST,
-                POD,
-                "/proj",
-                spawn=runner.spawn,
-                status=runner.status,
-                kill=runner.kill,
-                port_free=lambda _p: True,
-                candidates=iter([PORT]),
-                sleep=interrupt,
+                INST, POD, "/proj",
+                spawn=runner.spawn, status=runner.status, kill=runner.kill,
+                port_free=lambda _p: True, candidates=iter([PORT]), sleep=interrupt,
             )
         assert broker.read(INST) is None
 
@@ -287,15 +259,9 @@ class TestCtrlCDuringStartupLeavesNoOrphan:
 
         with pytest.raises(OSError):
             broker.start(
-                INST,
-                POD,
-                "/proj",
-                spawn=runner.spawn,
-                status=boom,
-                kill=runner.kill,
-                port_free=lambda _p: True,
-                candidates=iter([PORT]),
-                sleep=lambda _s: None,
+                INST, POD, "/proj",
+                spawn=runner.spawn, status=boom, kill=runner.kill,
+                port_free=lambda _p: True, candidates=iter([PORT]), sleep=lambda _s: None,
             )
         assert runner.killed == [4242]
 
@@ -389,9 +355,7 @@ class TestReconciliationReapsOrphans:
         runner = _Runner()
         _start(runner)
         reaped = broker.reconcile(
-            lambda _pod: False,
-            run=lambda _argv: 1,
-            status=lambda: [_status_entry()],
+            lambda _pod: False, run=lambda _argv: 1, status=lambda: [_status_entry()],
         )
         assert reaped == []
         assert broker.read(INST) is not None
@@ -404,15 +368,9 @@ class TestReconciliationReapsOrphans:
         """
         runner = _Runner()
         _start(runner)
-        broker._write(
-            broker.Broker(
-                instance="zzz-later",
-                pod="zzz-pod",
-                session="other",
-                port=39999,
-                cert_dir="/c",
-            )
-        )
+        broker._write(broker.Broker(
+            instance="zzz-later", pod="zzz-pod", session="other", port=39999, cert_dir="/c",
+        ))
         reaped = broker.reconcile(lambda pod: pod == POD, run=runner.run)
         assert reaped == ["zzz-later"]
         assert broker.read(INST) is not None
@@ -466,16 +424,9 @@ class TestTheGapsMutationFound:
         certs = str(tmp_path / "certs")
         runner = _Runner()
         record = broker.start(
-            INST,
-            POD,
-            "/proj",
-            cert_dir=certs,
-            spawn=runner.spawn,
-            status=runner.status,
-            kill=runner.kill,
-            port_free=lambda _p: True,
-            candidates=iter([PORT]),
-            sleep=lambda _s: None,
+            INST, POD, "/proj", cert_dir=certs,
+            spawn=runner.spawn, status=runner.status, kill=runner.kill,
+            port_free=lambda _p: True, candidates=iter([PORT]), sleep=lambda _s: None,
         )
         argv = runner.spawned[0]
         assert record.cert_dir == certs
@@ -486,15 +437,9 @@ class TestTheGapsMutationFound:
         # was indistinguishable from `start` obeying it.
         runner = _Runner(statuses=[[_status_entry(port=39444)]])
         record = broker.start(
-            INST,
-            POD,
-            "/proj",
-            cert_dir=str(tmp_path / "c"),
-            spawn=runner.spawn,
-            status=runner.status,
-            kill=runner.kill,
-            port_free=lambda p: p != 39443,
-            candidates=iter([39443, 39444]),
+            INST, POD, "/proj", cert_dir=str(tmp_path / "c"),
+            spawn=runner.spawn, status=runner.status, kill=runner.kill,
+            port_free=lambda p: p != 39443, candidates=iter([39443, 39444]),
             sleep=lambda _s: None,
         )
         assert record.port == 39444
@@ -506,16 +451,9 @@ class TestTheGapsMutationFound:
         certs.mkdir()
         runner = _Runner()
         broker.start(
-            INST,
-            POD,
-            "/proj",
-            cert_dir=str(certs),
-            spawn=runner.spawn,
-            status=runner.status,
-            kill=runner.kill,
-            port_free=lambda _p: True,
-            candidates=iter([PORT]),
-            sleep=lambda _s: None,
+            INST, POD, "/proj", cert_dir=str(certs),
+            spawn=runner.spawn, status=runner.status, kill=runner.kill,
+            port_free=lambda _p: True, candidates=iter([PORT]), sleep=lambda _s: None,
         )
         assert broker.read(INST) is not None
 
@@ -533,8 +471,7 @@ class TestPortSelection:
     def test_a_taken_port_is_skipped(self):
         taken = {39443}
         chosen = broker.pick_port(
-            port_free=lambda p: p not in taken,
-            candidates=iter([39443, 39444]),
+            port_free=lambda p: p not in taken, candidates=iter([39443, 39444]),
         )
         assert chosen == 39444
 

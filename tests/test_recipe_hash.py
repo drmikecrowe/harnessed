@@ -26,9 +26,7 @@ def _write_recipe(root: Path, name: str, *, dockerfile: str = "RUN echo hi\n") -
     return Recipe(name=name, root=recipe_dir)
 
 
-def _write_stack(
-    root: Path, name: str, *, recipes: list[str], services: list[str] | None = None
-) -> Path:
+def _write_stack(root: Path, name: str, *, recipes: list[str], services: list[str] | None = None) -> Path:
     stack_dir = root / "stacks" / name
     stack_dir.mkdir(parents=True)
     content = f"name: {name}\nrecipes: {recipes}\n"
@@ -45,7 +43,9 @@ def _write_service(root: Path, name: str, *, entrypoint: str = "#!/bin/sh\nexec 
     """
     svc_dir = root / "services" / name
     svc_dir.mkdir(parents=True)
-    (svc_dir / "service.yaml").write_text(f"name: {name}\nimage: {name}:1.0.0\nport: 9000\n")
+    (svc_dir / "service.yaml").write_text(
+        f"name: {name}\nimage: {name}:1.0.0\nport: 9000\n"
+    )
     (svc_dir / "Dockerfile").write_text("FROM scratch\nCOPY entrypoint.sh /\n")
     (svc_dir / "entrypoint.sh").write_text(entrypoint)
     return svc_dir
@@ -56,9 +56,7 @@ class TestComputeRecipeHash:
         recipe = _write_recipe(tmp_path, "r1")
         stack_yaml = _write_stack(tmp_path, "s1", recipes=["r1"]) / "stack.yaml"
 
-        assert compute_recipe_hash(stack_yaml, [recipe]) == compute_recipe_hash(
-            stack_yaml, [recipe]
-        )
+        assert compute_recipe_hash(stack_yaml, [recipe]) == compute_recipe_hash(stack_yaml, [recipe])
 
     def test_changes_when_recipe_file_changes(self, tmp_path):
         recipe = _write_recipe(tmp_path, "r1")
@@ -84,9 +82,7 @@ class TestComputeRecipeHash:
         r2 = _write_recipe(tmp_path, "r2")
         stack_yaml = _write_stack(tmp_path, "s1", recipes=["r1", "r2"]) / "stack.yaml"
 
-        assert compute_recipe_hash(stack_yaml, [r1, r2]) == compute_recipe_hash(
-            stack_yaml, [r2, r1]
-        )
+        assert compute_recipe_hash(stack_yaml, [r1, r2]) == compute_recipe_hash(stack_yaml, [r2, r1])
 
     # --- service closure (harnessed-p0t) ---
 
@@ -129,10 +125,7 @@ class TestComputeRecipeHash:
     def test_missing_service_dir_does_not_raise(self, tmp_path):
         """A service name with no matching directory is silently skipped (service may be external)."""
         recipe = _write_recipe(tmp_path, "r1")
-        stack_yaml = (
-            _write_stack(tmp_path, "s1", recipes=["r1"], services=["nonexistent-svc"])
-            / "stack.yaml"
-        )
+        stack_yaml = _write_stack(tmp_path, "s1", recipes=["r1"], services=["nonexistent-svc"]) / "stack.yaml"
 
         # Should not raise, just skip the missing service
         compute_recipe_hash(stack_yaml, [recipe])
@@ -144,7 +137,7 @@ class TestComputeRecipeHash:
         user_root = tmp_path / "user"
         repo_root = tmp_path / "repo"
         recipe = _write_recipe(repo_root, "r1")
-        _write_service(repo_root, "svc1")  # shipped service (must NOT win)
+        _write_service(repo_root, "svc1")          # shipped service (must NOT win)
         overlay_svc = _write_service(user_root, "svc1")  # user overlay (must win)
         stack_yaml = _write_stack(repo_root, "s1", recipes=["r1"], services=["svc1"]) / "stack.yaml"
 
@@ -198,17 +191,12 @@ class TestReconcileStacks:
         _write_stack(tmp_path, "missing-image", recipes=["r1"])
 
         # Mock podman images to return three previously-built images.
-        image_list = (
-            "harnessed-claude-up-to-date\nharnessed-claude-stale\nharnessed-claude-missing-image\n"
-        )
+        image_list = "harnessed-claude-up-to-date\nharnessed-claude-stale\nharnessed-claude-missing-image\n"
         monkeypatch.setattr(
-            launcher.subprocess,
-            "run",
+            launcher.subprocess, "run",
             lambda *a, **k: _subprocess.CompletedProcess(a, 0, stdout=image_list),
         )
-        patch_all(
-            monkeypatch,
-            "load_stack_with_recipes",
+        patch_all(monkeypatch, "load_stack_with_recipes",
             lambda root, name, strict=False: (None, [r1]),
         )
 
@@ -218,16 +206,10 @@ class TestReconcileStacks:
             ("stale", "claude"): "old-hash",
             ("missing-image", "claude"): None,
         }
-        monkeypatch.setattr(
-            launcher,
-            "_built_image_hash",
-            lambda rt, name, harness: image_hashes.get((name, harness)),
-        )
+        monkeypatch.setattr(launcher, "_built_image_hash", lambda rt, name, harness: image_hashes.get((name, harness)))
 
         built = []
-        monkeypatch.setattr(
-            launcher, "_build_stack", lambda rt, name, harness, root, strict: built.append(name)
-        )
+        monkeypatch.setattr(launcher, "_build_stack", lambda rt, name, harness, root, strict: built.append(name))
 
         launcher._reconcile_stacks("podman", tmp_path, strict=True)
 
@@ -237,8 +219,7 @@ class TestReconcileStacks:
         import subprocess as _subprocess
 
         monkeypatch.setattr(
-            launcher.subprocess,
-            "run",
+            launcher.subprocess, "run",
             lambda *a, **k: _subprocess.CompletedProcess(a, 0, stdout=""),
         )
         built = []
@@ -252,24 +233,21 @@ class TestReconcileStacks:
 class TestBuiltImageHash:
     def test_returns_label_value(self, monkeypatch):
         monkeypatch.setattr(
-            launcher.subprocess,
-            "run",
+            launcher.subprocess, "run",
             lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout="abc123\n"),
         )
         assert launcher._built_image_hash("podman", "some-stack", "claude") == "abc123"
 
     def test_returns_none_when_image_missing(self, monkeypatch):
         monkeypatch.setattr(
-            launcher.subprocess,
-            "run",
+            launcher.subprocess, "run",
             lambda *a, **k: subprocess.CompletedProcess(a, 1, stdout=""),
         )
         assert launcher._built_image_hash("podman", "some-stack", "claude") is None
 
     def test_returns_none_when_label_absent(self, monkeypatch):
         monkeypatch.setattr(
-            launcher.subprocess,
-            "run",
+            launcher.subprocess, "run",
             lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout="\n"),
         )
         assert launcher._built_image_hash("podman", "some-stack", "claude") is None

@@ -71,9 +71,7 @@ def delegated(monkeypatch, tmp_path):
     monkeypatch.setattr(launcher.subprocess, "run", fake_run)
 
     captured["root"] = root
-    captured["invoke"] = lambda *args: runner.invoke(
-        launcher.app, ["test", "demo", "claude", *args]
-    )
+    captured["invoke"] = lambda *args: runner.invoke(launcher.app, ["test", "demo", "claude", *args])
     return captured
 
 
@@ -148,14 +146,8 @@ class TestDelegatedInterpreter:
     def test_it_runs_the_cli_module_with_the_stack_the_harness_and_the_root(self, delegated):
         delegated["invoke"]()
         assert delegated["cmd"] == [
-            sys.executable,
-            "-m",
-            "harnessed.cli",
-            "test",
-            "demo",
-            "claude",
-            "--root",
-            str(delegated["root"]),
+            sys.executable, "-m", "harnessed.cli",
+            "test", "demo", "claude", "--root", str(delegated["root"]),
         ]
 
 
@@ -209,8 +201,7 @@ class TestSurroundingBehaviourIsUnchanged:
 
     def test_the_child_exit_code_becomes_the_command_exit_code(self, delegated, monkeypatch):
         monkeypatch.setattr(
-            launcher.subprocess,
-            "run",
+            launcher.subprocess, "run",
             lambda cmd, **kw: subprocess.CompletedProcess(cmd, 3),
         )
         assert delegated["invoke"]().exit_code == 3

@@ -50,10 +50,7 @@ def _releases(*pairs):
 def _report(tmp_path, current_spec, resolver, *, minutes=7 * DAY):
     d = _recipe_dir(tmp_path, "r", f"name: r\ntools:\n  - {current_spec}\n")
     return update.build_report(
-        [d],
-        resolve=resolver,
-        now=NOW,
-        minimum_release_age_minutes=minutes,
+        [d], resolve=resolver, now=NOW, minimum_release_age_minutes=minutes,
     ), d
 
 
@@ -61,8 +58,7 @@ class TestNewestSafeVersionWins:
     def test_a_mature_intermediate_is_offered_when_the_newest_is_too_fresh(self, tmp_path):
         """The serena case, exactly."""
         report, _ = _report(
-            tmp_path,
-            "pipx:serena-agent@1.5.3",
+            tmp_path, "pipx:serena-agent@1.5.3",
             _releases(("1.5.3", 60), ("1.6.0", 9), ("1.6.1", 4)),
         )
         assert len(report.stale) == 1
@@ -71,8 +67,7 @@ class TestNewestSafeVersionWins:
     def test_the_skipped_newer_release_is_named(self, tmp_path):
         """Offering 1.6.0 while 1.6.1 exists is surprising unless the report says why."""
         report, _ = _report(
-            tmp_path,
-            "pipx:serena-agent@1.5.3",
+            tmp_path, "pipx:serena-agent@1.5.3",
             _releases(("1.6.0", 9), ("1.6.1", 4)),
         )
         f = report.stale[0]
@@ -101,9 +96,7 @@ class TestNewestSafeVersionWins:
 
     def test_the_chosen_version_is_what_gets_written(self, tmp_path):
         report, d = _report(
-            tmp_path,
-            "pipx:serena-agent@1.5.3",
-            _releases(("1.6.0", 9), ("1.6.1", 4)),
+            tmp_path, "pipx:serena-agent@1.5.3", _releases(("1.6.0", 9), ("1.6.1", 4)),
         )
         update.apply(report.stale)
         after = (d / "recipe.yaml").read_text()
@@ -154,64 +147,51 @@ class TestBackendsListEveryVersion:
     """Payload shapes verified against the live registries on 2026-07-25."""
 
     def test_npm_reads_versions_crossed_with_the_time_map(self):
-        payload = json.dumps(
-            {
-                "dist-tags": {"latest": "2.2.26"},
-                "versions": {"2.2.22": {}, "2.2.25": {}, "2.2.26": {}},
-                # `created`/`modified` are the only non-version keys npm puts here — verified live.
-                "time": {
-                    "created": "2026-01-01T00:00:00Z",
-                    "modified": "2026-07-25T07:13:18.627Z",
-                    "2.2.22": "2026-06-16T06:02:08.122Z",
-                    "2.2.25": "2026-07-04T00:00:00.000Z",
-                    "2.2.26": "2026-07-25T07:13:18.627Z",
-                },
-            }
-        )
+        payload = json.dumps({
+            "dist-tags": {"latest": "2.2.26"},
+            "versions": {"2.2.22": {}, "2.2.25": {}, "2.2.26": {}},
+            # `created`/`modified` are the only non-version keys npm puts here — verified live.
+            "time": {
+                "created": "2026-01-01T00:00:00Z",
+                "modified": "2026-07-25T07:13:18.627Z",
+                "2.2.22": "2026-06-16T06:02:08.122Z",
+                "2.2.25": "2026-07-04T00:00:00.000Z",
+                "2.2.26": "2026-07-25T07:13:18.627Z",
+            },
+        })
         rels = update.resolve_releases("npm", "ccstatusline", fetch=lambda url: payload)
         assert {r.version for r in rels} == {"2.2.22", "2.2.25", "2.2.26"}
         assert all(r.published is not None for r in rels)
 
     def test_npm_ignores_time_entries_with_no_matching_version(self):
-        payload = json.dumps(
-            {
-                "versions": {"1.0.0": {}},
-                "time": {
-                    "created": "2026-01-01T00:00:00Z",
-                    "1.0.0": "2026-02-01T00:00:00Z",
-                    "0.9.0": "2025-01-01T00:00:00Z",
-                },
-            }
-        )
+        payload = json.dumps({
+            "versions": {"1.0.0": {}},
+            "time": {"created": "2026-01-01T00:00:00Z", "1.0.0": "2026-02-01T00:00:00Z",
+                     "0.9.0": "2025-01-01T00:00:00Z"},
+        })
         rels = update.resolve_releases("npm", "x", fetch=lambda url: payload)
         assert [r.version for r in rels] == ["1.0.0"], "an unpublished/removed version is not real"
 
     def test_pypi_reads_the_releases_map(self):
-        payload = json.dumps(
-            {
-                "info": {"version": "1.6.1"},
-                "releases": {
-                    "1.5.3": [{"upload_time_iso_8601": "2026-05-26T19:06:28.424565Z"}],
-                    "1.6.0": [{"upload_time_iso_8601": "2026-07-16T11:58:32.688861Z"}],
-                    "1.6.1": [{"upload_time_iso_8601": "2026-07-21T15:41:09.268053Z"}],
-                },
-            }
-        )
+        payload = json.dumps({
+            "info": {"version": "1.6.1"},
+            "releases": {
+                "1.5.3": [{"upload_time_iso_8601": "2026-05-26T19:06:28.424565Z"}],
+                "1.6.0": [{"upload_time_iso_8601": "2026-07-16T11:58:32.688861Z"}],
+                "1.6.1": [{"upload_time_iso_8601": "2026-07-21T15:41:09.268053Z"}],
+            },
+        })
         rels = update.resolve_releases("pipx", "serena-agent", fetch=lambda url: payload)
         assert {r.version for r in rels} == {"1.5.3", "1.6.0", "1.6.1"}
 
     def test_pypi_skips_a_release_with_no_files(self):
         """A fully-yanked release keeps its key but loses its files — it has no date and cannot be
         installed, so it is not a candidate."""
-        payload = json.dumps(
-            {
-                "info": {"version": "1.0.0"},
-                "releases": {
-                    "1.0.0": [{"upload_time_iso_8601": "2026-01-01T00:00:00Z"}],
-                    "1.0.1": [],
-                },
-            }
-        )
+        payload = json.dumps({
+            "info": {"version": "1.0.0"},
+            "releases": {"1.0.0": [{"upload_time_iso_8601": "2026-01-01T00:00:00Z"}],
+                         "1.0.1": []},
+        })
         rels = update.resolve_releases("pipx", "x", fetch=lambda url: payload)
         assert [r.version for r in rels] == ["1.0.0"]
 
@@ -220,22 +200,12 @@ class TestBackendsListEveryVersion:
 
         def fetch(url):
             seen["url"] = url
-            return json.dumps(
-                [
-                    {
-                        "tag_name": "v3.254.0",
-                        "published_at": "2026-07-23T15:10:53Z",
-                        "prerelease": False,
-                        "draft": False,
-                    },
-                    {
-                        "tag_name": "v3.253.0",
-                        "published_at": "2026-07-14T11:30:57Z",
-                        "prerelease": False,
-                        "draft": False,
-                    },
-                ]
-            )
+            return json.dumps([
+                {"tag_name": "v3.254.0", "published_at": "2026-07-23T15:10:53Z",
+                 "prerelease": False, "draft": False},
+                {"tag_name": "v3.253.0", "published_at": "2026-07-14T11:30:57Z",
+                 "prerelease": False, "draft": False},
+            ])
 
         rels = update.resolve_releases("github", "pulumi/pulumi", fetch=fetch)
         assert [r.version for r in rels] == ["v3.254.0", "v3.253.0"]
@@ -246,22 +216,12 @@ class TestBackendsListEveryVersion:
     def test_github_excludes_prereleases_and_drafts(self, flag):
         """Neither is a shipped version; offering one would bump the catalog onto an unreleased
         build."""
-        payload = json.dumps(
-            [
-                {
-                    "tag_name": "v2.0.0-rc1",
-                    "published_at": "2026-07-01T00:00:00Z",
-                    "prerelease": flag == "prerelease",
-                    "draft": flag == "draft",
-                },
-                {
-                    "tag_name": "v1.0.0",
-                    "published_at": "2026-06-01T00:00:00Z",
-                    "prerelease": False,
-                    "draft": False,
-                },
-            ]
-        )
+        payload = json.dumps([
+            {"tag_name": "v2.0.0-rc1", "published_at": "2026-07-01T00:00:00Z",
+             "prerelease": flag == "prerelease", "draft": flag == "draft"},
+            {"tag_name": "v1.0.0", "published_at": "2026-06-01T00:00:00Z",
+             "prerelease": False, "draft": False},
+        ])
         rels = update.resolve_releases("github", "o/r", fetch=lambda url: payload)
         assert [r.version for r in rels] == ["v1.0.0"]
 
@@ -270,16 +230,8 @@ class TestBackendsListEveryVersion:
 
         def fetch(url):
             assert "/repos/pulumi/pulumi/releases" in url
-            return json.dumps(
-                [
-                    {
-                        "tag_name": "v3.253.0",
-                        "published_at": "2026-07-14T11:30:57Z",
-                        "prerelease": False,
-                        "draft": False,
-                    }
-                ]
-            )
+            return json.dumps([{"tag_name": "v3.253.0", "published_at": "2026-07-14T11:30:57Z",
+                                "prerelease": False, "draft": False}])
 
         rels = update.resolve_releases("mise", "pulumi", fetch=fetch, run=lambda cmd: registry)
         assert [r.version for r in rels] == ["v3.253.0"]
@@ -289,9 +241,7 @@ class TestPinConventionSurvivesSelection:
     def test_a_v_tag_is_normalised_to_the_pins_shape(self, tmp_path):
         """pulumi pins bare `3.251.0`; GitHub answers `v3.253.0`."""
         report, d = _report(
-            tmp_path,
-            "pulumi@3.251.0",
-            _releases(("v3.254.0", 2), ("v3.253.0", 11)),
+            tmp_path, "pulumi@3.251.0", _releases(("v3.254.0", 2), ("v3.253.0", 11)),
         )
         assert report.stale[0].latest == "3.253.0"
         update.apply(report.stale)
@@ -299,9 +249,7 @@ class TestPinConventionSurvivesSelection:
 
     def test_the_skipped_version_is_normalised_too(self, tmp_path):
         report, _ = _report(
-            tmp_path,
-            "pulumi@3.251.0",
-            _releases(("v3.254.0", 2), ("v3.253.0", 11)),
+            tmp_path, "pulumi@3.251.0", _releases(("v3.254.0", 2), ("v3.253.0", 11)),
         )
         assert report.stale[0].skipped_newer == "3.254.0"
 
@@ -323,13 +271,8 @@ class TestVersionKeyIsATotalOrder:
 
     # The shapes @openai/codex actually publishes, read from the registry on 2026-08-13.
     REAL_SHAPES = (
-        "0.41.0-alpha.1",
-        "0.99.0-alpha.20-darwin-arm64",
-        "0.99.0-darwin-arm64",
-        "0.146.0-alpha.3.1-linux-x64",
-        "0.146.0-alpha.3.1",
-        "0.139.0",
-        "0.147.0",
+        "0.41.0-alpha.1", "0.99.0-alpha.20-darwin-arm64", "0.99.0-darwin-arm64",
+        "0.146.0-alpha.3.1-linux-x64", "0.146.0-alpha.3.1", "0.139.0", "0.147.0",
     )
 
     def test_every_pair_of_real_published_shapes_is_orderable(self):
@@ -342,8 +285,7 @@ class TestVersionKeyIsATotalOrder:
         """And it orders them the semver way round: `1` is numeric, `1-linux-x64` is not."""
         pair = ["0.146.0-alpha.3.1-linux-x64", "0.146.0-alpha.3.1"]
         assert sorted(pair, key=update.version_key) == [
-            "0.146.0-alpha.3.1",
-            "0.146.0-alpha.3.1-linux-x64",
+            "0.146.0-alpha.3.1", "0.146.0-alpha.3.1-linux-x64",
         ]
 
     def test_a_numeric_identifier_sorts_below_an_alphanumeric_one(self):
@@ -362,7 +304,7 @@ class TestVersionKeyIsATotalOrder:
         assert update.version_key("1.0.0-alpha.1") < update.version_key("1.0.0")
 
     def test_a_unicode_digit_int_cannot_parse_does_not_raise(self):
-        """ "Always returns a comparable key" has to mean ALWAYS, including for junk.
+        """"Always returns a comparable key" has to mean ALWAYS, including for junk.
 
         `isdigit()` is True for `²` and `①` while `int()` rejects both, so the natural spelling
         raised ValueError out of a function whose contract forbids it — and out through
@@ -396,9 +338,7 @@ class TestVersionKeyIsATotalOrder:
         the bare version as an upgrade — a no-op bump under semver §10, presented as progress.
         """
         report, _ = _report(
-            tmp_path,
-            "npm:thing@1.1.0+build-7",
-            _releases(("1.1.0", 30)),
+            tmp_path, "npm:thing@1.1.0+build-7", _releases(("1.1.0", 30)),
         )
         assert [f.latest for f in report.stale] == [], "offered a same-precedence version as a bump"
 
@@ -414,17 +354,13 @@ class TestPrereleasesAreNotOfferedAsBumps:
     """
 
     def test_npm_omits_prereleases(self):
-        payload = json.dumps(
-            {
-                "versions": {"1.0.0": {}, "1.1.0-alpha.1": {}, "1.1.0": {}},
-                "time": {
-                    "created": "2026-01-01T00:00:00Z",
-                    "1.0.0": "2026-01-02T00:00:00Z",
-                    "1.1.0-alpha.1": "2026-01-03T00:00:00Z",
-                    "1.1.0": "2026-01-04T00:00:00Z",
-                },
-            }
-        )
+        payload = json.dumps({
+            "versions": {"1.0.0": {}, "1.1.0-alpha.1": {}, "1.1.0": {}},
+            "time": {"created": "2026-01-01T00:00:00Z",
+                     "1.0.0": "2026-01-02T00:00:00Z",
+                     "1.1.0-alpha.1": "2026-01-03T00:00:00Z",
+                     "1.1.0": "2026-01-04T00:00:00Z"},
+        })
         rels = update.resolve_releases("npm", "x", fetch=lambda url: payload)
         assert [r.version for r in rels] == ["1.0.0", "1.1.0"], "an alpha is not a shipped version"
 
@@ -434,12 +370,10 @@ class TestPrereleasesAreNotOfferedAsBumps:
         # `+build-7` carries a HYPHEN inside the build metadata, so a naive `"-" in version` test
         # would drop it. That naive test is the obvious implementation and it is wrong; this case
         # is here to keep it out.
-        payload = json.dumps(
-            {
-                "versions": {"1.0.0": {}, "1.1.0+build-7": {}},
-                "time": {"1.0.0": "2026-01-02T00:00:00Z", "1.1.0+build-7": "2026-01-04T00:00:00Z"},
-            }
-        )
+        payload = json.dumps({
+            "versions": {"1.0.0": {}, "1.1.0+build-7": {}},
+            "time": {"1.0.0": "2026-01-02T00:00:00Z", "1.1.0+build-7": "2026-01-04T00:00:00Z"},
+        })
         rels = update.resolve_releases("npm", "x", fetch=lambda url: payload)
         assert [r.version for r in rels] == ["1.0.0", "1.1.0+build-7"]
 
@@ -452,29 +386,17 @@ class TestPrereleasesAreNotOfferedAsBumps:
         branch has its own, better test: the API's `prerelease` flag, set by the publisher instead
         of inferred from punctuation. This asserts the two stay separate.
         """
-        assert update.is_semver_prerelease("bun-v1.3.14"), (
+        assert update.is_semver_prerelease("bun-v1.3.14"), \
             "the semver reading of a bun tag is 'prerelease' — which is exactly why github must not use it"
-        )
-        payload = json.dumps(
-            [
-                {
-                    "tag_name": "bun-v1.3.14",
-                    "published_at": "2026-05-13T03:48:28Z",
-                    "prerelease": False,
-                    "draft": False,
-                },
-                {
-                    "tag_name": "bun-v1.3.13",
-                    "published_at": "2026-04-20T08:07:57Z",
-                    "prerelease": False,
-                    "draft": False,
-                },
-            ]
-        )
+        payload = json.dumps([
+            {"tag_name": "bun-v1.3.14", "published_at": "2026-05-13T03:48:28Z",
+             "prerelease": False, "draft": False},
+            {"tag_name": "bun-v1.3.13", "published_at": "2026-04-20T08:07:57Z",
+             "prerelease": False, "draft": False},
+        ])
         rels = update.resolve_releases("github", "oven-sh/bun", fetch=lambda url: payload)
-        assert [r.version for r in rels] == ["bun-v1.3.14", "bun-v1.3.13"], (
+        assert [r.version for r in rels] == ["bun-v1.3.14", "bun-v1.3.13"], \
             "a hyphenated GitHub tag is a real release and must survive"
-        )
 
     def test_the_codex_shaped_case_end_to_end(self, tmp_path):
         """A pin at a real release is never offered an alpha, however much newer the alpha is.
@@ -496,32 +418,26 @@ class TestPrereleasesAreNotOfferedAsBumps:
         work. `0.148.0-alpha.1` is therefore older than the age window AND higher than every stable
         version here: the filter is the only thing standing between it and the report.
         """
-        packument = json.dumps(
-            {
-                "versions": {
-                    "0.139.0": {},
-                    "0.147.0": {},
-                    "0.148.0-alpha.1": {},  # newer AND mature: only the filter excludes it
-                    "0.146.0-alpha.3.1-linux-x64": {},  # the pair that used to crash the sort
-                    "0.146.0-alpha.3.1": {},
-                },
-                "time": {
-                    "created": "2026-01-01T00:00:00Z",
-                    "0.139.0": _ago(70).isoformat(),
-                    "0.147.0": _ago(30).isoformat(),
-                    "0.148.0-alpha.1": _ago(40).isoformat(),
-                    "0.146.0-alpha.3.1-linux-x64": _ago(50).isoformat(),
-                    "0.146.0-alpha.3.1": _ago(50).isoformat(),
-                },
-            }
-        )
+        packument = json.dumps({
+            "versions": {
+                "0.139.0": {}, "0.147.0": {},
+                "0.148.0-alpha.1": {},                  # newer AND mature: only the filter excludes it
+                "0.146.0-alpha.3.1-linux-x64": {},      # the pair that used to crash the sort
+                "0.146.0-alpha.3.1": {},
+            },
+            "time": {
+                "created": "2026-01-01T00:00:00Z",
+                "0.139.0": _ago(70).isoformat(),
+                "0.147.0": _ago(30).isoformat(),
+                "0.148.0-alpha.1": _ago(40).isoformat(),
+                "0.146.0-alpha.3.1-linux-x64": _ago(50).isoformat(),
+                "0.146.0-alpha.3.1": _ago(50).isoformat(),
+            },
+        })
         report, _ = _report(
-            tmp_path,
-            "npm:@openai/codex@0.139.0",
+            tmp_path, "npm:@openai/codex@0.139.0",
             lambda backend, name: update.resolve_releases(
-                backend,
-                name,
-                fetch=lambda url: packument,
+                backend, name, fetch=lambda url: packument,
             ),
         )
         offered = [f.latest for f in report.stale]

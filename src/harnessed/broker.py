@@ -22,7 +22,6 @@ credential), `placeholderOverrides`, and the resolved proxy env. This module sto
 instance, pod, session, port, cert dir — and nothing else, so "the state file leaks no secret" is
 true by construction rather than by redaction. Anything added here must clear that bar.
 """
-
 from __future__ import annotations
 
 import json
@@ -84,11 +83,8 @@ def read(inst: str) -> Broker | None:
     try:
         raw = json.loads(state_path(inst).read_text(encoding="utf-8"))
         return Broker(
-            instance=raw["instance"],
-            pod=raw["pod"],
-            session=raw["session"],
-            port=int(raw["port"]),
-            cert_dir=raw["cert_dir"],
+            instance=raw["instance"], pod=raw["pod"], session=raw["session"],
+            port=int(raw["port"]), cert_dir=raw["cert_dir"],
         )
     except (OSError, ValueError, KeyError, TypeError):
         return None
@@ -121,7 +117,6 @@ def forget(inst: str) -> None:
 
 
 # --- ports -------------------------------------------------------------------
-
 
 def _port_free(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -184,15 +179,12 @@ def pick_port(
 # Injected rather than called directly so the tests can drive the whole lifecycle without spawning
 # a real broker — which would resolve real secrets out of a real 1Password.
 
-
 def _spawn(argv: list[str]) -> int:
     """Start the broker detached and return its pid. See the module docstring: `proxy start` runs
     in the foreground indefinitely, so this must not wait for it."""
     proc = subprocess.Popen(
         argv,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
     return proc.pid
@@ -201,10 +193,7 @@ def _spawn(argv: list[str]) -> int:
 def _status() -> list[dict]:
     result = subprocess.run(
         ["varlock", "proxy", "status", "--format", "json"],
-        capture_output=True,
-        text=True,
-        timeout=_CONTROL_TIMEOUT,
-        check=False,
+        capture_output=True, text=True, timeout=_CONTROL_TIMEOUT, check=False,
     )
     if result.returncode != 0:
         return []
@@ -217,11 +206,7 @@ def _status() -> list[dict]:
 
 def _run(argv: list[str]) -> int:
     return subprocess.run(
-        argv,
-        capture_output=True,
-        text=True,
-        timeout=_CONTROL_TIMEOUT,
-        check=False,
+        argv, capture_output=True, text=True, timeout=_CONTROL_TIMEOUT, check=False,
     ).returncode
 
 
@@ -233,7 +218,6 @@ def _kill(pid: int) -> None:
 
 
 # --- lifecycle ---------------------------------------------------------------
-
 
 def _session_on_port(rows: list[dict], port: int) -> str | None:
     """Our session is the one whose proxy env names the port we chose.
@@ -302,11 +286,7 @@ def start(
             session = _session_on_port(status(), port)
             if session:
                 record = Broker(
-                    instance=inst,
-                    pod=pod,
-                    session=session,
-                    port=port,
-                    cert_dir=str(certs),
+                    instance=inst, pod=pod, session=session, port=port, cert_dir=str(certs),
                 )
                 _write(record)
                 return record

@@ -55,10 +55,8 @@ _CAPTURE_PROOF = "nothing was captured on stderr — the note is missing, or cap
 def _atlassian(*extra: str) -> McpServer:
     """The atlassian recipe's server: a pnpm-dlx stdio child, URL then callback port."""
     return McpServer(
-        name="atlassian",
-        command="pnpm",
-        args=["dlx", SPEC_ARG, URL, *extra],
-        transport="stdio",
+        name="atlassian", command="pnpm",
+        args=["dlx", SPEC_ARG, URL, *extra], transport="stdio",
     )
 
 
@@ -142,8 +140,8 @@ class TestTheHostSourceIsCreatedNotDemanded:
         branch and false on the branch that actually happens."""
         store = tmp_path / ".mcp-auth"
         store.mkdir(mode=0o755)
-        store.chmod(0o755)  # mkdir's mode is umask-masked; force it
-        assert store.stat().st_mode & 0o077  # precondition: really is group/other-readable
+        store.chmod(0o755)                      # mkdir's mode is umask-masked; force it
+        assert store.stat().st_mode & 0o077     # precondition: really is group/other-readable
         mounts._mcp_auth_store_mount([_atlassian(PORT)], INST, False, home=tmp_path)
         assert store.stat().st_mode & 0o777 == 0o700
 
@@ -202,19 +200,17 @@ class TestTheCallbackPortIsReachable:
     def test_a_recipe_with_no_port_publishes_nothing(self):
         """Without arg 1 the tool picks its own port (L21233). Publishing a guessed number would
         forward a port nothing is listening on, which looks wired and is not."""
-        assert (
-            mounts._mcp_remote_callback_publish_args([_atlassian()], port_free=lambda _p: True)
-            == []
-        )
+        assert mounts._mcp_remote_callback_publish_args(
+            [_atlassian()], port_free=lambda _p: True
+        ) == []
 
     def test_a_port_already_taken_is_skipped_not_fatal(self):
         """Two concurrent instances would otherwise collide at `pod create` before either could
         authenticate. The second does not need the port: the first writes tokens into the shared
         store, and an instance with valid tokens binds nothing (L20896-20904)."""
-        assert (
-            mounts._mcp_remote_callback_publish_args([_atlassian(PORT)], port_free=lambda _p: False)
-            == []
-        )
+        assert mounts._mcp_remote_callback_publish_args(
+            [_atlassian(PORT)], port_free=lambda _p: False
+        ) == []
 
     @pytest.mark.parametrize("port", ["abc", "32081x", "3.2", "", "٣٢٠٨١"])
     def test_a_port_that_is_not_a_plain_number_is_skipped_and_never_crashes(self, port):
@@ -222,10 +218,9 @@ class TestTheCallbackPortIsReachable:
         decimal; `٣٢٠٨١` is decimal but not ASCII and converts to 32081, which would otherwise be
         PUBLISHED off a string no operator wrote. Testing only one half lets the guard degrade to
         `or` -- which re-opens the ValueError this test class exists to close."""
-        assert (
-            mounts._mcp_remote_callback_publish_args([_atlassian(port)], port_free=lambda _p: True)
-            == []
-        )
+        assert mounts._mcp_remote_callback_publish_args(
+            [_atlassian(port)], port_free=lambda _p: True
+        ) == []
 
     @pytest.mark.parametrize("port", ["²", "²²", "٠١٢٣"])
     def test_a_unicode_digit_port_is_skipped_and_never_crashes_the_launch(self, port):
@@ -234,42 +229,27 @@ class TestTheCallbackPortIsReachable:
         ValueError. A recipe with such a character in the port field would take down `pod create`
         rather than skip the publish. Other-script decimals ('٠١٢') convert fine but are
         never how a port is written, so they are refused too."""
-        assert (
-            mounts._mcp_remote_callback_publish_args([_atlassian(port)], port_free=lambda _p: True)
-            == []
-        )
+        assert mounts._mcp_remote_callback_publish_args(
+            [_atlassian(port)], port_free=lambda _p: True
+        ) == []
 
     def test_a_non_numeric_port_argument_is_ignored(self):
         """`--debug` or a stray flag after the URL is not a port. parseInt would make it NaN
         upstream; here it must simply not become a publish."""
-        assert (
-            mounts._mcp_remote_callback_publish_args(
-                [_atlassian("--debug")], port_free=lambda _p: True
-            )
-            == []
-        )
+        assert mounts._mcp_remote_callback_publish_args(
+            [_atlassian("--debug")], port_free=lambda _p: True
+        ) == []
 
     def test_an_out_of_range_port_is_ignored(self):
-        assert (
-            mounts._mcp_remote_callback_publish_args(
-                [_atlassian("99999")], port_free=lambda _p: True
-            )
-            == []
-        )
+        assert mounts._mcp_remote_callback_publish_args(
+            [_atlassian("99999")], port_free=lambda _p: True
+        ) == []
 
-    @pytest.mark.parametrize(
-        "port,published",
-        [
-            ("1", False),
-            ("80", False),
-            ("1023", False),  # rootless cannot publish privileged ports
-            ("1024", True),
-            ("32081", True),
-            ("65535", True),
-            ("65536", False),
-            ("0", False),
-        ],
-    )
+    @pytest.mark.parametrize("port,published", [
+        ("1", False), ("80", False), ("1023", False),   # rootless cannot publish privileged ports
+        ("1024", True), ("32081", True), ("65535", True),
+        ("65536", False), ("0", False),
+    ])
     def test_the_publishable_port_range_holds_at_both_edges(self, port, published):
         """Boundaries, because a bound is where this goes wrong silently. The floor is 1024, not 1:
         the pod is rootless, and a rootless publish of a privileged port fails at `pod create` --
@@ -283,13 +263,10 @@ class TestTheCallbackPortIsReachable:
         """The list is SCANNED, not short-circuited. With a `break` here instead of a `continue`, a
         stack whose first mcp-remote server pins no port would silently never publish the second
         one's -- and every single-server test above would still pass."""
-        first = McpServer(name="a", command="pnpm", args=["dlx", SPEC_ARG, URL], transport="stdio")
-        second = McpServer(
-            name="b",
-            command="pnpm",
-            args=["dlx", SPEC_ARG, "https://other/mcp", "41234"],
-            transport="stdio",
-        )
+        first = McpServer(name="a", command="pnpm",
+                          args=["dlx", SPEC_ARG, URL], transport="stdio")
+        second = McpServer(name="b", command="pnpm",
+                           args=["dlx", SPEC_ARG, "https://other/mcp", "41234"], transport="stdio")
         assert mounts._mcp_remote_callback_publish_args(
             [first, second], port_free=lambda _p: True
         ) == ["-p", "127.0.0.1:41234:41234"]
@@ -298,16 +275,9 @@ class TestTheCallbackPortIsReachable:
         """Same shape for the dedup arm: two servers on one port, then a third on another. A
         short-circuit there would drop the third."""
         args = mounts._mcp_remote_callback_publish_args(
-            [
-                _atlassian(PORT),
-                _atlassian(PORT),
-                McpServer(
-                    name="c",
-                    command="pnpm",
-                    args=["dlx", SPEC_ARG, "https://other/mcp", "41234"],
-                    transport="stdio",
-                ),
-            ],
+            [_atlassian(PORT), _atlassian(PORT),
+             McpServer(name="c", command="pnpm",
+                       args=["dlx", SPEC_ARG, "https://other/mcp", "41234"], transport="stdio")],
             port_free=lambda _p: True,
         )
         assert args == ["-p", f"127.0.0.1:{PORT}:{PORT}", "-p", "127.0.0.1:41234:41234"]
@@ -315,15 +285,9 @@ class TestTheCallbackPortIsReachable:
     def test_a_taken_port_does_not_stop_a_later_free_one(self):
         """And for the port-free arm."""
         args = mounts._mcp_remote_callback_publish_args(
-            [
-                _atlassian(PORT),
-                McpServer(
-                    name="c",
-                    command="pnpm",
-                    args=["dlx", SPEC_ARG, "https://other/mcp", "41234"],
-                    transport="stdio",
-                ),
-            ],
+            [_atlassian(PORT),
+             McpServer(name="c", command="pnpm",
+                       args=["dlx", SPEC_ARG, "https://other/mcp", "41234"], transport="stdio")],
             port_free=lambda p: p != int(PORT),
         )
         assert args == ["-p", "127.0.0.1:41234:41234"]
@@ -360,8 +324,7 @@ class TestThePortFreeProbeItself:
 
     def test_a_port_nothing_holds_reads_as_free(self):
         import socket as _s
-
-        with _s.socket() as probe:  # let the OS name a port, then release it
+        with _s.socket() as probe:          # let the OS name a port, then release it
             probe.bind(("127.0.0.1", 0))
             port = probe.getsockname()[1]
         assert mounts._port_free(port) is True
@@ -370,7 +333,6 @@ class TestThePortFreeProbeItself:
         """The case that matters: a second concurrent instance must SEE the first one's publish, or
         `pod create` fails outright instead of quietly skipping."""
         import socket as _s
-
         with _s.socket() as held:
             held.bind(("127.0.0.1", 0))
             held.listen(1)
@@ -381,12 +343,11 @@ class TestThePortFreeProbeItself:
         """It binds to test, so it must release: leaking the socket would make harnessed itself the
         reason the port is unavailable to mcp-remote a moment later."""
         import socket as _s
-
         with _s.socket() as probe:
             probe.bind(("127.0.0.1", 0))
             port = probe.getsockname()[1]
         assert mounts._port_free(port) is True
-        assert mounts._port_free(port) is True  # still free after the first probe ran
+        assert mounts._port_free(port) is True   # still free after the first probe ran
 
 
 class TestThePortIsReadPositionally:
@@ -399,47 +360,40 @@ class TestThePortIsReadPositionally:
     def test_trailing_flags_do_not_shift_the_port(self):
         """The ordinary shape: `mcp-remote <url> <port> [flags]`. Options after the port are read
         upstream by `indexOf` and never renumber it."""
-        assert (
-            mounts._mcp_remote_callback_port(
-                ["dlx", SPEC_ARG, URL, "32081", "--debug", "--transport", "http-only"]
-            )
-            == 32081
-        )
+        assert mounts._mcp_remote_callback_port(
+            ["dlx", SPEC_ARG, URL, "32081", "--debug", "--transport", "http-only"]
+        ) == 32081
 
     def test_a_header_pair_before_the_url_does_not_shift_the_port(self):
         """`--header <value>` is the ONE option upstream REMOVES from argv (`args.splice(i, 2)`,
         L21077-21086) before it reads `args[1]`. So upstream sees the port here and binds it. Left
         counted, harnessed publishes nothing while mcp-remote listens -- the silent-timeout bug this
         whole change exists to fix, back again for any recipe that sends an auth header."""
-        assert (
-            mounts._mcp_remote_callback_port(
-                ["dlx", SPEC_ARG, "--header", "Authorization: Bearer x", URL, "32081"]
-            )
-            == 32081
-        )
+        assert mounts._mcp_remote_callback_port(
+            ["dlx", SPEC_ARG, "--header", "Authorization: Bearer x", URL, "32081"]
+        ) == 32081
 
     def test_repeated_header_pairs_are_all_removed(self):
         """Upstream's splice loop runs to exhaustion, so two headers shift the port by four."""
-        assert (
-            mounts._mcp_remote_callback_port(
-                ["dlx", SPEC_ARG, "--header", "A: 1", "--header", "B: 2", URL, "32081"]
-            )
-            == 32081
-        )
+        assert mounts._mcp_remote_callback_port(
+            ["dlx", SPEC_ARG, "--header", "A: 1", "--header", "B: 2", URL, "32081"]
+        ) == 32081
 
     def test_a_valueless_trailing_header_is_not_removed(self):
         """Upstream splices only when a value follows (`i < args.length - 1`), so a dangling
         `--header` stays in argv and must not consume the token after it -- there is none."""
-        assert (
-            mounts._mcp_remote_callback_port(["dlx", SPEC_ARG, URL, "32081", "--header"]) == 32081
-        )
+        assert mounts._mcp_remote_callback_port(
+            ["dlx", SPEC_ARG, URL, "32081", "--header"]
+        ) == 32081
 
     def test_a_non_header_flag_before_the_url_yields_no_port(self):
         """Upstream removes ONLY `--header`. Anything else before the URL lands in `args[0]`, so
         `serverUrl` becomes the flag and mcp-remote is broken regardless of what harnessed does.
         Publishing a port for that invocation forwards to a listener that was never started --
         `_mcp_remote_callback_port`'s own rule is to skip rather than to look wired and not be."""
-        assert mounts._mcp_remote_callback_port(["dlx", SPEC_ARG, "--debug", URL, "32081"]) is None
+        assert mounts._mcp_remote_callback_port(
+            ["dlx", SPEC_ARG, "--debug", URL, "32081"]
+        ) is None
 
 
 class TestThePublishReachesALoopbackListener:
@@ -458,8 +412,7 @@ class TestThePublishReachesALoopbackListener:
 
     def test_publishing_a_port_also_asks_pasta_to_forward_to_the_pods_loopback(self):
         assert mounts._mcp_remote_pasta_net_args(["-p", "127.0.0.1:32081:32081"], "") == [
-            "--network",
-            "pasta:--host-lo-to-ns-lo",
+            "--network", "pasta:--host-lo-to-ns-lo"
         ]
 
     def test_no_publish_means_no_network_override(self):
@@ -472,7 +425,7 @@ class TestThePublishReachesALoopbackListener:
         quiet about it would be worse still, so the note is part of the behaviour."""
         assert mounts._mcp_remote_pasta_net_args(["-p", "1:1"], "mynet") == ["--network", "mynet"]
         err = capsys.readouterr().err
-        assert err, _CAPTURE_PROOF  # see below: a vacuous capture fails HERE, not silently
+        assert err, _CAPTURE_PROOF          # see below: a vacuous capture fails HERE, not silently
         assert "host-lo-to-ns-lo" in err
 
     def test_an_explicit_network_still_gets_no_pasta_option(self):
@@ -515,8 +468,7 @@ class TestThePublishAndThePastaOptionCannotBeWiredApart:
         """The passthrough this seam took over: forgetting it would drop HARNESSED_NET for every
         stack in the catalog, which is nearly all of them."""
         assert mounts._mcp_remote_pod_args([], "mynet", port_free=lambda _p: True) == [
-            "--network",
-            "mynet",
+            "--network", "mynet"
         ]
 
     def test_no_mcp_remote_and_no_network_emits_nothing(self):
@@ -534,21 +486,16 @@ class TestStacksWithoutMcpRemoteAreUntouched:
     """N7. Every stack but one runs no mcp-remote, and none of them may gain a mount or a published
     host port from this change."""
 
-    @pytest.mark.parametrize(
-        "server",
-        [
-            McpServer(
-                name="other",
-                command="pnpm",
-                args=["dlx", "@some/other-tool@1.0.0", URL, "32081"],
-                transport="stdio",
-            ),
-            McpServer(name="ctx", url="http://x/mcp", transport="http"),
-        ],
-    )
+    @pytest.mark.parametrize("server", [
+        McpServer(name="other", command="pnpm",
+                  args=["dlx", "@some/other-tool@1.0.0", URL, "32081"], transport="stdio"),
+        McpServer(name="ctx", url="http://x/mcp", transport="http"),
+    ])
     def test_no_mount_and_no_publish(self, tmp_path, server):
         assert mounts._mcp_auth_store_mount([server], INST, False, home=tmp_path) == []
-        assert mounts._mcp_remote_callback_publish_args([server], port_free=lambda _p: True) == []
+        assert mounts._mcp_remote_callback_publish_args(
+            [server], port_free=lambda _p: True
+        ) == []
 
     def test_an_empty_server_list_is_a_clean_no_op(self, tmp_path):
         assert mounts._mcp_auth_store_mount([], INST, False, home=tmp_path) == []
@@ -558,9 +505,7 @@ class TestStacksWithoutMcpRemoteAreUntouched:
         """A no-op must be a no-op on the filesystem too, not merely in the returned args."""
         mounts._mcp_auth_store_mount(
             [McpServer(name="ctx", url="http://x/mcp", transport="http")],
-            INST,
-            False,
-            home=tmp_path,
+            INST, False, home=tmp_path,
         )
         assert not (tmp_path / ".mcp-auth").exists()
 
@@ -571,7 +516,9 @@ class TestTheMountCannotBeSubverted:
         somewhere else -- the same defensive skip `_ssh_dir_mounts` already applies."""
         weird = tmp_path / "ho:me"
         weird.mkdir()
-        assert mounts._mcp_auth_store_mount([_atlassian(PORT)], INST, False, home=weird) == []
+        assert mounts._mcp_auth_store_mount(
+            [_atlassian(PORT)], INST, False, home=weird
+        ) == []
 
     def test_the_refused_mount_says_so_and_names_the_path(self, tmp_path, capsys):
         """Refusing silently would leave the user with a store that never persists and no clue why
@@ -600,7 +547,6 @@ class TestTheMountCannotBeSubverted:
         inside the container and nothing on the host says why."""
         from harnessed import paths
         from harnessed.persist import PersistOwnershipError
-
         (tmp_path / ".mcp-auth").mkdir()
         monkeypatch.setattr(paths, "pod_host_uid", lambda: 4242424)
         with pytest.raises(PersistOwnershipError):
@@ -616,7 +562,6 @@ class TestTheMountCannotBeSubverted:
         when the call begins, and a foreign owner is still refused."""
         from harnessed import paths
         from harnessed.persist import PersistOwnershipError
-
         assert not (tmp_path / ".mcp-auth").exists()
         monkeypatch.setattr(paths, "pod_host_uid", lambda: 4242424)
         with pytest.raises(PersistOwnershipError):
@@ -639,7 +584,6 @@ class TestAgainstTheRealRecipe:
     def test_the_overlay_recipe_pins_a_callback_port(self):
         import re
         from harnessed import paths
-
         r = paths.user_catalog() / "recipes" / "atlassian" / "recipe.yaml"
         if not r.is_file():
             pytest.skip("no atlassian recipe in the user overlay on this host")

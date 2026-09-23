@@ -35,14 +35,10 @@ def test_non_omp_harness_is_noop(home):
 
 def test_adds_hatago_and_preserves_host_servers(home):
     host_mcp = home / ".omp" / "agent" / "mcp.json"
-    host_mcp.write_text(
-        json.dumps(
-            {
-                "$schema": "https://example/mcp-schema.json",
-                "mcpServers": {"openbrain": {"type": "http", "url": "https://ob.example/mcp"}},
-            }
-        )
-    )
+    host_mcp.write_text(json.dumps({
+        "$schema": "https://example/mcp-schema.json",
+        "mcpServers": {"openbrain": {"type": "http", "url": "https://ob.example/mcp"}},
+    }))
 
     args = launcher._omp_mcp_seed_mount("omp", "inst")
     src, dest_mode = _parse(args)

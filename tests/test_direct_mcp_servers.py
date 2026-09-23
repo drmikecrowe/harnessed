@@ -30,7 +30,9 @@ URL = "https://mcp.example.com/v1/mcp"
 PORT = 32090
 
 
-def _direct(name: str = "widgets", url: str = URL, port: int | None = PORT, **kw) -> McpServer:
+def _direct(
+    name: str = "widgets", url: str = URL, port: int | None = PORT, **kw
+) -> McpServer:
     return McpServer(
         name=name, transport="http", url=url, direct=True, oauth_callback_port=port, **kw
     )
@@ -138,11 +140,8 @@ class TestASecretBearingUrlStaysOffDisk:
     def test_url_env_wins_when_both_are_set(self, tmp_path):
         """Precedence matches `_hatago_entry`. The literal must not reach the profile."""
         srv = McpServer(
-            name="widgets",
-            transport="http",
-            url="https://secret.example/tok123",
-            url_env="WIDGETS_URL",
-            direct=True,
+            name="widgets", transport="http", url="https://secret.example/tok123",
+            url_env="WIDGETS_URL", direct=True,
         )
         write_mcp_json(tmp_path, "http", [srv])
         entry = _servers_of(tmp_path)["widgets"]
@@ -166,11 +165,8 @@ class TestTheCallbackPortIsValidatedNotTrusted:
         absent. Same quietly-ignored-config failure the port range exists to prevent."""
         with pytest.raises(SchemaError) as exc:
             _parse_servers(
-                {
-                    "servers": [
-                        {"name": "a", "direct": True, "url": URL, "transport": "http", "oauth": bad}
-                    ]
-                }
+                {"servers": [{"name": "a", "direct": True, "url": URL, "transport": "http",
+                              "oauth": bad}]}
             )
         assert "oauth" in str(exc.value)
 
@@ -188,17 +184,8 @@ class TestTheCallbackPortIsValidatedNotTrusted:
 
     def test_a_valid_port_survives(self):
         parsed = _parse_servers(
-            {
-                "servers": [
-                    {
-                        "name": "a",
-                        "direct": True,
-                        "url": URL,
-                        "transport": "http",
-                        "oauth": {"callback_port": 32090},
-                    }
-                ]
-            }
+            {"servers": [{"name": "a", "direct": True, "url": URL, "transport": "http",
+                          "oauth": {"callback_port": 32090}}]}
         )
         assert parsed[0].oauth_callback_port == 32090
 
@@ -208,17 +195,8 @@ class TestTheCallbackPortIsValidatedNotTrusted:
         and turns a recipe typo into a dead launch rather than an unpublished callback."""
         with pytest.raises(SchemaError):
             _parse_servers(
-                {
-                    "servers": [
-                        {
-                            "name": "a",
-                            "direct": True,
-                            "url": URL,
-                            "transport": "http",
-                            "oauth": {"callback_port": port},
-                        }
-                    ]
-                }
+                {"servers": [{"name": "a", "direct": True, "url": URL, "transport": "http",
+                              "oauth": {"callback_port": port}}]}
             )
 
     @pytest.mark.parametrize("port", ["32090", 32090.5, True, None if False else [32090]])
@@ -226,17 +204,8 @@ class TestTheCallbackPortIsValidatedNotTrusted:
         """`True` included deliberately: it is an int in Python and a nonsense port everywhere."""
         with pytest.raises(SchemaError):
             _parse_servers(
-                {
-                    "servers": [
-                        {
-                            "name": "a",
-                            "direct": True,
-                            "url": URL,
-                            "transport": "http",
-                            "oauth": {"callback_port": port},
-                        }
-                    ]
-                }
+                {"servers": [{"name": "a", "direct": True, "url": URL, "transport": "http",
+                              "oauth": {"callback_port": port}}]}
             )
 
     def test_a_port_on_a_hub_child_is_refused(self):
@@ -283,8 +252,7 @@ class TestEachServerIsReachableByExactlyOneRoute:
         another recipe still routes through it would strand that recipe."""
         write_mcp_json(tmp_path, "http", [_direct(), _hub_child()])
         assert _servers_of(tmp_path)[HATAGO_MCP_KEY] == {
-            "type": "http",
-            "url": emit.HATAGO_ENDPOINT,
+            "type": "http", "url": emit.HATAGO_ENDPOINT
         }
 
     def test_a_direct_server_may_not_take_the_hubs_name(self, tmp_path):
@@ -372,7 +340,6 @@ class TestTheContainerLaunchEnforcesTheHarnessRuleToo:
 
     def _launcher(self) -> str:
         from harnessed import paths
-
         return (paths.harnessed_home() / "src" / "harnessed" / "launcher.py").read_text(
             encoding="utf-8"
         )
@@ -389,13 +356,13 @@ class TestTheContainerLaunchEnforcesTheHarnessRuleToo:
         runtime order — an offset comparison would pass or fail for the wrong reason.
         """
         src = self._launcher()
-        body = src[src.index("launch_servers = _resolve_service_servers") :]
-        body = body[: body.index("ContainerBackend(")]
+        body = src[src.index("launch_servers = _resolve_service_servers"):]
+        body = body[:body.index("ContainerBackend(")]
         assert "_validate_direct_servers(launch_servers, harness)" in body
 
     def test_the_failure_is_an_exit_not_a_traceback(self):
         src = self._launcher()
-        block = src[src.index("_validate_direct_servers(launch_servers, harness)") :]
+        block = src[src.index("_validate_direct_servers(launch_servers, harness)"):]
         assert "typer.Exit(1)" in block[:400]
 
 
@@ -451,11 +418,12 @@ class TestThePortIsPublishedWhicheverKindDeclaredIt:
 
     def test_both_kinds_publish_together(self):
         mcp_remote = McpServer(
-            name="atlassian",
-            command="pnpm",
+            name="atlassian", command="pnpm",
             args=["dlx", "@drmikecrowe/mcp-remote@0.1.38", "https://mcp.atlassian.com/x", "32081"],
         )
-        args = mounts._mcp_remote_pod_args([mcp_remote, _direct()], "", port_free=lambda _p: True)
+        args = mounts._mcp_remote_pod_args(
+            [mcp_remote, _direct()], "", port_free=lambda _p: True
+        )
         assert "127.0.0.1:32081:32081" in args
         assert f"127.0.0.1:{PORT}:{PORT}" in args
 
@@ -481,13 +449,11 @@ class TestOnlyAHarnessWhoseConfigIsEmittedMayGoDirect:
 
     def test_claude_may(self):
         from harnessed.assemble import _validate_direct_servers
-
         _validate_direct_servers([_direct()], "claude")
 
     @pytest.mark.parametrize("harness", ["codex", "omp", "opencode", "antigravity"])
     def test_a_baked_harness_may_not(self, harness):
         from harnessed.assemble import _validate_direct_servers
-
         with pytest.raises(SchemaError) as exc:
             _validate_direct_servers([_direct()], harness)
         assert "widgets" in str(exc.value)
@@ -495,5 +461,4 @@ class TestOnlyAHarnessWhoseConfigIsEmittedMayGoDirect:
     @pytest.mark.parametrize("harness", ["claude", "codex", "omp"])
     def test_a_hub_only_stack_is_never_refused(self, harness):
         from harnessed.assemble import _validate_direct_servers
-
         _validate_direct_servers([_hub_child()], harness)

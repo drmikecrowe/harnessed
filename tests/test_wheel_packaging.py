@@ -33,12 +33,7 @@ _KINDS = ("agents", "recipes", "services", "stacks")
 
 _MISE_CONFIG = ("mise.toml", "mise.local.toml")
 _COPY_IGNORE = shutil.ignore_patterns(
-    ".git",
-    "build",
-    "*.egg-info",
-    ".venv",
-    "node_modules",
-    *_MISE_CONFIG,
+    ".git", "build", "*.egg-info", ".venv", "node_modules", *_MISE_CONFIG,
 )
 
 
@@ -48,9 +43,7 @@ def wheel_names(tmp_path_factory):
     artifacts, and return its member names."""
     src = tmp_path_factory.mktemp("src") / "harnessed"
     shutil.copytree(
-        REPO,
-        src,
-        symlinks=True,
+        REPO, src, symlinks=True,
         # mise config is EXCLUDED, and not for tidiness. `uv` here is whatever is on PATH, and a
         # harnessed stack whose `tools:` include uv puts a mise SHIM there — the shim IS mise
         # (…/mise/shims/uv -> …/bin/mise), so `uv build` re-enters mise with cwd inside this copy.
@@ -69,9 +62,7 @@ def wheel_names(tmp_path_factory):
     for kind in _KINDS:
         (overlay / kind).mkdir(parents=True)
     (overlay / "recipes" / "my-secret-recipe").mkdir()
-    (overlay / "recipes" / "my-secret-recipe" / "recipe.yaml").write_text(
-        "name: my-secret-recipe\n"
-    )
+    (overlay / "recipes" / "my-secret-recipe" / "recipe.yaml").write_text("name: my-secret-recipe\n")
 
     for kind in _KINDS:
         link = src / "catalog" / f"{kind}.local"
@@ -83,9 +74,7 @@ def wheel_names(tmp_path_factory):
     out = src.parent / "dist"
     proc = subprocess.run(
         ["uv", "build", "--wheel", "-o", str(out)],
-        cwd=src,
-        capture_output=True,
-        text=True,
+        cwd=src, capture_output=True, text=True,
     )
     assert proc.returncode == 0, f"wheel build failed:\n{proc.stderr[-2000:]}"
 

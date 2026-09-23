@@ -8,7 +8,6 @@ FAIL on every one of them; a mutant that survives means the tests covering it as
 
 Restores every file it touches (even on error) and verifies the tree came back clean.
 """
-
 from __future__ import annotations
 
 import subprocess
@@ -33,11 +32,9 @@ def _dirty() -> bool:
 def _run_suite() -> bool:
     """Return True if the test suite reports at least one failure."""
     result = subprocess.run(
-        [
-            str(_ROOT / "tools" / "run-tests.sh"),
-            "tests/test_ctrquery_timeouts.py",
-            "tests/test_subprocess_timeout_audit.py",
-        ],
+        [str(_ROOT / "tools" / "run-tests.sh"),
+         "tests/test_ctrquery_timeouts.py",
+         "tests/test_subprocess_timeout_audit.py"],
         cwd=_ROOT,
         capture_output=True,
         text=True,
@@ -96,10 +93,8 @@ def main() -> int:
     # fail-open mode that makes a mutation score worthless. Prove the suite is green first.
     print("  BASE   verifying the suite passes before any mutation")
     if _run_suite():
-        print(
-            "ERROR: target suite fails BEFORE mutation — every mutant would report killed",
-            file=sys.stderr,
-        )
+        print("ERROR: target suite fails BEFORE mutation — every mutant would report killed",
+              file=sys.stderr)
         return 1
 
     killed = 0

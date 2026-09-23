@@ -53,7 +53,6 @@ _CLAUDE_FIXTURE = _FIXTURES_DIR / "claude_mcp_list_output.json"
 # produces this format, or that a CI runner with a YubiKey attached would be detected.
 # ---------------------------------------------------------------------------
 
-
 class TestYubikeyDeviceArgs:
     """B1: Parser correctness for lsusb output → --device argument construction.
 
@@ -76,8 +75,7 @@ class TestYubikeyDeviceArgs:
                 "verify the SYNTHETIC fixture was committed."
             )
         return "\n".join(
-            line
-            for line in _LSUSB_FIXTURE.read_text().splitlines()
+            line for line in _LSUSB_FIXTURE.read_text().splitlines()
             if not line.strip().startswith("#")
         )
 
@@ -98,8 +96,7 @@ class TestYubikeyDeviceArgs:
         content = self._fixture_content()
         monkeypatch.setattr(credmounts, "_host_os", lambda: "linux")
         monkeypatch.setattr(
-            credmounts.subprocess,
-            "run",
+            credmounts.subprocess, "run",
             lambda *a, **kw: self._make_completed(content),
         )
         monkeypatch.setattr(credmounts.Path, "exists", lambda self: True)
@@ -117,8 +114,7 @@ class TestYubikeyDeviceArgs:
         )
         monkeypatch.setattr(credmounts, "_host_os", lambda: "linux")
         monkeypatch.setattr(
-            credmounts.subprocess,
-            "run",
+            credmounts.subprocess, "run",
             lambda *a, **kw: self._make_completed(non_yubikey),
         )
         result = _yubikey_device_args()
@@ -133,8 +129,7 @@ class TestYubikeyDeviceArgs:
         hostile = "ID 1050: short\n"
         monkeypatch.setattr(credmounts, "_host_os", lambda: "linux")
         monkeypatch.setattr(
-            credmounts.subprocess,
-            "run",
+            credmounts.subprocess, "run",
             lambda *a, **kw: self._make_completed(hostile),
         )
         result = _yubikey_device_args()
@@ -167,7 +162,6 @@ class TestYubikeyDeviceArgs:
 # JSON envelope format emitted by `claude -p --output-format json`. They do NOT verify that
 # the claude binary is present, authenticated, or still emits this format at runtime.
 # ---------------------------------------------------------------------------
-
 
 class TestNamesFromLlmJson:
     """B2: Parser correctness for `claude -p --output-format json` envelope → server name set.
@@ -210,9 +204,7 @@ class TestNamesFromLlmJson:
         assert "coverage_type" in provenance, "provenance must state coverage_type"
 
         result = _names_from_llm_json(raw)
-        assert isinstance(result, set), (
-            f"_names_from_llm_json must return a set; got {type(result)}"
-        )
+        assert isinstance(result, set), f"_names_from_llm_json must return a set; got {type(result)}"
         assert result == self._EXPECTED_SERVERS, (
             f"parser returned {result!r}, expected {self._EXPECTED_SERVERS!r}. Either the "
             "`claude -p --output-format json` envelope changed shape, or the fixture was captured "
@@ -234,12 +226,12 @@ class TestNamesFromLlmJson:
         assert result == {"time"}, f"got {result!r}"
 
     def test_markdown_fenced_array_is_handled(self):
-        """ "```json\\n[\\"time\\"]\\n```" → {"time"}.
+        '''"```json\\n[\\"time\\"]\\n```" → {"time"}.
 
         This is what a real `claude -p` answered to a prompt that said "No prose" — recorded in
         tests/fixtures/claude_mcp_list_output.json. Kept as a synthetic case too so the format
         stays covered even if that fixture is ever removed.
-        """
+        '''
         result = _names_from_llm_json('```json\n["time"]\n```')
         assert result == {"time"}, f"got {result!r}"
 

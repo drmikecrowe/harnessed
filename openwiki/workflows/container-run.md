@@ -274,7 +274,7 @@ traversal such as `x/../../evil` is refused the same way, never escaping the pro
 ## `wire_services` — idempotent revival, before the re-attach branch
 
 ```python
-backend.wire_services(spec)  # _ensure_services(rt, stack, project_path, mount_path)
+backend.wire_services(spec)      # _ensure_services(rt, stack, project_path, mount_path)
 ```
 
 A `services:` entry is a property of the **stack**, not of the backend: a host-native agent still
@@ -338,8 +338,7 @@ host customization cannot disable the MCP hub.
 
 ```python
 self.config_volume, self.tools_volume = _ensure_stack_volumes(
-    self.rt, spec.stack, spec.harness, self.prof, self.harness_image, self.recipes
-)
+    self.rt, spec.stack, spec.harness, self.prof, self.harness_image, self.recipes)
 ```
 
 `FIRST_START` is the container mirror of the host path's `rebuilt` gate. It uses `harness_image`
@@ -517,8 +516,8 @@ if self.stk.isolated_auth and spec.harness == "claude":
     _strip_var_from_env_files(_OAUTH_TOKEN_VAR, secrets_env_files)
 else:
     self.mount_args += _claude_creds_seed_mount(
-        spec.harness, self.inst, _claude_oauth_token_configured(spec.harness, spec.project_path)
-    )
+        spec.harness, self.inst,
+        _claude_oauth_token_configured(spec.harness, spec.project_path))
 ```
 
 ### Why the fallback mount is appended *after* secrets resolve

@@ -111,9 +111,7 @@ class TestScanCommand:
         assert "has no assembled profile" in result.output
         assert scanned == []
 
-    def test_unsupported_harness_errors_and_does_not_scan_the_stack_name(
-        self, stack, scanned, monkeypatch
-    ):
+    def test_unsupported_harness_errors_and_does_not_scan_the_stack_name(self, stack, scanned, monkeypatch):
         # bd main-pv5 symptom 2: the STACK positional must never be validated as if it were HARNESS.
         _mark_built(monkeypatch, {(stack, "claude")})
         result = runner.invoke(launcher.app, ["scan", stack, "bogus-harness"])
@@ -128,9 +126,7 @@ class TestScanCommand:
         assert result.exit_code == 0, result.output
         assert sorted(scanned) == ["harnessed-claude-demo:latest", "harnessed-omp-demo:latest"]
 
-    def test_omitted_harness_with_nothing_built_reports_and_exits_zero(
-        self, stack, scanned, monkeypatch
-    ):
+    def test_omitted_harness_with_nothing_built_reports_and_exits_zero(self, stack, scanned, monkeypatch):
         _mark_built(monkeypatch, set())
         result = runner.invoke(launcher.app, ["scan", stack])
         assert result.exit_code == 0, result.output

@@ -86,9 +86,7 @@ class Anchor:
     @property
     def uri_is_stale(self) -> bool:
         """The URI's span disagrees with the line count openwiki recorded for the digest."""
-        return (
-            self.recorded_length is not None and self.recorded_length != self.end - self.start + 1
-        )
+        return self.recorded_length is not None and self.recorded_length != self.end - self.start + 1
 
 
 def _digest(lines: list[str]) -> str:
@@ -147,18 +145,12 @@ def collect_anchors(claims_dir: Path) -> tuple[list[Anchor], int, int]:
                     continue
                 start = int(match["start"])
                 end = int(match["end"] or start)
-                anchors.append(
-                    Anchor(
-                        page=page,
-                        claim_id=str(claim.get("id", "?")),
-                        statement=str(claim.get("statement", "")),
-                        path=match["path"],
-                        start=start,
-                        end=end,
-                        digest=found,
-                        recorded_length=recorded,
-                    )
-                )
+                anchors.append(Anchor(
+                    page=page, claim_id=str(claim.get("id", "?")),
+                    statement=str(claim.get("statement", "")),
+                    path=match["path"], start=start, end=end, digest=found,
+                    recorded_length=recorded,
+                ))
     return anchors, whole_file, unknown_scheme
 
 
@@ -185,16 +177,16 @@ class Tree:
         # `git show` rather than a checkout: this must never touch the working tree.
         done = subprocess.run(
             ["git", "-C", str(self.root), "show", f"{self.rev}:{path}"],
-            capture_output=True,
-            text=True,
-            check=False,
+            capture_output=True, text=True, check=False,
         )
         if done.returncode != 0:
             return None
         return done.stdout.split("\n")
 
 
-def classify(anchors: list[Anchor], tree: Tree, strict_lines: bool) -> dict[str, list[Anchor]]:
+def classify(
+    anchors: list[Anchor], tree: Tree, strict_lines: bool
+) -> dict[str, list[Anchor]]:
     """Bucket every anchor into `exact`, `moved`, `changed`, or `missing`.
 
     The window scan that separates `moved` from `changed` runs ONLY for anchors that already failed
@@ -212,7 +204,7 @@ def classify(anchors: list[Anchor], tree: Tree, strict_lines: bool) -> dict[str,
         if lines is None:
             out["missing"].append(anchor)
             continue
-        if _digest(lines[anchor.start - 1 : anchor.start - 1 + anchor.length]) == anchor.digest:
+        if _digest(lines[anchor.start - 1:anchor.start - 1 + anchor.length]) == anchor.digest:
             out["exact"].append(anchor)
         elif strict_lines:
             out["changed"].append(anchor)
@@ -220,33 +212,28 @@ def classify(anchors: list[Anchor], tree: Tree, strict_lines: bool) -> dict[str,
             unresolved.setdefault((anchor.path, anchor.length), (lines, []))[1].append(anchor)
 
     for (_, length), (lines, group) in unresolved.items():
-        seen = {_digest(lines[i : i + length]) for i in range(0, max(0, len(lines) - length + 1))}
+        seen = {
+            _digest(lines[i:i + length])
+            for i in range(0, max(0, len(lines) - length + 1))
+        }
         for anchor in group:
             out["moved" if anchor.digest in seen else "changed"].append(anchor)
     return out
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--wiki", default="openwiki", help="wiki directory (default: openwiki)")
-    parser.add_argument(
-        "--rev", default=None, help="compare against a git revision instead of the working tree"
-    )
+    parser.add_argument("--rev", default=None, help="compare against a git revision instead of the working tree")
     parser.add_argument("--quiet", action="store_true", help="exit status only")
-    parser.add_argument(
-        "--strict-lines", action="store_true", help="count a moved-but-identical block as drift"
-    )
+    parser.add_argument("--strict-lines", action="store_true", help="count a moved-but-identical block as drift")
     parser.add_argument("--limit", type=int, default=20, help="stale Claims to list (default: 20)")
     args = parser.parse_args(argv)
 
     root = Path(__file__).resolve().parent.parent
     claims_dir = root / args.wiki / ".claims"
     if not claims_dir.is_dir():
-        print(
-            f"error: no Claims directory at {claims_dir} -- is the wiki generated?", file=sys.stderr
-        )
+        print(f"error: no Claims directory at {claims_dir} -- is the wiki generated?", file=sys.stderr)
         return 2
 
     anchors, whole_file, unknown_scheme = collect_anchors(claims_dir)
@@ -260,42 +247,30 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.quiet:
         where = args.rev or "working tree"
-        print(
-            f"openwiki drift vs {where} -- {total} anchored evidence item(s) in {len(set(a.page for a in anchors))} page(s)"
-        )
+        print(f"openwiki drift vs {where} -- {total} anchored evidence item(s) in {len(set(a.page for a in anchors))} page(s)")
         print(f"  exact    {len(buckets['exact']):5}  evidence unchanged")
         if not args.strict_lines:
-            print(
-                f"  moved    {len(buckets['moved']):5}  identical block, different line numbers (not drift)"
-            )
+            print(f"  moved    {len(buckets['moved']):5}  identical block, different line numbers (not drift)")
         print(f"  changed  {len(buckets['changed']):5}  cited code changed")
         print(f"  missing  {len(buckets['missing']):5}  cited file gone")
         if whole_file or unknown_scheme:
-            print(
-                f"  skipped  {whole_file + unknown_scheme:5}  {whole_file} whole-file evidence, {unknown_scheme} unknown version scheme"
-            )
+            print(f"  skipped  {whole_file + unknown_scheme:5}  {whole_file} whole-file evidence, {unknown_scheme} unknown version scheme")
         stale_uri = [a for a in anchors if a.uri_is_stale]
         if stale_uri:
             # Not drift: the digest still matches real code. The published page just cites line
             # numbers that no longer contain it, which is a reader-facing accuracy problem.
-            print(
-                f"  staleURI {len(stale_uri):5}  relocated evidence whose #Lx-Ly was not rewritten"
-            )
+            print(f"  staleURI {len(stale_uri):5}  relocated evidence whose #Lx-Ly was not rewritten")
         print(f"  stale    {100 * len(stale) / total:.1f}% of anchored evidence")
 
         if stale:
             print("\nClaims to re-verify:")
-            for anchor in stale[: args.limit]:
+            for anchor in stale[:args.limit]:
                 kind = "gone   " if anchor in buckets["missing"] else "changed"
-                print(
-                    f"  [{kind}] {anchor.page} :: repo://{anchor.path}#L{anchor.start}-L{anchor.end}"
-                )
+                print(f"  [{kind}] {anchor.page} :: repo://{anchor.path}#L{anchor.start}-L{anchor.end}")
                 print(f"            {anchor.statement[:140]}")
             if len(stale) > args.limit:
                 print(f"  ... and {len(stale) - args.limit} more")
-            print(
-                "\nRefresh them with `mise run openwiki-update`, which re-grounds only the affected pages."
-            )
+            print("\nRefresh them with `mise run openwiki-update`, which re-grounds only the affected pages.")
 
     return 1 if stale else 0
 

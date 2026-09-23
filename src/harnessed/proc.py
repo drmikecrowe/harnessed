@@ -8,7 +8,6 @@ folds its output into the tagged stream, and one that refuses to wait forever.
 Shared by launcher.py and by every module extracted out of it, which is why it cannot live in
 launcher.py — a module importing it from there would invert the dependency.
 """
-
 from __future__ import annotations
 
 import subprocess
@@ -105,11 +104,7 @@ def _run(cmd: list[str], check: bool = True, **kwargs) -> subprocess.CompletedPr
         # Captured output is otherwise swallowed — surface it so failures read as an error,
         # not a bare traceback (e.g. "name already in use: pod already exists").
         for label, stream in (("stdout", exc.stdout), ("stderr", exc.stderr)):
-            text = (
-                stream.decode(errors="replace")
-                if isinstance(stream, (bytes, bytearray))
-                else (stream or "")
-            )
+            text = stream.decode(errors="replace") if isinstance(stream, (bytes, bytearray)) else (stream or "")
             if text.strip():
                 _err.print(f"[bold red]{label}:[/bold red] {text.strip()}")
         raise
@@ -134,13 +129,8 @@ def _run_tagged(
     # unbounded: `Popen` HAS no timeout parameter — starting a process does not block. This call's
     # deadline is enforced on the `wait(timeout=…)` below, which is the only part that waits.
     proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        errors="replace",
-        bufsize=1,
-        **kwargs,
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, errors="replace", bufsize=1, **kwargs,
     )
     # NO WATCHDOG TIMER. The obvious design — a threading.Timer that kills the child — cannot be made
     # correct here, and a first attempt at it shipped the bug: whatever flag the timer and this
@@ -166,11 +156,11 @@ def _run_tagged(
     try:
         returncode = proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
-        proc.kill()  # closes the pipe, which ends the pump
-        proc.wait()  # reap, so no zombie outlives the call
+        proc.kill()          # closes the pipe, which ends the pump
+        proc.wait()          # reap, so no zombie outlives the call
         pump.join(timeout=5)
         raise
-    pump.join(timeout=5)  # let the tail of the output land before the caller moves on
+    pump.join(timeout=5)     # let the tail of the output land before the caller moves on
     if check and returncode != 0:
         raise subprocess.CalledProcessError(returncode, cmd)
     return subprocess.CompletedProcess(cmd, returncode)

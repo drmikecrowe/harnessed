@@ -40,9 +40,9 @@ _BASE_IMAGE = "localhost/harnessed-base:latest"
 
 
 def _image_present(image: str) -> bool:
-    return (
-        subprocess.run([_runtime(), "image", "exists", image], capture_output=True).returncode == 0
-    )
+    return subprocess.run(
+        [_runtime(), "image", "exists", image], capture_output=True
+    ).returncode == 0
 
 
 # The gate being open does not mean `harnessed build` has run. Skipping with the
@@ -56,7 +56,6 @@ _needs_base_image = pytest.mark.skipif(
 # ---------------------------------------------------------------------------
 # A1 — podman inspect (ctrquery._container_running, _image_exists, _inspect_id)
 # ---------------------------------------------------------------------------
-
 
 @podman
 class TestPodmanInspect:
@@ -74,9 +73,7 @@ class TestPodmanInspect:
         subprocess.run([rt, "rm", "-f", name], capture_output=True)
         subprocess.run(
             [rt, "run", "-d", "--name", name, _TEST_IMAGE, "sleep", "120"],
-            capture_output=True,
-            text=True,
-            check=True,
+            capture_output=True, text=True, check=True,
         )
         yield name
         subprocess.run([rt, "rm", "-f", name], capture_output=True)
@@ -131,7 +128,6 @@ class TestPodmanInspect:
 # A2 — podman port (svcstate._svc_published_port)
 # ---------------------------------------------------------------------------
 
-
 @podman
 class TestPodmanPort:
     """A2: Verify _svc_published_port parses the 'host:port' lines from `podman port`.
@@ -148,21 +144,10 @@ class TestPodmanPort:
         name = "harnessed-test-port-a2"
         subprocess.run([rt, "rm", "-f", name], capture_output=True)
         subprocess.run(
-            [
-                rt,
-                "run",
-                "-d",
-                "--name",
-                name,
-                "-p",
-                "127.0.0.1::8080",  # ephemeral host bind on container port 8080 (empty = OS-chosen)
-                _TEST_IMAGE,
-                "sleep",
-                "120",
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
+            [rt, "run", "-d", "--name", name,
+             "-p", "127.0.0.1::8080",  # ephemeral host bind on container port 8080 (empty = OS-chosen)
+             _TEST_IMAGE, "sleep", "120"],
+            capture_output=True, text=True, check=True,
         )
         yield name
         subprocess.run([rt, "rm", "-f", name], capture_output=True)
@@ -187,7 +172,6 @@ class TestPodmanPort:
 # A4 — podman top (launcher._session_active)
 # ---------------------------------------------------------------------------
 
-
 @podman
 class TestPodmanTop:
     """A4: Verify _session_active parses the tty column from `podman top`.
@@ -207,9 +191,7 @@ class TestPodmanTop:
         subprocess.run(
             [rt, "run", "-d", "--name", name, _TEST_IMAGE, "sleep", "120"],
             # Deliberately no -t or -i — produces '?' in the tty column
-            capture_output=True,
-            text=True,
-            check=True,
+            capture_output=True, text=True, check=True,
         )
         yield name
         subprocess.run([rt, "rm", "-f", name], capture_output=True)
@@ -237,7 +219,6 @@ class TestPodmanTop:
 # ---------------------------------------------------------------------------
 # A3 — podman images --filter (launcher._stale_pairs parsing subexpression)
 # ---------------------------------------------------------------------------
-
 
 @podman
 class TestPodmanImagesFilter:
@@ -270,13 +251,13 @@ class TestPodmanImagesFilter:
         rt = _runtime()
         with tempfile.TemporaryDirectory() as tmpdir:
             dockerfile = Path(tmpdir) / "Dockerfile"
-            dockerfile.write_text(f"FROM {_TEST_IMAGE}\nLABEL harnessed=true\n")
+            dockerfile.write_text(
+                f"FROM {_TEST_IMAGE}\nLABEL harnessed=true\n"
+            )
             for tag in (self._LABELED_IMAGE, self._UNRELATED_IMAGE):
                 subprocess.run(
                     [rt, "build", "-t", tag, str(tmpdir)],
-                    capture_output=True,
-                    text=True,
-                    check=True,
+                    capture_output=True, text=True, check=True,
                 )
         yield self._LABELED_IMAGE
         for tag in (self._LABELED_IMAGE, self._UNRELATED_IMAGE):
@@ -293,9 +274,9 @@ class TestPodmanImagesFilter:
         duplicate is retired and this test asserts the real thing against real podman output.
         """
         result = subprocess.run(
-            [rt, "images", "--filter", "label=harnessed=true", "--format", "{{.Repository}}"],
-            capture_output=True,
-            text=True,
+            [rt, "images", "--filter", "label=harnessed=true",
+             "--format", "{{.Repository}}"],
+            capture_output=True, text=True,
         )
         if result.returncode != 0:
             return []
@@ -305,14 +286,15 @@ class TestPodmanImagesFilter:
         """The filter command returns the labeled image repository."""
         rt = _runtime()
         result = subprocess.run(
-            [rt, "images", "--filter", "label=harnessed=true", "--format", "{{.Repository}}"],
-            capture_output=True,
-            text=True,
+            [rt, "images", "--filter", "label=harnessed=true",
+             "--format", "{{.Repository}}"],
+            capture_output=True, text=True,
         )
         assert result.returncode == 0
         repos = [r.strip() for r in result.stdout.splitlines()]
         assert self._LABELED_IMAGE in repos, (
-            f"{self._LABELED_IMAGE!r} not found in filter output; got: {repos!r}"
+            f"{self._LABELED_IMAGE!r} not found in filter output; "
+            f"got: {repos!r}"
         )
         assert self._UNRELATED_IMAGE in repos, (
             f"{self._UNRELATED_IMAGE!r} not found in filter output; the negative control below "
@@ -357,7 +339,6 @@ class TestPodmanImagesFilter:
 # A5 — mise trust integration (hostrun._host_mise_env)
 # ---------------------------------------------------------------------------
 
-
 @podman
 class TestMiseTrustIntegration:
     """A5: Verify that _host_mise_env does NOT redirect MISE_STATE_DIR (the trust store).
@@ -375,9 +356,7 @@ class TestMiseTrustIntegration:
 
     def test_mise_is_on_path(self):
         """Prerequisite: mise binary must be discoverable."""
-        assert shutil.which("mise") is not None, (
-            "mise is not on PATH; is it installed via mise.toml?"
-        )
+        assert shutil.which("mise") is not None, "mise is not on PATH; is it installed via mise.toml?"
 
     def test_host_mise_env_does_not_redirect_state_dir(self):
         """MISE_STATE_DIR must NOT appear in _host_mise_env — the trust store stays user-owned."""
@@ -393,8 +372,7 @@ class TestMiseTrustIntegration:
         mise_toml.write_text("[tools]\n")
         result = subprocess.run(
             ["mise", "trust", str(mise_toml)],
-            capture_output=True,
-            text=True,
+            capture_output=True, text=True,
         )
         assert result.returncode == 0, (
             f"`mise trust` exited {result.returncode}; stderr: {result.stderr.strip()!r}"
@@ -406,9 +384,7 @@ class TestMiseTrustIntegration:
         host_env.update(_host_mise_env("any-stack"))
         result = subprocess.run(
             ["mise", "--version"],
-            capture_output=True,
-            text=True,
-            env=host_env,
+            capture_output=True, text=True, env=host_env,
         )
         assert result.returncode == 0, (
             f"`mise --version` exited {result.returncode} with harnessed env; "
@@ -438,11 +414,8 @@ class TestMiseTrustIntegration:
 
         result = subprocess.run(
             ["mise", "install"],
-            capture_output=True,
-            text=True,
-            env=host_env,
-            cwd=str(tmp_path),
-            timeout=120,
+            capture_output=True, text=True, env=host_env,
+            cwd=str(tmp_path), timeout=120,
         )
         assert result.returncode == 0, (
             f"`mise install` exited {result.returncode}; stderr: {result.stderr.strip()!r}"
@@ -457,7 +430,6 @@ class TestMiseTrustIntegration:
 # ---------------------------------------------------------------------------
 # A6 — varlock JSON output (launchenv._varlock_resolve)
 # ---------------------------------------------------------------------------
-
 
 @podman
 class TestVarlockJsonOutput:
@@ -514,7 +486,6 @@ class TestVarlockJsonOutput:
 # A8 — `varlock proxy rules` display format (launchenv._varlock_proxy_modes)
 # ---------------------------------------------------------------------------
 
-
 @podman
 class TestVarlockProxyRulesOutput:
     """A8: the per-item proxy mode is parsed out of HUMAN-READABLE text, so this is the one
@@ -544,25 +515,20 @@ class TestVarlockProxyRulesOutput:
         a canned fixture is the only other way to see it, and a canned fixture cannot tell you
         varlock still calls it that.
         """
-        d = self._schema(
-            tmp_path,
-            "\n".join(
-                [
-                    '# @sensitive @proxy(domain="api.github.com") @placeholder="ghp_ph0000000000000000000000000000000A"',
-                    'ROUTED=exec("printf %s routed-value")',
-                    "",
-                    "# @sensitive @proxy=passthrough",
-                    'PASSTHRU=exec("printf %s passthru-value")',
-                    "",
-                    "# @sensitive",
-                    'UNROUTED=exec("printf %s unrouted-value")',
-                    "",
-                    '# @sensitive @proxy(domain="api.github.com")',
-                    'BROKEN=exec("exit 7")',
-                    "",
-                ]
-            ),
-        )
+        d = self._schema(tmp_path, '\n'.join([
+            '# @sensitive @proxy(domain="api.github.com") @placeholder="ghp_ph0000000000000000000000000000000A"',
+            'ROUTED=exec("printf %s routed-value")',
+            '',
+            '# @sensitive @proxy=passthrough',
+            'PASSTHRU=exec("printf %s passthru-value")',
+            '',
+            '# @sensitive',
+            'UNROUTED=exec("printf %s unrouted-value")',
+            '',
+            '# @sensitive @proxy(domain="api.github.com")',
+            'BROKEN=exec("exit 7")',
+            '',
+        ]))
         modes = _varlock_proxy_modes(d)
 
         # None means the parse could not be trusted — a missing header, or a count that disagreed
@@ -606,9 +572,7 @@ class TestVarlockProxyRulesOutput:
             ('# @sensitive @proxy=passthrough\nA=exec("printf %s x")\n', "passthrough"),
         ):
             d = self._schema(tmp_path, body)
-            assert _schema_declares_proxy(d), (
-                f"gate closed on an annotation varlock acts on: {body!r}"
-            )
+            assert _schema_declares_proxy(d), f"gate closed on an annotation varlock acts on: {body!r}"
             assert _varlock_proxy_modes(d) == {"A": expect_effect}
 
     def test_a_schema_with_no_annotation_still_reports_modes_when_asked(self, tmp_path):
@@ -623,7 +587,6 @@ class TestVarlockProxyRulesOutput:
 # ---------------------------------------------------------------------------
 # A9 — Node's env-proxy opt-in inside the shipped image (#388 F7)
 # ---------------------------------------------------------------------------
-
 
 @podman
 class TestNodeEnvProxyContract:
@@ -660,20 +623,9 @@ class TestNodeEnvProxyContract:
         if with_flag:
             env += ["-e", "NODE_USE_ENV_PROXY=1"]
         proc = subprocess.run(
-            [
-                _runtime(),
-                "run",
-                "--rm",
-                *env,
-                _BASE_IMAGE,
-                "bash",
-                "-lc",
-                f"node -e {shlex.quote(self._PROBE)}",
-            ],
-            capture_output=True,
-            text=True,
-            errors="replace",
-            timeout=120,
+            [_runtime(), "run", "--rm", *env, _BASE_IMAGE,
+             "bash", "-lc", f"node -e {shlex.quote(self._PROBE)}"],
+            capture_output=True, text=True, errors="replace", timeout=120,
         )
         return (proc.stdout or "") + (proc.stderr or "")
 

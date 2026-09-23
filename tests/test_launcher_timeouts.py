@@ -128,9 +128,7 @@ class TestBoundedDegradesInsteadOfHanging:
         code and its diagnostics — blanking those would destroy the error the user needs."""
         res = proc._bounded(
             [sys.executable, "-c", "import sys; print('detail'); sys.exit(3)"],
-            timeout=30,
-            capture_output=True,
-            text=True,
+            timeout=30, capture_output=True, text=True,
         )
         assert res.returncode == 3
         assert res.stdout.strip() == "detail"
@@ -227,9 +225,7 @@ class TestRunTaggedAcceptsATimeout:
         tag and comes out unprefixed."""
         seen: list[str] = []
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(
-                proc, "_out", type("C", (), {"print": lambda self, m, **k: seen.append(m)})()
-            )
+            mp.setattr(proc, "_out", type("C", (), {"print": lambda self, m, **k: seen.append(m)})())
             token = proc._BUILD_TAG.set(("mystack(omp)", "cyan"))
             try:
                 proc._run_tagged([sys.executable, "-c", "print('hello-from-build')"], timeout=30)
@@ -346,8 +342,7 @@ class TestAdvertisedDeadlinesAreHonest:
         """The fast path is the one that runs on every healthy launch; it must not have grown a
         deadline's worth of latency."""
         monkeypatch.setattr(
-            launcher,
-            "_bounded",
+            launcher, "_bounded",
             lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, b"", b""),
         )
         start = time.monotonic()
@@ -402,8 +397,7 @@ class TestATimeoutNeverMasksTheRealFailure:
         could raise on timeout it would replace whatever went wrong inside — the caller would see a
         TimeoutExpired about `rm` instead of the real fault."""
         monkeypatch.setattr(
-            launcher,
-            "_bounded",
+            launcher, "_bounded",
             lambda cmd, **kw: subprocess.CompletedProcess(cmd, proc._TIMEOUT_RC, "cid123", ""),
         )
 
@@ -448,7 +442,7 @@ class TestWedgedPodmanDoesNotCrashTeardown:
 
 
 class TestAnUnansweredQueryIsNeverReportedAsEmpty:
-    """ "podman says there are none" and "podman never replied" are the same empty stdout. Every
+    """"podman says there are none" and "podman never replied" are the same empty stdout. Every
     listing command here turned that into a cheerful "No instances found" and exit 0 — so a wrapping
     script reads success and a human reads a cleanup that never happened. Adversarial review found
     this on `stop`/`rm`/`prune`/`volume-gc`; `rescan` is the same shape and the worst case, since a
@@ -458,8 +452,7 @@ class TestAnUnansweredQueryIsNeverReportedAsEmpty:
     def _wedged_listing(self, monkeypatch):
         monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
         monkeypatch.setattr(
-            launcher,
-            "_bounded",
+            launcher, "_bounded",
             lambda cmd, **kw: subprocess.CompletedProcess(cmd, proc._TIMEOUT_RC, "", ""),
         )
 
@@ -489,8 +482,7 @@ class TestAnUnansweredQueryIsNeverReportedAsEmpty:
         leave the identical false-success one exit code away — which is exactly what a mutation
         changing `!= 0` to `!= 1` proved."""
         monkeypatch.setattr(
-            launcher,
-            "_bounded",
+            launcher, "_bounded",
             lambda cmd, **kw: subprocess.CompletedProcess(cmd, rc, "", ""),
         )
         with pytest.raises(typer.Exit):
@@ -500,8 +492,7 @@ class TestAnUnansweredQueryIsNeverReportedAsEmpty:
         """The other half: a runtime that genuinely answers 'no instances' must still get the
         friendly message and exit 0. Failing closed on a real empty result would be its own bug."""
         monkeypatch.setattr(
-            launcher,
-            "_bounded",
+            launcher, "_bounded",
             lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, "", ""),
         )
         launcher.stop("somestack")  # must not raise
@@ -514,7 +505,6 @@ def _fw_stub(*, apply_rc=0, policy=b"-P OUTPUT DROP\n", seen=None):
     runs the script. A stub that answered only the first would let a broken read-back pass, which
     is the exact blindness #429 was.
     """
-
     def run(cmd, **kw):
         if seen is not None:
             seen.setdefault("cmds", []).append(cmd)
@@ -522,7 +512,6 @@ def _fw_stub(*, apply_rc=0, policy=b"-P OUTPUT DROP\n", seen=None):
         if cmd[-3:] == ["iptables", "-S", "OUTPUT"]:
             return subprocess.CompletedProcess(cmd, 0, policy, b"")
         return subprocess.CompletedProcess(cmd, apply_rc, b"", b"")
-
     return run
 
 
@@ -535,14 +524,12 @@ class TestTheEgressFirewallFailsClosed:
     def test_a_timed_out_firewall_aborts_the_launch(self, monkeypatch, err):
         monkeypatch.delenv("NO_FIREWALL", raising=False)
         monkeypatch.setattr(
-            launcher,
-            "_bounded",
+            launcher, "_bounded",
             lambda cmd, **kw: subprocess.CompletedProcess(cmd, proc._TIMEOUT_RC, b"", b""),
         )
         with pytest.raises(typer.Exit) as exc:
-            launcher._apply_firewall(
-                "podman", "inst", ["example.com"], netns_anchor="pod", image="img"
-            )
+            launcher._apply_firewall("podman", "inst", ["example.com"],
+                                     netns_anchor="pod", image="img")
         assert exc.value.exit_code == 1
         assert "unrestricted" in err.text.lower()
 
@@ -551,8 +538,7 @@ class TestTheEgressFirewallFailsClosed:
         silently-unconfined agent one exit code away."""
         monkeypatch.delenv("NO_FIREWALL", raising=False)
         monkeypatch.setattr(
-            launcher,
-            "_bounded",
+            launcher, "_bounded",
             lambda cmd, **kw: subprocess.CompletedProcess(cmd, 1, b"", b"nft: permission denied"),
         )
         with pytest.raises(typer.Exit):
@@ -572,15 +558,13 @@ class TestTheEgressFirewallFailsClosed:
         unrestricted egress. The launcher must assert the observable end state, not the reported
         one — a guard that trusts the thing it guards is not a guard."""
         monkeypatch.delenv("NO_FIREWALL", raising=False)
-        monkeypatch.setattr(
-            launcher, "_bounded", _fw_stub(apply_rc=0, policy=b"-P OUTPUT ACCEPT\n")
-        )
+        monkeypatch.setattr(launcher, "_bounded", _fw_stub(apply_rc=0, policy=b"-P OUTPUT ACCEPT\n"))
         with pytest.raises(typer.Exit):
             launcher._apply_firewall("podman", "inst", [], netns_anchor="pod", image="img")
         assert "unrestricted" in err.text.lower()
 
     def test_an_unreadable_policy_fails_closed_too(self, monkeypatch, err):
-        """ "Cannot prove it is confined" and "is not confined" must reach the same branch —
+        """"Cannot prove it is confined" and "is not confined" must reach the same branch —
         otherwise a broken read-back silently restores the old behaviour."""
         monkeypatch.delenv("NO_FIREWALL", raising=False)
 
@@ -630,13 +614,8 @@ class TestTheEgressFirewallFailsClosed:
 
         monkeypatch.delenv("NO_FIREWALL", raising=False)
         monkeypatch.setattr(launcher, "_bounded", spy)
-        launcher._apply_firewall(
-            "podman",
-            "inst",
-            ["api.example.com", "get.example.com"],
-            netns_anchor="pod",
-            image="img",
-        )
+        launcher._apply_firewall("podman", "inst", ["api.example.com", "get.example.com"],
+                                 netns_anchor="pod", image="img")
 
         cmd = seen["cmd"]
         assert cmd[:3] == ["podman", "run", "--rm"]
@@ -653,13 +632,10 @@ class TestTheEgressFirewallFailsClosed:
         torn: list = []
         monkeypatch.delenv("NO_FIREWALL", raising=False)
         monkeypatch.setattr(
-            launcher,
-            "_apply_firewall",
+            launcher, "_apply_firewall",
             lambda *a, **k: (_ for _ in ()).throw(typer.Exit(1)),
         )
-        monkeypatch.setattr(
-            launcher, "_pod_teardown", lambda rt, inst, pod: torn.append((inst, pod))
-        )
+        monkeypatch.setattr(launcher, "_pod_teardown", lambda rt, inst, pod: torn.append((inst, pod)))
 
         backend = launcher.ContainerBackend.__new__(launcher.ContainerBackend)
         backend.rt, backend.inst, backend.pod, backend.recipes = "podman", "inst", "pod", []
@@ -682,8 +658,7 @@ class TestTheEgressFirewallFailsClosed:
         torn: list = []
         monkeypatch.delenv("NO_FIREWALL", raising=False)
         monkeypatch.setattr(
-            launcher,
-            "_apply_firewall",
+            launcher, "_apply_firewall",
             lambda *a, **k: (_ for _ in ()).throw(boom),
         )
         monkeypatch.setattr(launcher, "_pod_teardown", lambda rt, inst, pod: torn.append(inst))
@@ -724,9 +699,7 @@ class TestSetupConditionsCannotHangALaunch:
     def _recipe(name, condition):
         return Recipe(
             name=name,
-            setup=SetupSpec(
-                summary=f"do {name}", reference="https://example/x", condition=condition
-            ),
+            setup=SetupSpec(summary=f"do {name}", reference="https://example/x", condition=condition),
         )
 
     def test_a_hanging_condition_shows_the_notice_rather_than_swallowing_it(self, monkeypatch, err):
@@ -756,8 +729,7 @@ class TestSetupConditionsCannotHangALaunch:
     def test_a_prompt_nonzero_condition_is_still_suppressed(self, monkeypatch, err):
         """The existing polarity is unchanged for every condition that actually answers."""
         monkeypatch.setattr(
-            launcher,
-            "_bounded",
+            launcher, "_bounded",
             lambda cmd, **kw: subprocess.CompletedProcess(cmd, 1, b"", b""),
         )
         shown = launcher._collect_setup_notices(
@@ -767,8 +739,7 @@ class TestSetupConditionsCannotHangALaunch:
 
     def test_a_satisfied_condition_still_shows(self, monkeypatch, err):
         monkeypatch.setattr(
-            launcher,
-            "_bounded",
+            launcher, "_bounded",
             lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, b"", b""),
         )
         shown = launcher._collect_setup_notices(
@@ -784,5 +755,7 @@ class TestSetupConditionsCannotHangALaunch:
             return subprocess.CompletedProcess(cmd, 0, b"", b"")
 
         monkeypatch.setattr(launcher, "_bounded", spy)
-        launcher._collect_setup_notices([self._recipe("x", "true")], self.project, "s", "claude")
+        launcher._collect_setup_notices(
+            [self._recipe("x", "true")], self.project, "s", "claude"
+        )
         assert seen.get("timeout"), "a catalog condition must not be able to block a launch forever"

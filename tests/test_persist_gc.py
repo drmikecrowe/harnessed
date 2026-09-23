@@ -21,9 +21,7 @@ from harnessed.persist_gc import _fmt_size, list_entries, prune_project
 # ---------------------------------------------------------------------------
 
 
-def _make_entry(
-    tmp_data: Path, recipe: str, project_path: str, name: str, content: str = "x"
-) -> Path:
+def _make_entry(tmp_data: Path, recipe: str, project_path: str, name: str, content: str = "x") -> Path:
     """Create a persist dir tree and write a file inside so it has non-zero size."""
     d = paths.persist_project_dir(recipe, project_path, name)
     d.mkdir(parents=True, exist_ok=True)
@@ -155,7 +153,7 @@ class TestFmtSize:
         assert _fmt_size(2 * 1024 * 1024) == "2.0 MiB"
 
     def test_gib(self):
-        assert _fmt_size(3 * 1024**3) == "3.0 GiB"
+        assert _fmt_size(3 * 1024 ** 3) == "3.0 GiB"
 
     def test_zero(self):
         assert _fmt_size(0) == "0 B"
@@ -209,9 +207,7 @@ class TestCLIPersistPrune:
         state = _make_entry(tmp_path, "rcp", "/proj", "state")
         from harnessed.cli import main
 
-        rc = main(
-            ["persist-prune", "--recipe", "rcp", "--project", "/proj", "--name", "cache", "--yes"]
-        )
+        rc = main(["persist-prune", "--recipe", "rcp", "--project", "/proj", "--name", "cache", "--yes"])
         assert rc == 0
         assert not cache.exists()
         assert state.is_dir()

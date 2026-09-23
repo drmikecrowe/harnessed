@@ -12,7 +12,6 @@ unchanged from upstream 0.0.16, so nothing that invokes the binary by name has t
 
 These tests are about the shipped build inputs, not about emit internals.
 """
-
 from __future__ import annotations
 
 import re
@@ -35,7 +34,7 @@ def _base_dockerfile() -> str:
 class TestBaseImageOwnsTheOnlyHatagoInstall:
     def test_base_installs_the_published_fork_at_an_exact_version(self):
         body = _base_dockerfile()
-        match = re.search(rf"{re.escape(HATAGO_PKG)}@(\d+\.\d+\.\d+)", body)
+        match = re.search(rf'{re.escape(HATAGO_PKG)}@(\d+\.\d+\.\d+)', body)
         assert match, f"base image must install {HATAGO_PKG} at a pinned version"
 
     def test_base_no_longer_installs_the_unmaintained_upstream(self):
@@ -65,11 +64,7 @@ class TestDerivedImageCarriesNoHatagoLayer:
         # The kwarg is gone rather than accepted-and-ignored: a stale caller must fail loudly.
         with pytest.raises(TypeError):
             write_derived_dockerfile(
-                tmp_path,
-                "s",
-                "claude",
-                [],
-                hatago={"repo": "github:o/r", "ref": "x"},  # type: ignore[call-arg]  # intentional stale kwarg to verify TypeError
+                tmp_path, "s", "claude", [], hatago={"repo": "github:o/r", "ref": "x"}  # type: ignore[call-arg]  # intentional stale kwarg to verify TypeError
             )
 
 
@@ -80,7 +75,9 @@ class TestLegacyOverrideFailsLoudly:
     def _stack(self, tmp_path, extra: str):
         d = tmp_path / "stacks" / "s"
         d.mkdir(parents=True)
-        (d / "stack.yaml").write_text(f"name: s\nrecipes: []\n{extra}", encoding="utf-8")
+        (d / "stack.yaml").write_text(
+            f"name: s\nrecipes: []\n{extra}", encoding="utf-8"
+        )
         return d
 
     def test_legacy_hatago_block_is_rejected_with_a_migration_message(self, tmp_path):

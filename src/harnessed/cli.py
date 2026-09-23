@@ -39,9 +39,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="assemble a stack into a committed profile + hatago config",
     )
     asm.add_argument("stack", help="stack name (stacks/<stack>/stack.yaml)")
-    asm.add_argument(
-        "harness", help="harness to assemble for (claude|omp|opencode|antigravity|codex)"
-    )
+    asm.add_argument("harness", help="harness to assemble for (claude|omp|opencode|antigravity|codex)")
     asm.add_argument(
         "--build-dir",
         required=True,
@@ -58,9 +56,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="capability test: launch <stack> --fresh headless, assert declared capabilities",
     )
     tst.add_argument("stack", help="stack name (stacks/<stack>/stack.yaml)")
-    tst.add_argument(
-        "harness", help="harness to test against (claude|omp|opencode|antigravity|codex)"
-    )
+    tst.add_argument("harness", help="harness to test against (claude|omp|opencode|antigravity|codex)")
     tst.add_argument(
         "--root",
         default=None,
@@ -99,9 +95,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "scan-image-online",
         help="ONLINE supply-chain image scan (fresh DB; nightly re-scan / SEC-04)",
     )
-    sci_online.add_argument(
-        "archive", help="path to a podman/docker image archive tar (from `podman save`)"
-    )
+    sci_online.add_argument("archive", help="path to a podman/docker image archive tar (from `podman save`)")
 
     sub.add_parser(
         "persist-list",
@@ -165,7 +159,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     return parser
 
-
 def _run_assemble(args: argparse.Namespace, out: Console, err: Console) -> int:
     # No --root → None, which resolves across the catalog roots (user overlay, then harnessed's
     # own catalog) exactly as `harnessed build` does. NOT the CWD: `root` here is a single CATALOG
@@ -179,12 +172,9 @@ def _run_assemble(args: argparse.Namespace, out: Console, err: Console) -> int:
     out.print(f"[bold green]Assembled[/bold green] stack [bold]{result.stack.name}[/bold]")
     out.print(f"  profile:  {result.profile_dir}")
     out.print(f"  harness:  {result.harness}")
-    out.print(
-        f"  mcp:      {', '.join(s.name for s in result.servers) or '(none)'} → {HATAGO_ENDPOINT}"
-    )
-    out.print(
-        f"  baked:    {', '.join(s.name for s in result.baked) or '(none)'} (stdio children, in-container hatago)"
-    )
+    out.print(f"  mcp:      {', '.join(s.name for s in result.servers) or '(none)'} "
+              f"→ {HATAGO_ENDPOINT}")
+    out.print(f"  baked:    {', '.join(s.name for s in result.baked) or '(none)'} (stdio children, in-container hatago)")
     return 0
 
 
@@ -222,9 +212,7 @@ def _run_scan_image_online(args: argparse.Namespace, out: Console, err: Console)
     except ScanError as exc:
         err.print(f"[bold red]supply-chain image scan failed:[/bold red] {exc}", highlight=False)
         return 1
-    out.print(
-        f"[bold green]Supply-chain image scan clean[/bold green] (HIGH < CVSS {7.0:.1f}; online)"
-    )
+    out.print(f"[bold green]Supply-chain image scan clean[/bold green] (HIGH < CVSS {7.0:.1f}; online)")
     for warning in sorted(set(result.warnings)):
         out.print(f"  [yellow]warning:[/yellow] {warning}")
     return 0
@@ -271,9 +259,7 @@ def _run_lint_prose(args: argparse.Namespace, out: Console, err: Console) -> int
     """
     reports = prose.lint_paths([Path(t) for t in args.targets])
     if not reports:
-        err.print(
-            "[yellow]lint-prose:[/yellow] no RULE.md or SKILL.md found under the given paths."
-        )
+        err.print("[yellow]lint-prose:[/yellow] no RULE.md or SKILL.md found under the given paths.")
         return 1
 
     if args.summary:
@@ -301,15 +287,11 @@ def _run_lint_prose(args: argparse.Namespace, out: Console, err: Console) -> int
     errors = sum(r.errors for r in reports)
     warnings = sum(len(r.findings) - r.errors for r in reports)
     if errors:
-        out.print(
-            f"[bold red]{errors} error(s)[/bold red], {warnings} warning(s) "
-            f"across {len(reports)} file(s)"
-        )
+        out.print(f"[bold red]{errors} error(s)[/bold red], {warnings} warning(s) "
+                  f"across {len(reports)} file(s)")
     else:
-        out.print(
-            f"[bold green]clean[/bold green] — 0 errors, {warnings} warning(s) "
-            f"across {len(reports)} file(s)"
-        )
+        out.print(f"[bold green]clean[/bold green] — 0 errors, {warnings} warning(s) "
+                  f"across {len(reports)} file(s)")
     return 0 if args.warn_only or not errors else 1
 
 

@@ -63,12 +63,16 @@ NO_LIVE_CONNECT = {"openbrain-example"}
 # in a scheme this catalog no longer uses, so they excluded nothing. No stack is named for those
 # recipes today. Dropping them changes no test outcome — it only stops the set from claiming a
 # coverage decision that was never in effect.
-NO_CAPABILITY_ORACLE = {}
+NO_CAPABILITY_ORACLE = {
+}
 
 
 def _catalog_stacks() -> list[str]:
     stacks_dir = ROOT / "catalog" / "stacks"
-    return sorted(p.name for p in stacks_dir.iterdir() if (p / "stack.yaml").is_file())
+    return sorted(
+        p.name for p in stacks_dir.iterdir()
+        if (p / "stack.yaml").is_file()
+    )
 
 
 REAL_STACKS = _catalog_stacks()
@@ -86,9 +90,7 @@ def _oracle(stack: str):
 @pytest.mark.parametrize("stack", [s for s in REAL_STACKS if s not in NO_CAPABILITY_ORACLE])
 def test_stack_assembles_and_oracle_is_nonempty(stack, tmp_path):
     """Every real stack resolves + assembles, and declares at least one capability to probe."""
-    assemble(
-        None, stack, tmp_path, "claude"
-    )  # emits into tmp; raises on any resolution/validation error
+    assemble(None, stack, tmp_path, "claude")  # emits into tmp; raises on any resolution/validation error
     _stk, caps = _oracle(stack)
     total = len(caps.mcp_servers) + len(caps.skills) + len(caps.commands) + len(caps.plugins)
     assert total > 0, f"{stack}: oracle declares no capabilities"
@@ -135,9 +137,7 @@ def test_all_catalog_recipes_pass_strict():
         ]
     assert names, "no catalog recipes found"
     for name in names:
-        load_recipe(
-            recipes_dir / paths.catalog_relpath(name), strict=True
-        )  # raises on unknown field
+        load_recipe(recipes_dir / paths.catalog_relpath(name), strict=True)  # raises on unknown field
 
 
 def test_context_mode_hooks_are_skipped_on_omp_only():
@@ -257,7 +257,7 @@ def test_codebase_memory_mcp_hooks_reach_settings():
     assert "subagent prompt" in sess_body
     # Keyed to the git toplevel, NOT $PWD: a worktree must get its own branch-accurate graph, and a
     # non-git cwd must get nothing. `--repo-path "$PWD"` would index a subdirectory as a project.
-    assert '--repo-path "$cbm_root"' in sess_body
+    assert "--repo-path \"$cbm_root\"" in sess_body
     assert "git rev-parse --show-toplevel" in sess_body
     # Unconditional — NOT guarded on the project already existing. A re-index is 1.6s against 2.1s
     # for a first index, so such a guard buys ~0.5s and pays with a permanently stale graph. If
@@ -271,7 +271,9 @@ def test_codebase_memory_mcp_hooks_reach_settings():
     # that substring is also present in the `command -v ... >/dev/null 2>&1 &&` guard above, so it
     # passes even when the index call is left in the foreground, unredirected. Verified by mutation:
     # this form fails when the trailing `>/dev/null 2>&1 & )` is stripped; the bare form did not.
-    assert 'cli index_repository --repo-path "$cbm_root" >/dev/null 2>&1 & )' in sess_body
+    assert (
+        'cli index_repository --repo-path "$cbm_root" >/dev/null 2>&1 & )' in sess_body
+    )
 
     # SubagentStart injects via JSON additionalContext, NOT plain stdout — a malformed body is
     # dropped silently by the hook runner, so parse it rather than substring-matching.
@@ -292,19 +294,14 @@ def test_codebase_memory_mcp_hooks_reach_settings():
 # --- Layer 2: live container check (podman-gated) -------------------------------------------------
 
 from support import podman  # the one gate definition
-
 _HARNESSED_BIN = Path(sys.executable).parent / "harnessed"
 
 
 def _run_cli(*args: str, timeout: int = 600) -> subprocess.CompletedProcess:
     env = {**os.environ, "PATH": f"{_HARNESSED_BIN.parent}:{os.environ.get('PATH', '')}"}
     return subprocess.run(
-        [str(_HARNESSED_BIN), *args],
-        cwd=str(ROOT),
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
+        [str(_HARNESSED_BIN), *args], cwd=str(ROOT), env=env,
+        capture_output=True, text=True, timeout=timeout,
     )
 
 
@@ -337,11 +334,10 @@ def test_live_capabilities_present_in_container(stack):
     # The failing capability's own `detail` carries the remediation pointer (T-02-07: the report
     # never quotes container output — see capability.MCP_MISS_REMEDIATION). Surface the details of
     # the missing capabilities so a CI reader gets the pointer without a second round trip.
-    details = [
-        f"{r['kind']}/{r['name']}: {r['detail']}" for r in report["results"] if not r["present"]
-    ]
+    details = [f"{r['kind']}/{r['name']}: {r['detail']}" for r in report["results"] if not r["present"]]
     assert not missing, (
-        f"{stack}: capabilities missing from the container: {missing}\n  " + "\n  ".join(details)
+        f"{stack}: capabilities missing from the container: {missing}\n  "
+        + "\n  ".join(details)
     )
 
 
@@ -359,9 +355,7 @@ from support import patch_all
 
 # Pinned base (project hygiene — no floating tags), small + cached after first pull.
 _TEST_BASE = "docker.io/library/alpine:3.20"
-_FLOOR = {
-    "permissions": {"defaultMode": "acceptEdits", "allow": ["mcp__hatago"]}
-}  # what emit.write_settings_json emits
+_FLOOR = {"permissions": {"defaultMode": "acceptEdits", "allow": ["mcp__hatago"]}}  # what emit.write_settings_json emits
 
 
 def _build_image_with(tmp: Path, tag: str, settings: dict | None) -> str:
@@ -377,12 +371,8 @@ def _build_image_with(tmp: Path, tag: str, settings: dict | None) -> str:
         (ctx / "Dockerfile").write_text(
             f"FROM {_TEST_BASE}\nCOPY settings.json {CONTAINER_HOME}/.claude/settings.json\n"
         )
-    assert (
-        subprocess.run(
-            [rt, "build", "-t", tag, str(ctx)], capture_output=True, text=True
-        ).returncode
-        == 0
-    ), f"failed to build fixture image {tag}"
+    assert subprocess.run([rt, "build", "-t", tag, str(ctx)], capture_output=True,
+                          text=True).returncode == 0, f"failed to build fixture image {tag}"
     return rt
 
 
@@ -405,9 +395,7 @@ def test_merge_baked_settings_unions_grant_and_preserves_baked(tmp_path):
     finally:
         subprocess.run([rt, "rmi", "-f", tag], capture_output=True)
 
-    assert merged["hooks"] == {"PreToolUse": [{"matcher": "Bash"}]}, (
-        "baked hook dropped (regression)"
-    )
+    assert merged["hooks"] == {"PreToolUse": [{"matcher": "Bash"}]}, "baked hook dropped (regression)"
     assert "mcp__hatago" in merged["permissions"]["allow"], "required grant not unioned"
     assert "mcp__custom" in merged["permissions"]["allow"], "baked allow entry lost"
     assert "mcp__hatago" not in merged["permissions"].get("deny", []), "deny conflict not resolved"
@@ -442,16 +430,11 @@ class TestCredentialedScanReportWins:
 
     def _report(self, path, crit, high, source="socket · node globals"):
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(
-                {
-                    "advisory": True,
-                    "gating": 0,
-                    "totals": {"critical": crit, "high": high},
-                    "sources": [{"source": source, "critical": crit, "high": high}],
-                }
-            )
-        )
+        path.write_text(json.dumps({
+            "advisory": True, "gating": 0,
+            "totals": {"critical": crit, "high": high},
+            "sources": [{"source": source, "critical": crit, "high": high}],
+        }))
 
     def test_credentialed_report_is_not_clobbered_by_the_baked_one(self, tmp_path, capsys):
         prof = tmp_path / "prof"
@@ -470,14 +453,11 @@ class TestCredentialedScanReportWins:
         prof = tmp_path / "prof"
         copied = []
         monkeypatch.setattr(
-            launcher,
-            "_with_image_container",
+            launcher, "_with_image_container",
             lambda rt, image, fn: (copied.append(image), True)[1],
         )
         launcher._surface_scan_report("podman", "img", prof, keep_existing=False)
-        assert copied == ["img"], (
-            "the baked report must still be extracted when there is no re-scan"
-        )
+        assert copied == ["img"], "the baked report must still be extracted when there is no re-scan"
 
     def test_the_scan_container_survives_long_enough_to_copy_its_report(self):
         src = inspect.getsource(launcher._scan_image_in_container)
@@ -528,23 +508,10 @@ def test_merge_baked_settings_reads_the_VOLUME_not_the_image(tmp_path):
         # mapping is unreadable by the agent (bd harnessed-8px.21.1), so mirroring harnessed here
         # is part of what the test asserts, not incidental setup.
         subprocess.run(
-            [
-                rt,
-                "run",
-                "--rm",
-                "-i",
-                paths.USERNS_ARG,
-                "-v",
-                f"{vol}:{CONTAINER_HOME}/.claude",
-                tag,
-                "sh",
-                "-c",
-                f"cat > {CONTAINER_HOME}/.claude/settings.json",
-            ],
-            input=json.dumps(installed),
-            text=True,
-            check=True,
-            capture_output=True,
+            [rt, "run", "--rm", "-i", paths.USERNS_ARG,
+             "-v", f"{vol}:{CONTAINER_HOME}/.claude", tag,
+             "sh", "-c", f"cat > {CONTAINER_HOME}/.claude/settings.json"],
+            input=json.dumps(installed), text=True, check=True, capture_output=True,
         )
         _merge_baked_settings(rt, tag, prof, volume=vol)
         merged = json.loads((prof / "settings.json").read_text())
@@ -587,42 +554,17 @@ def test_the_per_launch_profile_copy_does_not_stomp_install_written_settings(tmp
         subprocess.run([rt, "volume", "rm", "-f", vol], capture_output=True)
         # What a real install.sh writes, under the SAME userns harnessed uses (bd harnessed-8px.21.1).
         subprocess.run(
-            [
-                rt,
-                "run",
-                "--rm",
-                "-i",
-                paths.USERNS_ARG,
-                "-v",
-                f"{vol}:{CONTAINER_HOME}/.claude",
-                tag,
-                "sh",
-                "-c",
-                f"cat > {CONTAINER_HOME}/.claude/settings.json",
-            ],
-            input=json.dumps(installed),
-            text=True,
-            check=True,
-            capture_output=True,
+            [rt, "run", "--rm", "-i", paths.USERNS_ARG,
+             "-v", f"{vol}:{CONTAINER_HOME}/.claude", tag,
+             "sh", "-c", f"cat > {CONTAINER_HOME}/.claude/settings.json"],
+            input=json.dumps(installed), text=True, check=True, capture_output=True,
         )
         # fresh=False — the unchanged-stack relaunch, where installs are skipped.
         launcher._ensure_config_volume(rt, stack, harness, prof, tag, fresh=False)
         out = subprocess.run(
-            [
-                rt,
-                "run",
-                "--rm",
-                paths.USERNS_ARG,
-                "-v",
-                f"{vol}:{CONTAINER_HOME}/.claude",
-                tag,
-                "sh",
-                "-c",
-                f"cat {CONTAINER_HOME}/.claude/settings.json",
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
+            [rt, "run", "--rm", paths.USERNS_ARG, "-v", f"{vol}:{CONTAINER_HOME}/.claude", tag,
+             "sh", "-c", f"cat {CONTAINER_HOME}/.claude/settings.json"],
+            capture_output=True, text=True, check=True,
         )
         final = json.loads(out.stdout)
     finally:
@@ -660,38 +602,16 @@ def test_a_removed_recipes_content_does_not_linger_in_the_volume(tmp_path):
         subprocess.run([rt, "volume", "rm", "-f", vol], capture_output=True)
         # Content from a recipe that is about to be dropped from the stack.
         subprocess.run(
-            [
-                rt,
-                "run",
-                "--rm",
-                paths.USERNS_ARG,
-                "-v",
-                f"{vol}:{CONTAINER_HOME}/.claude",
-                tag,
-                "sh",
-                "-c",
-                f"mkdir -p {CONTAINER_HOME}/.claude/skills/departed && "
-                f"touch {CONTAINER_HOME}/.claude/skills/departed/SKILL.md",
-            ],
-            check=True,
-            capture_output=True,
+            [rt, "run", "--rm", paths.USERNS_ARG, "-v", f"{vol}:{CONTAINER_HOME}/.claude", tag,
+             "sh", "-c", f"mkdir -p {CONTAINER_HOME}/.claude/skills/departed && "
+                         f"touch {CONTAINER_HOME}/.claude/skills/departed/SKILL.md"],
+            check=True, capture_output=True,
         )
         launcher._ensure_config_volume(rt, stack, harness, prof, tag, fresh=True)
         out = subprocess.run(
-            [
-                rt,
-                "run",
-                "--rm",
-                paths.USERNS_ARG,
-                "-v",
-                f"{vol}:{CONTAINER_HOME}/.claude",
-                tag,
-                "sh",
-                "-c",
-                f"ls {CONTAINER_HOME}/.claude/skills 2>/dev/null | wc -l",
-            ],
-            capture_output=True,
-            text=True,
+            [rt, "run", "--rm", paths.USERNS_ARG, "-v", f"{vol}:{CONTAINER_HOME}/.claude", tag,
+             "sh", "-c", f"ls {CONTAINER_HOME}/.claude/skills 2>/dev/null | wc -l"],
+            capture_output=True, text=True,
         )
     finally:
         subprocess.run([rt, "rmi", "-f", tag], capture_output=True)
@@ -724,7 +644,8 @@ def test_a_hung_scan_is_killed_and_its_container_reclaimed(tmp_path, monkeypatch
         "&& chmod +x /usr/local/bin/harnessed-scan\n"
     )
     rt = _runtime()
-    assert subprocess.run([rt, "build", "-t", tag, str(ctx)], capture_output=True).returncode == 0
+    assert subprocess.run([rt, "build", "-t", tag, str(ctx)],
+                          capture_output=True).returncode == 0
 
     monkeypatch.setattr(launcher, "_SCAN_CONTAINER_TIMEOUT", 5)
     patch_all(monkeypatch, "_resolve_launch_secrets", lambda project_path=None: ([], []))
@@ -733,8 +654,7 @@ def test_a_hung_scan_is_killed_and_its_container_reclaimed(tmp_path, monkeypatch
         # Nothing from this image may still be running: the whole point is that a hang is reclaimed.
         running = subprocess.run(
             [rt, "ps", "--filter", f"ancestor={tag}", "--format", "{{.Names}}"],
-            capture_output=True,
-            text=True,
+            capture_output=True, text=True,
         ).stdout.strip()
     finally:
         subprocess.run([rt, "rmi", "-f", tag], capture_output=True)

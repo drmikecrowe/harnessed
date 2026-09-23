@@ -44,15 +44,12 @@ class TestHarnessedEnv:
     def test_every_documented_var_is_present_in_both_modes(self, tmp_path, monkeypatch):
         monkeypatch.setattr(paths, "git_common_dir", lambda p: None)
         host = launcher.harnessed_env("s", tmp_path, harness="claude", mode="host", sockets=False)
-        ctr = launcher.harnessed_env(
-            "s", tmp_path, harness="claude", mode="container", mount_path=tmp_path, sockets=False
-        )
+        ctr = launcher.harnessed_env("s", tmp_path, harness="claude", mode="container",
+                                     mount_path=tmp_path, sockets=False)
         assert CONTRACT_KEYS <= set(host)
         assert CONTRACT_KEYS <= set(ctr)
 
-    def test_harness_is_unprefixed_so_a_script_matches_a_dockerfile_arg(
-        self, tmp_path, monkeypatch
-    ):
+    def test_harness_is_unprefixed_so_a_script_matches_a_dockerfile_arg(self, tmp_path, monkeypatch):
         """`ARG HARNESS` in a recipe Dockerfile and `$HARNESS` in a setup script must be one token."""
         monkeypatch.setattr(paths, "git_common_dir", lambda p: None)
         env = launcher.harnessed_env("s", tmp_path, harness="opencode", mode="host", sockets=False)
@@ -61,9 +58,7 @@ class TestHarnessedEnv:
     def test_main_repo_dir_is_the_git_common_dir(self, tmp_path, monkeypatch):
         common = tmp_path / "bare"
         monkeypatch.setattr(paths, "git_common_dir", lambda p: common)
-        env = launcher.harnessed_env(
-            "s", tmp_path / "main", harness="claude", mode="host", sockets=False
-        )
+        env = launcher.harnessed_env("s", tmp_path / "main", harness="claude", mode="host", sockets=False)
         assert env["MAIN_REPO_DIR"] == str(common)
         assert env["HARNESSED_GIT_COMMON_DIR"] == str(common)
 
@@ -80,12 +75,10 @@ class TestHarnessedEnv:
     ):
         monkeypatch.setattr(paths, "git_common_dir", lambda p: None)
         r = _recipe(tmp_path / "cat", "rr")
-        host = launcher.harnessed_env(
-            "s", tmp_path, harness="claude", mode="host", recipe=r, sockets=False
-        )
-        ctr = launcher.harnessed_env(
-            "s", tmp_path, harness="claude", mode="container", recipe=r, sockets=False
-        )
+        host = launcher.harnessed_env("s", tmp_path, harness="claude", mode="host", recipe=r,
+                                      sockets=False)
+        ctr = launcher.harnessed_env("s", tmp_path, harness="claude", mode="container",
+                                     recipe=r, sockets=False)
         assert host["HARNESSED_RECIPE_DIR"] == str(r.root)
         assert ctr["HARNESSED_RECIPE_DIR"] == f"{setupenv._CTR_RECIPE_DIR}/rr"
 
@@ -155,7 +148,8 @@ class TestConditionEvalSeesTheContract:
         the same contract the notice site does.
         """
         proj = self._repo(tmp_path, monkeypatch, marker=marker)
-        r = _recipe(tmp_path / "cat", "r", condition=self.COND, script="setup.sh", confirm="ok?")
+        r = _recipe(tmp_path / "cat", "r", condition=self.COND,
+                    script="setup.sh", confirm="ok?")
         monkeypatch.setattr(paths, "xdg_data_home", lambda: tmp_path / "xdg")
         # Past the condition gate the real code prompts; make the answer deterministic so this test
         # measures the GATE, not the prompt.
@@ -172,9 +166,6 @@ class TestConditionEvalSeesTheContract:
         proj = self._repo(tmp_path, monkeypatch, marker=True)
         bare = subprocess.run(["bash", "-lc", self.COND], cwd=str(proj), env={})
         assert bare.returncode == 0  # wrong answer — which is why the contract must be injected
-        assert (
-            launcher._collect_setup_notices(
-                [_recipe(tmp_path / "cat", "r", condition=self.COND)], proj, "s", "claude"
-            )
-            == []
-        )  # right answer, with the contract
+        assert launcher._collect_setup_notices(
+            [_recipe(tmp_path / "cat", "r", condition=self.COND)], proj, "s", "claude"
+        ) == []  # right answer, with the contract

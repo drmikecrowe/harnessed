@@ -33,24 +33,17 @@ class TestGcdDbName:
 
     def test_drops_leading_components_over_64(self, monkeypatch):
         gcd = Path.home().joinpath(
-            "a",
-            "BigOrg",
-            "PlatformTeam",
-            "DataPipeline",
-            "IngestionSubsystem",
-            "the-actual-repo",
-            ".bare",
+            "a", "BigOrg", "PlatformTeam", "DataPipeline", "IngestionSubsystem",
+            "the-actual-repo", ".bare",
         )
         monkeypatch.setattr(launcher.paths, "git_common_dir", lambda _p: gcd)
         name = launcher._gcd_db_name(Path("/x"))
         assert len(name) <= 64
         assert not name.startswith("a_") and "bigorg" not in name  # shallowest dropped first
-        assert name.endswith("the_actual_repo")  # specific tail kept
+        assert name.endswith("the_actual_repo")                    # specific tail kept
 
     def test_outside_home_uses_full_path(self, monkeypatch):
-        monkeypatch.setattr(
-            launcher.paths, "git_common_dir", lambda _p: Path("/opt/work/myrepo/.bare")
-        )
+        monkeypatch.setattr(launcher.paths, "git_common_dir", lambda _p: Path("/opt/work/myrepo/.bare"))
         assert launcher._gcd_db_name(Path("/x")) == "opt_work_myrepo"
 
 
@@ -59,17 +52,15 @@ class TestRepoPrimitives:
         gcd = Path.home() / "Programming" / "Personal" / "harnessed" / ".bare"
         monkeypatch.setattr(launcher.paths, "git_common_dir", lambda _p: gcd)
         p = launcher._repo_primitives(Path("/x"))
-        assert p["repo"] == "harnessed"  # basename, for the prefix
+        assert p["repo"] == "harnessed"                       # basename, for the prefix
         assert p["gcd_db"] == "programming_personal_harnessed"  # unique db name
         assert len(p["gcd_hash"]) == 8
 
 
 class TestSubst:
     def test_substitutes_known_leaves_unknown(self):
-        out = launcher._subst(
-            "db={config.database} repo={repo} keep={unknown}",
-            {"config.database": "x", "repo": "harnessed"},
-        )
+        out = launcher._subst("db={config.database} repo={repo} keep={unknown}",
+                              {"config.database": "x", "repo": "harnessed"})
         assert out == "db=x repo=harnessed keep={unknown}"
 
 
@@ -159,6 +150,8 @@ class TestHostRunSetupsExecutesTheScript:
             self._run(tmp_path, monkeypatch, r, proj)
 
 
+
+
 class TestNativeMcp:
     """Default host MCP path (hatago deferred): servers emitted directly into native .mcp.json."""
 
@@ -192,9 +185,7 @@ class TestSetupScriptSchema:
         return d
 
     def test_script_parsed(self, tmp_path):
-        d = self._recipe(
-            tmp_path, "name: r\nsetup:\n  summary: s\n  reference: http://x\n  script: setup.sh\n"
-        )
+        d = self._recipe(tmp_path, "name: r\nsetup:\n  summary: s\n  reference: http://x\n  script: setup.sh\n")
         recipe = load_recipe(d, strict=True)
         assert recipe.setup is not None, "expected setup block to be parsed"
         assert recipe.setup.script == "setup.sh"
@@ -211,8 +202,7 @@ class TestSetupScriptSchema:
 
     def test_script_escaping_recipe_dir_rejected(self, tmp_path):
         d = self._recipe(
-            tmp_path,
-            "name: r\nsetup:\n  summary: s\n  reference: http://x\n  script: ../../evil.sh\n",
+            tmp_path, "name: r\nsetup:\n  summary: s\n  reference: http://x\n  script: ../../evil.sh\n"
         )
         with pytest.raises(SchemaError, match="relative path inside the recipe dir"):
             load_recipe(d, strict=True)
@@ -232,9 +222,7 @@ class TestValidateSetupScript:
         return load_recipe(d, strict=True)
 
     def test_clean_script_passes(self, tmp_path):
-        validate_setup_script(
-            self._load(tmp_path, "#!/usr/bin/env bash\nuv tool install x==1.2.3\n")
-        )
+        validate_setup_script(self._load(tmp_path, "#!/usr/bin/env bash\nuv tool install x==1.2.3\n"))
 
     def test_raw_npm_in_script_rejected(self, tmp_path):
         with pytest.raises(RecipeLintError, match="raw npm/npx"):
@@ -242,14 +230,10 @@ class TestValidateSetupScript:
 
     def test_floating_ref_in_script_rejected(self, tmp_path):
         with pytest.raises(PinValidationError, match="floating ref"):
-            validate_setup_script(
-                self._load(tmp_path, "#!/usr/bin/env bash\nuv tool install x@latest\n")
-            )
+            validate_setup_script(self._load(tmp_path, "#!/usr/bin/env bash\nuv tool install x@latest\n"))
 
     def test_comments_do_not_self_trigger(self, tmp_path):
-        validate_setup_script(
-            self._load(tmp_path, "#!/usr/bin/env bash\n# never use npm install or @latest\ntrue\n")
-        )
+        validate_setup_script(self._load(tmp_path, "#!/usr/bin/env bash\n# never use npm install or @latest\ntrue\n"))
 
     def test_missing_script_file_rejected(self, tmp_path):
         d = tmp_path / "r"
@@ -264,11 +248,7 @@ class TestValidateSetupScript:
 class TestScriptEnv:
     """The env contract — the SAME keys must reach the script in host and container mode."""
 
-    VALUES: ClassVar[dict[str, str]] = {
-        "repo": "harnessed",
-        "gcd_db": "prog_harnessed",
-        "config.name": "harnessed",
-    }
+    VALUES: ClassVar[dict[str, str]] = {"repo": "harnessed", "gcd_db": "prog_harnessed", "config.name": "harnessed"}
 
     def test_primitives_and_config_become_env(self):
         env = launcher._script_env("st", Path("/p"), self.VALUES, mode="host", harness="claude")
@@ -281,25 +261,19 @@ class TestScriptEnv:
 
     def test_key_set_identical_across_modes(self):
         host = launcher._script_env("st", Path("/p"), self.VALUES, mode="host", harness="claude")
-        ctr = launcher._script_env(
-            "st", Path("/p"), self.VALUES, mode="container", harness="claude"
-        )
+        ctr = launcher._script_env("st", Path("/p"), self.VALUES, mode="container", harness="claude")
         assert set(host) - {"HARNESSED_MODE"} == set(ctr) - {"HARNESSED_MODE"}
         assert ctr["HARNESSED_MODE"] == "container"
 
     def test_bin_dir_leads_path_so_install_then_configure_works(self, tmp_path):
-        env = launcher._script_env(
-            "st", Path("/p"), self.VALUES, mode="host", harness="claude", bin_dir=tmp_path
-        )
+        env = launcher._script_env("st", Path("/p"), self.VALUES, mode="host", harness="claude", bin_dir=tmp_path)
         assert env["HARNESSED_BIN_DIR"] == str(tmp_path)
         assert env["PATH"].startswith(f"{tmp_path}:")
 
     def test_project_dir_is_mode_invariant(self):
         """_build_mount_args mounts the project at its own host path, so the string is identical."""
         host = launcher._script_env("st", Path("/home/u/proj"), {}, mode="host", harness="claude")
-        ctr = launcher._script_env(
-            "st", Path("/home/u/proj"), {}, mode="container", harness="claude"
-        )
+        ctr = launcher._script_env("st", Path("/home/u/proj"), {}, mode="container", harness="claude")
         assert host["HARNESSED_PROJECT_DIR"] == ctr["HARNESSED_PROJECT_DIR"] == "/home/u/proj"
 
 
@@ -360,11 +334,9 @@ class TestSerenaSetupScript:
         }
         proc = subprocess.run(["bash", str(self.SCRIPT)], env=env, capture_output=True, text=True)
         assert proc.returncode == 0, proc.stderr
-        yml = proj / ".serena" / "project.yml"
-        return (
-            yml.read_text() if yml.is_file() else None,
-            calls.read_text() if calls.is_file() else "",
-        )
+        yml = (proj / ".serena" / "project.yml")
+        return (yml.read_text() if yml.is_file() else None,
+                calls.read_text() if calls.is_file() else "")
 
     def test_corrects_directory_derived_name(self, tmp_path):
         """The reported bug: project_name stuck at the worktree folder name."""

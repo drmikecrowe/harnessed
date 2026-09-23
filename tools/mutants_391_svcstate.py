@@ -8,7 +8,6 @@ FAIL on every one of them; a mutant that survives means the tests covering it as
 
 Restores every file it touches (even on error) and verifies the tree came back clean.
 """
-
 from __future__ import annotations
 
 import subprocess
@@ -33,11 +32,9 @@ def _dirty() -> bool:
 def _run_suite() -> bool:
     """Return True if the test suite reports at least one failure."""
     result = subprocess.run(
-        [
-            str(_ROOT / "tools" / "run-tests.sh"),
-            "tests/test_svcstate_timeouts.py",
-            "tests/test_subprocess_timeout_audit.py",
-        ],
+        [str(_ROOT / "tools" / "run-tests.sh"),
+         "tests/test_svcstate_timeouts.py",
+         "tests/test_subprocess_timeout_audit.py"],
         cwd=_ROOT,
         capture_output=True,
         text=True,
@@ -77,14 +74,14 @@ MUTANTS: list[tuple[str, str | None, str | None, Path]] = [
     ),
     (
         "M5: remove timeout= from _repo_project_hashes _bounded call",
-        "        timeout=_PODMAN_QUERY_TIMEOUT,\n        capture_output=True, text=True,\n    )\n    if result.returncode != 0:\n        return hashes",
-        "        capture_output=True, text=True,\n    )\n    if result.returncode != 0:\n        return hashes",
+        '        timeout=_PODMAN_QUERY_TIMEOUT,\n        capture_output=True, text=True,\n    )\n    if result.returncode != 0:\n        return hashes',
+        '        capture_output=True, text=True,\n    )\n    if result.returncode != 0:\n        return hashes',
         _SVCSTATE,
     ),
     (
         "M6: remove timeout= from _svc_stacks_from_instances _bounded call",
-        "        timeout=_PODMAN_QUERY_TIMEOUT,\n        capture_output=True, text=True,\n    )\n    if result.returncode != 0:\n        return []",
-        "        capture_output=True, text=True,\n    )\n    if result.returncode != 0:\n        return []",
+        '        timeout=_PODMAN_QUERY_TIMEOUT,\n        capture_output=True, text=True,\n    )\n    if result.returncode != 0:\n        return []',
+        '        capture_output=True, text=True,\n    )\n    if result.returncode != 0:\n        return []',
         _SVCSTATE,
     ),
 ]
@@ -99,10 +96,8 @@ def main() -> int:
     # fail-open mode that makes a mutation score worthless. Prove the suite is green first.
     print("  BASE   verifying the suite passes before any mutation")
     if _run_suite():
-        print(
-            "ERROR: target suite fails BEFORE mutation — every mutant would report killed",
-            file=sys.stderr,
-        )
+        print("ERROR: target suite fails BEFORE mutation — every mutant would report killed",
+              file=sys.stderr)
         return 1
 
     killed = 0
@@ -142,10 +137,9 @@ def main() -> int:
             survivors.append(desc)
 
     total = killed + len(survivors) + len(skipped)
-    print(
-        f"\n  {killed}/{total - len(skipped)} killed"
-        f"  ({len(skipped)} skipped)" + (f"  SURVIVORS: {survivors}" if survivors else "")
-    )
+    print(f"\n  {killed}/{total - len(skipped)} killed"
+          f"  ({len(skipped)} skipped)"
+          + (f"  SURVIVORS: {survivors}" if survivors else ""))
     return 0 if not survivors else 1
 
 

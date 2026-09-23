@@ -8,7 +8,6 @@ rather than copied (ARCHITECTURE.md §Constraints).
 
 Pure filesystem derivation from a profile plus a home path. Nothing here launches an agent.
 """
-
 from __future__ import annotations
 
 import fcntl
@@ -113,10 +112,7 @@ def _host_home_lock(home: Path) -> Generator[None, None, None]:
 # Files Claude Code's daemon keeps in its per-project state dir. Presence of ANY of these marks a
 # directory as live daemon state rather than recipe content.
 _DAEMON_STATE_MARKERS = (
-    "daemon.json",
-    "daemon.log",
-    "daemon-auth-status.json",
-    "daemon-auth-cooldown",
+    "daemon.json", "daemon.log", "daemon-auth-status.json", "daemon-auth-cooldown",
 )
 
 
@@ -283,14 +279,7 @@ def _host_claude_config_override() -> Path | None:
 
 # Session-state subdirs SHARED with the real ~/.claude — the host analog of the container's
 # bind-mounts (projects/file-history/tasks/session-env/todos), plus shell-snapshots.
-_HOST_SHARED_STATE = (
-    "projects",
-    "file-history",
-    "todos",
-    "tasks",
-    "session-env",
-    "shell-snapshots",
-)
+_HOST_SHARED_STATE = ("projects", "file-history", "todos", "tasks", "session-env", "shell-snapshots")
 
 
 def _relink(link: Path, target: Path) -> None:
@@ -486,9 +475,7 @@ def _share_host_claude_state(home: Path) -> None:
     # the identity check, so the first fix for the nesting bug is what exposed this half of it.
     acct = (_host_claude_config_override() or Path.home()) / ".claude.json"
     if acct.is_file():
-        shutil.copy2(
-            acct, home / ".claude.json"
-        )  # snapshot account → skips onboarding, isolated writes
+        shutil.copy2(acct, home / ".claude.json")  # snapshot account → skips onboarding, isolated writes
 
 
 # --- omp (#307) ----------------------------------------------------------------

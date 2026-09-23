@@ -179,9 +179,7 @@ class TestSerenaInstallSetupSplit:
         body = _code(r.root / r.setup.script)
         assert "uv tool install" not in body
         assert "serena init" not in body
-        assert 'HARNESSED_MODE" = host' not in body, (
-            "the host-only branch is what install.sh replaced"
-        )
+        assert 'HARNESSED_MODE" = host' not in body, "the host-only branch is what install.sh replaced"
 
 
 # `TestCodebaseMemoryHostDoesNotEditGlobalMiseConfig` lived here: three tests reading the script's

@@ -90,7 +90,8 @@ def _blocks(text: str) -> dict[str, str]:
             # writes its own, and carrying N recipes' headers through would be noise claiming
             # several origins for one file. Only substantive root lines survive.
             body = "\n".join(
-                ln for ln in body.splitlines() if ln.strip() and not ln.lstrip().startswith("#")
+                ln for ln in body.splitlines()
+                if ln.strip() and not ln.lstrip().startswith("#")
             ).strip()
             if not body:
                 continue
@@ -145,9 +146,9 @@ def merge_locks(sources: dict[str, Path]) -> str:
 
 def stack_lock_body(recipes) -> str:
     """The merged lockfile body for a stack's recipes — `""` when none of them ships one."""
-    return merge_locks(
-        {r.name: path for r in recipes if (path := recipe_lock_path(r.root)) is not None}
-    )
+    return merge_locks({
+        r.name: path for r in recipes if (path := recipe_lock_path(r.root)) is not None
+    })
 
 
 def write_stack_lock(config_dir: Path, body: str) -> Path | None:

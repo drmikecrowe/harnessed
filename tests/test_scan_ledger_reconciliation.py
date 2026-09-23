@@ -32,7 +32,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "catalog" / "base" / "harnessed-s
 def heredoc() -> str:
     """Extract the summary block's python out of the bash heredoc it lives in."""
     src = SCRIPT.read_text()
-    match = re.search(r"<<'PY'\n(.*?)\nPY\n", src[src.index("HARNESSED_SCAN_REPORT") :], re.S)
+    match = re.search(r"<<'PY'\n(.*?)\nPY\n", src[src.index("HARNESSED_SCAN_REPORT"):], re.S)
     assert match, "summary heredoc not found in harnessed-scan"
     return match.group(1)
 
@@ -57,13 +57,9 @@ def run(block, tmp_path, ledger_lines, manifest_rows=()):
     out = tmp_path / "report.json"
     proc = subprocess.run(
         [sys.executable, str(block), str(manifest)],
-        capture_output=True,
-        text=True,
-        env={
-            "HARNESSED_SCAN_REPORT": str(out),
-            "HARNESSED_SCAN_ATTEMPTS": str(ledger),
-            "PATH": "/usr/bin:/bin",
-        },
+        capture_output=True, text=True,
+        env={"HARNESSED_SCAN_REPORT": str(out), "HARNESSED_SCAN_ATTEMPTS": str(ledger),
+             "PATH": "/usr/bin:/bin"},
     )
     assert proc.returncode == 0, proc.stderr
     return proc.stdout, json.loads(out.read_text())
@@ -72,14 +68,10 @@ def run(block, tmp_path, ledger_lines, manifest_rows=()):
 class TestASkippedScannerAppearsOnceWithItsReason:
     def test_an_unrun_line_wins_over_the_bare_attempt_for_the_same_pair(self, block, tmp_path):
         """L1. Two ledger lines about one scanner must not become two rows about one scanner."""
-        _, report = run(
-            block,
-            tmp_path,
-            [
-                "osv|recipe lockfiles",
-                "osv|recipe lockfiles|unrun|no lockfiles under skills/ or commands/ to scan",
-            ],
-        )
+        _, report = run(block, tmp_path, [
+            "osv|recipe lockfiles",
+            "osv|recipe lockfiles|unrun|no lockfiles under skills/ or commands/ to scan",
+        ])
         osv_rows = [r for r in report["sources"] if r["tool"] == "osv"]
         assert len(osv_rows) == 1
         assert osv_rows[0]["status"] == "unrun"
@@ -88,27 +80,19 @@ class TestASkippedScannerAppearsOnceWithItsReason:
     def test_the_same_collapse_applies_to_every_scanner_timeout_path(self, block, tmp_path):
         """L2. This was latent for snyk/socket/pip-audit long before the osv change — each one
         printfs its attempt and only then records a timeout skip."""
-        _, report = run(
-            block,
-            tmp_path,
-            [
-                "snyk|node globals",
-                "snyk|node globals|unrun|timed out after 120s",
-            ],
-        )
+        _, report = run(block, tmp_path, [
+            "snyk|node globals",
+            "snyk|node globals|unrun|timed out after 120s",
+        ])
         rows = [r for r in report["sources"] if r["tool"] == "snyk"]
         assert len(rows) == 1
         assert rows[0]["status"] == "unrun"
 
     def test_the_summary_does_not_report_a_skipped_scanner_as_broken(self, block, tmp_path):
-        stdout, _ = run(
-            block,
-            tmp_path,
-            [
-                "osv|recipe lockfiles",
-                "osv|recipe lockfiles|unrun|nothing to scan",
-            ],
-        )
+        stdout, _ = run(block, tmp_path, [
+            "osv|recipe lockfiles",
+            "osv|recipe lockfiles|unrun|nothing to scan",
+        ])
         assert "produced NO parseable output" not in stdout
         assert "did not run" in stdout
 
@@ -124,15 +108,11 @@ class TestASkippedScannerAppearsOnceWithItsReason:
     ):
         """The collapse keys on (tool, source), not tool. snyk scans several trees per run, and a
         skip on one must not silence a genuinely-broken scan of a different one."""
-        _, report = run(
-            block,
-            tmp_path,
-            [
-                "snyk|node globals",
-                "snyk|node globals|unrun|no SNYK_TOKEN",
-                "snyk|recipe: serena",
-            ],
-        )
+        _, report = run(block, tmp_path, [
+            "snyk|node globals",
+            "snyk|node globals|unrun|no SNYK_TOKEN",
+            "snyk|recipe: serena",
+        ])
         by_source = {r["source"]: r["status"] for r in report["sources"] if r["tool"] == "snyk"}
         assert by_source == {"node globals": "unrun", "recipe: serena": "no-output"}
 
@@ -145,22 +125,10 @@ class TestASkippedScannerAppearsOnceWithItsReason:
         inline and cannot `return`, so a timeout that still left partial JSON recorded an unrun
         line AND a manifest line — one scanner, reported twice, contradicting itself."""
         payload = tmp_path / "osv.json"
-        payload.write_text(
-            json.dumps(
-                {
-                    "results": [
-                        {
-                            "packages": [
-                                {"package": {"name": "tar-fs"}, "groups": [{"max_severity": "9.8"}]}
-                            ]
-                        }
-                    ]
-                }
-            )
-        )
+        payload.write_text(json.dumps({"results": [{"packages": [
+            {"package": {"name": "tar-fs"}, "groups": [{"max_severity": "9.8"}]}]}]}))
         stdout, report = run(
-            block,
-            tmp_path,
+            block, tmp_path,
             ["osv|recipe lockfiles", "osv|recipe lockfiles|unrun|timed out after 120s"],
             [("osv", "recipe lockfiles", str(payload))],
         )
@@ -175,9 +143,8 @@ class TestASkippedScannerAppearsOnceWithItsReason:
         """The pre-existing guard: a scanner with a manifest line is already an `ok` row."""
         payload = tmp_path / "pip.json"
         payload.write_text("[]")
-        _, report = run(
-            block, tmp_path, ["pip-audit|python env"], [("pip-audit", "python env", str(payload))]
-        )
+        _, report = run(block, tmp_path, ["pip-audit|python env"],
+                        [("pip-audit", "python env", str(payload))])
         rows = [r for r in report["sources"] if r["tool"] == "pip-audit"]
         assert len(rows) == 1
         assert rows[0]["status"] == "ok"
@@ -190,13 +157,9 @@ class TestTheHandRolledLedgerFormatSurvivesItsOwnInputs:
         """L4. maxsplit=3 keeps the whole tail as the reason. The bash half strips `|` from
         reasons, but the parser must not DEPEND on that — it is one edit away from not being true,
         and a shifted field would silently mis-attribute a skip to another scanner."""
-        _, report = run(
-            block,
-            tmp_path,
-            [
-                "osv|recipe lockfiles|unrun|osv said: a|b|c",
-            ],
-        )
+        _, report = run(block, tmp_path, [
+            "osv|recipe lockfiles|unrun|osv said: a|b|c",
+        ])
         row = next(r for r in report["sources"] if r["tool"] == "osv")
         assert row["source"] == "recipe lockfiles"
         assert row["reason"] == "osv said: a|b|c"
@@ -254,7 +217,8 @@ class TestTheHandRolledLedgerFormatSurvivesItsOwnInputs:
     ):
         """The collapse must hold for ALL field values, not just the ones I thought to type."""
         tmp = tmp_path_factory.mktemp("prop")
-        _, report = run(block, tmp, ["%s|%s" % (tool, source), "%s|%s|unrun|why" % (tool, source)])
+        _, report = run(block, tmp, ["%s|%s" % (tool, source),
+                                     "%s|%s|unrun|why" % (tool, source)])
         assert report["coverage"]["no_output"] == []
         assert len(report["sources"]) == 1
         assert report["sources"][0]["status"] == "unrun"
@@ -333,9 +297,8 @@ class TestTheWriterNeverEmitsASeparator:
         so the parser is handed a path that points nowhere and the scanner silently contributes
         nothing while having run perfectly."""
         report = self.run_scan(tmp_path, name, with_socket=True)
-        recipe_rows = {
-            r["tool"]: r for r in report["sources"] if r["source"].startswith("recipe: ")
-        }
+        recipe_rows = {r["tool"]: r for r in report["sources"]
+                       if r["source"].startswith("recipe: ")}
         assert set(recipe_rows) == {"snyk", "socket"}, report["sources"]
         assert recipe_rows["socket"]["status"] == "ok", recipe_rows["socket"]
         assert "|" not in recipe_rows["socket"]["source"]
@@ -387,18 +350,8 @@ class TestEveryPathOutOfAnAttemptRecordsAResultOrAReason:
 
     def run_with_socket_stub(self, tmp_path, body):
         home = tmp_path / "home"
-        nm = (
-            home
-            / ".local"
-            / "share"
-            / "mise"
-            / "installs"
-            / "node"
-            / "22"
-            / "lib"
-            / "node_modules"
-            / "npm"
-        )
+        nm = home / ".local" / "share" / "mise" / "installs" / "node" / "22" / "lib" \
+            / "node_modules" / "npm"
         nm.mkdir(parents=True)
         (nm / "package.json").write_text('{"name": "npm", "version": "11.18.0"}')
         bin_dir = tmp_path / "bin"
@@ -421,8 +374,7 @@ class TestEveryPathOutOfAnAttemptRecordsAResultOrAReason:
     def test_no_org_for_the_token_is_a_reasoned_skip_not_a_broken_scanner(self, tmp_path):
         """`socket organization list` returns no organizations — a token with no org attached."""
         stdout, report = self.run_with_socket_stub(
-            tmp_path, 'echo \'{"ok":true,"data":{"organizations":[]}}\'\n'
-        )
+            tmp_path, 'echo \'{"ok":true,"data":{"organizations":[]}}\'\n')
         row = next(r for r in report["sources"] if r["tool"] == "socket")
         assert row["status"] == "unrun", row
         assert "organization" in row["reason"], row
@@ -432,17 +384,14 @@ class TestEveryPathOutOfAnAttemptRecordsAResultOrAReason:
 
     def test_a_failed_scan_create_is_a_reasoned_skip_not_a_broken_scanner(self, tmp_path):
         """The org lookup succeeds, then `scan create` returns no id — a quota or API failure."""
-        stdout, report = self.run_with_socket_stub(
-            tmp_path,
-            (
-                'case "$1 $2" in\n'
-                '  "organization list") echo \'{"ok":true,"data":{"organizations":'
-                '[{"slug":"acme"}]}}\' ;;\n'
-                '  "scan create")      echo \'{"ok":false,"message":"quota exceeded"}\' ;;\n'
-                "  *) exit 1 ;;\n"
-                "esac\n"
-            ),
-        )
+        stdout, report = self.run_with_socket_stub(tmp_path, (
+            'case "$1 $2" in\n'
+            '  "organization list") echo \'{"ok":true,"data":{"organizations":'
+            '[{"slug":"acme"}]}}\' ;;\n'
+            '  "scan create")      echo \'{"ok":false,"message":"quota exceeded"}\' ;;\n'
+            "  *) exit 1 ;;\n"
+            "esac\n"
+        ))
         row = next(r for r in report["sources"] if r["tool"] == "socket")
         assert row["status"] == "unrun", row
         assert "scan id" in row["reason"], row
@@ -452,12 +401,10 @@ class TestEveryPathOutOfAnAttemptRecordsAResultOrAReason:
     def test_no_scanner_is_ever_left_as_an_attempt_with_neither_result_nor_reason(self, tmp_path):
         """The property itself, stated once: whatever socket does, the report never describes it
         as having run and produced nothing when it in fact bailed with a reason."""
-        bodies = [
-            'echo \'{"ok":true,"data":{"organizations":[]}}\'\n',
-            "echo '{\"ok\":false}'\n",
-            "exit 1\n",
-            'echo "not json at all"\n',
-        ]
+        bodies = ['echo \'{"ok":true,"data":{"organizations":[]}}\'\n',
+                  'echo \'{"ok":false}\'\n',
+                  "exit 1\n",
+                  'echo "not json at all"\n']
         for i, body in enumerate(bodies):
             case = tmp_path / ("case%d" % i)
             case.mkdir()
@@ -480,18 +427,8 @@ class TestAFailedManifestSynthesisIsAlsoAReasonedSkip:
 
     def run_with_failing_mktemp(self, tmp_path, tool):
         home = tmp_path / "home"
-        nm = (
-            home
-            / ".local"
-            / "share"
-            / "mise"
-            / "installs"
-            / "node"
-            / "22"
-            / "lib"
-            / "node_modules"
-            / "npm"
-        )
+        nm = home / ".local" / "share" / "mise" / "installs" / "node" / "22" / "lib" \
+            / "node_modules" / "npm"
         nm.mkdir(parents=True)
         (nm / "package.json").write_text('{"name": "npm", "version": "11.18.0"}')
         bin_dir = tmp_path / "bin"
@@ -501,21 +438,19 @@ class TestAFailedManifestSynthesisIsAlsoAReasonedSkip:
         mktemp.write_text(
             "#!/usr/bin/env bash\n"
             'n=$(cat "%s" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "%s"\n'
-            "# Call 1 is the scan script's own WORK dir and must succeed, or nothing runs at all.\n"
+            '# Call 1 is the scan script\'s own WORK dir and must succeed, or nothing runs at all.\n'
             'if [ "$n" -gt 1 ] && [ "$1" = "-d" ]; then exit 1; fi\n'
             'exec /usr/bin/mktemp "$@"\n' % (counter, counter)
         )
         mktemp.chmod(0o755)
         # A scanner binary that would succeed if it were ever reached.
         stub = bin_dir / tool
-        stub.write_text('#!/usr/bin/env bash\necho \'{"ok":true,"data":[]}\'\n')
+        stub.write_text("#!/usr/bin/env bash\necho '{\"ok\":true,\"data\":[]}'\n")
         stub.chmod(0o755)
-        token = (
-            "export SNYK_TOKEN=stub\nunset SOCKET_CLI_API_TOKEN SOCKET_SECURITY_API_KEY\n"
-            if tool == "snyk"
-            else "export SOCKET_CLI_API_TOKEN=stub\nexport SOCKET_CLI_ORG_SLUG=acme\n"
-            "unset SNYK_TOKEN\n"
-        )
+        token = ("export SNYK_TOKEN=stub\nunset SOCKET_CLI_API_TOKEN SOCKET_SECURITY_API_KEY\n"
+                 if tool == "snyk" else
+                 "export SOCKET_CLI_API_TOKEN=stub\nexport SOCKET_CLI_ORG_SLUG=acme\n"
+                 "unset SNYK_TOKEN\n")
         runner = tmp_path / "run.sh"
         runner.write_text(
             "#!/usr/bin/env bash\n"
@@ -556,18 +491,8 @@ class TestATimedOutScanLeavesNothingBehind:
 
     def test_a_snyk_timeout_orphans_no_temp_directory(self, tmp_path):
         home = tmp_path / "home"
-        nm = (
-            home
-            / ".local"
-            / "share"
-            / "mise"
-            / "installs"
-            / "node"
-            / "22"
-            / "lib"
-            / "node_modules"
-            / "npm"
-        )
+        nm = home / ".local" / "share" / "mise" / "installs" / "node" / "22" / "lib" \
+            / "node_modules" / "npm"
         nm.mkdir(parents=True)
         (nm / "package.json").write_text('{"name": "npm", "version": "11.18.0"}')
         bin_dir = tmp_path / "bin"
@@ -610,18 +535,11 @@ class TestTheScanStaysAdvisory:
         gating scan would make the recipe system unusable. Advisory is a contract, not a
         default."""
         payload = tmp_path / "snyk.json"
-        payload.write_text(
-            json.dumps(
-                {
-                    "vulnerabilities": [
-                        {"id": "SNYK-JS-X-1", "packageName": "x", "severity": "critical"}
-                    ]
-                }
-            )
-        )
-        stdout, report = run(
-            block, tmp_path, ["snyk|node globals"], [("snyk", "node globals", str(payload))]
-        )
+        payload.write_text(json.dumps({"vulnerabilities": [
+            {"id": "SNYK-JS-X-1", "packageName": "x", "severity": "critical"}
+        ]}))
+        stdout, report = run(block, tmp_path, ["snyk|node globals"],
+                             [("snyk", "node globals", str(payload))])
         assert report["gating"] == 0
         assert report["advisory"] is True
         assert "0 gating" in stdout

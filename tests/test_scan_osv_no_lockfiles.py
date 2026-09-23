@@ -50,9 +50,8 @@ def stub(bin_dir, name, exit_code, stdout="", stderr=""):
     Stubs rather than the real binaries: the exit codes ARE the thing under test, and a real
     scanner cannot be made to produce a chosen one on demand."""
     path = bin_dir / name
-    path.write_text(
-        "#!/usr/bin/env bash\nprintf '%s'\nprintf '%s' >&2\nexit %d\n" % (stdout, stderr, exit_code)
-    )
+    path.write_text("#!/usr/bin/env bash\nprintf '%s'\nprintf '%s' >&2\nexit %d\n"
+                    % (stdout, stderr, exit_code))
     path.chmod(0o755)
 
 
@@ -118,17 +117,8 @@ class TestNoLockfilesIsNotABrokenScanner:
         `timeout` exits 124 having killed the child, so partial output on disk is the normal shape
         of this case, not a contrived one."""
         home, bin_dir = scan_env
-        partial = json.dumps(
-            {
-                "results": [
-                    {
-                        "packages": [
-                            {"package": {"name": "tar-fs"}, "groups": [{"max_severity": "9.8"}]}
-                        ]
-                    }
-                ]
-            }
-        )
+        partial = json.dumps({"results": [{"packages": [
+            {"package": {"name": "tar-fs"}, "groups": [{"max_severity": "9.8"}]}]}]})
         stub(bin_dir, "osv-scanner", 124, stdout=partial)
         _, report = run_scan(home, bin_dir)
         osv_rows = [r for r in report["sources"] if r["tool"] == "osv"]
@@ -141,20 +131,10 @@ class TestNoLockfilesIsNotABrokenScanner:
     def test_real_findings_are_still_parsed(self, scan_env):
         """Guard against fixing the warning by disabling the scanner."""
         home, bin_dir = scan_env
-        payload = json.dumps(
-            {
-                "results": [
-                    {
-                        "packages": [
-                            {
-                                "package": {"name": "tar-fs"},
-                                "groups": [{"max_severity": "8.1"}],
-                            }
-                        ]
-                    }
-                ]
-            }
-        )
+        payload = json.dumps({"results": [{"packages": [{
+            "package": {"name": "tar-fs"},
+            "groups": [{"max_severity": "8.1"}],
+        }]}]})
         stub(bin_dir, "osv-scanner", 0, stdout=payload)
         _, report = run_scan(home, bin_dir)
         row = next(r for r in report["sources"] if r["tool"] == "osv")

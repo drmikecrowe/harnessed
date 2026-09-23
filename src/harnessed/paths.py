@@ -17,7 +17,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-
 class HomeNotFoundError(RuntimeError):
     """harnessed's catalog could not be located — see `harnessed_home`."""
 
@@ -194,9 +193,7 @@ def _probe_docker_rootless() -> bool | None:
     try:
         proc = subprocess.run(
             ["docker", "info", "--format", "{{range .SecurityOptions}}{{.}} {{end}}"],
-            capture_output=True,
-            text=True,
-            timeout=_DOCKER_INFO_TIMEOUT,
+            capture_output=True, text=True, timeout=_DOCKER_INFO_TIMEOUT,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -432,9 +429,7 @@ def catalog_relpath(name: str) -> Path:
     """
     parts = name.split("/")
     if len(parts) > 2:
-        raise ValueError(
-            f"invalid catalog ref {name!r}: a family is one level deep (<family>/<variety>)"
-        )
+        raise ValueError(f"invalid catalog ref {name!r}: a family is one level deep (<family>/<variety>)")
     if any(not p or p in (".", "..") for p in parts):
         raise ValueError(f"invalid catalog ref {name!r}: empty or traversing path component")
     return Path(*parts)
@@ -638,7 +633,7 @@ def container_hostname(inst: str) -> str:
     if len(inst) <= _HOST_NAME_MAX:
         return inst
     head, _, tail = inst.rpartition("-")
-    return f"{head[: _HOST_NAME_MAX - len(tail) - 1].rstrip('-.')}-{tail}"
+    return f"{head[:_HOST_NAME_MAX - len(tail) - 1].rstrip('-.')}-{tail}"
 
 
 def setup_dismissed_flag(stack: str, harness: str, project_path: str | Path) -> Path:
@@ -648,12 +643,7 @@ def setup_dismissed_flag(stack: str, harness: str, project_path: str | Path) -> 
     launcher._prompt_setup_notices. Conditional notices are NOT gated by this flag; they follow
     their own `setup.condition` every launch.
     """
-    return (
-        xdg_state_home()
-        / "harnessed"
-        / "setup-dismissed"
-        / instance_name(stack, harness, project_path)
-    )
+    return xdg_state_home() / "harnessed" / "setup-dismissed" / instance_name(stack, harness, project_path)
 
 
 def svc_ports_file() -> Path:
@@ -707,14 +697,7 @@ def git_common_dir_checked(project_path: str | Path) -> Path | None:
         return None
     try:
         result = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(project_path),
-                "rev-parse",
-                "--path-format=absolute",
-                "--git-common-dir",
-            ],
+            ["git", "-C", str(project_path), "rev-parse", "--path-format=absolute", "--git-common-dir"],
             capture_output=True,
             text=True,
             check=True,
@@ -767,15 +750,10 @@ def bare_worktree_container(project_path: str | Path) -> Path | None:
     if gcd is None:
         return None
     try:
-        is_bare = (
-            subprocess.run(
-                ["git", "--git-dir", str(gcd), "rev-parse", "--is-bare-repository"],
-                capture_output=True,
-                text=True,
-                check=True,
-            ).stdout.strip()
-            == "true"
-        )
+        is_bare = subprocess.run(
+            ["git", "--git-dir", str(gcd), "rev-parse", "--is-bare-repository"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip() == "true"
     except (subprocess.CalledProcessError, FileNotFoundError, OSError):
         return None
     return gcd.parent if is_bare else None
@@ -797,27 +775,18 @@ def primary_worktree(project_path: str | Path) -> Path:
     if gcd is None:
         return Path(project_path)
     try:
-        if (
-            subprocess.run(
-                ["git", "--git-dir", str(gcd), "rev-parse", "--is-bare-repository"],
-                capture_output=True,
-                text=True,
-                check=True,
-            ).stdout.strip()
-            != "true"
-        ):
+        if subprocess.run(
+            ["git", "--git-dir", str(gcd), "rev-parse", "--is-bare-repository"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip() != "true":
             return Path(project_path)
         head = subprocess.run(
             ["git", "--git-dir", str(gcd), "symbolic-ref", "--short", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True,
+            capture_output=True, text=True, check=True,
         ).stdout.strip()
         porcelain = subprocess.run(
             ["git", "--git-dir", str(gcd), "worktree", "list", "--porcelain"],
-            capture_output=True,
-            text=True,
-            check=True,
+            capture_output=True, text=True, check=True,
         ).stdout
     except (subprocess.CalledProcessError, FileNotFoundError, OSError):
         return Path(project_path)

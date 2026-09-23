@@ -48,13 +48,8 @@ def _recipe(tmp_path, body: str = _TWO_REFS, name: str = "r"):
 
 def _env(tmp_path, body: str = _TWO_REFS, *, mode: str = "container"):
     return install_env(
-        load_recipe(_recipe(tmp_path, body)),
-        mode=mode,
-        harness="claude",
-        config_dir="/c",
-        cache_dir="/x",
-        bin_dir="/b",
-        home_shim="/h",
+        load_recipe(_recipe(tmp_path, body)), mode=mode, harness="claude",
+        config_dir="/c", cache_dir="/x", bin_dir="/b", home_shim="/h",
     )
 
 
@@ -108,9 +103,8 @@ class TestTheGeneratedEnvironmentForAMultiRefRecipe:
 
     def test_the_full_ref_namespace_is_exactly_what_the_manifest_declares(self, tmp_path):
         env = _env(tmp_path)
-        emitted = {
-            k: v for k, v in env.items() if k.startswith(("HARNESSED_REF_", "HARNESSED_REPO_"))
-        }
+        emitted = {k: v for k, v in env.items()
+                   if k.startswith(("HARNESSED_REF_", "HARNESSED_REPO_"))}
         assert emitted == {
             "HARNESSED_REF_CAVEMAN": "v1.9.0",
             "HARNESSED_REPO_CAVEMAN": "JuliusBrussee/caveman",
@@ -183,14 +177,11 @@ class TestRule5HoldIsPerRef:
         not reach the backend" is a transient failure to ask, and hiding it under `held` would make
         a rate-limited run look like a clean one.
         """
-
         def _boom(_b, _n):
             raise pinupdate.ResolveError("rate limited")
 
         report = pinupdate.build_report(
-            [_recipe(tmp_path)],
-            resolve=_boom,
-            minimum_release_age_minutes=0,
+            [_recipe(tmp_path)], resolve=_boom, minimum_release_age_minutes=0,
         )
         assert "oakoss/agent-skills" in [f.pin.name for f in report.unresolved]
         # Both directions, because the claim in the docstring is EXCLUSIVE — unresolved *rather
@@ -339,13 +330,10 @@ class TestApplyActuallyWritesARefBump:
         assert pinupdate._rewrite_install_ref(d / "recipe.yaml", "nosuchkey", "v2.0.0") is False
         assert (d / "recipe.yaml").read_text() == before
 
-    @pytest.mark.parametrize(
-        "body",
-        [
-            "name: r\ntools:\n  - npm:x@1.0.0\n",  # no install: at all
-            "name: r\ninstall:\n  script: install.sh\n  cache: v1.0.0\n",  # install, but no refs:
-        ],
-    )
+    @pytest.mark.parametrize("body", [
+        "name: r\ntools:\n  - npm:x@1.0.0\n",                       # no install: at all
+        "name: r\ninstall:\n  script: install.sh\n  cache: v1.0.0\n",  # install, but no refs:
+    ])
     def test_the_rewriter_refuses_a_manifest_that_has_no_such_ref(self, tmp_path, body):
         """Fail closed and report it, rather than writing something invented.
 
@@ -381,9 +369,7 @@ class TestTheDerivedCacheIsNotReportedAsAnUpstreamPin:
             resolve=lambda _b, _n: [pinupdate.Release(version="v2.0.0", published=None)],
             minimum_release_age_minutes=0,
         )
-        everything = (
-            report.stale + report.held + report.current + report.unresolved + report.cooling
-        )
+        everything = report.stale + report.held + report.current + report.unresolved + report.cooling
         assert not [f for f in everything if f.pin.name == "install.cache"]
 
     def test_a_HAND_WRITTEN_cache_is_still_reported(self, tmp_path):
@@ -391,12 +377,9 @@ class TestTheDerivedCacheIsNotReportedAsAnUpstreamPin:
         body = "name: r\ninstall:\n  script: install.sh\n  cache: v1.0.0\n"
         report = pinupdate.build_report(
             [_recipe(tmp_path, body)],
-            resolve=lambda _b, _n: [],
-            minimum_release_age_minutes=0,
+            resolve=lambda _b, _n: [], minimum_release_age_minutes=0,
         )
-        everything = (
-            report.stale + report.held + report.current + report.unresolved + report.cooling
-        )
+        everything = report.stale + report.held + report.current + report.unresolved + report.cooling
         assert [f for f in everything if f.pin.name == "install.cache"]
 
 
@@ -409,4 +392,4 @@ def test_the_install_env_key_set_still_carries_no_reserved_collision(tmp_path, m
     for key in env:
         for prefix in ("HARNESSED_REF_", "HARNESSED_REPO_"):
             if key.startswith(prefix):
-                assert key[len(prefix) :] in declared, f"{key} is not backed by a declared ref"
+                assert key[len(prefix):] in declared, f"{key} is not backed by a declared ref"
