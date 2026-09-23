@@ -80,15 +80,15 @@ class TestOverlayShadowWarning:
         assert schema._err.warnings == 1
 
     def test_shadowed_default_does_not_warn(self, monkeypatch, tmp_path, capsys):
-        _install(monkeypatch, tmp_path, overlay=["default"], repo=["default"],
-                 stack_recipes=["default"])
+        _install(
+            monkeypatch, tmp_path, overlay=["default"], repo=["default"], stack_recipes=["default"]
+        )
         schema.load_stack_with_recipes(None, "s")
         assert capsys.readouterr().err == ""
         assert schema._err.warnings == 0
 
     def test_second_resolve_of_same_name_does_not_rewarn(self, monkeypatch, tmp_path, capsys):
-        _install(monkeypatch, tmp_path, overlay=["stale"], repo=["stale"],
-                 stack_recipes=["stale"])
+        _install(monkeypatch, tmp_path, overlay=["stale"], repo=["stale"], stack_recipes=["stale"])
         schema.load_stack_with_recipes(None, "s")
         schema.load_stack_with_recipes(None, "s")
         assert capsys.readouterr().err.count("warning: recipe 'stale'") == 1

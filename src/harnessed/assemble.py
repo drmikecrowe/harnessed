@@ -201,7 +201,9 @@ def validate_agent_image(harness: str) -> None:
             f"path — refusing to assemble rather than passing an image nothing checked."
         )
     validate_agent_pin(
-        harness, dockerfile.read_text(encoding="utf-8"), unpinnable=agent.unpinnable,
+        harness,
+        dockerfile.read_text(encoding="utf-8"),
+        unpinnable=agent.unpinnable,
     )
 
 
@@ -249,7 +251,12 @@ def _validate_direct_servers(servers: list[McpServer], harness: str) -> None:
 
 
 def assemble(
-    root: Path | None, stack_name: str, build_dir: Path, harness: str, *, strict: bool = False,
+    root: Path | None,
+    stack_name: str,
+    build_dir: Path,
+    harness: str,
+    *,
+    strict: bool = False,
     shared_identity: bool = True,
 ) -> AssembleResult:
     """Assemble a stack into a profile. `root` None → resolve recipes/stacks/services across the
@@ -275,7 +282,9 @@ def assemble(
     # ${HARNESS}), so there is no harness-compat gate.
     for recipe in recipes:
         validate_no_raw_npm(recipe)
-        validate_init_no_exit(recipe)  # Model A: init.run is sourced — a bash `exit` kills the shell
+        validate_init_no_exit(
+            recipe
+        )  # Model A: init.run is sourced — a bash `exit` kills the shell
         validate_setup_script(recipe)  # setup.script is a FILE — neither gate below would read it
         validate_install_script(recipe)  # ditto, and it is where Dockerfile RUN bodies now live
         dockerfile = recipe.root / "Dockerfile"
