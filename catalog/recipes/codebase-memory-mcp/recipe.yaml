@@ -38,7 +38,7 @@ description: 158-language codebase knowledge graph (tree-sitter) via a stdio MCP
 # The lockfile also records `provenance = "github-attestations"`. That is mise's field, not a
 # property claimed here: nothing in this repo asserts it and it is not part of the guarantee.
 tools:
-  - github:DeusData/codebase-memory-mcp@0.10.8
+  - github:DeusData/codebase-memory-mcp@0.11.0
 
 # What the capability test must find after a successful build: the cbm MCP server connected through
 # the hatago hub. (The binary itself comes from `tools:` above; `expect:` is the only way the
