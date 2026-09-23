@@ -3,22 +3,26 @@ type: agent
 harness: claude
 image: harnessed-claude
 dockerfile: catalog/base/Dockerfile.harnessed-claude
-# Pinned tool versions for the image build (passed as --build-arg). Single source of truth — the
-# Dockerfile's matching ARG carries no default. No `spec:`: the version is PINNABLE (the official
-# installer takes one) but not RESOLVABLE, so it is held rather than offered for bump. See the
-# `hold:` reason, and plan REVISION 15 for why that reason is worded the way it is.
+# DECISION REVERSED 2026-09-23 by the owner: harnesses track their vendor's latest release —
+# "we need to trust their release process." Until that date this manifest pinned a version
+# resolved ONCE from the `stable` channel (2026-08-12: 2.1.223) and HELD it as unqueryable,
+# because the installer's only upstream, downloads.claude.ai, exposes moving channel pointers
+# rather than a registry any resolver backend can ask for "latest + publish date". That made
+# claude the one harness `harnessed update` could never move — the opposite of what a harness
+# pin is for under the new rule.
 #
-# The value below is the vendor's `stable` channel RESOLVED ONCE, on 2026-08-12. `stable` itself is
-# never the value: it is a pointer and it moves — it advanced twice while this pin was being written.
-# The resolved version is written once, in `value:` below, so a bump has exactly one place to touch.
-build_args:
-  CLAUDE_VERSION:
-    value: "2.1.223"
-    hold: >-
-      unqueryable: the official installer takes a version, but the only upstream it names is
-      downloads.claude.ai, a vendor download host exposing moving channel pointers rather than a
-      repo or registry that any resolver backend (npm/pipx/github/cargo/go/gem/asdf/ubi/mise) can
-      be asked for a latest version
+# So claude is CONCEDED, the antigravity shape (D7): the Dockerfile installs the installer's
+# current stable with no version argument, the harness moves when the image is rebuilt, and
+# `harnessed update` reports it under its own status rather than as a resolver failure.
+unpinnable:
+  CLAUDE_VERSION: >-
+    unqueryable upstream plus owner decision 2026-09-23: the installer's only version source is
+    downloads.claude.ai, a vendor download host exposing moving channel pointers rather than a
+    repo or registry any resolver backend (npm/pipx/github/cargo/go/gem/asdf/ubi/mise) can ask
+    for a latest version, so no resolvable pin exists to hold; harnesses track their vendor's
+    latest by policy, so the build installs the current stable channel and moves on a rebuild
 description: >
   Claude Code harness. FROM harnessed-base + official Claude Code CLI installer.
-  Builds without re-downloading runtimes (all in harnessed-base).
+  Builds without re-downloading runtimes (all in harnessed-base). UNPINNABLE — installs the
+  vendor's current stable and tracks upstream, so it moves when you rebuild the image, not on
+  a bump.

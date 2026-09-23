@@ -55,12 +55,15 @@ def test_build_images_cmd_registers_what_it_built(podman, monkeypatch):
 
 
 def test_build_images_cmd_passes_the_agent_pins_the_dockerfile_demands(monkeypatch):
-    """The claude image is an agent image on BOTH build paths, so both owe it its `--build-arg`s.
+    """The claude image is an agent image on BOTH build paths, so both owe it exactly the
+    `--build-arg`s its manifest declares — and since the 2026-09-23 concession that is NONE:
+    claude tracks the vendor channel (catalog/agents/claude/agent.yaml), and a leaked
+    `--build-arg CLAUDE_VERSION=…` would name an ARG the Dockerfile no longer declares.
 
-    Regression: this path built Dockerfile.harnessed-claude from a hardcoded pair list with no
-    build args at all. That was invisible until the Dockerfile grew a guard refusing an empty
-    CLAUDE_VERSION — then `harnessed build` (no stack) died on the guard while the per-stack path,
-    which goes through `_build_agent_image`, stayed green.
+    Regression history, kept because the boundary is the point: this path once built
+    Dockerfile.harnessed-claude from a hardcoded pair list with no build args at all, invisible
+    until the then-guard refusing an empty CLAUDE_VERSION made `harnessed build` die while the
+    per-stack path stayed green. The pin is gone; the argv boundary assertion stays.
     """
     from harnessed.schema import load_agent
 
@@ -81,17 +84,14 @@ def test_build_images_cmd_passes_the_agent_pins_the_dockerfile_demands(monkeypat
 
     by_image = {cmd[cmd.index("-t") + 1]: cmd for cmd in builds}
     expected = launcher._agent_build_arg_flags(load_agent("claude"))
-    assert expected, "the claude agent declares no build_args — this test would assert nothing"
     claude = by_image[launcher._CLAUDE_IMAGE]
-    # strict: the flags come in NAME/value pairs. An odd-length list is itself the bug, and a
-    # lenient zip would drop the unpaired tail and quietly assert less than it claims to.
-    for flag, value in zip(expected[::2], expected[1::2], strict=True):
-        assert flag in claude and value in claude, f"missing --build-arg {value}"
-    # The base is not an agent image; agent pins must not leak onto it.
+    assert expected == [], "claude concedes its version — no build-arg may reach this path"
+    assert "--build-arg" not in claude, "a conceded pin leaked onto the shared build path"
+    # The base is not an agent image; agent pins must not leak onto it either.
     assert "--build-arg" not in by_image[launcher._BASE_IMAGE]
 
 
-@pytest.mark.parametrize("harness", ["claude", "codex", "omp"])
+@pytest.mark.parametrize("harness", ["codex", "omp"])
 def test_build_agent_image_passes_the_declared_pins_to_podman(monkeypatch, harness):
     """The OTHER build path, asserted at the same argv boundary. Raised by CodeRabbit on PR #364.
 
@@ -101,8 +101,9 @@ def test_build_agent_image_passes_the_declared_pins_to_podman(monkeypatch, harne
     above documents, where one path had the flags and the other silently did not, and the guard in
     the Dockerfile was what eventually exposed it.
 
-    Parametrised over every agent that declares `build_args`, so a sixth agent with a pin is covered
-    the day it lands rather than the day someone remembers.
+    Parametrised over every agent that declares `build_args` (claude dropped 2026-09-23: it
+    concedes its version now and is covered by the no-build-arg test below), so a sixth agent
+    with a pin is covered the day it lands rather than the day someone remembers.
     """
     from harnessed.schema import load_agent
 

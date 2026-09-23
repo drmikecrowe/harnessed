@@ -144,6 +144,116 @@ class TestCooldownWithholdsFreshReleases:
         assert report.held and not report.stale and not report.cooling
 
 
+class TestHarnessesTrackLatest:
+    """Harness pins (agent manifests) ride their own shorter window — owner decision 2026-09-23:
+    "we need to trust their release process." Two days, held as a PREFERENCE, not a gate: when
+    every newer release is younger than that, the newest is offered anyway and flagged `fresh`.
+    Recipe pins keep the full 7-day gate in the same report."""
+
+    AGENT = ("type: agent\nharness: cx\nimage: harnessed-cx\n"
+             "dockerfile: catalog/base/Dockerfile.harnessed-cx\n"
+             'build_args:\n  CX_VERSION: { value: "1.0.0", spec: "npm:cx" }\n')
+
+    def _agent_dir(self, tmp_path, body=AGENT):
+        d = tmp_path / "catalog" / "agents" / "cx"
+        d.mkdir(parents=True)
+        (d / "agent.yaml").write_text(body)
+        return d
+
+    def _both(self, tmp_path, published):
+        """A recipe pin and a harness pin, same upstream age, one report."""
+        recipe = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.0.0\n")
+        agent = self._agent_dir(tmp_path)
+        return update.build_report(
+            [recipe], agent_dirs=[agent],
+            resolve=lambda backend, name: [update.Release(version="2.0.0", published=published)],
+            now=NOW,
+        )
+
+    def test_a_one_day_old_harness_release_is_offered_flagged_fresh(self, tmp_path):
+        report = self._both(tmp_path, _ago(1))
+        assert [(f.latest, f.fresh) for f in report.stale] == [("2.0.0", True)]
+        assert [f.pin.recipe for f in report.cooling] == ["r"], (
+            "the recipe pin waits the full 7-day gate in the same report"
+        )
+
+    def test_a_three_day_old_harness_release_is_offered_as_mature(self, tmp_path):
+        """Three days is outside the 2-day harness window but inside the 7-day recipe window —
+        the split IS the feature."""
+        report = self._both(tmp_path, _ago(3))
+        assert [(f.latest, f.fresh) for f in report.stale] == [("2.0.0", False)]
+        assert [f.pin.recipe for f in report.cooling] == ["r"]
+
+    def test_an_undated_harness_release_is_offered_not_unresolved(self, tmp_path):
+        """The undated branch below it refuses rather than promise an age it cannot check; a
+        harness tracks latest, so it is offered with the age it has — none. The recipe pin keeps
+        that refusal (an undated RECIPE release is still unresolved, pinned by the class above)."""
+        agent = self._agent_dir(tmp_path)
+        report = update.build_report(
+            [], agent_dirs=[agent],
+            resolve=lambda backend, name: [update.Release(version="2.0.0", published=None)],
+            now=NOW,
+        )
+        assert [(f.latest, f.fresh) for f in report.stale] == [("2.0.0", True)]
+        assert not report.unresolved
+
+    def test_the_window_prefers_mature_and_names_what_it_skipped(self, tmp_path):
+        agent = self._agent_dir(tmp_path)
+        report = update.build_report(
+            [], agent_dirs=[agent],
+            resolve=lambda backend, name: [
+                update.Release(version="2.0.0", published=_ago(30)),
+                update.Release(version="2.1.0", published=_ago(0.5)),
+            ],
+            now=NOW,
+        )
+        f = report.stale[0]
+        assert f.latest == "2.0.0" and not f.fresh
+        assert f.skipped_newer == "2.1.0"
+
+    def test_a_held_agent_pin_stays_held_whatever_its_age(self, tmp_path):
+        """The hold outranks the harness exception too — BUN_VERSION in the real omp manifest
+        is the standing example."""
+        body = ("type: agent\nharness: cx\nimage: harnessed-cx\n"
+                "dockerfile: catalog/base/Dockerfile.harnessed-cx\n"
+                "build_args:\n"
+                '  CX_VERSION: { value: "1.0.0", spec: "npm:cx", hold: "resolver cannot date it" }\n')
+        agent = self._agent_dir(tmp_path, body)
+        report = update.build_report(
+            [], agent_dirs=[agent],
+            resolve=lambda backend, name: [update.Release(version="2.0.0", published=_ago(1))],
+            now=NOW,
+        )
+        assert [f.pin.key for f in report.held] == ["CX_VERSION"]
+        assert not report.stale and not report.cooling
+
+    def test_an_explicit_window_overrides_the_harness_default(self, tmp_path):
+        """One knob: an explicit window governs harness pins too. The CLI passes the same
+        number for both windows; this pins that contract at the module boundary."""
+        agent = self._agent_dir(tmp_path)
+        report = update.build_report(
+            [], agent_dirs=[agent],
+            resolve=lambda backend, name: [update.Release(version="2.0.0", published=_ago(1))],
+            now=NOW, minimum_release_age_minutes=30 * 1440,
+            harness_minimum_release_age_minutes=30 * 1440,
+        )
+        assert [(f.latest, f.fresh) for f in report.stale] == [("2.0.0", True)]
+
+    def test_apply_writes_a_fresh_harness_bump(self, tmp_path):
+        """The offer is real: `apply` rewrites the agent manifest to the too-fresh version —
+        `fresh` marks it informed, not withheld (that is `cooling`, which apply still refuses)."""
+        agent = self._agent_dir(tmp_path)
+        report = update.build_report(
+            [], agent_dirs=[agent],
+            resolve=lambda backend, name: [update.Release(version="2.0.0", published=_ago(1))],
+            now=NOW,
+        )
+        written = update.apply(report.stale)
+        assert [f.latest for f in written] == ["2.0.0"]
+        body = (agent / "agent.yaml").read_text()
+        assert '"2.0.0"' in body and "npm:cx" in body
+
+
 class TestPublishDates:
     """Per-backend payload parsing lives in test_update_release_selection.py, which covers the full
     version LIST each one returns. Kept here: the URL guard, because regressing npm to `/latest`

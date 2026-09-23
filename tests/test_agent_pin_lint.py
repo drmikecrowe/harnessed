@@ -518,16 +518,16 @@ class TestAgainstTheRealBodies:
         """codex is pinnable — npm takes a version — so it must be PINNED, not conceded."""
         assert load_agent("codex", root=REPO / "catalog").unpinnable == {}
 
-    def test_claude_passes_now_that_A3_has_pinned_it(self):
-        """A3 flipped this. It was `test_claude_is_currently_absent`, asserting the DEFECT.
-
-        The class docstring above planted that tripwire deliberately: "when codex and claude get
-        pinned, the two xfail-shaped assertions below start failing and must be flipped to
-        `validate_agent_pin(...)` passing." This is that flip, and it is the point of the unit —
-        not a test weakened to get green. codex's assertion is untouched below, because A2 is a
-        separate decision gated on spike S7.
-        """
-        validate_agent_pin("claude", _body("claude"), unpinnable={})
+    def test_claude_passes_only_because_it_declares(self):
+        """Flipped AGAIN on 2026-09-23: the owner decided harnesses track their vendor's latest
+        ("we need to trust their release process") and claude's only upstream is unqueryable, so
+        claude moved from a held pin to a conceded float — the antigravity shape. The lint must
+        still object to the body on its own; the declaration answers it, silence would mean the
+        gate had stopped working."""
+        body = _body("claude")
+        with pytest.raises(PinValidationError, match="no version"):
+            validate_agent_pin("claude", body, unpinnable={})
+        validate_agent_pin("claude", body, unpinnable={"CLAUDE_VERSION": "declared"})
 
     def test_antigravity_passes_only_because_it_declares(self):
         body = _body("antigravity")
@@ -591,13 +591,16 @@ class TestA3TheClaudePinIsWiredEndToEnd:
     def _claude_agent(self):
         return load_agent("claude", root=REPO / "catalog")
 
-    def test_every_declared_build_arg_has_a_matching_ARG_in_the_dockerfile(self):
-        """The pin's value can only reach the install if the two names agree."""
+    def test_the_conceded_key_names_no_ARG_the_dockerfile_declares(self):
+        """Flipped 2026-09-23, was `test_every_declared_build_arg_has_a_matching_ARG_...`: claude
+        concedes CLAUDE_VERSION now, and an `unpinnable:` key names an ARG the Dockerfile does
+        NOT declare — that is what makes it unpinnable (see `_agent_build_arg_flags`). A leftover
+        ARG would be a slot a future edit could wire a floating value straight back into."""
         body = _body("claude")
-        declared = set(self._claude_agent().build_args)
+        conceded = set(self._claude_agent().unpinnable)
         args = set(re.findall(r"^ARG\s+([A-Za-z_]\w*)", body, re.MULTILINE))
-        assert declared, "claude declares no build_args — A3 did not land"
-        assert declared <= args, f"declared but never received: {sorted(declared - args)}"
+        assert conceded, "claude concedes nothing — the 2026-09-23 reversal was undone"
+        assert conceded.isdisjoint(args), f"conceded but still declared as ARG: {sorted(conceded & args)}"
 
     def test_the_dockerfile_keeps_no_second_copy_of_the_pin(self):
         """`ARG CLAUDE_VERSION=<default>` would be a second pin, free to drift from the manifest.
@@ -644,47 +647,30 @@ class TestA3TheClaudePinIsWiredEndToEnd:
         )
         return proc, recorder
 
-    def test_the_declared_version_is_what_the_installer_actually_receives(self, tmp_path):
-        """The property, not the spelling: whatever the manifest declares arrives as argv[1].
-
-        Asserted by RUNNING the Dockerfile's own command rather than by matching a string in it, so
-        a behaviour-preserving rewrite (different quoting, a wrapper) still passes while a rewrite
-        that drops or mangles the version fails. Raised by adversarial review of 03d7a65: the
-        previous version of this test asserted one exact shell phrase and would have broken on a
-        harmless reformat while passing on a dropped `--`.
-        """
-        declared = self._claude_agent().build_args["CLAUDE_VERSION"]
-        proc, recorder = self._run_against_a_fake_installer(tmp_path, declared)
+    def test_the_installer_receives_no_version_at_all(self, tmp_path):
+        """Flipped 2026-09-23 — was `test_the_declared_version_is_what_the_installer_actually_
+        receives`, and before that its own adversarial-review story. The concession wired end to
+        end, asserted the same way (by RUNNING the Dockerfile's own command, not by matching a
+        string): the vendor installer is passed no version argument, even with a CLAUDE_VERSION
+        sitting in the environment, so what gets installed is the channel's current stable and
+        nothing the build injected."""
+        proc, recorder = self._run_against_a_fake_installer(tmp_path, "9.9.9-canary")
         assert proc.returncode == 0, proc.stderr
-        assert recorder.read_text().split() == [declared]
+        assert recorder.read_text().split() == [], "a version slot survived the concession"
 
-    def test_a_value_that_looks_like_an_option_is_still_passed_as_the_version(self, tmp_path):
-        """What `--` is for. Without it, bash would eat a leading-dash value as its own flag.
-
-        Version strings do not start with `-` today, so this guards the separator itself rather
-        than a live defect — and it is the only way to tell a present `--` from an absent one
-        without asserting on the source text.
-        """
-        proc, recorder = self._run_against_a_fake_installer(tmp_path, "--version-like")
-        assert proc.returncode == 0, proc.stderr
-        assert recorder.read_text().split() == ["--version-like"]
-
-    def test_an_empty_version_fails_the_build_instead_of_installing_an_unpinned_cli(self, tmp_path):
-        """The worst failure available here, and it must fail CLOSED. Found by adversarial review.
-
-        WHAT THIS TEST HOLDS: given an empty version, the command exits non-zero and the installer
-        is never reached. That property is the pin, and it does not depend on the vendor script.
-
-        WHAT IT CANNOT HOLD, stated because the vendor script is substituted here and never runs:
-        what the REAL `install.sh` does with an empty argument. Observed on 2026-08-12 it validated
-        and appended the target only when non-empty, so an empty value installed the vendor default
-        and exited 0. If that ever changes, this test stays green and stays correct — the guard is
-        justified by "empty is not a pin", not by the vendor's current behaviour.
-        """
-        proc, recorder = self._run_against_a_fake_installer(tmp_path, "")
-        assert proc.returncode != 0, "an empty version was accepted — the build would install unpinned"
-        assert not recorder.exists(), "the installer ran despite the guard"
-        assert "CLAUDE_VERSION" in proc.stderr
+    def test_no_version_slot_survives_in_the_install_command(self):
+        """Flipped 2026-09-23 — replaces the `--`-separator test and the empty-value fail-closed
+        test: with no version passed there is no separator to keep honest and no empty value to
+        refuse. What must still fail loudly is a HALF-wired comeback — a `-s --` slot, or a
+        `${CLAUDE_VERSION}` reference reading an environment value nobody owns. The old guard's
+        dated observation (2026-08-12: install.sh appended its argument only when non-empty,
+        so an empty value silently installed the vendor default) is exactly why a returning
+        slot must be caught by name rather than trusted to fail."""
+        command = self._claude_install_command()
+        assert "-s --" not in command and "CLAUDE_VERSION" not in command, (
+            "a version slot returned to the install line — wire it through agent.yaml build_args "
+            "or remove it"
+        )
 
     def test_every_agent_is_covered_by_this_file(self):
         """If someone adds a sixth agent, this file must be updated rather than silently not

@@ -549,10 +549,11 @@ def _build_images_cmd(rt: str, force: bool = False) -> None:
     cache_arg = ["--no-cache"] if no_cache else []
     secret_args = _corp_proxy_ca_secret_args()
 
-    # The claude image is an AGENT image, so its pins live in agent.yaml — the Dockerfile's ARG
-    # carries no default and its guard refuses an empty CLAUDE_VERSION. This path builds the same
-    # Dockerfile as `_build_agent_image`, so it owes the same `--build-arg` flags; omitting them
-    # made `harnessed build` (no stack) fail the guard while the per-stack path went green.
+    # The claude image is an AGENT image, so whatever its manifest declares is what this path
+    # owes the build — the same argv boundary as `_build_agent_image` (omitting the flags once
+    # made `harnessed build` fail while the per-stack path went green). Since the 2026-09-23
+    # concession claude declares no build_args and installs the vendor's current stable, so this
+    # is empty today; the line stays because the boundary is the invariant, not the current count.
     claude_args = _agent_build_arg_flags(load_agent("claude"))
     # AC-9: this path builds an AGENT image without going anywhere near `assemble()`, so the gate
     # wired in there does not cover it. Bare `harnessed build` reaches exactly here. A gate with a
@@ -4613,6 +4614,14 @@ def _print_update_report(report) -> None:
                     f"      [dim]({f.skipped_newer} exists but is {age} — "
                     "below the minimum release age)[/dim]"
                 )
+            if f.fresh:
+                # A harness bump from inside its window: named with its age so accepting it is a
+                # decision, not a surprise (the same discipline the cooling bucket already keeps).
+                age = f"{f.age_days:.1f} days old" if f.age_days is not None else "of unknown age"
+                _out.print(
+                    f"      [yellow]{f.latest} is {age} — inside the harness release-age "
+                    "window, offered because a harness tracks its vendor's latest[/yellow]"
+                )
     if report.cooling:
         # Shown, not dropped: the user is entitled to know a newer release exists and is being
         # waited out. Naming the age is what makes "wait" a decision rather than a mystery.
@@ -4657,7 +4666,8 @@ def update_pins(
     minimum_release_age: float = typer.Option(
         None, "--minimum-release-age",
         help="Minutes a release must have existed before it is offered (default 10080 = 7 days, "
-             "pnpm's `minimumReleaseAge` unit). 0 disables the gate.",
+             "pnpm's `minimumReleaseAge` unit). 0 disables the gate. Harness agent pins default "
+             "to their own shorter window (2880 = 2 days); an explicit value here overrides both.",
     ),
     fail_on: str = typer.Option(
         "any", "--fail-on",
@@ -4676,6 +4686,12 @@ def update_pins(
     not offered, because a compromised or broken publish is usually yanked within days. As in pnpm,
     that does not mean "no update" — the newest version that IS old enough is offered instead, and
     the newer one it passed over is named.
+
+    HARNESS pins are the exception (owner decision, 2026-09-23: harnesses track their vendor's
+    latest — "we need to trust their release process"). They ride a 2-day window held as a
+    preference, not a gate: when every newer release is younger than that, the newest is offered
+    anyway and the report names its age. An explicit `--minimum-release-age` overrides both
+    windows, keeping the flag one knob for every pin.
     """
     if fail_on not in ("any", "major"):
         raise typer.BadParameter("--fail-on must be 'any' or 'major'")
@@ -4707,6 +4723,12 @@ def update_pins(
             pinupdate.DEFAULT_MINIMUM_RELEASE_AGE_MINUTES
             if minimum_release_age is None else minimum_release_age
         ),
+        # An explicit --minimum-release-age is ONE knob for every pin, preserving the flag's
+        # pre-split contract; absent it, harness pins ride their own shorter window above.
+        harness_minimum_release_age_minutes=(
+            pinupdate.HARNESS_MINIMUM_RELEASE_AGE_MINUTES
+            if minimum_release_age is None else minimum_release_age
+        ),
     )
     _print_update_report(report)
 
@@ -4726,8 +4748,15 @@ def update_pins(
 
     accepted = []
     for f in report.stale:
+        # A fresh harness bump carries its age INTO the prompt, so --yes has a record and an
+        # interactive accept is an informed one.
+        fresh_note = ""
+        if f.fresh:
+            days = f"{f.age_days:.1f}" if f.age_days is not None else "?"
+            fresh_note = f"  (published {days} days ago — inside the harness window)"
         if yes or typer.confirm(
-            f"Bump {f.pin.recipe} {f.pin.spec}: {f.pin.current} -> {f.latest}?", default=True
+            f"Bump {f.pin.recipe} {f.pin.spec}: {f.pin.current} -> {f.latest}?{fresh_note}",
+            default=True,
         ):
             accepted.append(f)
 
