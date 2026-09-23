@@ -248,6 +248,7 @@ subprocess whose exports die, and a daemon started there is never restarted or r
 per-launch init hook gives the self-gate + env propagation the proxy needs.
 
 What this does NOT claim: lifecycle management. The proxy is an unmanaged daemon — no mid-session
-crash restart, no health repair, dies with the pod. `headroom wrap` stays unnecessary: harnessed
+crash restart, no health repair. Container: dies with the pod. Host: the nohup orphan outlives the
+harness session and is reused by later launches; stopping it is the user's call. `headroom wrap` stays unnecessary: harnessed
 owns the launch, so wrap's "start proxy + repoint base URL + exec agent" is exactly what init.run
 plus the export already do.

@@ -67,7 +67,9 @@ mcp:
 #    background uvx keeps fetching and the NEXT launch finds the proxy up. Compression is an
 #    enhancement, never a launch blocker — a FAILING init aborts the attach, so every path here
 #    exits 0.
-# 3. Port 8787 already bound → reuse it; never double-spawn.
+# 3. Port 8787 already bound → export only when GET /livez names a healthy headroom proxy
+#    (0.27.0 answers {"service":"headroom-proxy","status":"healthy"}); a foreign listener is
+#    NEVER handed the harness's API traffic.
 #
 # Separate uvx env from the MCP server, same 0.27.0 pin: the proxy needs the [proxy] extra
 # (fastapi/uvicorn) — [mcp] cannot start it, verified: "Error: Proxy dependencies not installed.
@@ -77,18 +79,31 @@ mcp:
 init:
   run: |
     if [ -z "${ANTHROPIC_BASE_URL:-}" ]; then
-      if command -v uvx >/dev/null 2>&1; then
-        _hr_up() { (exec 3<>/dev/tcp/127.0.0.1/8787) 2>/dev/null; }
-        if ! _hr_up; then
-          HEADROOM_UPDATE_CHECK=off nohup uvx --from 'headroom-ai[proxy]==0.27.0' headroom proxy --port 8787 >/tmp/headroom-proxy.log 2>&1 &
+      _hr_body() {
+        if command -v curl >/dev/null 2>&1; then
+          curl -sf --max-time 2 http://127.0.0.1:8787/livez 2>/dev/null
+        elif command -v python3 >/dev/null 2>&1; then
+          python3 -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8787/livez', timeout=2).read().decode())" 2>/dev/null
         fi
-        for _hr_i in $(seq 30); do _hr_up && break; sleep 0.5; done
-        if _hr_up; then
+      }
+      # A TCP listener is not proof of anything. Export only at a HEALTHY HEADROOM proxy:
+      # /livez at 0.27.0 answers {"service":"headroom-proxy","status":"healthy",...}. Anything
+      # else holding 8787 must not receive the harness's API traffic.
+      _hr_ok() { local b; b="$(_hr_body)" || return 1; case "$b" in *headroom-proxy*) case "$b" in *healthy*) return 0;; esac;; esac; return 1; }
+      _hr_busy() { (exec 3<>/dev/tcp/127.0.0.1/8787) 2>/dev/null; }
+      if _hr_ok; then
+        export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
+      elif ! command -v uvx >/dev/null 2>&1; then
+        echo "headroom: proxy mode needs uvx on PATH; continuing without it" >&2
+      elif ! _hr_busy; then
+        HEADROOM_UPDATE_CHECK=off nohup uvx --from 'headroom-ai[proxy]==0.27.0' headroom proxy --port 8787 >/tmp/headroom-proxy.log 2>&1 &
+        for _hr_i in $(seq 30); do _hr_ok && break; sleep 0.5; done
+        if _hr_ok; then
           export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
         else
-          echo "headroom: proxy not reachable on 127.0.0.1:8787 (log: /tmp/headroom-proxy.log); continuing without it" >&2
+          echo "headroom: proxy not healthy on 127.0.0.1:8787 (log: /tmp/headroom-proxy.log); continuing without it" >&2
         fi
       else
-        echo "headroom: proxy mode needs uvx on PATH; continuing without it" >&2
+        echo "headroom: 127.0.0.1:8787 is held by a non-headroom listener; leaving ANTHROPIC_BASE_URL alone" >&2
       fi
     fi
