@@ -59,6 +59,7 @@ __all__ = [
     "DEFAULT_MINIMUM_RELEASE_AGE_MINUTES",
     "EXTRA_TOOLS_LABEL",
     "Finding",
+    "HARNESS_MINIMUM_RELEASE_AGE_MINUTES",
     "Pin",
     "Release",
     "Report",
@@ -85,6 +86,15 @@ __all__ = [
 # newest version that IS old enough is offered instead (see `_select`). Refusing outright would
 # leave a stale pin stale for a week even when a mature intermediate release exists.
 DEFAULT_MINIMUM_RELEASE_AGE_MINUTES = 7 * 1440  # 10080
+
+# The harness exception, decided by the owner on 2026-09-23: the agent CLIs (claude, omp, codex,
+# opencode) move on their vendors' schedules and people WORK in them daily, so waiting a week to
+# offer a harness bump trades currency for protection the vendor's own release process already
+# owes us ("we need to trust their release process"). Two days keeps most of the yank window.
+# Unlike recipe pins, the window is a PREFERENCE for harness pins, not a gate: when every newer
+# release is younger than even this, the newest is offered anyway and flagged `fresh` (see
+# `_select`) — a harness tracks latest; `cooling` is for pins whose class still waits.
+HARNESS_MINIMUM_RELEASE_AGE_MINUTES = 2 * 1440  # 2880
 
 
 class ResolveError(RuntimeError):
@@ -209,6 +219,10 @@ class Pin:
     # Agent pins only: the `build_args`/`unpinnable:` key this came from, so the report can say
     # `<agent>/<KEY>` and an UNPINNABLE row reads as a peer of a pinned one (D7 §namespace).
     key: str = ""
+    # True only for pins discovered from an AGENT manifest: harness pins ride
+    # HARNESS_MINIMUM_RELEASE_AGE_MINUTES and never park in `cooling` (owner decision,
+    # 2026-09-23). Recipe and extra-tools pins keep the full 7-day gate.
+    harness: bool = False
 
     @property
     def resolvable(self) -> bool:
@@ -240,6 +254,11 @@ class Finding:
     # 1.6.1 exists is surprising unless the report says why, so this is carried for the renderer.
     skipped_newer: str | None = None
     skipped_newer_age_days: float | None = None
+    # The offered bump is INSIDE the release-age window for its pin class. Reachable today only
+    # for harness pins, where the window is a preference and the newest release is offered when
+    # no mature one exists (owner decision, 2026-09-23). Rendered with its age so acceptance is
+    # informed; `cooling` stays False — this finding was deliberately offered, not withheld.
+    fresh: bool = False
 
     @property
     def stale(self) -> bool:
@@ -366,6 +385,7 @@ def discover_agent_pins(agent_dir: Path) -> list[Pin]:
             recipe=agent.name, file=manifest, spec=spec or f"{key}={value}", name=name,
             current=value, backend=backend, hold=hold, key=key,
             note="" if spec else "agent build_arg declares no 'spec:' — no upstream to query",
+            harness=True,
         ))
 
     for key, reason in agent.unpinnable.items():
@@ -374,6 +394,7 @@ def discover_agent_pins(agent_dir: Path) -> list[Pin]:
         pins.append(Pin(
             recipe=agent.name, file=manifest, spec=key, name=key, current="",
             backend="unpinnable", hold=None, key=key, note=reason,
+            harness=True,
         ))
     return pins
 
@@ -589,6 +610,9 @@ def _select(pin: Pin, releases: list[Release], now: datetime, min_age_minutes: f
       * otherwise the newest candidate OLD ENOUGH wins, and any newer one it passed over is
         recorded so the report can explain the apparently-odd choice
       * if nothing is old enough, the newest candidate is reported as cooling — visible, not offered
+      * a HARNESS pin never waits: if nothing is old enough (or datable), the newest candidate
+        is offered anyway and flagged `fresh` — owner decision 2026-09-23, a harness tracks its
+        vendor's latest
       * an undated candidate is never selectable: we cannot honour the age guarantee for it
     """
     def age_days(r: Release) -> float | None:
@@ -625,6 +649,15 @@ def _select(pin: Pin, releases: list[Release], now: datetime, min_age_minutes: f
         if version_key(newest.version) > version_key(chosen.version):
             f.skipped_newer = _match_v_prefix(pin.current, newest.version)
             f.skipped_newer_age_days = age_days(newest)
+        return "stale", f
+
+    if pin.harness:
+        # Owner decision 2026-09-23: for a harness pin the window above is a PREFERENCE. When
+        # every newer release is younger than it — or undated, which the branch below would
+        # refuse — the newest is offered anyway and flagged fresh, so the report and the prompt
+        # say exactly what was accepted. `cooling` below is for pin classes that still wait.
+        f = finding(newest)
+        f.fresh = True
         return "stale", f
 
     if all(r.published is None for r in candidates):
@@ -691,16 +724,26 @@ def build_report(recipe_dirs, *,
                  extra_tools: Path | None = None,
                  resolve: Callable[[str, str], list[Release]] | None = None,
                  now: datetime | None = None,
-                 minimum_release_age_minutes: float = DEFAULT_MINIMUM_RELEASE_AGE_MINUTES
+                 minimum_release_age_minutes: float = DEFAULT_MINIMUM_RELEASE_AGE_MINUTES,
+                 harness_minimum_release_age_minutes: float | None = None,
                  ) -> Report:
     """Classify every pin across `recipe_dirs`. Reads only — nothing here writes.
 
     `minimum_release_age_minutes` follows pnpm's `minimumReleaseAge`, unit included. Pass 0 to
     disable the gate (and with it the requirement that a release be dated at all).
+
+    Harness pins (anything from an agent manifest) ride `harness_minimum_release_age_minutes`
+    instead — the owner's 2026-09-23 rule that harnesses track their vendor's latest, with the
+    window as a preference rather than a gate (see `_select`). None means
+    HARNESS_MINIMUM_RELEASE_AGE_MINUTES; pass the same value as `minimum_release_age_minutes`
+    to make one knob govern every pin, which is what an explicit `--minimum-release-age` does.
     """
     if resolve is None:
         resolve = resolve_releases
     now = now or datetime.now(timezone.utc)
+    harness_age = (harness_minimum_release_age_minutes
+                   if harness_minimum_release_age_minutes is not None
+                   else HARNESS_MINIMUM_RELEASE_AGE_MINUTES)
 
     # The extra-tools pins ride the same classification path as recipe pins — same cooldown, same
     # hold semantics, same buckets. Anything less and `--check` would report them differently from
@@ -746,7 +789,8 @@ def build_report(recipe_dirs, *,
             (report.held if pin.hold else report.unresolved).append(f)
             continue
 
-        kind, f = _select(pin, releases, now, minimum_release_age_minutes)
+        kind, f = _select(pin, releases, now,
+                          harness_age if pin.harness else minimum_release_age_minutes)
         # The hold outranks the age gate: a held pin is never offered whatever its age, but it
         # is still LISTED with whatever newer version exists.
         if pin.hold and kind != "current":

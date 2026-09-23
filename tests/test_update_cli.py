@@ -245,3 +245,50 @@ class TestPostBumpGuidance:
     def test_a_recipe_in_no_stack_says_so_instead_of_an_empty_list(self, catalog):
         out = _plain(runner.invoke(launcher.app, ["update", "--yes"]).output)
         assert "nothing to rebuild" in out.lower()
+
+
+class TestHarnessWindowSurface:
+    """Owner decision 2026-09-23: harness pins track their vendor's latest on a 2-day window;
+    recipe pins keep the 7-day gate. Same age, different treatment, one command run."""
+
+    @pytest.fixture
+    def with_agent(self, catalog, monkeypatch):
+        from datetime import datetime, timedelta, timezone
+        agent_dir = catalog.parent / "agents" / "cx"
+        agent_dir.mkdir(parents=True)
+        (agent_dir / "agent.yaml").write_text(
+            "type: agent\nharness: cx\nimage: harnessed-cx\n"
+            "dockerfile: catalog/base/Dockerfile.harnessed-cx\n"
+            'build_args:\n  CX_VERSION: { value: "1.0.0", spec: "npm:cx" }\n'
+        )
+        monkeypatch.setattr(update, "resolve_releases", lambda backend, name, **kw: (
+            [update.Release(
+                version={"x": "1.5.0", "y": "9.9.9", "cx": "2.0.0"}[name],
+                published=datetime.now(timezone.utc) - timedelta(days=3),
+            )] if name in ("x", "y", "cx") else []
+        ))
+        return catalog
+
+    def test_a_three_day_old_harness_release_is_bumped(self, with_agent):
+        result = runner.invoke(launcher.app, ["update", "--yes"])
+        assert result.exit_code == 0
+        body = (with_agent.parent / "agents" / "cx" / "agent.yaml").read_text()
+        assert '"2.0.0"' in body and "npm:cx" in body
+
+    def test_the_same_age_recipe_pin_is_still_withheld(self, with_agent):
+        """Three days is inside the recipe 7-day gate; only the harness window shortened."""
+        runner.invoke(launcher.app, ["update", "--yes"])
+        assert "npm:x@1.0.0" in (with_agent / "stale" / "recipe.yaml").read_text()
+
+    def test_a_fresh_harness_bump_is_named_with_its_age(self, with_agent, monkeypatch):
+        from datetime import datetime, timedelta, timezone
+        monkeypatch.setattr(update, "resolve_releases", lambda backend, name, **kw: (
+            [update.Release(
+                version={"x": "1.5.0", "y": "9.9.9", "cx": "2.0.0"}[name],
+                published=datetime.now(timezone.utc) - timedelta(days=1),
+            )] if name in ("x", "y", "cx") else []
+        ))
+        out = _plain(runner.invoke(launcher.app, ["update", "--yes"]).output)
+        assert "harness" in out.lower() and "days" in out
+        body = (with_agent.parent / "agents" / "cx" / "agent.yaml").read_text()
+        assert '"2.0.0"' in body, "a 1-day-old harness release is offered, not parked in cooling"
