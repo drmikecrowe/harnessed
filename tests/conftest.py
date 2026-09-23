@@ -102,7 +102,9 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     skipped = _live_skips(terminalreporter)
     if not skipped:
         if _PODMAN_REQUESTED:
-            terminalreporter.write_line("LIVE VERIFICATION: gate open, no live tests skipped.", green=True)
+            terminalreporter.write_line(
+                "LIVE VERIFICATION: gate open, no live tests skipped.", green=True
+            )
         return
 
     terminalreporter.write_sep("=", "live verification", red=_PODMAN_REQUESTED)
@@ -136,6 +138,7 @@ def pytest_sessionfinish(session, exitstatus):
     reporter = session.config.pluginmanager.get_plugin("terminalreporter")
     if reporter is not None and _podman_skips(reporter):
         session.exitstatus = 1
+
 
 # The REAL user config dir, captured before any fixture monkeypatches XDG_CONFIG_HOME away. Used to
 # re-expose podman's own config inside the isolated root — see `_isolated_user_catalog`.
@@ -226,6 +229,7 @@ def catalog_local_restored(checkout: Path) -> Generator[None, None, None]:
     """
     links = Path(checkout) / "catalog-local"
     existed = links.is_dir()
+
     # The RAW target, not the resolved one: what must go back is the link as it was written, and a
     # stale link's destination is routinely already deleted.
     def _snapshot(path: Path) -> str | None:
@@ -496,5 +500,3 @@ def _git_identity(monkeypatch):
     monkeypatch.setenv("GIT_AUTHOR_EMAIL", "tests@harnessed.local")
     monkeypatch.setenv("GIT_COMMITTER_NAME", "harnessed-tests")
     monkeypatch.setenv("GIT_COMMITTER_EMAIL", "tests@harnessed.local")
-
-

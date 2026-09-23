@@ -53,7 +53,9 @@ _PASSIVE_RE = re.compile(
     r"\b(?:is|are|was|were|be|been|being)\s+(?:\w+ly\s+)?\w+(?:ed|en)\b", re.IGNORECASE
 )
 _SOFT_MODAL_RE = re.compile(r"\b(?:can|could|may|might|should|would)\b", re.IGNORECASE)
-_HARD_DIRECTIVE_RE = re.compile(r"\b(?:must|never|always|do not|don't|require[sd]?)\b", re.IGNORECASE)
+_HARD_DIRECTIVE_RE = re.compile(
+    r"\b(?:must|never|always|do not|don't|require[sd]?)\b", re.IGNORECASE
+)
 
 # Thresholds. ASD-STE100 caps a procedural sentence at 20 words and a descriptive one at 25; the
 # hard limit here is the descriptive one, since injected content mixes both. MAX_AVG is set from the
@@ -108,7 +110,7 @@ def split_frontmatter(text: str) -> tuple[str, str]:
     match = _FRONTMATTER_RE.match(text)
     if not match:
         return "", text
-    return match.group(1), text[match.end():]
+    return match.group(1), text[match.end() :]
 
 
 def description_of(frontmatter: str) -> str:
@@ -123,8 +125,8 @@ def description_of(frontmatter: str) -> str:
     for i, line in enumerate(lines):
         if not line.startswith("description:"):
             continue
-        collected.append(line[len("description:"):].strip())
-        for cont in lines[i + 1:]:
+        collected.append(line[len("description:") :].strip())
+        for cont in lines[i + 1 :]:
             # A continuation is indented and is not the next top-level key.
             if not cont.strip() or re.match(r"^\S+:", cont):
                 break
@@ -206,12 +208,16 @@ def lint_text(path: Path, text: str) -> FileReport:
     if description:
         count = len(words_of(description))
         if count > MAX_DESCRIPTION_WORDS:
-            report.findings.append(Finding(
-                path, ERROR, "description-length",
-                f"description is {count} words (max {MAX_DESCRIPTION_WORDS}). "
-                "It is resident every session — name the triggers, not the contents.",
-                line=1,
-            ))
+            report.findings.append(
+                Finding(
+                    path,
+                    ERROR,
+                    "description-length",
+                    f"description is {count} words (max {MAX_DESCRIPTION_WORDS}). "
+                    "It is resident every session — name the triggers, not the contents.",
+                    line=1,
+                )
+            )
 
     prose = prose_text(body)
     sentences = sentences_of(prose)
@@ -226,46 +232,69 @@ def lint_text(path: Path, text: str) -> FileReport:
     for sentence in sentences:
         count = len(words_of(sentence))
         if count > MAX_SENTENCE_WORDS:
-            report.findings.append(Finding(
-                path, ERROR, "sentence-length",
-                f"{count}-word sentence (max {MAX_SENTENCE_WORDS}): "
-                f"{_excerpt(sentence)}",
-                line=_line_of(text, sentence),
-            ))
+            report.findings.append(
+                Finding(
+                    path,
+                    ERROR,
+                    "sentence-length",
+                    f"{count}-word sentence (max {MAX_SENTENCE_WORDS}): {_excerpt(sentence)}",
+                    line=_line_of(text, sentence),
+                )
+            )
 
     for match in _HEDGE_RE.finditer(prose):
-        report.findings.append(Finding(
-            path, ERROR, "hedge",
-            f"hedge {match.group(0)!r} — state the requirement as must/never/do not.",
-            line=_line_of(text, match.group(0)),
-        ))
+        report.findings.append(
+            Finding(
+                path,
+                ERROR,
+                "hedge",
+                f"hedge {match.group(0)!r} — state the requirement as must/never/do not.",
+                line=_line_of(text, match.group(0)),
+            )
+        )
 
     for match in _FIRST_PERSON_RE.finditer(prose):
-        report.findings.append(Finding(
-            path, ERROR, "first-person",
-            f"first person {match.group(0)!r} — address the agent, or drop the subject.",
-            line=_line_of(text, match.group(0)),
-        ))
+        report.findings.append(
+            Finding(
+                path,
+                ERROR,
+                "first-person",
+                f"first person {match.group(0)!r} — address the agent, or drop the subject.",
+                line=_line_of(text, match.group(0)),
+            )
+        )
 
     if report.sentences and report.avg_sentence_words > MAX_AVG_SENTENCE_WORDS:
-        report.findings.append(Finding(
-            path, WARNING, "avg-sentence-length",
-            f"average sentence is {report.avg_sentence_words:.1f} words "
-            f"(target {MAX_AVG_SENTENCE_WORDS:.0f}). Split the long ones.",
-        ))
+        report.findings.append(
+            Finding(
+                path,
+                WARNING,
+                "avg-sentence-length",
+                f"average sentence is {report.avg_sentence_words:.1f} words "
+                f"(target {MAX_AVG_SENTENCE_WORDS:.0f}). Split the long ones.",
+            )
+        )
 
     if report.passive:
-        report.findings.append(Finding(
-            path, WARNING, "passive-voice",
-            f"{report.passive} passive construction(s) — name the actor.",
-        ))
+        report.findings.append(
+            Finding(
+                path,
+                WARNING,
+                "passive-voice",
+                f"{report.passive} passive construction(s) — name the actor.",
+            )
+        )
 
     if report.soft_modals > report.hard_directives:
-        report.findings.append(Finding(
-            path, WARNING, "soft-modals",
-            f"{report.soft_modals} soft modal(s) vs {report.hard_directives} hard directive(s) — "
-            "an instruction phrased as a possibility reads as optional.",
-        ))
+        report.findings.append(
+            Finding(
+                path,
+                WARNING,
+                "soft-modals",
+                f"{report.soft_modals} soft modal(s) vs {report.hard_directives} hard directive(s) — "
+                "an instruction phrased as a possibility reads as optional.",
+            )
+        )
 
     return report
 

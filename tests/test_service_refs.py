@@ -76,8 +76,7 @@ def test_stack_level_services_are_included(monkeypatch):
     # A stack can attach a sidecar with NO MCP surface via its own `services:` list (e.g. a shared
     # `dolt sql-server`, MySQL-wire not MCP). Those must be started even when no recipe references
     # them through an MCP `service:` ref.
-    stack = Stack(name="beads-team", recipes=["beads-team"],
-                  services=["beads-server"])
+    stack = Stack(name="beads-team", recipes=["beads-team"], services=["beads-server"])
     _patch(monkeypatch, stack, [_recipe("beads-team")])
     assert launcher._service_refs("any-stack") == ["beads-server"]
 

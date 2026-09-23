@@ -186,7 +186,9 @@ def _git(project_path: Path, *args: str) -> Optional[subprocess.CompletedProcess
     try:
         return subprocess.run(
             ["git", "-C", str(project_path), *args],
-            capture_output=True, text=True, timeout=_GIT_TIMEOUT,
+            capture_output=True,
+            text=True,
+            timeout=_GIT_TIMEOUT,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -228,12 +230,24 @@ def _sanitize(text: str) -> str:
 
 
 def _body(
-    verb: str, stack: str, harness: str, project_path: Path,
-    *, group: Optional[str], title: Optional[str], no_strict_mcp: bool, argv: Optional[list[str]],
+    verb: str,
+    stack: str,
+    harness: str,
+    project_path: Path,
+    *,
+    group: Optional[str],
+    title: Optional[str],
+    no_strict_mcp: bool,
+    argv: Optional[list[str]],
 ) -> str:
     command = aoe.command_for(
-        verb, stack, harness, project_path,
-        group=group, title=title, no_strict_mcp=no_strict_mcp,
+        verb,
+        stack,
+        harness,
+        project_path,
+        group=group,
+        title=title,
+        no_strict_mcp=no_strict_mcp,
     )
     args = shlex.split(command)
     # The separator `command_for` appends for the aoe row. It moves to the ROW, not the file — see
@@ -246,15 +260,21 @@ def _body(
     if argv:
         typed = _sanitize(shlex.join(argv))
         if len(typed) > _TYPED_LIMIT:
-            typed = typed[:_TYPED_LIMIT - len(_TRUNCATED)] + _TRUNCATED
+            typed = typed[: _TYPED_LIMIT - len(_TRUNCATED)] + _TRUNCATED
         lines.append(_TYPED + typed)
-    lines.append(f"exec {shlex.join(args)} \"$@\"")
+    lines.append(f'exec {shlex.join(args)} "$@"')
     return "\n".join(lines) + "\n"
 
 
 def write(
-    verb: str, stack: str, harness: str, project_path: Path,
-    *, group: Optional[str] = None, title: Optional[str] = None, no_strict_mcp: bool = False,
+    verb: str,
+    stack: str,
+    harness: str,
+    project_path: Path,
+    *,
+    group: Optional[str] = None,
+    title: Optional[str] = None,
+    no_strict_mcp: bool = False,
     argv: Optional[list[str]] = None,
 ) -> Optional[Path]:
     """Write `<project>/<harness>-<stack>-<verb>` and ensure its git exclude entry. Never raises.
@@ -309,8 +329,14 @@ def write(
 
         target.write_text(
             _body(
-                verb, stack, harness, project_path,
-                group=group, title=title, no_strict_mcp=no_strict_mcp, argv=argv,
+                verb,
+                stack,
+                harness,
+                project_path,
+                group=group,
+                title=title,
+                no_strict_mcp=no_strict_mcp,
+                argv=argv,
             ),
             encoding="utf-8",
         )

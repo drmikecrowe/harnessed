@@ -5,6 +5,7 @@ against the per-stack home — through mise shims, with the harness config dir p
 The env they run with is derived by setupenv.py, shared with the container path so the two modes
 cannot drift.
 """
+
 from __future__ import annotations
 
 import os
@@ -37,6 +38,7 @@ from .setupenv import (
     harnessed_env,
 )
 
+
 def _host_tool_shims_dir(stack: str) -> Path:
     """mise's shims dir under the STACK's own data dir (bd harnessed-1t4.3).
 
@@ -44,6 +46,7 @@ def _host_tool_shims_dir(stack: str) -> Path:
     mise writes when `_host_mise_env` redirects it, which is what makes that redirect checkable.
     """
     return _stack_tools_dirs(stack)[0] / "mise" / "shims"
+
 
 # The pnpm a HOST launch installs into the stack's own mise tree when any `tools:` spec is `npm:`
 # (see `_host_install_tools`). Same MAJOR pin as the base image's `pnpm@11` (Dockerfile.harnessed-
@@ -81,8 +84,12 @@ def _host_tool_bin_dirs(stack: str) -> list[Path]:
     env = {**os.environ}
     _apply_host_mise_env(env, stack)
     proc = subprocess.run(
-        ["mise", "bin-paths"], env=env, cwd=str(mise_root),
-        capture_output=True, text=True, check=False,
+        ["mise", "bin-paths"],
+        env=env,
+        cwd=str(mise_root),
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if proc.returncode != 0:
         _err.print(
@@ -129,9 +136,7 @@ def _is_a_harnessed_tools_path(value: str) -> bool:
     if not value:
         return False
     try:
-        Path(value).resolve().relative_to(
-            (paths.xdg_data_home() / "harnessed" / "tools").resolve()
-        )
+        Path(value).resolve().relative_to((paths.xdg_data_home() / "harnessed" / "tools").resolve())
     except (ValueError, TypeError, OSError, RuntimeError):
         return False
     return True
@@ -164,7 +169,8 @@ def _apply_host_tool_path(env: MutableMapping[str, str], stack: str) -> None:
     # is what keeps the function idempotent regardless — a prefix entry that resolves outside the
     # root would otherwise be re-added on the second call and duplicate.
     kept = [
-        entry for entry in env.get("PATH", "").split(os.pathsep)
+        entry
+        for entry in env.get("PATH", "").split(os.pathsep)
         if entry and entry not in prefix and not _is_a_harnessed_tools_path(entry)
     ]
     env["PATH"] = os.pathsep.join([*prefix, *kept])
@@ -174,7 +180,10 @@ def _apply_host_tool_path(env: MutableMapping[str, str], stack: str) -> None:
 # redirect itself cannot list different sets — a variable restored on one side only is how the
 # session ends up half-redirected, which is worse than either state.
 _MISE_SESSION_VARS = (
-    "MISE_DATA_DIR", "MISE_CONFIG_DIR", "MISE_TRUSTED_CONFIG_PATHS", "MISE_STATE_DIR",
+    "MISE_DATA_DIR",
+    "MISE_CONFIG_DIR",
+    "MISE_TRUSTED_CONFIG_PATHS",
+    "MISE_STATE_DIR",
 )
 
 
@@ -186,9 +195,7 @@ def _snapshot_user_mise_env(env: MutableMapping[str, str]) -> dict[str, Optional
     return {key: env.get(key) for key in _MISE_SESSION_VARS}
 
 
-def _restore_user_mise_env(
-    env: MutableMapping[str, str], saved: dict[str, Optional[str]]
-) -> None:
+def _restore_user_mise_env(env: MutableMapping[str, str], saved: dict[str, Optional[str]]) -> None:
     """Undo the redirect for the AGENT's environment (#449, second cause).
 
     The redirect exists so PROVISIONING writes into the stack's tools tree instead of the user's
@@ -318,8 +325,10 @@ def _is_a_harnessed_stack_dir(value: str, tail: str) -> bool:
     if not value:
         return False
     try:
-        relative = Path(value).resolve().relative_to(
-            (paths.xdg_data_home() / "harnessed" / "tools").resolve()
+        relative = (
+            Path(value)
+            .resolve()
+            .relative_to((paths.xdg_data_home() / "harnessed" / "tools").resolve())
         )
     except (ValueError, TypeError, OSError, RuntimeError):
         return False
@@ -400,7 +409,8 @@ def _user_trusted_config_paths(env: MutableMapping[str, str]) -> list[str]:
     if not isinstance(configured, list):
         return []
     return [
-        entry for entry in configured
+        entry
+        for entry in configured
         if isinstance(entry, str) and entry and _TRUSTED_PATHS_DELIMITER not in entry
     ]
 
@@ -526,20 +536,22 @@ def _host_install_tools(stack: str, recipes) -> None:
         # mise 2026.9.1 / pnpm 11.25.0, including a scoped spec (`npm:@agentmemory/mcp`) and a
         # merged recipe mise.lock (#452's fresh-wipe first install was what first exposed this).
         _err.print(f"[blue][INFO][/blue] tools: mise use -g {_HOST_PNPM_PIN} (host)")
-        if subprocess.run(
-            ["mise", "use", "-g", _HOST_PNPM_PIN], env=env, cwd=str(mise_root)
-        ).returncode != 0:
+        if (
+            subprocess.run(
+                ["mise", "use", "-g", _HOST_PNPM_PIN], env=env, cwd=str(mise_root)
+            ).returncode
+            != 0
+        ):
             _err.print(
                 "[bold red]error:[/bold red] installing pnpm for the stack's npm: tools failed"
             )
             raise typer.Exit(1)
         env["PATH"] = os.pathsep.join([str(_host_tool_shims_dir(stack)), env.get("PATH", "")])
     _err.print(f"[blue][INFO][/blue] tools: mise use -g {' '.join(specs)} (host)")
-    if subprocess.run(
-        ["mise", "use", "-g", *specs], env=env, cwd=str(mise_root)
-    ).returncode != 0 or subprocess.run(
-        ["mise", "install"], env=env, cwd=str(mise_root)
-    ).returncode != 0:
+    if (
+        subprocess.run(["mise", "use", "-g", *specs], env=env, cwd=str(mise_root)).returncode != 0
+        or subprocess.run(["mise", "install"], env=env, cwd=str(mise_root)).returncode != 0
+    ):
         _err.print("[bold red]error:[/bold red] installing the stack's `tools:` failed")
         raise typer.Exit(1)
     # Only NOW do these dirs exist, so `_launch_host`'s own call could not have added them: on a
@@ -590,8 +602,7 @@ def _harness_config_env(harness: str, home: Path) -> dict[str, str]:
     already do. Same intent: keep what a recipe writes inside the stack's own tree.
     """
     return {
-        var: str(resolve(home))
-        for var, resolve in _HARNESS_CONFIG_DIR_ENV.get(harness, {}).items()
+        var: str(resolve(home)) for var, resolve in _HARNESS_CONFIG_DIR_ENV.get(harness, {}).items()
     }
 
 
@@ -646,14 +657,18 @@ def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Pa
         bin_dir.mkdir(parents=True, exist_ok=True)
         home.mkdir(parents=True, exist_ok=True)
         env = dict(os.environ)
-        env.update(recipe_env)   # recipe `env:` beats the inherited environment …
-        env.update(emit.install_env(  # … and the harnessed-owned contract beats BOTH. Same
-            recipe, mode="host", harness=harness,  # winner as container mode, where the inline
-            config_dir=str(home),                  # RUN assignments beat the preceding ENV lines.
-            cache_dir=str(cache) if cache else "",
-            bin_dir=str(bin_dir),
-            home_shim=str(home_shim),
-        ))
+        env.update(recipe_env)  # recipe `env:` beats the inherited environment …
+        env.update(
+            emit.install_env(  # … and the harnessed-owned contract beats BOTH. Same
+                recipe,
+                mode="host",
+                harness=harness,  # winner as container mode, where the inline
+                config_dir=str(home),  # RUN assignments beat the preceding ENV lines.
+                cache_dir=str(cache) if cache else "",
+                bin_dir=str(bin_dir),
+                home_shim=str(home_shim),
+            )
+        )
         # Host-only, mirroring _host_run_setups: keep any tool an install lands in the stack tree
         # rather than the user's global one.
         env["UV_TOOL_DIR"] = str(uv_tool_dir)
@@ -663,9 +678,12 @@ def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Pa
         # LAST, so an inherited CLAUDE_CONFIG_DIR cannot survive into the script (bd 8px.26).
         env.update(_harness_config_env(harness, home))
         _err.print(f"[blue][INFO][/blue] install ({recipe.name}): {inst.script} (host)")
-        if subprocess.run(
-            ["bash", str(recipe.root / inst.script)], cwd=str(project_path), env=env
-        ).returncode != 0:
+        if (
+            subprocess.run(
+                ["bash", str(recipe.root / inst.script)], cwd=str(project_path), env=env
+            ).returncode
+            != 0
+        ):
             _err.print(f"[bold red]error:[/bold red] install for '{recipe.name}' failed")
             raise typer.Exit(1)
         # THIS recipe's tests, before the next recipe installs. Per-recipe interleaving, not
@@ -674,15 +692,15 @@ def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Pa
         # above — one contract, so a host/container drift is not expressible here.
         tests = capability.discover_recipe_tests([recipe])
         if tests:
-            _err.print(
-                f"[blue][INFO][/blue] tests ({recipe.name}): {len(tests)} script(s) (host)"
-            )
+            _err.print(f"[blue][INFO][/blue] tests ({recipe.name}): {len(tests)} script(s) (host)")
             # Timeout read at CALL time, not bound as a default: a def-time default cannot be
             # varied, which would make the "a hung test does not wedge every launch" guarantee
             # untestable. Same constant the container seam passes — one authority, both modes.
             failed = capability.first_failed_test(
                 capability.run_recipe_tests_host(
-                    tests, env=env, workdir=project_path,
+                    tests,
+                    env=env,
+                    workdir=project_path,
                     timeout=capability.DEFAULT_TEST_TIMEOUT,
                 )
             )
@@ -727,8 +745,9 @@ def _propagate_init_env(before: Path, after: Path) -> None:
             seen.update(current.split(os.pathsep))
             added = [p for p in value.split(os.pathsep) if p and p not in seen]
             if added:
-                os.environ["PATH"] = os.pathsep.join([*added, current]) if current else \
-                    os.pathsep.join(added)
+                os.environ["PATH"] = (
+                    os.pathsep.join([*added, current]) if current else os.pathsep.join(added)
+                )
         else:
             os.environ[key] = value
 
@@ -775,9 +794,12 @@ def _host_run_inits(stack: str, project_path: Path, *, harness: str) -> None:
             result = subprocess.run(
                 ["bash", "-lc", script],
                 cwd=str(project_path),
-                env={**os.environ, **harnessed_env(
-                    stack, project_path, harness=harness, mode="host", recipe=recipe
-                )},
+                env={
+                    **os.environ,
+                    **harnessed_env(
+                        stack, project_path, harness=harness, mode="host", recipe=recipe
+                    ),
+                },
             )
             if result.returncode == 0:
                 _propagate_init_env(before, after)
@@ -823,8 +845,17 @@ def _host_run_setups(stack: str, project_path: Path, *, harness: str) -> None:
         script = recipe.root / setup.script
         bin_dir.mkdir(parents=True, exist_ok=True)
         env = dict(os.environ)
-        env.update(_script_env(stack, project_path, values, mode="host",
-                               harness=harness, recipe=recipe, bin_dir=bin_dir))
+        env.update(
+            _script_env(
+                stack,
+                project_path,
+                values,
+                mode="host",
+                harness=harness,
+                recipe=recipe,
+                bin_dir=bin_dir,
+            )
+        )
         # Host-only: point uv/npm at the stack-scoped tree so a script's install lands in
         # bin_dir rather than the user's global tool dir. In-container these stay unset — the
         # image already baked the tool via its Dockerfile.

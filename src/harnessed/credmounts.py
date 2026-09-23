@@ -10,6 +10,7 @@ gpg-agent paths, shells out to read host configuration) and returns a list of ar
 here runs a container, and nothing here decides WHETHER to forward — the stack's opt-in gating
 lives with the caller in launcher.py.
 """
+
 from __future__ import annotations
 
 import os
@@ -42,7 +43,9 @@ def _host_os() -> str:
 def _op_agent_socket(home: Path) -> Path:
     """Host path to the 1Password SSH agent socket, per OS (paths are 1Password-published)."""
     if _host_os() == "macos":
-        return home / "Library" / "Group Containers" / "2BUA8C4S2C.com.1password" / "t" / "agent.sock"
+        return (
+            home / "Library" / "Group Containers" / "2BUA8C4S2C.com.1password" / "t" / "agent.sock"
+        )
     return home / ".1password" / "agent.sock"
 
 
@@ -54,7 +57,10 @@ def _gpg_ssh_socket() -> Path | None:
     """
     try:
         out = subprocess.run(
-            ["gpgconf", "--list-dirs", "agent-ssh-socket"], capture_output=True, text=True, timeout=5
+            ["gpgconf", "--list-dirs", "agent-ssh-socket"],
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if out.returncode == 0 and out.stdout.strip():
             return Path(out.stdout.strip())
@@ -88,10 +94,23 @@ def _macos_op_socket_mount_source(rt: str, host_sock: Path) -> Path | None:
         # ExitOnForwardFailure=yes makes ssh exit non-zero if the forward can't be established, so we
         # DON'T return a path pointing at nothing.
         r = subprocess.run(
-            ["podman", "machine", "ssh", "-f", "-N", "-T",
-             "-o", "StreamLocalBindUnlink=yes", "-o", "ExitOnForwardFailure=yes",
-             "-R", f"{vm_sock}:{host_sock}"],
-            capture_output=True, text=True, timeout=15,
+            [
+                "podman",
+                "machine",
+                "ssh",
+                "-f",
+                "-N",
+                "-T",
+                "-o",
+                "StreamLocalBindUnlink=yes",
+                "-o",
+                "ExitOnForwardFailure=yes",
+                "-R",
+                f"{vm_sock}:{host_sock}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -141,7 +160,9 @@ def _ssh_agent_args(home: Path, gpg_ssh_sock: Path | None, *, rt: str = "podman"
         else:
             ctr_gpg = f"{ctr}/.gnupg-sockets/S.gpg-agent.ssh"
             args += ["-v", f"{gpg_ssh_sock}:{ctr_gpg}"]
-            if not op_present:  # 1Password wins; gpg only drives SSH_AUTH_SOCK when it's the only agent
+            if (
+                not op_present
+            ):  # 1Password wins; gpg only drives SSH_AUTH_SOCK when it's the only agent
                 args += ["-e", f"SSH_AUTH_SOCK={ctr_gpg}"]
     return args
 

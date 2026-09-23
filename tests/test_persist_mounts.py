@@ -49,7 +49,9 @@ def _patch_recipes(monkeypatch, recipes) -> None:
 class TestPersistMountsWorkspaceHost:
     def test_workspace_entry_emits_rw_mount_and_creates_dir(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        _patch_recipes(monkeypatch, [_recipe("ctx", [_entry(scope="workspace", name=".ctx", location="host")])])
+        _patch_recipes(
+            monkeypatch, [_recipe("ctx", [_entry(scope="workspace", name=".ctx", location="host")])]
+        )
         args = launcher._persist_mounts("s", Path("/home/user/proj"))
         host = paths.persist_workspace_dir("ctx", "/home/user/proj", ".ctx")
         assert args == ["-v", f"{host}:/home/harnessed/.ctx:rw"]
@@ -98,7 +100,9 @@ class TestPersistMountsProjectHost:
             b = launcher._persist_mounts("s", Path("/home/user/proj/feature"))[1].split(":")[0]
         assert a == b, "project scope must produce the same host dir across all worktrees"
 
-    def test_project_entry_falls_back_to_workspace_when_not_in_git(self, monkeypatch, tmp_path, capsys):
+    def test_project_entry_falls_back_to_workspace_when_not_in_git(
+        self, monkeypatch, tmp_path, capsys
+    ):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
         e = _entry(scope="project", name=".beads", location="host")
         _patch_recipes(monkeypatch, [_recipe("beads", [e])])
@@ -115,7 +119,10 @@ class TestPersistMountsGlobal:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
         target = tmp_path / "brain"
         target.mkdir()
-        _patch_recipes(monkeypatch, [_recipe("brain", [_entry(scope="global", path=str(target), location=None)])])
+        _patch_recipes(
+            monkeypatch,
+            [_recipe("brain", [_entry(scope="global", path=str(target), location=None)])],
+        )
         with pytest.raises(PersistNotAllowlistedError):
             launcher._persist_mounts("s", Path("/home/user/proj"))
 
@@ -126,7 +133,10 @@ class TestPersistMountsGlobal:
         target.mkdir()
         monkeypatch.setenv("XDG_CONFIG_HOME", str(cfg))
         (cfg / "harnessed" / "persist-allowlist").write_text(f"{target}\n")
-        _patch_recipes(monkeypatch, [_recipe("brain", [_entry(scope="global", path=str(target), location=None)])])
+        _patch_recipes(
+            monkeypatch,
+            [_recipe("brain", [_entry(scope="global", path=str(target), location=None)])],
+        )
         args = launcher._persist_mounts("s", Path("/home/user/proj"))
         real = os.path.realpath(target)
         assert args == ["-v", f"{real}:{real}:rw"]
@@ -180,6 +190,7 @@ class TestPersistMountsInRepo:
 # --- Layer 2: live round-trip + isolation (podman-gated) -------------------------------------
 
 from support import podman  # the one gate definition
+
 _ROOT = Path(__file__).resolve().parents[1]
 _HARNESS = "claude"
 _RECIPES = ["context-mode"]
@@ -205,7 +216,10 @@ def _build_context_mode() -> str:
     bin_path = Path(sys.executable).parent / "harnessed"
     r = subprocess.run(
         [str(bin_path), "build", name, _HARNESS],
-        cwd=str(_ROOT), capture_output=True, text=True, timeout=600,
+        cwd=str(_ROOT),
+        capture_output=True,
+        text=True,
+        timeout=600,
     )
     assert r.returncode == 0, f"build {name} {_HARNESS} failed:\n{r.stderr}"
     return name
@@ -222,7 +236,9 @@ def test_live_sentinel_survives_fresh_relaunch(tmp_path):
 
     inst = capability.launch_headless(_ROOT, stack, _HARNESS, project_path=str(proj))
     try:
-        capability._exec(inst, "mkdir -p ~/.context-mode && echo SENTINEL-T6 > ~/.context-mode/marker")
+        capability._exec(
+            inst, "mkdir -p ~/.context-mode && echo SENTINEL-T6 > ~/.context-mode/marker"
+        )
     finally:
         capability.teardown(inst)
 

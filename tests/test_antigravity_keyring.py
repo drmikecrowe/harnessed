@@ -45,8 +45,9 @@ class TestKeyringInitPrefix:
         proj = tmp_path / "proj"
         proj.mkdir()
         with pytest.raises(SystemExit):
-            launcher._attach("podman", harness, "inst", proj,
-                             stack="s", mount_path=tmp_path, shell=False)
+            launcher._attach(
+                "podman", harness, "inst", proj, stack="s", mount_path=tmp_path, shell=False
+            )
         return captured["argv"][-1]
 
     def test_antigravity_attach_has_keyring_init(self, tmp_path, monkeypatch):

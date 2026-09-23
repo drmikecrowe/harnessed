@@ -74,7 +74,9 @@ class TestRootOnlyInstallParses:
     """`system:` alone is a legal `install:` — the shape a root-only recipe needs."""
 
     def test_system_without_script_parses(self, tmp_path):
-        r = _tmp_recipe(tmp_path, install="install:\n  system: 'apt-get cmake'\n", with_script=False)
+        r = _tmp_recipe(
+            tmp_path, install="install:\n  system: 'apt-get cmake'\n", with_script=False
+        )
         assert r.install is not None, "expected install block to be parsed"
         assert r.install.script is None
         assert r.install.system == "apt-get cmake"
@@ -114,16 +116,19 @@ class TestHostLaunchWarnsInsteadOfSkippingSilently:
         assert r.install and r.install.system, f"{ref} must declare install.system"
         err = self._run(tmp_path, r, monkeypatch, capsys)
         assert "WARNING" in err
-        assert r.name in err, "the warning must NAME the recipe — a user with 8 recipes needs to know which"
-        assert _plain(r.install.system) in err, "the declared reason is printed verbatim, not summarized"
+        assert r.name in err, (
+            "the warning must NAME the recipe — a user with 8 recipes needs to know which"
+        )
+        assert _plain(r.install.system) in err, (
+            "the declared reason is printed verbatim, not summarized"
+        )
         assert "will not sudo" in err
 
     @pytest.mark.parametrize("ref", ROOT_ONLY)
-    def test_root_only_install_executes_nothing_on_a_host(
-        self, ref, tmp_path, monkeypatch, capsys
-    ):
+    def test_root_only_install_executes_nothing_on_a_host(self, ref, tmp_path, monkeypatch, capsys):
         """A root-only install has no script; the warning IS the entire host-side behaviour. If it
         ever tried to run something, that something would be the user's machine being mutated."""
+
         def _boom(*a, **kw):
             raise AssertionError("a root-only install must not execute anything host-side")
 
@@ -160,7 +165,13 @@ class TestTheRootStepStaysInTheDockerfile:
         calls: list[list[str]] = []
         patch_all(monkeypatch, "_run", lambda cmd, *a, **k: calls.append(cmd))
         launcher._run_container_installs(
-            "podman", "s", "claude", "img", [r], "cfgvol", "toolsvol",
+            "podman",
+            "s",
+            "claude",
+            "img",
+            [r],
+            "cfgvol",
+            "toolsvol",
         )
         assert calls == []
 
@@ -247,12 +258,10 @@ class TestHomeShimRecipesRewriteRecordedPaths:
             if "shim_home" in body or 'ln -s "$HARNESSED_CONFIG_DIR"' in body:
                 offenders.append(script.parent.name)
         assert offenders == [], (
-            f"install.sh builds its own $HOME shim: {offenders}. Use HOME=\"$HARNESSED_HOME_SHIM\" "
+            f'install.sh builds its own $HOME shim: {offenders}. Use HOME="$HARNESSED_HOME_SHIM" '
             "instead — harnessed creates it, keeps it stable across launches, and points its .claude "
             "at $HARNESSED_CONFIG_DIR, so recorded absolute paths stay valid."
         )
-
-
 
 
 def test_every_recipe_with_a_root_dockerfile_step_declares_it():
@@ -264,7 +273,9 @@ def test_every_recipe_with_a_root_dockerfile_step_declares_it():
     is out of scope here: it has not been migrated yet and its Dockerfile is still the whole story.)
     """
     offenders = []
-    for recipe_yaml in sorted(RECIPES.glob("*/recipe.yaml")) + sorted(RECIPES.glob("*/*/recipe.yaml")):
+    for recipe_yaml in sorted(RECIPES.glob("*/recipe.yaml")) + sorted(
+        RECIPES.glob("*/*/recipe.yaml")
+    ):
         r = load_recipe(recipe_yaml.parent, strict=True)
         if not r.install or r.install.system:
             continue
@@ -307,7 +318,7 @@ class TestGlobalPnpmInstallsStayInsideHarnessedDirs:
                     offenders.append(f"{script.parent.name}: {stripped[:70]}")
         assert offenders == [], (
             "`pnpm add -g` without a PNPM_HOME redirect installs into the user's real global store "
-            f"on a host launch: {offenders}. Use PNPM_HOME=\"$(dirname \"$HARNESSED_BIN_DIR\")\" — "
+            f'on a host launch: {offenders}. Use PNPM_HOME="$(dirname "$HARNESSED_BIN_DIR")" — '
             "the parent, because pnpm's global bin dir is $PNPM_HOME/bin."
         )
 

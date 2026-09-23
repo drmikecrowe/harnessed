@@ -4,6 +4,7 @@ Each false-positive test below corresponds to a bug the lint actually had when i
 against the real catalog. They are the regression surface: the checks themselves are simple, but
 what counts as "a sentence" in markdown is not, and every one of these shapes broke it.
 """
+
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ def _checks(report: prose.FileReport, severity: str | None = None) -> list[str]:
 
 # --- sentence length ------------------------------------------------------------------------------
 
+
 def test_long_sentence_is_an_error():
     body = "Alpha " * 30 + "end."
     assert "sentence-length" in _checks(_lint(body), prose.ERROR)
@@ -34,8 +36,10 @@ def test_short_sentences_are_clean():
 
 def test_sentence_ending_inside_emphasis_is_split():
     """`*use rg, never find.*` ends a sentence — the `*` sits between the period and the space."""
-    body = ("If a subagent prompt will search a tree, say so explicitly: *use rg, never find.* "
-            "Left unsaid, subagents are the single largest source of denied calls here.")
+    body = (
+        "If a subagent prompt will search a tree, say so explicitly: *use rg, never find.* "
+        "Left unsaid, subagents are the single largest source of denied calls here."
+    )
     assert "sentence-length" not in _checks(_lint(body))
 
 
@@ -58,6 +62,7 @@ def test_wrapped_paragraph_is_one_sentence():
 
 
 # --- code is syntax, not prose --------------------------------------------------------------------
+
 
 def test_code_fence_is_not_measured():
     fence = "```bash\n" + "some very long shell command line here\n" * 10 + "```"
@@ -82,7 +87,10 @@ def test_table_rows_are_not_measured():
 
 # --- hedges, first person -------------------------------------------------------------------------
 
-@pytest.mark.parametrize("hedge", ["try to", "make sure to", "feel free to", "ideally", "if possible"])
+
+@pytest.mark.parametrize(
+    "hedge", ["try to", "make sure to", "feel free to", "ideally", "if possible"]
+)
 def test_hedges_are_errors(hedge):
     assert "hedge" in _checks(_lint(f"You should {hedge} run the tests now."), prose.ERROR)
 
@@ -96,6 +104,7 @@ def test_imperative_prose_raises_nothing():
 
 
 # --- description --------------------------------------------------------------------------------
+
 
 def test_over_long_description_is_an_error():
     fm = "name: x\ndescription: " + "word " * 50
@@ -122,6 +131,7 @@ def test_multiline_description_stops_at_the_next_key():
 
 # --- warnings are not errors ----------------------------------------------------------------------
 
+
 def test_passive_voice_warns_but_does_not_error():
     report = _lint("The lint is invoked by the build. The result is printed by the console.")
     assert "passive-voice" in _checks(report, prose.WARNING)
@@ -135,6 +145,7 @@ def test_soft_modals_warn_when_they_outnumber_hard_directives():
 
 
 # --- collection -----------------------------------------------------------------------------------
+
 
 def test_collect_paths_finds_only_rule_and_skill_files(tmp_path):
     (tmp_path / "rules" / "r").mkdir(parents=True)
@@ -161,6 +172,7 @@ def test_overlapping_targets_do_not_duplicate(tmp_path):
 
 # --- the shipped catalog holds the standard -------------------------------------------------------
 
+
 def test_shipped_catalog_has_no_prose_errors():
     """The catalog IS the reference implementation of the house style. Keep it at zero."""
     catalog = Path(__file__).resolve().parents[1] / "catalog" / "recipes"
@@ -171,6 +183,7 @@ def test_shipped_catalog_has_no_prose_errors():
 
 
 # --- CLI ------------------------------------------------------------------------------------------
+
 
 def test_cli_exits_nonzero_on_an_error(tmp_path):
     (tmp_path / "RULE.md").write_text("Alpha " * 30 + "end.")

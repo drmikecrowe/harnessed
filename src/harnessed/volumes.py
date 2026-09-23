@@ -5,6 +5,7 @@ rebuild does not discard installed state and two projects sharing a stack share 
 create the volumes, label them for the garbage collectors, fingerprint their contents, and run a
 recipe`s `tools:`/`install:` into them.
 """
+
 from __future__ import annotations
 
 import json
@@ -43,7 +44,12 @@ def _stack_config_volume(stack: str, harness: str) -> str:
 
 
 def _merged_settings_text(
-    rt: str, vol: str, image: str, prof: Path, *, fresh: bool,
+    rt: str,
+    vol: str,
+    image: str,
+    prof: Path,
+    *,
+    fresh: bool,
 ) -> str | None:
     """The volume's `settings.json` with the profile's merged OVER it, or None to just copy.
 
@@ -70,7 +76,8 @@ def _merged_settings_text(
         _out.print(f"[yellow]⚠ settings:[/yellow] {msg}")
 
     installed = emit.read_baked_settings(
-        _volume_read(rt, vol, image, "settings.json"), warn=_warn,
+        _volume_read(rt, vol, image, "settings.json"),
+        warn=_warn,
     )
     if installed is None:
         return None
@@ -90,9 +97,7 @@ def _volume_exists(rt: str, vol: str) -> bool:
     `volume create` is idempotent and reports the name either way, so it cannot answer this — and
     the answer is what decides whether the chown below runs at all.
     """
-    return _run(
-        [rt, "volume", "inspect", vol], check=False, capture_output=True
-    ).returncode == 0
+    return _run([rt, "volume", "inspect", vol], check=False, capture_output=True).returncode == 0
 
 
 def _chown_volume_for_docker(rt: str, vol: str, image: str, mount_at: str) -> None:
@@ -153,15 +158,35 @@ def _chown_volume_for_docker(rt: str, vol: str, image: str, mount_at: str) -> No
     # which is `cp -a` in the compose step failing on the destination directory itself, not on any
     # file it was copying.
     _run(
-        [rt, "run", "--rm", *paths.userns_args(rt), "--user", "0:0",
-         "-v", f"{vol}:{mount_at}", "--entrypoint", "chown", image,
-         "-R", "{}:{}".format(*paths.container_owner_ids(rt)), mount_at],
-        check=False, capture_output=True,
+        [
+            rt,
+            "run",
+            "--rm",
+            *paths.userns_args(rt),
+            "--user",
+            "0:0",
+            "-v",
+            f"{vol}:{mount_at}",
+            "--entrypoint",
+            "chown",
+            image,
+            "-R",
+            "{}:{}".format(*paths.container_owner_ids(rt)),
+            mount_at,
+        ],
+        check=False,
+        capture_output=True,
     )
 
 
 def _ensure_config_volume(
-    rt: str, stack: str, harness: str, prof: Path, image: str, *, fresh: bool = False,
+    rt: str,
+    stack: str,
+    harness: str,
+    prof: Path,
+    image: str,
+    *,
+    fresh: bool = False,
 ) -> str:
     """Create and compose the per-stack agent-config volume, returning its name.
 
@@ -206,8 +231,11 @@ def _ensure_config_volume(
     # volume THIS RUN created is chowned: a volume that already exists was chowned when it was
     # created, and re-walking it on every launch is the cost the review objected to.
     was_new = not _volume_exists(rt, vol)
-    _run([rt, "volume", "create", *_volume_labels(stack, harness, "config"), vol],
-         check=False, capture_output=True)
+    _run(
+        [rt, "volume", "create", *_volume_labels(stack, harness, "config"), vol],
+        check=False,
+        capture_output=True,
+    )
     if was_new:
         _chown_volume_for_docker(rt, vol, image, f"{_CONTAINER_HOME_STR}/.claude")
     # Read BEFORE composing — the compose step is what would overwrite the file we need to keep.
@@ -235,13 +263,26 @@ def _ensure_config_volume(
         "fi; "
         f"{settings_step}"
     )
-    _run([
-        rt, "run", "--rm", *paths.userns_args(rt), *paths.container_user_args(rt),
-        "-v", f"{vol}:{_CONTAINER_HOME_STR}/.claude",
-        "-v", f"{prof}:{_CTR_PROFILE_DIR}:ro",
-        *settings_env,
-        "--entrypoint", "sh", image, "-c", compose,
-    ], capture_output=True)
+    _run(
+        [
+            rt,
+            "run",
+            "--rm",
+            *paths.userns_args(rt),
+            *paths.container_user_args(rt),
+            "-v",
+            f"{vol}:{_CONTAINER_HOME_STR}/.claude",
+            "-v",
+            f"{prof}:{_CTR_PROFILE_DIR}:ro",
+            *settings_env,
+            "--entrypoint",
+            "sh",
+            image,
+            "-c",
+            compose,
+        ],
+        capture_output=True,
+    )
     return vol
 
 
@@ -263,9 +304,12 @@ _VOL_HARNESS_LABEL = "harnessed.harness"
 
 def _volume_labels(stack: str, harness: str, role: str) -> list[str]:
     return [
-        "--label", f"{_VOL_LABEL}={role}",
-        "--label", f"{_VOL_STACK_LABEL}={stack}",
-        "--label", f"{_VOL_HARNESS_LABEL}={harness}",
+        "--label",
+        f"{_VOL_LABEL}={role}",
+        "--label",
+        f"{_VOL_STACK_LABEL}={stack}",
+        "--label",
+        f"{_VOL_HARNESS_LABEL}={harness}",
     ]
 
 
@@ -292,7 +336,9 @@ def _container_stack_fingerprint(rt: str, stack: str, recipes: list, image: str)
     `_host_stack_fingerprint` carries `__version__` instead.
     """
     img = subprocess.run(
-        [rt, "image", "inspect", "-f", "{{.Id}}", image], capture_output=True, text=True,
+        [rt, "image", "inspect", "-f", "{{.Id}}", image],
+        capture_output=True,
+        text=True,
     ).stdout.strip()
     return f"{_host_stack_fingerprint(stack, recipes)}:{img}"
 
@@ -304,10 +350,22 @@ def _volume_read(rt: str, volume: str, image: str, rel: str) -> str | None:
     (keep the floor) from "empty file".
     """
     out = subprocess.run(
-        [rt, "run", "--rm", *paths.userns_args(rt), *paths.container_user_args(rt),
-         "-v", f"{volume}:{_CONTAINER_HOME_STR}/.claude", "--entrypoint", "sh", image,
-         "-c", f"cat {_CONTAINER_HOME_STR}/.claude/{rel}"],
-        capture_output=True, text=True,
+        [
+            rt,
+            "run",
+            "--rm",
+            *paths.userns_args(rt),
+            *paths.container_user_args(rt),
+            "-v",
+            f"{volume}:{_CONTAINER_HOME_STR}/.claude",
+            "--entrypoint",
+            "sh",
+            image,
+            "-c",
+            f"cat {_CONTAINER_HOME_STR}/.claude/{rel}",
+        ],
+        capture_output=True,
+        text=True,
     )
     # Anything other than a clean read is "absent", NOT "empty". Returning "" for a failed podman
     # run made `_merge_baked_settings` treat an unreadable volume as MALFORMED JSON — it warned and
@@ -317,7 +375,13 @@ def _volume_read(rt: str, volume: str, image: str, rel: str) -> str | None:
 
 
 def _run_container_installs(
-    rt: str, stack: str, harness: str, image: str, recipes: list, cfg_vol: str, tools_vol: str,
+    rt: str,
+    stack: str,
+    harness: str,
+    image: str,
+    recipes: list,
+    cfg_vol: str,
+    tools_vol: str,
 ) -> None:
     """Run `tools:` then every `install.script` INSIDE a container, writing to the two volumes.
 
@@ -338,9 +402,12 @@ def _run_container_installs(
     # uid-1001 runner the compose step died with `cp: cannot create directory` while the agent
     # itself launched fine. No-op on podman, where keep-id already makes the two the same user.
     common = [
-        *paths.userns_args(rt), *paths.container_user_args(rt),
-        "-v", f"{cfg_vol}:{_CONTAINER_HOME_STR}/.claude",
-        "-v", f"{tools_vol}:{_CONTAINER_HOME_STR}/.local",
+        *paths.userns_args(rt),
+        *paths.container_user_args(rt),
+        "-v",
+        f"{cfg_vol}:{_CONTAINER_HOME_STR}/.claude",
+        "-v",
+        f"{tools_vol}:{_CONTAINER_HOME_STR}/.local",
         # The download cache, and the direct successor to the build's `--mount=type=cache` (bd
         # harnessed-1t4.2: "a layer cache MISS must not mean a re-download"). Those mounts died with
         # the layers; without this the container's ~/.cache is ephemeral and every reinstall
@@ -350,7 +417,8 @@ def _run_container_installs(
         # Deliberately NOT per-stack: one volume shared by every stack, which is the sharing 1t4.2
         # existed for. It covers ~/.cache/{mise,pnpm,uv} in one mount because an install.sh may
         # reach for any of them and that is the recipe author's choice to make.
-        "-v", f"{_SHARED_DL_CACHE_VOLUME}:{_CONTAINER_HOME_STR}/.cache",
+        "-v",
+        f"{_SHARED_DL_CACHE_VOLUME}:{_CONTAINER_HOME_STR}/.cache",
     ]
 
     tool_specs = sorted({t for r in recipes for t in r.tools})
@@ -382,15 +450,33 @@ def _run_container_installs(
             raise typer.Exit(1) from exc
         lock_env = ["-e", f"HARNESSED_TOOL_LOCK={lock_body}"] if lock_body else []
         write_lock = (
-            'mkdir -p "$MISE_CONFIG_DIR" && '
-            'printf %s "$HARNESSED_TOOL_LOCK" > "$MISE_CONFIG_DIR/mise.lock" && '
-        ) if lock_body else ""
+            (
+                'mkdir -p "$MISE_CONFIG_DIR" && '
+                'printf %s "$HARNESSED_TOOL_LOCK" > "$MISE_CONFIG_DIR/mise.lock" && '
+            )
+            if lock_body
+            else ""
+        )
         if lock_body:
             _say("[blue][INFO][/blue] tools: verifying checksums from the merged recipe lockfiles")
-        _run([rt, "run", "--rm", *common, "-e", "MISE_NPM_PACKAGE_MANAGER=pnpm",
-              "-e", f"MISE_CONFIG_DIR={_CONTAINER_HOME_STR}/.config/mise", *lock_env,
-              "--entrypoint", "sh", image, "-c",
-              f"{write_lock}mise use -g {joined} && mise install"])
+        _run(
+            [
+                rt,
+                "run",
+                "--rm",
+                *common,
+                "-e",
+                "MISE_NPM_PACKAGE_MANAGER=pnpm",
+                "-e",
+                f"MISE_CONFIG_DIR={_CONTAINER_HOME_STR}/.config/mise",
+                *lock_env,
+                "--entrypoint",
+                "sh",
+                image,
+                "-c",
+                f"{write_lock}mise use -g {joined} && mise install",
+            ]
+        )
 
     for recipe in recipes:
         inst = recipe.install
@@ -400,7 +486,9 @@ def _run_container_installs(
         ctr_cache = f"{emit.CTR_INSTALL_CACHE}/{recipe.name}/{inst.cache}" if cache_host else ""
         ctr_cache_parent = f"{emit.CTR_INSTALL_CACHE}/{recipe.name}" if cache_host else ""
         env = emit.install_env(
-            recipe, mode="container", harness=harness,
+            recipe,
+            mode="container",
+            harness=harness,
             config_dir=f"{_CONTAINER_HOME_STR}/.claude",
             # The SHARED, cross-stack source cache — the same host dir `_host_run_installs` uses.
             # The build path threw this away (`rm -rf` in the same layer), so every stack re-cloned
@@ -412,8 +500,14 @@ def _run_container_installs(
         # Recipe `env:` beats the inherited environment; the harnessed contract beats BOTH — same
         # winner as the Dockerfile emission, where inline RUN assignments beat preceding ENV lines.
         merged = {**resolve_recipe_env(recipe, mode="container", project_path=None), **env}
-        args = [rt, "run", "--rm", *common,
-                "-v", f"{recipe.root}:{emit.CTR_RECIPE_DIR}/{recipe.name}:ro"]
+        args = [
+            rt,
+            "run",
+            "--rm",
+            *common,
+            "-v",
+            f"{recipe.root}:{emit.CTR_RECIPE_DIR}/{recipe.name}:ro",
+        ]
         if cache_host is not None:
             # Mount the PARENT, never the leaf. A cache MISS is "the leaf does not exist" (see
             # paths.install_cache_dir), and podman statfs's a bind source before the script ever
@@ -427,8 +521,12 @@ def _run_container_installs(
             args += ["-v", f"{cache_host.parent}:{ctr_cache_parent}:rw"]
         for k, v in merged.items():
             args += ["-e", f"{k}={v}"]
-        args += ["--entrypoint", "bash", image,
-                 f"{emit.CTR_RECIPE_DIR}/{recipe.name}/{inst.script}"]
+        args += [
+            "--entrypoint",
+            "bash",
+            image,
+            f"{emit.CTR_RECIPE_DIR}/{recipe.name}/{inst.script}",
+        ]
         _say(f"[blue][INFO][/blue] install ({recipe.name}): {inst.script} (container)")
         _run(args)
         _run_container_recipe_tests(recipe, args)
@@ -474,7 +572,12 @@ def _run_container_recipe_tests(recipe, install_args: list[str]) -> None:
 
 
 def _ensure_stack_volumes(
-    rt: str, stack: str, harness: str, prof: Path, image: str, recipes: list,
+    rt: str,
+    stack: str,
+    harness: str,
+    prof: Path,
+    image: str,
+    recipes: list,
 ) -> tuple[str, str]:
     """Compose both per-stack volumes, running installs only when the fingerprint moved.
 
@@ -500,10 +603,16 @@ def _ensure_stack_volumes(
     # distinction is what keeps the chown off the shared download cache on every single launch.
     tools_was_new = not _volume_exists(rt, tools_vol)
     cache_was_new = not _volume_exists(rt, _SHARED_DL_CACHE_VOLUME)
-    _run([rt, "volume", "create", *_volume_labels(stack, harness, "tools"), tools_vol],
-         check=False, capture_output=True)
-    _run([rt, "volume", "create", "--label", f"{_VOL_LABEL}=shared", _SHARED_DL_CACHE_VOLUME],
-         check=False, capture_output=True)
+    _run(
+        [rt, "volume", "create", *_volume_labels(stack, harness, "tools"), tools_vol],
+        check=False,
+        capture_output=True,
+    )
+    _run(
+        [rt, "volume", "create", "--label", f"{_VOL_LABEL}=shared", _SHARED_DL_CACHE_VOLUME],
+        check=False,
+        capture_output=True,
+    )
     # AFTER both `volume create` calls, and this ordering is the whole point: chowning a volume
     # that does not exist yet would create it implicitly with default ownership and leave the very
     # state this is fixing. Every named volume the agent writes needs it, not just the config one —
@@ -511,13 +620,12 @@ def _ensure_stack_volumes(
     if tools_was_new:
         _chown_volume_for_docker(rt, tools_vol, image, f"{_CONTAINER_HOME_STR}/.local")
     if cache_was_new:
-        _chown_volume_for_docker(rt, _SHARED_DL_CACHE_VOLUME, image,
-                                 f"{_CONTAINER_HOME_STR}/.cache")
+        _chown_volume_for_docker(
+            rt, _SHARED_DL_CACHE_VOLUME, image, f"{_CONTAINER_HOME_STR}/.cache"
+        )
 
     want = _container_stack_fingerprint(rt, stack, recipes, image)
-    have = _volume_read(
-        rt, _stack_config_volume(stack, harness), image, _HOST_STACK_FINGERPRINT
-    )
+    have = _volume_read(rt, _stack_config_volume(stack, harness), image, _HOST_STACK_FINGERPRINT)
     unchanged = (have or "").strip() == want
 
     # `fresh=` discards the old config volume when the stack moved. The TOOLS volume is kept either
@@ -530,8 +638,21 @@ def _ensure_stack_volumes(
         return cfg_vol, tools_vol
 
     _run_container_installs(rt, stack, harness, image, recipes, cfg_vol, tools_vol)
-    _run([rt, "run", "--rm", *paths.userns_args(rt), *paths.container_user_args(rt),
-          "-v", f"{cfg_vol}:{_CONTAINER_HOME_STR}/.claude", "--entrypoint", "sh", image, "-c",
-          f"printf %s {shlex.quote(want)} > {_CONTAINER_HOME_STR}/.claude/{_HOST_STACK_FINGERPRINT}"],
-         capture_output=True)
+    _run(
+        [
+            rt,
+            "run",
+            "--rm",
+            *paths.userns_args(rt),
+            *paths.container_user_args(rt),
+            "-v",
+            f"{cfg_vol}:{_CONTAINER_HOME_STR}/.claude",
+            "--entrypoint",
+            "sh",
+            image,
+            "-c",
+            f"printf %s {shlex.quote(want)} > {_CONTAINER_HOME_STR}/.claude/{_HOST_STACK_FINGERPRINT}",
+        ],
+        capture_output=True,
+    )
     return cfg_vol, tools_vol

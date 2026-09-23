@@ -35,6 +35,7 @@ def _table(table, name):
 def _old(version):
     """A resolver result old enough that the release-age cooldown never interferes."""
     from datetime import datetime, timedelta, timezone
+
     return update.Release(
         version=version, published=datetime.now(timezone.utc) - timedelta(days=365)
     )
@@ -58,7 +59,8 @@ def catalog(tmp_path, monkeypatch):
 
     monkeypatch.setattr(launcher.paths, "catalog_roots", lambda: [tmp_path / "catalog"])
     monkeypatch.setattr(
-        update, "resolve_releases",
+        update,
+        "resolve_releases",
         lambda backend, name, **kw: _table({"x": "1.5.0", "y": "9.9.9"}, name),
     )
     return root
@@ -99,13 +101,21 @@ class TestCheckMode:
         assert (catalog / "stale" / "recipe.yaml").read_bytes() == before
 
     def test_check_exits_zero_when_nothing_is_stale(self, catalog, monkeypatch):
-        monkeypatch.setattr(update, "resolve_releases", lambda backend, name, **kw: _table({"x": "1.0.0", "y": "9.9.9"}, name))
+        monkeypatch.setattr(
+            update,
+            "resolve_releases",
+            lambda backend, name, **kw: _table({"x": "1.0.0", "y": "9.9.9"}, name),
+        )
         result = runner.invoke(launcher.app, ["update", "--check"])
         assert result.exit_code == 0
 
     def test_a_held_pin_alone_never_fails_check(self, catalog, monkeypatch):
         """`frozen` is 8 majors behind on purpose. CI must stay green."""
-        monkeypatch.setattr(update, "resolve_releases", lambda backend, name, **kw: _table({"x": "1.0.0", "y": "9.9.9"}, name))
+        monkeypatch.setattr(
+            update,
+            "resolve_releases",
+            lambda backend, name, **kw: _table({"x": "1.0.0", "y": "9.9.9"}, name),
+        )
         result = runner.invoke(launcher.app, ["update", "--check"])
         assert result.exit_code == 0
         assert "frozen" in _plain(result.output), "a held pin is still LISTED, just not fatal"
@@ -118,7 +128,11 @@ class TestCheckMode:
         assert "stale" in _plain(result.output), "reported, just not fatal"
 
     def test_fail_on_major_still_fails_on_a_major(self, catalog, monkeypatch):
-        monkeypatch.setattr(update, "resolve_releases", lambda backend, name, **kw: _table({"x": "2.0.0", "y": "9.9.9"}, name))
+        monkeypatch.setattr(
+            update,
+            "resolve_releases",
+            lambda backend, name, **kw: _table({"x": "2.0.0", "y": "9.9.9"}, name),
+        )
         result = runner.invoke(launcher.app, ["update", "--check", "--fail-on", "major"])
         assert result.exit_code != 0
         assert "1 failing outdated pin(s)" in _plain(result.output), (
@@ -127,7 +141,9 @@ class TestCheckMode:
         )
 
     def test_fail_on_rejects_an_unknown_value(self, catalog):
-        assert runner.invoke(launcher.app, ["update", "--check", "--fail-on", "bogus"]).exit_code != 0
+        assert (
+            runner.invoke(launcher.app, ["update", "--check", "--fail-on", "bogus"]).exit_code != 0
+        )
 
     def test_the_default_keeps_failing_on_any_drift(self, catalog):
         """1.0.0 -> 1.5.0 is a minor; without --fail-on the historical contract holds."""
@@ -149,6 +165,7 @@ class TestReporting:
     def test_a_resolver_failure_surfaces_as_unresolved(self, catalog, monkeypatch):
         def boom(backend, name, **kw):
             raise update.ResolveError("network unreachable")
+
         monkeypatch.setattr(update, "resolve_releases", boom)
         result = runner.invoke(launcher.app, ["update", "--check"])
         out = _plain(result.output)
@@ -180,7 +197,11 @@ class TestInteractive:
         assert "npm:y@1.0.0" in (catalog / "frozen" / "recipe.yaml").read_text()
 
     def test_nothing_stale_says_so_and_exits_clean(self, catalog, monkeypatch):
-        monkeypatch.setattr(update, "resolve_releases", lambda backend, name, **kw: _table({"x": "1.0.0", "y": "9.9.9"}, name))
+        monkeypatch.setattr(
+            update,
+            "resolve_releases",
+            lambda backend, name, **kw: _table({"x": "1.0.0", "y": "9.9.9"}, name),
+        )
         result = runner.invoke(launcher.app, ["update"])
         assert result.exit_code == 0
         assert "up to date" in _plain(result.output).lower()
@@ -192,12 +213,21 @@ class TestCooldownSurface:
     @pytest.fixture
     def fresh(self, catalog, monkeypatch):
         from datetime import datetime, timedelta, timezone
-        monkeypatch.setattr(update, "resolve_releases", lambda backend, name, **kw: (
-            [update.Release(
-                version={"x": "1.5.0", "y": "9.9.9"}[name],
-                published=datetime.now(timezone.utc) - timedelta(days=2),
-            )] if name in ("x", "y") else []
-        ))
+
+        monkeypatch.setattr(
+            update,
+            "resolve_releases",
+            lambda backend, name, **kw: (
+                [
+                    update.Release(
+                        version={"x": "1.5.0", "y": "9.9.9"}[name],
+                        published=datetime.now(timezone.utc) - timedelta(days=2),
+                    )
+                ]
+                if name in ("x", "y")
+                else []
+            ),
+        )
         return catalog
 
     def test_a_fresh_release_is_not_bumped_even_with_yes(self, fresh):
@@ -254,6 +284,7 @@ class TestHarnessWindowSurface:
     @pytest.fixture
     def with_agent(self, catalog, monkeypatch):
         from datetime import datetime, timedelta, timezone
+
         agent_dir = catalog.parent / "agents" / "cx"
         agent_dir.mkdir(parents=True)
         (agent_dir / "agent.yaml").write_text(
@@ -261,12 +292,20 @@ class TestHarnessWindowSurface:
             "dockerfile: catalog/base/Dockerfile.harnessed-cx\n"
             'build_args:\n  CX_VERSION: { value: "1.0.0", spec: "npm:cx" }\n'
         )
-        monkeypatch.setattr(update, "resolve_releases", lambda backend, name, **kw: (
-            [update.Release(
-                version={"x": "1.5.0", "y": "9.9.9", "cx": "2.0.0"}[name],
-                published=datetime.now(timezone.utc) - timedelta(days=3),
-            )] if name in ("x", "y", "cx") else []
-        ))
+        monkeypatch.setattr(
+            update,
+            "resolve_releases",
+            lambda backend, name, **kw: (
+                [
+                    update.Release(
+                        version={"x": "1.5.0", "y": "9.9.9", "cx": "2.0.0"}[name],
+                        published=datetime.now(timezone.utc) - timedelta(days=3),
+                    )
+                ]
+                if name in ("x", "y", "cx")
+                else []
+            ),
+        )
         return catalog
 
     def test_a_three_day_old_harness_release_is_bumped(self, with_agent):
@@ -282,12 +321,21 @@ class TestHarnessWindowSurface:
 
     def test_a_fresh_harness_bump_is_named_with_its_age(self, with_agent, monkeypatch):
         from datetime import datetime, timedelta, timezone
-        monkeypatch.setattr(update, "resolve_releases", lambda backend, name, **kw: (
-            [update.Release(
-                version={"x": "1.5.0", "y": "9.9.9", "cx": "2.0.0"}[name],
-                published=datetime.now(timezone.utc) - timedelta(days=1),
-            )] if name in ("x", "y", "cx") else []
-        ))
+
+        monkeypatch.setattr(
+            update,
+            "resolve_releases",
+            lambda backend, name, **kw: (
+                [
+                    update.Release(
+                        version={"x": "1.5.0", "y": "9.9.9", "cx": "2.0.0"}[name],
+                        published=datetime.now(timezone.utc) - timedelta(days=1),
+                    )
+                ]
+                if name in ("x", "y", "cx")
+                else []
+            ),
+        )
         out = _plain(runner.invoke(launcher.app, ["update", "--yes"]).output)
         assert "harness" in out.lower() and "days" in out
         body = (with_agent.parent / "agents" / "cx" / "agent.yaml").read_text()

@@ -24,6 +24,7 @@ from __future__ import annotations
 import pytest
 
 from harnessed import capmatrix
+
 # Imported for its REGISTRATION side effect: HostBackend/ContainerBackend register themselves on
 # import, and the conformance tests below read that registry. capmatrix itself must never import
 # launcher (tests/test_module_boundaries.py enforces the direction).
@@ -95,7 +96,8 @@ class TestWhatMustStaySilent:
         by validate_container_only_declared and printed at launch. A second, vaguer warning from
         the matrix would be strictly worse — and would train users to ignore both."""
         r = _recipe(
-            tmp_path, "sysy",
+            tmp_path,
+            "sysy",
             "install:\n  script: install.sh\n  system: needs root to apt-get install\n",
         )
         (tmp_path / "sysy" / "install.sh").write_text("#!/usr/bin/env bash\n")
@@ -239,7 +241,10 @@ class TestTheWarningReachesTheUser:
         found: list[bool] = []
 
         def scan(node, dead: bool) -> None:
-            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "_warn_capability_gaps":
+            if (
+                isinstance(node, ast.Call)
+                and getattr(node.func, "id", None) == "_warn_capability_gaps"
+            ):
                 found.append(dead)
             if isinstance(node, ast.If):
                 unreachable = isinstance(node.test, ast.Constant) and not node.test.value
@@ -254,7 +259,9 @@ class TestTheWarningReachesTheUser:
 
         scan(tree, False)
         assert found, f"{fn_name} never calls _warn_capability_gaps"
-        assert not any(found), f"{fn_name} calls _warn_capability_gaps inside a constant-false guard"
+        assert not any(found), (
+            f"{fn_name} calls _warn_capability_gaps inside a constant-false guard"
+        )
 
     def test_the_host_warning_precedes_materialization(self):
         """Told while the user can still switch to `container-run`, not after the agent is up.
@@ -284,7 +291,10 @@ class TestEveryPrimitiveIsDetected:
         [
             ("skills", "skills:\n  - my-skill.md\n"),
             ("tools", "tools:\n  - ripgrep@14.1.1\n"),
-            ("servers", "mcp:\n  servers:\n    - name: sv\n      command: sv\n      transport: stdio\n"),
+            (
+                "servers",
+                "mcp:\n  servers:\n    - name: sv\n      command: sv\n      transport: stdio\n",
+            ),
             ("services", "services:\n  - beads-server\n"),
             ("egress", "egress:\n  - api.example.com\n"),
         ],
@@ -299,7 +309,9 @@ class TestEveryPrimitiveIsDetected:
         assert "install" in capmatrix.declared_primitives(r)
 
     def test_setup_script_is_detected(self, tmp_path):
-        r = _recipe(tmp_path, "r", "setup:\n  summary: s\n  reference: http://x\n  script: setup.sh\n")
+        r = _recipe(
+            tmp_path, "r", "setup:\n  summary: s\n  reference: http://x\n  script: setup.sh\n"
+        )
         (tmp_path / "r" / "setup.sh").write_text("#!/usr/bin/env bash\n")
         assert "setup_script" in capmatrix.declared_primitives(r)
 
@@ -326,7 +338,8 @@ class TestAllGapsPerRecipeAreReported:
             capmatrix._DETAIL, ("host", "services"), "pretend services are degraded here"
         )
         r = _recipe(
-            tmp_path, "both",
+            tmp_path,
+            "both",
             "egress:\n  - api.example.com\nservices:\n  - beads-server\n",
         )
         found = capmatrix.gaps("host", [r])
@@ -373,7 +386,8 @@ class TestFindingsFromAdversarialReview:
         the same recipe: harmless while services is SUPPORTED everywhere, wrong the moment it is
         not."""
         r = _recipe(
-            tmp_path, "pingy",
+            tmp_path,
+            "pingy",
             "mcp:\n  servers:\n    - name: ping\n      service: ping\n      transport: http\n",
         )
         assert not r.services, "fixture must declare the service ONLY via the mcp ref"

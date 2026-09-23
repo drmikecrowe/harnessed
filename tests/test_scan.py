@@ -53,14 +53,20 @@ class TestGate:
 
     def _make_osv(self, cve_id: str, cvss_vector: str) -> dict:
         return {
-            "results": [{
-                "packages": [{
-                    "vulnerabilities": [{
-                        "id": cve_id,
-                        "severity": [{"type": "CVSS_V3", "score": cvss_vector}],
-                    }]
-                }]
-            }]
+            "results": [
+                {
+                    "packages": [
+                        {
+                            "vulnerabilities": [
+                                {
+                                    "id": cve_id,
+                                    "severity": [{"type": "CVSS_V3", "score": cvss_vector}],
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
         }
 
     def test_empty_osv_passes(self):
@@ -82,14 +88,28 @@ class TestGate:
 
     def test_multiple_highs_all_returned(self):
         osv = {
-            "results": [{
-                "packages": [{
-                    "vulnerabilities": [
-                        {"id": "CVE-A", "severity": [{"score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}]},
-                        {"id": "CVE-B", "severity": [{"score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"}]},
+            "results": [
+                {
+                    "packages": [
+                        {
+                            "vulnerabilities": [
+                                {
+                                    "id": "CVE-A",
+                                    "severity": [
+                                        {"score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}
+                                    ],
+                                },
+                                {
+                                    "id": "CVE-B",
+                                    "severity": [
+                                        {"score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"}
+                                    ],
+                                },
+                            ]
+                        }
                     ]
-                }]
-            }]
+                }
+            ]
         }
         highs = gate(osv)
         assert "CVE-A" in highs
@@ -98,27 +118,39 @@ class TestGate:
     def test_qualitative_high_label_returned(self):
         # No CVSS vector — only qualitative HIGH label → should trip the gate.
         osv = {
-            "results": [{
-                "packages": [{
-                    "vulnerabilities": [{
-                        "id": "GHSA-HIGH",
-                        "database_specific": {"severity": "HIGH"},
-                    }]
-                }]
-            }]
+            "results": [
+                {
+                    "packages": [
+                        {
+                            "vulnerabilities": [
+                                {
+                                    "id": "GHSA-HIGH",
+                                    "database_specific": {"severity": "HIGH"},
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
         }
         highs = gate(osv)
         assert "GHSA-HIGH" in highs
 
     def test_qualitative_low_label_not_returned(self):
         osv = {
-            "results": [{
-                "packages": [{
-                    "vulnerabilities": [{
-                        "id": "GHSA-LOW",
-                        "database_specific": {"severity": "LOW"},
-                    }]
-                }]
-            }]
+            "results": [
+                {
+                    "packages": [
+                        {
+                            "vulnerabilities": [
+                                {
+                                    "id": "GHSA-LOW",
+                                    "database_specific": {"severity": "LOW"},
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
         }
         assert gate(osv) == []

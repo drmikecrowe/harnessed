@@ -155,15 +155,16 @@ class TestItProvisionsWhatTheScriptNeeds:
     def test_mise_is_available(self, job):
         """`tools/run-tests.sh` shells out to `mise` on its first line; without it the job fails
         with 'is mise installed and on PATH?' instead of running anything."""
-        text = "\n".join(
-            [_run_bodies(job)] + [s.get("uses", "") for s in _steps(job)]
-        )
+        text = "\n".join([_run_bodies(job)] + [s.get("uses", "") for s in _steps(job)])
         assert "mise" in text
 
     @pytest.mark.parametrize(
         "step_uses",
-        [s.get("uses", "") for s in YAML(typ="safe").load(WORKFLOW.read_text())["jobs"]["live"]["steps"]
-         if s.get("uses")],
+        [
+            s.get("uses", "")
+            for s in YAML(typ="safe").load(WORKFLOW.read_text())["jobs"]["live"]["steps"]
+            if s.get("uses")
+        ],
     )
     def test_every_action_is_pinned_to_a_commit_sha(self, step_uses):
         """CLAUDE.md: pin every download. An action is a download that executes, and a git tag is
@@ -194,7 +195,6 @@ class TestItProvisionsTheLiveGates:
     and never fail the run. That skip is a declared choice, not an oversight.
     """
 
-
     def test_the_base_image_is_built_before_the_suite(self, job):
         """The actual cause of the red run on 31205617563.
 
@@ -211,8 +211,11 @@ class TestItProvisionsTheLiveGates:
         """
         steps = _steps(job)
         build = next(
-            (i for i, st in enumerate(steps)
-             if re.search(r"harnessed build[ \t]*$", _commands(st), re.M)),
+            (
+                i
+                for i, st in enumerate(steps)
+                if re.search(r"harnessed build[ \t]*$", _commands(st), re.M)
+            ),
             None,
         )
         assert build is not None, (

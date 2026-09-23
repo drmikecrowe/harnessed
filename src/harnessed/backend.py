@@ -35,6 +35,7 @@ This module imports nothing from launcher.py and never will (tests/test_module_b
 the two implementations live in launcher.py, next to the ~100 private helpers they call, so the
 dependency points INTO the contract and the seam adds no import cycle.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -156,7 +157,9 @@ def get_backend(name: str) -> type[ExecutionBackend]:
     try:
         return _REGISTRY[name]
     except KeyError as err:
-        raise KeyError(f"unknown backend '{name}' (registered: {', '.join(sorted(_REGISTRY))})") from err
+        raise KeyError(
+            f"unknown backend '{name}' (registered: {', '.join(sorted(_REGISTRY))})"
+        ) from err
 
 
 def registered() -> dict[str, type[ExecutionBackend]]:

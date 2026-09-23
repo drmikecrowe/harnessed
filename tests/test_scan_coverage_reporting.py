@@ -28,7 +28,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "catalog" / "base" / "harnessed-s
 def report_block(tmp_path_factory):
     """Extract the summary heredoc to a runnable .py file."""
     src = SCRIPT.read_text()
-    match = re.search(r"<<'PY'\n(.*?)\nPY\n", src[src.index("HARNESSED_SCAN_REPORT"):], re.S)
+    match = re.search(r"<<'PY'\n(.*?)\nPY\n", src[src.index("HARNESSED_SCAN_REPORT") :], re.S)
     assert match, "summary heredoc not found in harnessed-scan"
     path = tmp_path_factory.mktemp("scan") / "report.py"
     path.write_text(match.group(1))
@@ -50,8 +50,11 @@ def run_report(report_block, tmp_path, manifest_rows, attempts):
         [sys.executable, str(report_block), str(manifest)],
         capture_output=True,
         text=True,
-        env={"HARNESSED_SCAN_REPORT": str(out), "HARNESSED_SCAN_ATTEMPTS": str(ledger),
-             "PATH": "/usr/bin:/bin"},
+        env={
+            "HARNESSED_SCAN_REPORT": str(out),
+            "HARNESSED_SCAN_ATTEMPTS": str(ledger),
+            "PATH": "/usr/bin:/bin",
+        },
     )
     assert proc.returncode == 0, proc.stderr
     return proc.stdout, json.loads(out.read_text())
@@ -108,7 +111,11 @@ class TestSilentScannersAreSurfaced:
 
 class TestNoCoverageIsNotClean:
     def test_zero_reporting_scanners_is_flagged_loudly(self, report_block, tmp_path):
-        attempts = [("snyk", "node globals"), ("socket", "node globals"), ("osv", "recipe lockfiles")]
+        attempts = [
+            ("snyk", "node globals"),
+            ("socket", "node globals"),
+            ("osv", "recipe lockfiles"),
+        ]
         stdout, report = run_report(report_block, tmp_path, [], attempts)
 
         assert report["covered"] is False
@@ -119,9 +126,7 @@ class TestNoCoverageIsNotClean:
         # The attempts still appear, so the report says WHAT was not covered.
         assert len(report["sources"]) == 3
 
-    def test_a_genuinely_covered_scan_is_marked_covered(
-        self, report_block, tmp_path, clean_source
-    ):
+    def test_a_genuinely_covered_scan_is_marked_covered(self, report_block, tmp_path, clean_source):
         stdout, report = run_report(
             report_block, tmp_path, [clean_source], [("pip-audit", "python env")]
         )
@@ -145,7 +150,9 @@ class TestSkippedScannersAreDeclared:
 
     def test_a_skipped_scanner_appears_in_sources(self, report_block, tmp_path, clean_source):
         _, report = run_report(
-            report_block, tmp_path, [clean_source],
+            report_block,
+            tmp_path,
+            [clean_source],
             [("pip-audit", "python env"), self.SKIPPED],
         )
         unrun = [s for s in report["sources"] if s["status"] == "unrun"]
@@ -156,7 +163,9 @@ class TestSkippedScannersAreDeclared:
     def test_the_reason_is_carried_into_the_report(self, report_block, tmp_path, clean_source):
         """Without the reason, `unrun` is unactionable — 'set SNYK_TOKEN' is the whole point."""
         _, report = run_report(
-            report_block, tmp_path, [clean_source],
+            report_block,
+            tmp_path,
+            [clean_source],
             [("pip-audit", "python env"), self.SKIPPED],
         )
         unrun = next(s for s in report["sources"] if s["status"] == "unrun")
@@ -165,7 +174,9 @@ class TestSkippedScannersAreDeclared:
     def test_unrun_is_distinct_from_no_output(self, report_block, tmp_path, clean_source):
         """The distinction IS the requirement: one scanner is broken, the other unconfigured."""
         _, report = run_report(
-            report_block, tmp_path, [clean_source],
+            report_block,
+            tmp_path,
+            [clean_source],
             [("pip-audit", "python env"), ("osv", "recipe lockfiles"), self.SKIPPED],
         )
         by_status = {s["status"] for s in report["sources"]}
@@ -176,7 +187,9 @@ class TestSkippedScannersAreDeclared:
     def test_unrun_counts_as_attempted_but_uncovered(self, report_block, tmp_path, clean_source):
         """`attempted` is what we COMMITTED to; `reported` is what actually covered us."""
         _, report = run_report(
-            report_block, tmp_path, [clean_source],
+            report_block,
+            tmp_path,
+            [clean_source],
             [("pip-audit", "python env"), self.SKIPPED],
         )
         assert report["coverage"]["attempted"] == 2
@@ -184,7 +197,9 @@ class TestSkippedScannersAreDeclared:
 
     def test_the_operator_is_told_by_name_and_reason(self, report_block, tmp_path, clean_source):
         stdout, _ = run_report(
-            report_block, tmp_path, [clean_source],
+            report_block,
+            tmp_path,
+            [clean_source],
             [("pip-audit", "python env"), self.SKIPPED],
         )
         assert "1 scanner(s) did not run" in stdout
@@ -195,7 +210,9 @@ class TestSkippedScannersAreDeclared:
         self, report_block, tmp_path, clean_source
     ):
         stdout, _ = run_report(
-            report_block, tmp_path, [clean_source],
+            report_block,
+            tmp_path,
+            [clean_source],
             [("pip-audit", "python env"), self.SKIPPED],
         )
         assert "produced NO parseable output" not in stdout
@@ -203,9 +220,13 @@ class TestSkippedScannersAreDeclared:
     def test_everything_skipped_is_not_coverage(self, report_block, tmp_path):
         """No scanner ran at all. This must read exactly as loudly as the no-output case."""
         stdout, report = run_report(
-            report_block, tmp_path, [],
-            [("snyk", "node globals", "unrun", "no SNYK_TOKEN"),
-             ("socket", "node globals", "unrun", "no SOCKET_CLI_API_TOKEN")],
+            report_block,
+            tmp_path,
+            [],
+            [
+                ("snyk", "node globals", "unrun", "no SNYK_TOKEN"),
+                ("socket", "node globals", "unrun", "no SOCKET_CLI_API_TOKEN"),
+            ],
         )
         assert report["covered"] is False
         assert "NO COVERAGE" in stdout
@@ -232,7 +253,8 @@ class TestTheGuardsActuallyRecordTheSkip:
         # exactly the credential-free build case the report used to render as clean.
         proc = subprocess.run(
             ["/bin/bash", str(SCRIPT)],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
             env={"HOME": str(home), "PATH": "/usr/bin:/bin"},
         )
         report = home / ".harnessed" / "scan-report.json"
@@ -284,9 +306,14 @@ class TestTheAllClearIsQualifiedWhenCoverageIsPartial:
         self, report_block, tmp_path, clean_source
     ):
         stdout, _ = run_report(
-            report_block, tmp_path, [clean_source],
-            [("pip-audit", "python env"), ("osv", "recipe lockfiles"),
-             ("snyk", "node globals", "unrun", "no SNYK_TOKEN")],
+            report_block,
+            tmp_path,
+            [clean_source],
+            [
+                ("pip-audit", "python env"),
+                ("osv", "recipe lockfiles"),
+                ("snyk", "node globals", "unrun", "no SNYK_TOKEN"),
+            ],
         )
         assert "no high/critical advisories" in stdout
         assert "NOT a full all-clear" in stdout, (
@@ -310,13 +337,19 @@ class TestTheAllClearIsQualifiedWhenCoverageIsPartial:
         cannot exercise the flagged branch at all — the first draft of this test 'failed' for
         exactly that reason."""
         payload = tmp_path / "snyk.json"
-        payload.write_text(json.dumps({
-            "vulnerabilities": [
-                {"id": "SNYK-1", "severity": "critical", "packageName": "evil"},
-            ],
-        }))
+        payload.write_text(
+            json.dumps(
+                {
+                    "vulnerabilities": [
+                        {"id": "SNYK-1", "severity": "critical", "packageName": "evil"},
+                    ],
+                }
+            )
+        )
         stdout, _ = run_report(
-            report_block, tmp_path, [("snyk", "node globals", str(payload))],
+            report_block,
+            tmp_path,
+            [("snyk", "node globals", str(payload))],
             [("snyk", "node globals"), ("osv", "recipe lockfiles", "unrun", "osv-scanner absent")],
         )
         assert "no high/critical advisories" not in stdout
@@ -332,8 +365,11 @@ def test_a_missing_attempts_ledger_does_not_break_the_report(report_block, tmp_p
         [sys.executable, str(report_block), str(manifest)],
         capture_output=True,
         text=True,
-        env={"HARNESSED_SCAN_REPORT": str(out), "HARNESSED_SCAN_ATTEMPTS": str(tmp_path / "nope"),
-             "PATH": "/usr/bin:/bin"},
+        env={
+            "HARNESSED_SCAN_REPORT": str(out),
+            "HARNESSED_SCAN_ATTEMPTS": str(tmp_path / "nope"),
+            "PATH": "/usr/bin:/bin",
+        },
     )
     assert proc.returncode == 0, proc.stderr
     assert json.loads(out.read_text())["covered"] is True

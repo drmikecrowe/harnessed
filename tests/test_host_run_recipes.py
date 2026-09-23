@@ -1,4 +1,5 @@
 """`harnessed host-run` — accept a recipe set (--recipe) without authoring a stack.yaml (harnessed-cta)."""
+
 from __future__ import annotations
 
 from typer.testing import CliRunner
@@ -17,10 +18,10 @@ class TestHostRunRecipeXOR:
         the message is asserted so the test cannot pass for an unrelated reason."""
         launched: list = []
         monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
-        monkeypatch.setattr(
-            launcher, "_launch_host", lambda *a, **k: launched.append(a)
+        monkeypatch.setattr(launcher, "_launch_host", lambda *a, **k: launched.append(a))
+        result = runner.invoke(
+            launcher.app, ["host-run", "claude", "--stack", "my-stack", "--recipe", "serena"]
         )
-        result = runner.invoke(launcher.app, ["host-run", "claude", "--stack", "my-stack", "--recipe", "serena"])
         assert result.exit_code != 0
         assert "not both" in result.output
         assert launched == [], "nothing may be launched when the invocation is rejected"
@@ -32,21 +33,29 @@ class TestHostRunRecipeXOR:
         calls: list = []
         monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
         monkeypatch.setattr(
-            launcher, "_launch_host",
-            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False, aoe_group=None, aoe_title=None, exec_mode=False, fresh=False: calls.append(stack),
+            launcher,
+            "_launch_host",
+            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False, aoe_group=None, aoe_title=None, exec_mode=False, fresh=False: (
+                calls.append(stack)
+            ),
         )
         result = runner.invoke(launcher.app, ["host-run", "claude"])
         assert result.exit_code == 0, result.output
         assert calls == ["default"]
-        assert not list(tmp_path.glob("stacks/*/stack.yaml")), "the baseline is authored, not minted"
+        assert not list(tmp_path.glob("stacks/*/stack.yaml")), (
+            "the baseline is authored, not minted"
+        )
 
     def test_extends_names_the_baseline_that_runs(self, monkeypatch, tmp_path):
         """`--extends` is the one knob that selects it, so a non-default baseline runs alone too."""
         calls: list = []
         monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
         monkeypatch.setattr(
-            launcher, "_launch_host",
-            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False, aoe_group=None, aoe_title=None, exec_mode=False, fresh=False: calls.append(stack),
+            launcher,
+            "_launch_host",
+            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False, aoe_group=None, aoe_title=None, exec_mode=False, fresh=False: (
+                calls.append(stack)
+            ),
         )
         result = runner.invoke(launcher.app, ["host-run", "claude", "--extends", "hostspike"])
         assert result.exit_code == 0, result.output
@@ -67,8 +76,11 @@ class TestHostRunRecipeXOR:
         """Existing authored-stack path is unchanged."""
         calls: list = []
         monkeypatch.setattr(
-            launcher, "_launch_host",
-            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False, aoe_group=None, aoe_title=None, exec_mode=False, fresh=False: calls.append(stack),
+            launcher,
+            "_launch_host",
+            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False, aoe_group=None, aoe_title=None, exec_mode=False, fresh=False: (
+                calls.append(stack)
+            ),
         )
         result = runner.invoke(launcher.app, ["host-run", "claude", "--stack", "hostspike"])
         assert result.exit_code == 0, result.output
@@ -82,9 +94,10 @@ class TestHostRunRecipeMinting:
         calls: dict[str, object] = {}
         monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
         monkeypatch.setattr(
-            launcher, "_launch_host",
-            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False, aoe_group=None, aoe_title=None, exec_mode=False, fresh=False: calls.__setitem__(
-                "launched", (stack, harness)
+            launcher,
+            "_launch_host",
+            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False, aoe_group=None, aoe_title=None, exec_mode=False, fresh=False: (
+                calls.__setitem__("launched", (stack, harness))
             ),
         )
         result = runner.invoke(
@@ -135,8 +148,11 @@ class TestHostRunRecipeMinting:
         monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
         captured: dict = {}
         monkeypatch.setattr(
-            launcher, "_launch_host",
-            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False, aoe_group=None, aoe_title=None, exec_mode=False, fresh=False: captured.__setitem__("stack", stack),
+            launcher,
+            "_launch_host",
+            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False, aoe_group=None, aoe_title=None, exec_mode=False, fresh=False: (
+                captured.__setitem__("stack", stack)
+            ),
         )
 
         runner.invoke(launcher.app, ["host-run", "claude", "--recipe", "serena"])
@@ -163,9 +179,10 @@ class TestHostRunRecipeMinting:
         captured: dict = {}
         monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
         monkeypatch.setattr(
-            launcher, "_launch_host",
-            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False, aoe_group=None, aoe_title=None, exec_mode=False, fresh=False: captured.update(
-                stack=stack, path=path
+            launcher,
+            "_launch_host",
+            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False, aoe_group=None, aoe_title=None, exec_mode=False, fresh=False: (
+                captured.update(stack=stack, path=path)
             ),
         )
         proj = tmp_path / "proj"

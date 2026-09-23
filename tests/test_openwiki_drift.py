@@ -17,6 +17,7 @@ Getting the length wrong is not merely cosmetic: the window scan that separates 
 found at any offset, so every relocated Claim is reported as genuinely changed — the false-positive
 flood the module docstring says makes a gate get ignored.
 """
+
 from __future__ import annotations
 
 import base64
@@ -63,9 +64,19 @@ def _claims_dir(tmp_path: Path, resource: str, version: str) -> Path:
     claims = tmp_path / "openwiki" / ".claims"
     claims.mkdir(parents=True)
     (claims / "page.json").write_text(
-        json.dumps({"claims": [{"id": "claim_x", "statement": "s", "evidence": [
-            {"resource": resource, "version": version},
-        ]}]}),
+        json.dumps(
+            {
+                "claims": [
+                    {
+                        "id": "claim_x",
+                        "statement": "s",
+                        "evidence": [
+                            {"resource": resource, "version": version},
+                        ],
+                    }
+                ]
+            }
+        ),
         encoding="utf-8",
     )
     return claims
@@ -74,8 +85,14 @@ def _claims_dir(tmp_path: Path, resource: str, version: str) -> Path:
 def test_recorded_count_wins_over_the_uri_span() -> None:
     """`length` describes the digest, so it follows `selectedLineCount`, not `#Lx-Ly`."""
     anchor = drift.Anchor(
-        page="p", claim_id="c", statement="s", path="f.py",
-        start=10, end=19, digest="d", recorded_length=42,
+        page="p",
+        claim_id="c",
+        statement="s",
+        path="f.py",
+        start=10,
+        end=19,
+        digest="d",
+        recorded_length=42,
     )
     assert anchor.length == 42
     assert anchor.uri_is_stale
@@ -84,8 +101,14 @@ def test_recorded_count_wins_over_the_uri_span() -> None:
 def test_length_falls_back_to_the_uri_span_when_no_count_is_recorded() -> None:
     """Older evidence carries no payload; the span is then all there is, and is not "stale"."""
     anchor = drift.Anchor(
-        page="p", claim_id="c", statement="s", path="f.py",
-        start=10, end=19, digest="d", recorded_length=None,
+        page="p",
+        claim_id="c",
+        statement="s",
+        path="f.py",
+        start=10,
+        end=19,
+        digest="d",
+        recorded_length=None,
     )
     assert anchor.length == 10
     assert not anchor.uri_is_stale
@@ -137,9 +160,7 @@ def test_evidence_still_at_its_cited_lines_is_exact(tmp_path: Path) -> None:
 def test_genuinely_changed_evidence_is_still_reported(tmp_path: Path) -> None:
     """Trusting the recorded count must not make the gate go quietly green."""
     (tmp_path / "f.py").write_text("alpha\nbeta\nREWRITTEN\n", encoding="utf-8")
-    claims = _claims_dir(
-        tmp_path, "repo://f.py#L1-L3", _version(["alpha", "beta", "gamma"], 3)
-    )
+    claims = _claims_dir(tmp_path, "repo://f.py#L1-L3", _version(["alpha", "beta", "gamma"], 3))
 
     anchors, _, _ = drift.collect_anchors(claims)
     buckets = drift.classify(anchors, drift.Tree(tmp_path, None), strict_lines=False)

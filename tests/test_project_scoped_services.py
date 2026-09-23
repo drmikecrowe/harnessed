@@ -77,14 +77,14 @@ class TestLoadServiceScopeAndSocket:
             load_service(root, "ping")
 
     def test_global_service_keeps_its_default_named_volume(self, tmp_path):
-        root = _svc_yaml(tmp_path, "name: ping\nimage: harnessed-ping:latest\nport: 8080\n", name="ping")
+        root = _svc_yaml(
+            tmp_path, "name: ping\nimage: harnessed-ping:latest\nport: 8080\n", name="ping"
+        )
         svc = load_service(root, "ping")
         assert svc.scope == "global" and svc.volume == "ping-data" and not svc.is_socket_only
 
     def test_socket_requires_project_scope(self, tmp_path):
-        root = _svc_yaml(
-            tmp_path, "name: s\nimage: i:1\nsocket: run/x.sock\n", name="s"
-        )
+        root = _svc_yaml(tmp_path, "name: s\nimage: i:1\nsocket: run/x.sock\n", name="s")
         with pytest.raises(SchemaError, match="scope: project"):
             load_service(root, "s")
 
@@ -112,7 +112,10 @@ class TestServiceContainerNaming:
     def test_project_service_is_keyed_per_project(self, tmp_path):
         svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
         key = launcher._svc_project_key(svc, tmp_path)
-        assert key and launcher._svc_container("beads-server", key) == f"harnessed-svc-beads-server-{key}"
+        assert (
+            key
+            and launcher._svc_container("beads-server", key) == f"harnessed-svc-beads-server-{key}"
+        )
 
     def test_worktrees_of_one_checkout_share_one_server(self, tmp_path, monkeypatch):
         # THE contention fix: every worktree of a checkout resolves to the same git common dir, so it
@@ -126,7 +129,9 @@ class TestServiceContainerNaming:
     def test_separate_checkouts_get_separate_servers(self, tmp_path, monkeypatch):
         svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
         monkeypatch.setattr(paths, "git_common_dir", lambda p: Path(p) / ".git")
-        assert launcher._svc_project_key(svc, tmp_path / "a") != launcher._svc_project_key(svc, tmp_path / "b")
+        assert launcher._svc_project_key(svc, tmp_path / "a") != launcher._svc_project_key(
+            svc, tmp_path / "b"
+        )
 
 
 class TestServiceDataDir:
@@ -136,7 +141,10 @@ class TestServiceDataDir:
         svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
         project = tmp_path / "repo"
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
-        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        patch_all(
+            monkeypatch,
+            "load_stack_with_recipes",
+            lambda _r, _s: (None, [_beads_recipe("in_repo")]),
         )
         host_dir, agent_dir, location = launcher._service_data_dir(svc, "any", project)
         assert location == "in_repo"
@@ -151,7 +159,10 @@ class TestServiceDataDir:
         svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
         bare = tmp_path / "checkout" / ".bare"
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: bare)
-        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        patch_all(
+            monkeypatch,
+            "load_stack_with_recipes",
+            lambda _r, _s: (None, [_beads_recipe("in_repo")]),
         )
         host_dir, _, _ = launcher._service_data_dir(svc, "any", tmp_path / "checkout" / "main")
         assert host_dir == bare / ".beads"
@@ -160,7 +171,8 @@ class TestServiceDataDir:
         svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
         monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
         monkeypatch.setattr(paths, "git_common_dir", lambda p: Path(p) / ".git")
-        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("host")])
+        patch_all(
+            monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("host")])
         )
         project = tmp_path / "repo"
         host_dir, agent_dir, location = launcher._service_data_dir(svc, "any", project)
@@ -183,7 +195,8 @@ class TestServiceDataDir:
         svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
         monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
         monkeypatch.setattr(paths, "git_common_dir", lambda p: Path(p) / ".git")
-        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("host")])
+        patch_all(
+            monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("host")])
         )
         project = tmp_path / "repo"
         host_dir, agent_dir, _ = launcher._service_data_dir(svc, "any", project, "host")
@@ -194,7 +207,10 @@ class TestServiceDataDir:
         # `location: in_repo` is mounted path-preserving, so there is nothing to switch on.
         svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
         monkeypatch.setattr(paths, "git_common_dir", lambda p: Path(p) / ".git")
-        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        patch_all(
+            monkeypatch,
+            "load_stack_with_recipes",
+            lambda _r, _s: (None, [_beads_recipe("in_repo")]),
         )
         project = tmp_path / "repo"
         ctr = launcher._service_data_dir(svc, "any", project, "container")
@@ -216,11 +232,16 @@ class TestClientVisibleSocketPath:
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
         patch_all(monkeypatch, "load_service", lambda _r, _n: svc)
         patch_all(monkeypatch, "_service_refs", lambda _s: ["beads-server"])
-        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        patch_all(
+            monkeypatch,
+            "load_stack_with_recipes",
+            lambda _r, _s: (None, [_beads_recipe("in_repo")]),
         )
         sock = launcher.svc_socket_env("any", project)["HARNESSED_BEADS_SERVER_SOCKET"]
         assert sock == f"{project}/.beads/run/mysql.sock"
-        assert not sock.startswith("/data"), "clients must never be handed the service's own mount path"
+        assert not sock.startswith("/data"), (
+            "clients must never be handed the service's own mount path"
+        )
 
     def test_host_mode_socket_is_a_path_that_exists_on_the_host(self, tmp_path, monkeypatch):
         """bd harnessed-162/-5ek: the socket env used to be container-only, so a host launch never
@@ -233,7 +254,8 @@ class TestClientVisibleSocketPath:
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
         patch_all(monkeypatch, "load_service", lambda _r, _n: svc)
         patch_all(monkeypatch, "_service_refs", lambda _s: ["beads-server"])
-        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("host")])
+        patch_all(
+            monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("host")])
         )
         sock = launcher.svc_socket_env("any", project, "host")["HARNESSED_BEADS_SERVER_SOCKET"]
         assert sock.startswith(str(tmp_path / "persist"))
@@ -249,13 +271,18 @@ class TestSocketEnvExport:
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
         patch_all(monkeypatch, "load_service", lambda _r, _n: svc)
         patch_all(monkeypatch, "_service_refs", lambda _s: ["beads-server"])
-        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        patch_all(
+            monkeypatch,
+            "load_stack_with_recipes",
+            lambda _r, _s: (None, [_beads_recipe("in_repo")]),
         )
         env = launcher.svc_socket_env("any", project)
         assert env == {"HARNESSED_BEADS_SERVER_SOCKET": f"{project}/.beads/run/mysql.sock"}
 
     def test_global_services_export_nothing(self, tmp_path, monkeypatch):
-        root = _svc_yaml(tmp_path, "name: ping\nimage: harnessed-ping:latest\nport: 8080\n", name="ping")
+        root = _svc_yaml(
+            tmp_path, "name: ping\nimage: harnessed-ping:latest\nport: 8080\n", name="ping"
+        )
         patch_all(monkeypatch, "load_service", lambda _r, _n: load_service(root, "ping"))
         patch_all(monkeypatch, "_service_refs", lambda _s: ["ping"])
         assert launcher.svc_socket_env("any", tmp_path) == {}
@@ -313,22 +340,29 @@ class TestPublishedPortReadback:
 
     def test_parses_podman_port_output(self, monkeypatch):
         monkeypatch.setattr(
-            launcher.subprocess, "run",
-            lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout="127.0.0.1:49183\n", stderr=""),
+            launcher.subprocess,
+            "run",
+            lambda *a, **k: subprocess.CompletedProcess(
+                a, 0, stdout="127.0.0.1:49183\n", stderr=""
+            ),
         )
         assert launcher._svc_published_port("podman", "c", 3307) == 49183
 
     def test_ipv6_form_parses(self, monkeypatch):
         monkeypatch.setattr(
-            launcher.subprocess, "run",
+            launcher.subprocess,
+            "run",
             lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout="[::]:49184\n", stderr=""),
         )
         assert launcher._svc_published_port("podman", "c", 3307) == 49184
 
     def test_failure_reports_zero_rather_than_guessing(self, monkeypatch):
         monkeypatch.setattr(
-            launcher.subprocess, "run",
-            lambda *a, **k: subprocess.CompletedProcess(a, 1, stdout="", stderr="no such container"),
+            launcher.subprocess,
+            "run",
+            lambda *a, **k: subprocess.CompletedProcess(
+                a, 1, stdout="", stderr="no such container"
+            ),
         )
         assert launcher._svc_published_port("podman", "c", 3307) == 0
 
@@ -377,8 +411,6 @@ class TestClientEnvResolution:
         assert launcher.svc_client_env("any", wired, "host") == {}
 
 
-
-
 class TestNeverHealthyAbortsTheLaunch:
     """harnessed-dwt: a service that starts, stays up, and never becomes healthy must ABORT.
 
@@ -394,7 +426,7 @@ class TestNeverHealthyAbortsTheLaunch:
         # socket-backed so there is no TCP probe to stub, and WITH a healthcheck — without one the
         # function returns early and every assertion here would pass for the wrong reason.
         return load_service(
-            _svc_yaml(tmp_path, PROJECT_SVC + 'healthcheck: "dolt sql -q \'SELECT 1\'"\n'),
+            _svc_yaml(tmp_path, PROJECT_SVC + "healthcheck: \"dolt sql -q 'SELECT 1'\"\n"),
             "beads-server",
         )
 
@@ -405,7 +437,8 @@ class TestNeverHealthyAbortsTheLaunch:
     def _health(self, monkeypatch, rc: int, out: bytes = b"", err: bytes = b"", status="running"):
         patch_all(monkeypatch, "_service_container_status", lambda *a: status)
         monkeypatch.setattr(
-            launcher.subprocess, "run",
+            launcher.subprocess,
+            "run",
             lambda *a, **k: subprocess.CompletedProcess(a, rc, stdout=out, stderr=err),
         )
 
@@ -432,8 +465,11 @@ class TestNeverHealthyAbortsTheLaunch:
         """709's abort must survive: a container that died gets the container LOG, not a 60s wait."""
         self._health(monkeypatch, rc=1, status="exited")
         called = []
-        patch_all(monkeypatch, "_abort_dead_service",
-                            lambda *a: called.append(a) or (_ for _ in ()).throw(typer.Exit(1)))
+        patch_all(
+            monkeypatch,
+            "_abort_dead_service",
+            lambda *a: called.append(a) or (_ for _ in ()).throw(typer.Exit(1)),
+        )
         with pytest.raises(typer.Exit):
             launcher._wait_service_healthy("podman", "c", svc, timeout=5)
         assert called, "a dead container must route to _abort_dead_service, not the timeout branch"
@@ -491,7 +527,10 @@ class TestInRepoServiceGetsTheRemoteGitSurface:
         monkeypatch.setattr(Path, "home", staticmethod(lambda: home))
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
         patch_all(monkeypatch, "load_service", lambda _r, _n: svc)
-        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        patch_all(
+            monkeypatch,
+            "load_stack_with_recipes",
+            lambda _r, _s: (None, [_beads_recipe("in_repo")]),
         )
         patch_all(monkeypatch, "_image_exists", lambda _rt, _img: True)
         patch_all(monkeypatch, "_container_running", lambda _rt, _c: False)
@@ -502,7 +541,9 @@ class TestInRepoServiceGetsTheRemoteGitSurface:
         monkeypatch.setattr(
             launcher.subprocess,
             "run",
-            lambda *a, **k: subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=""),
+            lambda *a, **k: subprocess.CompletedProcess(
+                args=[], returncode=1, stdout="", stderr=""
+            ),
         )
         captured: list[list[str]] = []
         patch_all(monkeypatch, "_run", lambda cmd, **k: captured.append(cmd))
@@ -582,7 +623,9 @@ class TestServiceDataDirPathPreservingMount:
         # Route persist_root inside tmp_path so the test never writes outside it.
         monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
         patch_all(monkeypatch, "load_service", lambda _r, _n: svc)
-        patch_all(monkeypatch, "load_stack_with_recipes",
+        patch_all(
+            monkeypatch,
+            "load_stack_with_recipes",
             lambda _r, _s: (None, [_beads_recipe(location)]),
         )
         patch_all(monkeypatch, "_image_exists", lambda _rt, _img: True)
@@ -593,7 +636,9 @@ class TestServiceDataDirPathPreservingMount:
         monkeypatch.setattr(
             launcher.subprocess,
             "run",
-            lambda *a, **k: subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=""),
+            lambda *a, **k: subprocess.CompletedProcess(
+                args=[], returncode=1, stdout="", stderr=""
+            ),
         )
         captured: list[list[str]] = []
         patch_all(monkeypatch, "_run", lambda cmd, **k: captured.append(cmd))
@@ -647,7 +692,13 @@ class TestSvcEntryPointUsesTheSameMountAsALaunch:
     """
 
     def _capture_ensure_kwargs(
-        self, tmp_path, monkeypatch, action: str, *, stack: str = "any", label: str | None = None,
+        self,
+        tmp_path,
+        monkeypatch,
+        action: str,
+        *,
+        stack: str = "any",
+        label: str | None = None,
         instances: list[str] | None = None,
     ) -> dict:
         checkout = tmp_path / "proj"
@@ -660,8 +711,7 @@ class TestSvcEntryPointUsesTheSameMountAsALaunch:
         # The bare + linked-worktree layout: the widened mount is the dir CONTAINING the bare repo.
         monkeypatch.setattr(paths, "bare_worktree_container", lambda _p: checkout)
         patch_all(monkeypatch, "_svc_container_stack", lambda _rt, _c: label)
-        patch_all(monkeypatch, "_svc_stacks_from_instances", lambda _rt, _p: list(instances or [])
-        )
+        patch_all(monkeypatch, "_svc_stacks_from_instances", lambda _rt, _p: list(instances or []))
         seen: dict = {}
         monkeypatch.setattr(launcher, "_ensure_service", lambda *a, **k: seen.update(k))
         monkeypatch.chdir(project)
@@ -734,7 +784,11 @@ class TestSvcEntryPointUsesTheSameMountAsALaunch:
 
     def test_the_container_label_beats_the_instance_scan(self, tmp_path, monkeypatch):
         seen = self._capture_ensure_kwargs(
-            tmp_path, monkeypatch, "recreate", stack="", label="from-label",
+            tmp_path,
+            monkeypatch,
+            "recreate",
+            stack="",
+            label="from-label",
             instances=["from-instance"],
         )
         assert seen["stack"] == "from-label"
@@ -743,7 +797,11 @@ class TestSvcEntryPointUsesTheSameMountAsALaunch:
         """Picking one would rebuild against the wrong persist entry — a different data dir."""
         with pytest.raises(typer.Exit):
             self._capture_ensure_kwargs(
-                tmp_path, monkeypatch, "recreate", stack="", label=None,
+                tmp_path,
+                monkeypatch,
+                "recreate",
+                stack="",
+                label=None,
                 instances=["stack-a", "stack-b"],
             )
         err = capsys.readouterr().err
@@ -796,10 +854,13 @@ class TestReadingTheStackOutOfInstanceNames:
         monkeypatch.setattr(paths, "list_catalog", lambda _kind: list(harnesses))
         patch_all(monkeypatch, "_repo_project_hashes", lambda _p: hashes)
         monkeypatch.setattr(
-            launcher.subprocess, "run",
+            launcher.subprocess,
+            "run",
             lambda *a, **k: subprocess.CompletedProcess(
-                args=[], returncode=0,
-                stdout="".join(f"{n}\t{s}\n" for n, s in rows), stderr="",
+                args=[],
+                returncode=0,
+                stdout="".join(f"{n}\t{s}\n" for n, s in rows),
+                stderr="",
             ),
         )
         return launcher._svc_stacks_from_instances("podman", Path("/repo"))
@@ -853,9 +914,7 @@ class TestReadingTheStackOutOfInstanceNames:
         and yields the plausible-but-WRONG stack `extended-mystack` — one container would offer two
         candidates, and picking the wrong one rebuilds against a different persist entry."""
         names = [("harnessed-claude-extended-mystack-12345678", "running")]
-        got = self._scan(
-            monkeypatch, names, {"12345678"}, harnesses=("claude", "claude-extended")
-        )
+        got = self._scan(monkeypatch, names, {"12345678"}, harnesses=("claude", "claude-extended"))
         assert got == ["mystack"]
 
 
@@ -877,8 +936,10 @@ class TestRepoProjectHashesUsesRealGit:
         repo.mkdir()
         env = {
             **os.environ,
-            "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e",
-            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@e",
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@e",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@e",
         }
         subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
         (repo / "f").write_text("x")
@@ -929,7 +990,10 @@ class TestServiceConfigHashDetectsStaleContainers:
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
         monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
         patch_all(monkeypatch, "load_service", lambda _r, _n: svc)
-        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        patch_all(
+            monkeypatch,
+            "load_stack_with_recipes",
+            lambda _r, _s: (None, [_beads_recipe("in_repo")]),
         )
         patch_all(monkeypatch, "_image_exists", lambda _rt, _img: True)
         patch_all(monkeypatch, "_container_running", lambda _rt, _c: running)
@@ -952,7 +1016,11 @@ class TestServiceConfigHashDetectsStaleContainers:
         created: list[list[str]] = []
         patch_all(monkeypatch, "_run", lambda cmd, **k: created.append(list(cmd)))
         launcher._ensure_service(
-            "podman", "beads-server", stack="any", project_path=project, mount_path=project,
+            "podman",
+            "beads-server",
+            stack="any",
+            project_path=project,
+            mount_path=project,
             force_recreate=force,
         )
         return created, calls
@@ -979,13 +1047,14 @@ class TestServiceConfigHashDetectsStaleContainers:
         created, _ = self._run_ensure(tmp_path, monkeypatch, running=False, label=None)
         cmd = created[0]
         without_labels = [
-            a for i, a in enumerate(cmd)
-            if a != "--label" and (i == 0 or cmd[i - 1] != "--label")
+            a for i, a in enumerate(cmd) if a != "--label" and (i == 0 or cmd[i - 1] != "--label")
         ]
         assert self._current_hash(created) == launcher._svc_config_hash(without_labels)
 
     def test_a_matching_label_is_left_alone(self, tmp_path, monkeypatch):
-        current = self._current_hash(self._run_ensure(tmp_path, monkeypatch, running=False, label=None)[0])
+        current = self._current_hash(
+            self._run_ensure(tmp_path, monkeypatch, running=False, label=None)[0]
+        )
         created, _ = self._run_ensure(tmp_path, monkeypatch, running=True, label=current)
         assert created == [], "a sidecar whose config still matches must not be torn down"
 
@@ -1003,7 +1072,9 @@ class TestServiceConfigHashDetectsStaleContainers:
         assert len(created) == 1
 
     def test_force_recreate_tears_down_a_current_container(self, tmp_path, monkeypatch):
-        current = self._current_hash(self._run_ensure(tmp_path, monkeypatch, running=False, label=None)[0])
+        current = self._current_hash(
+            self._run_ensure(tmp_path, monkeypatch, running=False, label=None)[0]
+        )
         created, calls = self._run_ensure(
             tmp_path, monkeypatch, running=True, label=current, force=True
         )
@@ -1018,7 +1089,10 @@ class TestServiceConfigHashDetectsStaleContainers:
         monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path / "home"))
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
         monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
-        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        patch_all(
+            monkeypatch,
+            "load_stack_with_recipes",
+            lambda _r, _s: (None, [_beads_recipe("in_repo")]),
         )
         base = launcher._svc_run_cmd("podman", svc, "c", "any", project, project)
         widened = launcher._svc_run_cmd("podman", svc, "c", "any", project, project.parent)
@@ -1044,7 +1118,10 @@ class TestServiceConfigHashDetectsStaleContainers:
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
         monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
         monkeypatch.setattr(paths, "xdg_state_home", lambda: state)
-        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        patch_all(
+            monkeypatch,
+            "load_stack_with_recipes",
+            lambda _r, _s: (None, [_beads_recipe("in_repo")]),
         )
         launcher._svc_run_cmd("podman", svc, "c", "any", project, project)
         assert not paths.persist_in_repo_dir(project, ".beads").exists(), (
@@ -1147,10 +1224,6 @@ class TestExclusiveLockPreflight:
             proc.wait()
 
 
-
-
-
-
 def _dolt_db_at(path):
     """Minimal on-disk shape of an initialized Dolt database."""
     (path / ".dolt").mkdir(parents=True, exist_ok=True)
@@ -1158,12 +1231,6 @@ def _dolt_db_at(path):
     (path / ".dolt" / "noms").mkdir(exist_ok=True)
     (path / ".dolt" / "noms" / "manifest").write_text("x" * 128)
     return path
-
-
-
-
-
-
 
 
 class TestPlacementIsRecordedAndEnforced:
@@ -1193,7 +1260,9 @@ class TestPlacementIsRecordedAndEnforced:
     def test_first_launch_records_the_placement(self, tmp_path, monkeypatch):
         gcd = self._repo(tmp_path, monkeypatch)
         launcher._assert_placement_unchanged(self._svc(tmp_path), "host", tmp_path)
-        assert json.loads((gcd / "harnessed-placement.json").read_text()) == {"beads-server": "host"}
+        assert json.loads((gcd / "harnessed-placement.json").read_text()) == {
+            "beads-server": "host"
+        }
 
     def test_the_same_placement_relaunches_cleanly(self, tmp_path, monkeypatch):
         self._repo(tmp_path, monkeypatch)
@@ -1217,15 +1286,19 @@ class TestPlacementIsRecordedAndEnforced:
 
     def test_outside_a_git_checkout_it_is_a_no_op(self, tmp_path, monkeypatch):
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: None)
-        launcher._assert_placement_unchanged(self._svc(tmp_path), "host", tmp_path)  # must not raise
+        launcher._assert_placement_unchanged(
+            self._svc(tmp_path), "host", tmp_path
+        )  # must not raise
 
     def test_a_corrupt_record_does_not_block_the_launch(self, tmp_path, monkeypatch):
         gcd = self._repo(tmp_path, monkeypatch)
         (gcd / "harnessed-placement.json").write_text("{ not json")
-        launcher._assert_placement_unchanged(self._svc(tmp_path), "host", tmp_path)  # must not raise
-        assert json.loads((gcd / "harnessed-placement.json").read_text()) == {"beads-server": "host"}
-
-
+        launcher._assert_placement_unchanged(
+            self._svc(tmp_path), "host", tmp_path
+        )  # must not raise
+        assert json.loads((gcd / "harnessed-placement.json").read_text()) == {
+            "beads-server": "host"
+        }
 
 
 class TestDeadServiceFailsFast:

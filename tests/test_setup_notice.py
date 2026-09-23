@@ -52,14 +52,20 @@ class TestCollectSetupNotices:
 
     def test_unconditional_shown_then_gated_by_flag(self, state):
         recipes = [_r("caveman")]
-        assert [r.name for r in launcher._collect_setup_notices(recipes, state, "s", "claude")] == ["caveman"]
+        assert [r.name for r in launcher._collect_setup_notices(recipes, state, "s", "claude")] == [
+            "caveman"
+        ]
         _dismiss("s", state)
         assert launcher._collect_setup_notices(recipes, state, "s", "claude") == []
 
     def test_conditional_polarity(self, state):
         # exit 0 = manual step STILL needed = show; non-zero = satisfied = suppress.
-        show = launcher._collect_setup_notices([_r("needs", condition="true")], state, "s", "claude")
-        hide = launcher._collect_setup_notices([_r("done", condition="false")], state, "s", "claude")
+        show = launcher._collect_setup_notices(
+            [_r("needs", condition="true")], state, "s", "claude"
+        )
+        hide = launcher._collect_setup_notices(
+            [_r("done", condition="false")], state, "s", "claude"
+        )
         assert [r.name for r in show] == ["needs"]
         assert hide == []
 
@@ -67,20 +73,29 @@ class TestCollectSetupNotices:
         _dismiss("s", state)
         recipes = [_r("cond", condition="true"), _r("uncond")]
         # dismiss silences only the unconditional notice; the conditional still shows.
-        assert [r.name for r in launcher._collect_setup_notices(recipes, state, "s", "claude")] == ["cond"]
+        assert [r.name for r in launcher._collect_setup_notices(recipes, state, "s", "claude")] == [
+            "cond"
+        ]
 
     def test_no_setup_skipped_order_preserved(self, state):
         recipes = [Recipe(name="plain"), _r("b"), _r("a")]
-        assert [r.name for r in launcher._collect_setup_notices(recipes, state, "s", "claude")] == ["b", "a"]
+        assert [r.name for r in launcher._collect_setup_notices(recipes, state, "s", "claude")] == [
+            "b",
+            "a",
+        ]
 
     def test_flag_is_per_stack_and_project(self, state, tmp_path):
         _dismiss("s1", state)
         # a different stack (same project) is not dismissed
-        assert [r.name for r in launcher._collect_setup_notices([_r("x")], state, "s2", "claude")] == ["x"]
+        assert [
+            r.name for r in launcher._collect_setup_notices([_r("x")], state, "s2", "claude")
+        ] == ["x"]
         # a different project (same stack) is not dismissed
         other = tmp_path / "other"
         other.mkdir()
-        assert [r.name for r in launcher._collect_setup_notices([_r("x")], other, "s1", "claude")] == ["x"]
+        assert [
+            r.name for r in launcher._collect_setup_notices([_r("x")], other, "s1", "claude")
+        ] == ["x"]
 
 
 class TestPromptSetupNotices:

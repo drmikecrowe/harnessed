@@ -50,11 +50,13 @@ class TestTheDeclarationIsParsedAndValidated:
     @pytest.mark.parametrize("value", [HUB_TRANSPORT_HTTP, HUB_TRANSPORT_STDIO])
     def test_both_transports_round_trip(self, value, tmp_path):
         from harnessed.schema import _parse_hub_transport
+
         assert _parse_hub_transport(value, tmp_path / "stack.yaml") == value
 
     def test_an_omitted_key_takes_the_default(self, tmp_path):
         """Absent means "never thought about it", which is the one case the default is for."""
         from harnessed.schema import _UNSET, _parse_hub_transport
+
         assert _parse_hub_transport(_UNSET, tmp_path / "stack.yaml") == HUB_TRANSPORT_HTTP
 
     def test_a_key_written_with_no_value_is_an_error(self, tmp_path):
@@ -63,6 +65,7 @@ class TestTheDeclarationIsParsedAndValidated:
         fallback this validation exists to refuse, just reached by a different keystroke.
         Raised by CodeRabbit on PR #373."""
         from harnessed.schema import _parse_hub_transport
+
         with pytest.raises(SchemaError):
             _parse_hub_transport(None, tmp_path / "stack.yaml")
 
@@ -70,9 +73,12 @@ class TestTheDeclarationIsParsedAndValidated:
         """Through the real loader, not just the helper — the sentinel only works if the CALLER
         passes it, and `raw.get(k)` (the obvious spelling) collapses absent and null together."""
         from harnessed.schema import load_stack
+
         stack_dir = tmp_path / "brokenstack"
         stack_dir.mkdir()
-        (stack_dir / "stack.yaml").write_text("name: brokenstack\nhub_transport:\n", encoding="utf-8")
+        (stack_dir / "stack.yaml").write_text(
+            "name: brokenstack\nhub_transport:\n", encoding="utf-8"
+        )
         with pytest.raises(SchemaError) as exc:
             load_stack(stack_dir)
         assert "hub_transport" in str(exc.value)
@@ -80,6 +86,7 @@ class TestTheDeclarationIsParsedAndValidated:
     def test_a_stack_yaml_that_omits_it_still_loads(self, tmp_path):
         """The other half of the sentinel: omitting the key must remain unremarkable."""
         from harnessed.schema import load_stack
+
         stack_dir = tmp_path / "plainstack"
         stack_dir.mkdir()
         (stack_dir / "stack.yaml").write_text("name: plainstack\n", encoding="utf-8")
@@ -92,6 +99,7 @@ class TestTheDeclarationIsParsedAndValidated:
         produces the DCR 404 and the invisible prompt, i.e. exactly the symptom the author set this
         field to avoid, with nothing anywhere naming the cause."""
         from harnessed.schema import _parse_hub_transport
+
         with pytest.raises(SchemaError) as exc:
             _parse_hub_transport(value, tmp_path / "stack.yaml")
         assert "hub_transport" in str(exc.value)
@@ -99,6 +107,7 @@ class TestTheDeclarationIsParsedAndValidated:
     def test_the_error_names_what_is_allowed(self, tmp_path):
         """A rejection that does not say what would be accepted just moves the guessing."""
         from harnessed.schema import _parse_hub_transport
+
         with pytest.raises(SchemaError) as exc:
             _parse_hub_transport("htp", tmp_path / "stack.yaml")
         msg = str(exc.value)
@@ -125,7 +134,10 @@ class TestTheEmittedConfigMatchesTheDeclaration:
         entry = _entry(tmp_path)
         assert entry["command"] == HATAGO_STDIO_COMMAND
         assert entry["args"] == [
-            "serve", "--stdio", "--config", str(paths.hatago_config_container())
+            "serve",
+            "--stdio",
+            "--config",
+            str(paths.hatago_config_container()),
         ]
 
     def test_stdio_carries_no_url_or_type(self, tmp_path):
@@ -159,11 +171,13 @@ class TestOnlyAHarnessWhoseWiringIsEmittedMayDeclareStdio:
 
     def test_claude_may(self):
         from harnessed.assemble import _validate_hub_transport
+
         _validate_hub_transport(Stack(name="s", hub_transport=HUB_TRANSPORT_STDIO), "claude")
 
     @pytest.mark.parametrize("harness", ["codex", "omp", "opencode", "antigravity"])
     def test_a_baked_harness_may_not(self, harness):
         from harnessed.assemble import _validate_hub_transport
+
         with pytest.raises(SchemaError) as exc:
             _validate_hub_transport(Stack(name="s", hub_transport=HUB_TRANSPORT_STDIO), harness)
         assert harness in str(exc.value)
@@ -173,10 +187,12 @@ class TestOnlyAHarnessWhoseWiringIsEmittedMayDeclareStdio:
         """The restriction belongs to stdio alone. Rejecting an http stack for a baked harness would
         break every stack that exists today."""
         from harnessed.assemble import _validate_hub_transport
+
         _validate_hub_transport(Stack(name="s", hub_transport=HUB_TRANSPORT_HTTP), harness)
 
     def test_the_refusal_offers_the_way_out(self):
         from harnessed.assemble import _validate_hub_transport
+
         with pytest.raises(SchemaError) as exc:
             _validate_hub_transport(Stack(name="s", hub_transport=HUB_TRANSPORT_STDIO), "codex")
         assert "hub_transport: http" in str(exc.value)
@@ -194,11 +210,14 @@ class TestTheTwoSchemasAgreeAboutWhatAStackMayDeclare:
     _PARSER_ONLY = frozenset({"hatago"})
 
     def _schema_properties(self) -> set:
-        body = (paths.harnessed_home() / "schemas" / "stack.schema.json").read_text(encoding="utf-8")
+        body = (paths.harnessed_home() / "schemas" / "stack.schema.json").read_text(
+            encoding="utf-8"
+        )
         return set(json.loads(body)["properties"])
 
     def test_every_field_the_parser_accepts_is_permitted_by_the_json_schema(self):
         from harnessed.schema import KNOWN_STACK_FIELDS
+
         missing = (KNOWN_STACK_FIELDS - self._PARSER_ONLY) - self._schema_properties()
         assert not missing, (
             f"stack.schema.json rejects {sorted(missing)} — additionalProperties is false, so any "
@@ -207,6 +226,7 @@ class TestTheTwoSchemasAgreeAboutWhatAStackMayDeclare:
 
     def test_the_json_schema_permits_nothing_the_parser_would_drop(self):
         from harnessed.schema import KNOWN_STACK_FIELDS
+
         extra = self._schema_properties() - KNOWN_STACK_FIELDS
         assert not extra, f"{sorted(extra)} validate but are silently ignored by the parser"
 
@@ -235,10 +255,7 @@ class TestTheEntrypointAndTheLauncherAgree:
     def test_the_entrypoint_starts_a_hub_only_for_http(self):
         body = self._entrypoint()
         start = next(ln for ln in body.splitlines() if "hatago serve --http" in ln)
-        guard = next(
-            ln for ln in body.splitlines()
-            if ln.startswith("if [") and "HATAGO_CFG" in ln
-        )
+        guard = next(ln for ln in body.splitlines() if ln.startswith("if [") and "HATAGO_CFG" in ln)
         assert "HATAGO_TRANSPORT" in guard, (
             f"the hub start is not gated on the transport — every stdio stack would get a second "
             f"hub. Guard found: {guard}"
@@ -278,7 +295,7 @@ class TestTheEntrypointAndTheLauncherAgree:
         src = (paths.harnessed_home() / "src" / "harnessed" / "launcher.py").read_text(
             encoding="utf-8"
         )
-        assert not re.search(r'running headless: \{inst\} \(hatago in-container\)', src), (
+        assert not re.search(r"running headless: \{inst\} \(hatago in-container\)", src), (
             "the headless line hardcodes 'hatago in-container' again"
         )
         assert "hub_where" in src, "the headless line no longer varies with the transport"

@@ -21,11 +21,25 @@ def _commit_file(bare_repo, tmp_path, name, filename, content):
     (scratch / filename).write_text(content)
     subprocess.run(["git", "-C", str(scratch), "add", filename], check=True)
     subprocess.run(
-        ["git", "-C", str(scratch), "-c", "user.email=t@t.com", "-c", "user.name=t", "commit", "-q", "-m", "seed"],
+        [
+            "git",
+            "-C",
+            str(scratch),
+            "-c",
+            "user.email=t@t.com",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "-m",
+            "seed",
+        ],
         check=True,
     )
     subprocess.run(["git", "-C", str(scratch), "push", "-q", "origin", "HEAD:master"], check=True)
-    subprocess.run(["git", "-C", str(bare_repo), "symbolic-ref", "HEAD", "refs/heads/master"], check=True)
+    subprocess.run(
+        ["git", "-C", str(bare_repo), "symbolic-ref", "HEAD", "refs/heads/master"], check=True
+    )
 
 
 def _setup_repo(monkeypatch, tmp_path, with_catalog=True, with_origin=True, name="repo"):
@@ -60,7 +74,9 @@ class TestEnsureDocsWikiClone:
         docs_dir = repo / "docs"
         assert docs_dir.is_dir()
         assert (docs_dir / "Home.md").read_text() == "hello wiki\n"
-        assert (docs_dir / ".git").is_dir(), "docs/ should be a plain clone, not a submodule gitlink"
+        assert (docs_dir / ".git").is_dir(), (
+            "docs/ should be a plain clone, not a submodule gitlink"
+        )
 
     def test_existing_docs_dir_is_left_alone(self, monkeypatch, tmp_path):
         repo = _setup_repo(monkeypatch, tmp_path)
@@ -105,7 +121,9 @@ class TestEnsureDocsWikiClone:
         victim = tmp_path / "someone_elses_project"
         victim.mkdir()
         subprocess.run(["git", "init", "-q", str(victim)], check=True)
-        subprocess.run(["git", "-C", str(victim), "remote", "add", "origin", str(other)], check=True)
+        subprocess.run(
+            ["git", "-C", str(victim), "remote", "add", "origin", str(other)], check=True
+        )
         (victim / "catalog").mkdir()
         monkeypatch.chdir(victim)
 

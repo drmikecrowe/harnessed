@@ -28,8 +28,9 @@ TOKENSAVE_URL = (
 )
 
 
-def _lock(spec: str, version: str = "7.0.2", checksum: str = TOKENSAVE_SHA,
-          url: str = TOKENSAVE_URL) -> str:
+def _lock(
+    spec: str, version: str = "7.0.2", checksum: str = TOKENSAVE_SHA, url: str = TOKENSAVE_URL
+) -> str:
     return (
         "# @generated\n\n"
         f'[[tools."{spec}"]]\n'
@@ -58,13 +59,17 @@ class TestReadingOneLockfile:
         """Including fields this module knows nothing about. mise owns the format; re-serialising
         it here would silently drop whatever mise adds next."""
         body = _lock("github:o/tokensave").replace(
-            'url = "', 'some_future_field = "unknown"\nurl = "', 1)
+            'url = "', 'some_future_field = "unknown"\nurl = "', 1
+        )
         blocks = read_lock(_write(tmp_path, "r", body))
         assert "some_future_field" in blocks["github:o/tokensave"]
 
     def test_two_tools_split_into_two_blocks(self, tmp_path):
         body = _lock("github:o/tokensave") + "\n" + _lock("npm:ccstatusline", version="2.2.27")
-        assert set(read_lock(_write(tmp_path, "r", body))) == {"github:o/tokensave", "npm:ccstatusline"}
+        assert set(read_lock(_write(tmp_path, "r", body))) == {
+            "github:o/tokensave",
+            "npm:ccstatusline",
+        }
 
     def test_invalid_toml_is_rejected_rather_than_concatenated(self, tmp_path):
         """A broken lockfile merged into the stack's file would break every tool in it, not only
@@ -73,7 +78,7 @@ class TestReadingOneLockfile:
             read_lock(_write(tmp_path, "r", '[[tools."x"]]\nversion = "unclosed\n'))
 
 
-_BARE_AND_QUOTED = '''\
+_BARE_AND_QUOTED = """\
 # @generated
 
 [[tools."npm:ccstatusline"]]
@@ -87,7 +92,7 @@ backend = "pulumi"
 [tools.pulumi."platforms.linux-x64"]
 checksum = "sha256:pulumichecksum"
 url = "https://example/pulumi"
-'''
+"""
 
 
 class TestBareToolKeys:
@@ -112,20 +117,27 @@ class TestBareToolKeys:
 
     def test_bare_and_quoted_keys_coexist(self, tmp_path):
         assert set(read_lock(_write(tmp_path, "r", _BARE_AND_QUOTED))) == {
-            "npm:ccstatusline", "pulumi"}
+            "npm:ccstatusline",
+            "pulumi",
+        }
 
     def test_a_bare_key_merges_and_stays_valid_TOML(self, tmp_path):
         merged = merge_locks({"a": _write(tmp_path, "a", _BARE_AND_QUOTED)})
         parsed = tomllib.loads(merged)
-        assert parsed["tools"]["pulumi"][0]["platforms.linux-x64"]["checksum"] == "sha256:pulumichecksum"
+        assert (
+            parsed["tools"]["pulumi"][0]["platforms.linux-x64"]["checksum"]
+            == "sha256:pulumichecksum"
+        )
 
     def test_a_bare_key_conflict_still_fails_closed(self, tmp_path):
         other = _BARE_AND_QUOTED.replace("sha256:pulumichecksum", "sha256:different")
         with pytest.raises(ToolLockError, match="different content"):
-            merge_locks({
-                "a": _write(tmp_path, "a", _BARE_AND_QUOTED),
-                "b": _write(tmp_path, "b", other),
-            })
+            merge_locks(
+                {
+                    "a": _write(tmp_path, "a", _BARE_AND_QUOTED),
+                    "b": _write(tmp_path, "b", other),
+                }
+            )
 
 
 class TestNonToolSections:
@@ -146,20 +158,24 @@ class TestNonToolSections:
         assert "some-future-table" not in blocks["pulumi"]
 
     def test_two_recipes_shipping_an_IDENTICAL_aux_table_merge_to_one(self, tmp_path):
-        merged = merge_locks({
-            "a": _write(tmp_path, "a", self.AUX),
-            "b": _write(tmp_path, "b", self.AUX),
-        })
+        merged = merge_locks(
+            {
+                "a": _write(tmp_path, "a", self.AUX),
+                "b": _write(tmp_path, "b", self.AUX),
+            }
+        )
         assert merged.count("[some-future-table]") == 1
         tomllib.loads(merged)  # must still parse — a duplicate table would not
 
     def test_two_recipes_DISAGREEING_about_an_aux_table_fail_closed(self, tmp_path):
         other = self.AUX.replace('key = "value"', 'key = "other"')
         with pytest.raises(ToolLockError, match="different content"):
-            merge_locks({
-                "a": _write(tmp_path, "a", self.AUX),
-                "b": _write(tmp_path, "b", other),
-            })
+            merge_locks(
+                {
+                    "a": _write(tmp_path, "a", self.AUX),
+                    "b": _write(tmp_path, "b", other),
+                }
+            )
 
 
 class TestRootLevelAssignments:
@@ -176,7 +192,7 @@ class TestRootLevelAssignments:
     Root assignments must also come FIRST in the output — TOML puts them before any table.
     """
 
-    ROOT = 'lockfile_version = 1\n\n' + _BARE_AND_QUOTED
+    ROOT = "lockfile_version = 1\n\n" + _BARE_AND_QUOTED
 
     def test_a_root_assignment_survives_the_merge(self, tmp_path):
         merged = merge_locks({"a": _write(tmp_path, "a", self.ROOT)})
@@ -189,19 +205,23 @@ class TestRootLevelAssignments:
         assert merged.index("lockfile_version") < merged.index("[[tools")
 
     def test_two_recipes_agreeing_merge_to_one(self, tmp_path):
-        merged = merge_locks({
-            "a": _write(tmp_path, "a", self.ROOT),
-            "b": _write(tmp_path, "b", self.ROOT),
-        })
+        merged = merge_locks(
+            {
+                "a": _write(tmp_path, "a", self.ROOT),
+                "b": _write(tmp_path, "b", self.ROOT),
+            }
+        )
         assert merged.count("lockfile_version") == 1
         assert tomllib.loads(merged)["lockfile_version"] == 1
 
     def test_two_recipes_DISAGREEING_fail_closed(self, tmp_path):
         with pytest.raises(ToolLockError, match="different content"):
-            merge_locks({
-                "a": _write(tmp_path, "a", self.ROOT),
-                "b": _write(tmp_path, "b", self.ROOT.replace("= 1", "= 2")),
-            })
+            merge_locks(
+                {
+                    "a": _write(tmp_path, "a", self.ROOT),
+                    "b": _write(tmp_path, "b", self.ROOT.replace("= 1", "= 2")),
+                }
+            )
 
     def test_a_comment_only_preamble_is_not_carried_through(self, tmp_path):
         """mise's own `# @generated by mise lock` header is not content to merge — this file writes
@@ -213,37 +233,45 @@ class TestRootLevelAssignments:
 
 class TestMerging:
     def test_disjoint_recipes_union(self, tmp_path):
-        merged = merge_locks({
-            "tokensave": _write(tmp_path, "a", _lock("github:o/tokensave")),
-            "ccstatusline": _write(tmp_path, "b", _lock("npm:ccstatusline", version="2.2.27")),
-        })
+        merged = merge_locks(
+            {
+                "tokensave": _write(tmp_path, "a", _lock("github:o/tokensave")),
+                "ccstatusline": _write(tmp_path, "b", _lock("npm:ccstatusline", version="2.2.27")),
+            }
+        )
         assert 'tools."github:o/tokensave"' in merged
         assert 'tools."npm:ccstatusline"' in merged
 
     def test_the_same_tool_locked_IDENTICALLY_by_two_recipes_appears_once(self, tmp_path):
         """Ordinary: the stack's tool set is deduped, so two recipes pinning `pulumi` is normal."""
-        merged = merge_locks({
-            "a": _write(tmp_path, "a", _lock("pulumi")),
-            "b": _write(tmp_path, "b", _lock("pulumi")),
-        })
+        merged = merge_locks(
+            {
+                "a": _write(tmp_path, "a", _lock("pulumi")),
+                "b": _write(tmp_path, "b", _lock("pulumi")),
+            }
+        )
         assert merged.count('[[tools."pulumi"]]') == 1
 
     def test_the_same_tool_locked_DIFFERENTLY_is_a_hard_error(self, tmp_path):
         """Fail closed. Two recipes claiming different bytes for one tool cannot both be satisfied,
         and picking a winner would let one recipe install what its own lockfile denies."""
         with pytest.raises(ToolLockError, match="different content"):
-            merge_locks({
-                "a": _write(tmp_path, "a", _lock("pulumi", checksum="sha256:" + "a" * 64)),
-                "b": _write(tmp_path, "b", _lock("pulumi", checksum="sha256:" + "b" * 64)),
-            })
+            merge_locks(
+                {
+                    "a": _write(tmp_path, "a", _lock("pulumi", checksum="sha256:" + "a" * 64)),
+                    "b": _write(tmp_path, "b", _lock("pulumi", checksum="sha256:" + "b" * 64)),
+                }
+            )
 
     def test_the_error_names_BOTH_recipes(self, tmp_path):
         """One name sends the reader hunting for the other half of a disagreement."""
         with pytest.raises(ToolLockError) as exc:
-            merge_locks({
-                "alpha": _write(tmp_path, "a", _lock("pulumi", checksum="sha256:" + "a" * 64)),
-                "beta": _write(tmp_path, "b", _lock("pulumi", checksum="sha256:" + "b" * 64)),
-            })
+            merge_locks(
+                {
+                    "alpha": _write(tmp_path, "a", _lock("pulumi", checksum="sha256:" + "a" * 64)),
+                    "beta": _write(tmp_path, "b", _lock("pulumi", checksum="sha256:" + "b" * 64)),
+                }
+            )
         assert "alpha" in str(exc.value) and "beta" in str(exc.value)
 
     def test_no_sources_produces_no_file_content(self):
@@ -264,10 +292,12 @@ class TestMerging:
         those mutants produces a merged lockfile that is subtly malformed, which fails at install
         time in whatever way TOML happens to fail, far from here.
         """
-        merged = merge_locks({
-            "a": _write(tmp_path, "a", _lock("github:o/tokensave")),
-            "b": _write(tmp_path, "b", _lock("npm:ccstatusline", version="2.2.27")),
-        })
+        merged = merge_locks(
+            {
+                "a": _write(tmp_path, "a", _lock("github:o/tokensave")),
+                "b": _write(tmp_path, "b", _lock("npm:ccstatusline", version="2.2.27")),
+            }
+        )
         parsed = tomllib.loads(merged)
         assert set(parsed["tools"]) == {"github:o/tokensave", "npm:ccstatusline"}
 
@@ -321,11 +351,12 @@ def test_real_mise_enforces_a_merged_lockfile(tmp_path):
     """
     cfg = tmp_path / "cfg"
     cfg.mkdir()
-    (cfg / "config.toml").write_text(
-        '[tools]\n"github:aovestdipaperino/tokensave" = "7.0.2"\n'
+    (cfg / "config.toml").write_text('[tools]\n"github:aovestdipaperino/tokensave" = "7.0.2"\n')
+    corrupt = _write(
+        tmp_path,
+        "recipe",
+        _lock("github:aovestdipaperino/tokensave", checksum="sha256:" + "0" * 64),
     )
-    corrupt = _write(tmp_path, "recipe", _lock(
-        "github:aovestdipaperino/tokensave", checksum="sha256:" + "0" * 64))
     (cfg / "mise.lock").write_text(merge_locks({"tokensave": corrupt}))
 
     env = {
@@ -340,7 +371,11 @@ def test_real_mise_enforces_a_merged_lockfile(tmp_path):
     mise = shutil.which("mise")
     assert mise is not None  # guarded by the skipif above; narrows for the type checker
     proc = subprocess.run(
-        [mise, "install"], env=env, capture_output=True, text=True, timeout=600,
+        [mise, "install"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=600,
     )
     assert proc.returncode != 0, (
         "mise accepted a corrupted checksum from the merged lockfile — the merge is decorative"

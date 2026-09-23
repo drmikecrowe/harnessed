@@ -210,7 +210,9 @@ def test_restores_every_kind_even_when_the_body_raises(tmp_path):
         assert Path(os.readlink(links / kind)) == mine[kind]
 
 
-def test_a_failure_restoring_one_kind_neither_masks_the_body_nor_stops_the_rest(tmp_path, monkeypatch):
+def test_a_failure_restoring_one_kind_neither_masks_the_body_nor_stops_the_rest(
+    tmp_path, monkeypatch
+):
     """Teardown must never become the error the developer sees.
 
     Adversarial review round 2, finding 3: the restore loop had no per-item handler, so an OSError

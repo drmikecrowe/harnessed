@@ -21,13 +21,10 @@ import sys
 ALLOWLIST = pathlib.Path(__file__).parent / "mutation-allowlist-456.txt"
 
 REASONS = {
-    "harnessed.persist.x_guard_ownership":
-        "error-message text only; path/cause/uid/subuid/both remediations and the bare-mapping "
-        "quoting are asserted",
-    "harnessed.launcher.x__preflight_runtime":
-        "error-message text only; cause/uid/subuid/both remediations and exit code 1 are asserted",
-    "harnessed.ctrquery.x__runtime":
-        "error-message text only; the named runtimes and exit code 1 are asserted",
+    "harnessed.persist.x_guard_ownership": "error-message text only; path/cause/uid/subuid/both remediations and the bare-mapping "
+    "quoting are asserted",
+    "harnessed.launcher.x__preflight_runtime": "error-message text only; cause/uid/subuid/both remediations and exit code 1 are asserted",
+    "harnessed.ctrquery.x__runtime": "error-message text only; the named runtimes and exit code 1 are asserted",
 }
 
 
@@ -47,8 +44,10 @@ def main() -> int:
         # A new function with survivors is a CLASSIFICATION DECISION, not a regeneration. Refusing
         # here keeps this script from silently widening the allowlist to cover code nobody judged.
         print(f"unclassified function(s) with survivors: {unknown}", file=sys.stderr)
-        print("add a reason to REASONS only after checking the survivors are message text only",
-              file=sys.stderr)
+        print(
+            "add a reason to REASONS only after checking the survivors are message text only",
+            file=sys.stderr,
+        )
         return 1
 
     header = ALLOWLIST.read_text(encoding="utf-8").split("\n#\n# Regenerate")[0]

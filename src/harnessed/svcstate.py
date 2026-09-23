@@ -9,6 +9,7 @@ path. Starting, stopping and health-checking the container stays in launcher.py.
 Deriving rather than storing is what lets a second launch find the same service instead of starting
 a duplicate: the name and port fall out of the same inputs every time.
 """
+
 from __future__ import annotations
 
 import fcntl
@@ -219,7 +220,9 @@ def _svc_published_port(rt: str, cname: str, ctr_port: int) -> int:
     result = _bounded(
         [rt, "port", cname, str(ctr_port)],
         timeout=_PODMAN_QUERY_TIMEOUT,
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if result.returncode != 0:
         return 0
@@ -298,7 +301,7 @@ def _service_refs(stack: str) -> list[str]:
         for name in recipe.services:
             if name not in names:
                 names.append(name)
-    for name in (stk.services if stk else []):
+    for name in stk.services if stk else []:
         if name not in names:
             names.append(name)
     return names
@@ -327,7 +330,9 @@ def _svc_config_hash(run_cmd: list[str]) -> str:
 def _container_label(rt: str, cname: str, label: str) -> str | None:
     """One label off a container (running or stopped), or None if absent."""
     value = _inspect_id(
-        rt, "container", cname,
+        rt,
+        "container",
+        cname,
         '{{if .Config.Labels}}{{index .Config.Labels "' + label + '"}}{{end}}',
     )
     return value or None
@@ -361,13 +366,14 @@ def _repo_project_hashes(project_path: Path) -> set[str]:
     result = _bounded(
         ["git", "-C", str(project_path), "worktree", "list", "--porcelain"],
         timeout=_PODMAN_QUERY_TIMEOUT,
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if result.returncode != 0:
         return hashes
     for line in result.stdout.splitlines():
         if line.startswith("worktree "):
-            hashes.add(paths.project_hash(Path(line[len("worktree "):].strip())))
+            hashes.add(paths.project_hash(Path(line[len("worktree ") :].strip())))
     return hashes
 
 
@@ -391,7 +397,7 @@ def _stack_from_instance_name(name: str, harnesses: list[str], hashes: set[str])
         for project_hash in hashes:
             suffix = f"-{project_hash}"
             if name.endswith(suffix) and len(name) > len(prefix) + len(suffix):
-                return name[len(prefix):-len(suffix)]
+                return name[len(prefix) : -len(suffix)]
         return None
     return None
 
@@ -413,7 +419,8 @@ def _svc_stacks_from_instances(rt: str, project_path: Path) -> list[str]:
     result = _bounded(
         [rt, "ps", "-a", "--filter", "name=harnessed-", "--format", "{{.Names}}\t{{.State}}"],
         timeout=_PODMAN_QUERY_TIMEOUT,
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if result.returncode != 0:
         return []
@@ -442,10 +449,14 @@ def _svc_drift_reason(rt: str, cname: str, svc: "ServiceDef", want_hash: str) ->
         return f"the image {svc.image} was rebuilt since this container started"
     have = _container_config_hash(rt, cname)
     if have is None:
-        return ("it was created before harnessed stamped service configuration, so it may predate "
-                "fixes to how the container is built (mounts, ports, env)")
+        return (
+            "it was created before harnessed stamped service configuration, so it may predate "
+            "fixes to how the container is built (mounts, ports, env)"
+        )
     if have != want_hash:
-        return (f"its create-time configuration no longer matches this code "
-                f"({have} != {want_hash}) — mounts, ports or env changed, and a restart cannot "
-                "pick those up")
+        return (
+            f"its create-time configuration no longer matches this code "
+            f"({have} != {want_hash}) — mounts, ports or env changed, and a restart cannot "
+            "pick those up"
+        )
     return None

@@ -4,6 +4,7 @@ Each harness is entered differently — a plain shell, a session-restoring invoc
 project-scoped one — and each needs a start directory resolved from the project path plus whatever
 the agent declared. All of it is derived from the stack and the paths; nothing here spawns anything.
 """
+
 from __future__ import annotations
 
 import typer

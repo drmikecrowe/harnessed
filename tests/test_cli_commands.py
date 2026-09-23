@@ -7,6 +7,7 @@ must NOT mistake for a stack. A registered command missing from it was unreachab
 mechanism: the stack is named by `--stack` now, so a leading token is always a subcommand and there
 is no set to keep in step.
 """
+
 from __future__ import annotations
 
 import sys

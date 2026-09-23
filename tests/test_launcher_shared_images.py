@@ -118,7 +118,9 @@ def test_build_agent_image_passes_the_declared_pins_to_podman(monkeypatch, harne
     patch_all(monkeypatch, "_run", fake_run)
     monkeypatch.setattr(launcher, "_ensure_extra_tools", lambda: None)
     monkeypatch.setattr(launcher, "_corp_proxy_ca_secret_args", lambda: [])
-    patch_all(monkeypatch, "_image_exists", lambda rt, image: True)   # base present: build the agent only
+    patch_all(
+        monkeypatch, "_image_exists", lambda rt, image: True
+    )  # base present: build the agent only
 
     launcher._build_agent_image("podman", harness)
 

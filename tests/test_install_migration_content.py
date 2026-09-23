@@ -55,7 +55,8 @@ def _code(path: Path) -> str:
     what a file DOES must not be satisfied (or broken) by prose describing it. Same convention as
     schema._lint_script_file."""
     return "\n".join(
-        ln for ln in path.read_text(encoding="utf-8").splitlines()
+        ln
+        for ln in path.read_text(encoding="utf-8").splitlines()
         if not ln.lstrip().startswith("#")
     )
 
@@ -174,7 +175,9 @@ class TestDeclared:
     def test_script_installs_into_the_contract_config_dir(self, name):
         # The whole mode-portability story: one env var names the destination in both modes.
         install = _recipe(name).install
-        assert install is not None and install.script is not None, f"{name}: expected install.script"
+        assert install is not None and install.script is not None, (
+            f"{name}: expected install.script"
+        )
         body = (CATALOG / "recipes" / name / install.script).read_text(encoding="utf-8")
         assert "$HARNESSED_CONFIG_DIR" in body
 
@@ -182,7 +185,9 @@ class TestDeclared:
         # harnessed creates only the cache's PARENT; the dir's own absence is the miss signal, and a
         # populate must be atomic or an interrupted clone becomes a permanent phantom hit.
         install = _recipe(name).install
-        assert install is not None and install.script is not None, f"{name}: expected install.script"
+        assert install is not None and install.script is not None, (
+            f"{name}: expected install.script"
+        )
         body = (CATALOG / "recipes" / name / install.script).read_text(encoding="utf-8")
         assert "HARNESSED_INSTALL_CACHE" in body
         assert "mv " in body, "populate temp-then-`mv`, or an interrupted fetch looks like a hit"
@@ -207,7 +212,8 @@ def test_no_migrated_dockerfile_still_writes_into_the_agent_config_dir(name):
     if not dockerfile.is_file():
         return
     body = "\n".join(
-        ln for ln in dockerfile.read_text(encoding="utf-8").splitlines()
+        ln
+        for ln in dockerfile.read_text(encoding="utf-8").splitlines()
         if not ln.lstrip().startswith("#")
     )
     assert not _CONFIG_DIR_WRITE.search(body), (
@@ -247,7 +253,9 @@ class TestGstackStraddles:
         r = _recipe("gstack")
         body = (r.root / "Dockerfile").read_text(encoding="utf-8")
         assert "USER root" in body
-        instructions = [ln for ln in body.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+        instructions = [
+            ln for ln in body.splitlines() if ln.strip() and not ln.lstrip().startswith("#")
+        ]
         assert not any("install.sh" in ln for ln in instructions), (
             "a Dockerfile body must not invoke its own install script — the executor owns that now"
         )
@@ -284,11 +292,18 @@ class TestCatalogWideInvariants:
         # caveman is in CONTENT_RECIPES and ships a test, so without this the assertion below would
         # shell out to real podman. Stubbing `_run` alone no longer neutralizes this function.
         monkeypatch.setattr(
-            capability, "run_test_command",
+            capability,
+            "run_test_command",
             lambda test, argv, **k: capability.fold_test_result(test, 0, ""),
         )
         launcher._run_container_installs(
-            "podman", "s", "claude", "img", recipes, "cfgvol", "toolsvol",
+            "podman",
+            "s",
+            "claude",
+            "img",
+            recipes,
+            "cfgvol",
+            "toolsvol",
         )
         text = "\n".join(" ".join(c) for c in calls)
         for name in CONTENT_RECIPES:
@@ -307,6 +322,8 @@ class TestCatalogWideInvariants:
             body = write_derived_dockerfile(
                 _P(td), "s", "claude", [_recipe(n) for n in CONTENT_RECIPES]
             ).read_text(encoding="utf-8")
-        instructions = [ln for ln in body.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+        instructions = [
+            ln for ln in body.splitlines() if ln.strip() and not ln.lstrip().startswith("#")
+        ]
         assert not any(emit.CTR_INSTALL_CACHE in ln for ln in instructions)
         assert not any("install.sh" in ln for ln in instructions)

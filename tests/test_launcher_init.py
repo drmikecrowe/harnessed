@@ -128,8 +128,15 @@ class TestAttachRunsInit:
         proj = tmp_path / "proj"
         proj.mkdir()
         with pytest.raises(SystemExit):
-            launcher._attach("podman", "claude", "inst", proj,  # noqa: S604 — shell=True is a flag to the launcher under test, not subprocess
-                             stack="s", mount_path=tmp_path, shell=True)
+            launcher._attach(
+                "podman",
+                "claude",
+                "inst",
+                proj,  # noqa: S604 — shell=True is a flag to the launcher under test, not subprocess
+                stack="s",
+                mount_path=tmp_path,
+                shell=True,
+            )
         shell_cmd = captured["argv"][-1]
         assert "source ~/.bashrc" in shell_cmd
         assert "export PROJECT_DIR=" in shell_cmd
@@ -145,8 +152,9 @@ class TestAttachRunsInit:
         proj = tmp_path / "proj"
         proj.mkdir()
         with pytest.raises(SystemExit):
-            launcher._attach("podman", "claude", "inst", proj,
-                             stack="s", mount_path=tmp_path, shell=False)
+            launcher._attach(
+                "podman", "claude", "inst", proj, stack="s", mount_path=tmp_path, shell=False
+            )
         shell_cmd = captured["argv"][-1]
         assert "export PROJECT_DIR=" in shell_cmd
         assert "claude" in shell_cmd
@@ -163,8 +171,9 @@ class TestAttachRunsInit:
         proj = tmp_path / "proj"
         proj.mkdir()
         with pytest.raises(SystemExit):
-            launcher._attach("podman", "claude", "inst", proj,
-                             stack="s", mount_path=tmp_path, shell=False)
+            launcher._attach(
+                "podman", "claude", "inst", proj, stack="s", mount_path=tmp_path, shell=False
+            )
         shell_cmd = captured["argv"][-1]
         assert "varlock" not in shell_cmd
         assert "--secret" not in shell_cmd
@@ -220,7 +229,7 @@ class TestHostInitEnvPropagation:
 
     def test_a_failing_init_aborts_and_propagates_nothing(self, tmp_path, monkeypatch):
         with pytest.raises(typer.Exit):
-            self._run(monkeypatch, tmp_path, 'export HARNESSED_TEST_VAR=set; exit 3')
+            self._run(monkeypatch, tmp_path, "export HARNESSED_TEST_VAR=set; exit 3")
         assert "HARNESSED_TEST_VAR" not in os.environ
 
     def test_shell_bookkeeping_is_not_propagated(self, tmp_path, monkeypatch):

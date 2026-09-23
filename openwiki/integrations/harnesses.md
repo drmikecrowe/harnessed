@@ -308,11 +308,13 @@ mount over — and it is claude-and-omp only, by construction:
 ```python
 _HOST_HARNESSES: dict[str, HostHarness] = {
     "claude": HostHarness(
-        config_dir_var="CLAUDE_CONFIG_DIR", argv0="claude",
+        config_dir_var="CLAUDE_CONFIG_DIR",
+        argv0="claude",
         share_state=_share_host_claude_state,
     ),
     "omp": HostHarness(
-        config_dir_var="PI_CODING_AGENT_DIR", argv0="omp",
+        config_dir_var="PI_CODING_AGENT_DIR",
+        argv0="omp",
         share_state=_share_host_omp_state,
     ),
 }

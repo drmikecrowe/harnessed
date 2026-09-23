@@ -87,24 +87,31 @@ class TestWriteDerivedDockerfile:
 
         r1 = Recipe(name="pulumi", tools=["pulumi@3.140.0"], root=tmp_path / "pulumi")
         r2 = Recipe(name="tf", tools=["terraform@1.9.0"], root=tmp_path / "tf")
-        body = write_derived_dockerfile(
-            tmp_path, "time", "claude", [r1, r2]
-        ).read_text()
+        body = write_derived_dockerfile(tmp_path, "time", "claude", [r1, r2]).read_text()
         assert "mise use -g" not in body
         assert "recipe tools (mise)" not in body
 
         calls: list[list[str]] = []
         patch_all(monkeypatch, "_run", lambda cmd, *a, **k: calls.append(cmd))
         launcher._run_container_installs(
-            "podman", "time", "claude", "img", [r1, r2], "cfgvol", "toolsvol",
+            "podman",
+            "time",
+            "claude",
+            "img",
+            [r1, r2],
+            "cfgvol",
+            "toolsvol",
         )
         assert any(
             'mise use -g "pulumi@3.140.0" "terraform@1.9.0" && mise install' in a
-            for c in calls for a in c
+            for c in calls
+            for a in c
         )
 
     def test_no_mise_layer_without_tools(self, tmp_path):
-        out = write_derived_dockerfile(tmp_path, "time", "claude", [Recipe(name="x", root=tmp_path)])
+        out = write_derived_dockerfile(
+            tmp_path, "time", "claude", [Recipe(name="x", root=tmp_path)]
+        )
         assert "recipe tools (mise)" not in out.read_text()
 
 
@@ -150,8 +157,9 @@ class TestMergeOpencodeConfig:
     def _baked(self):
         return {
             "$schema": "https://opencode.ai/config.json",
-            "mcp": {"hatago": {"type": "remote", "url": "http://localhost:3535/mcp",
-                               "enabled": True}},
+            "mcp": {
+                "hatago": {"type": "remote", "url": "http://localhost:3535/mcp", "enabled": True}
+            },
         }
 
     def test_adds_agent_and_rules_glob_preserving_hatago(self):
@@ -190,9 +198,7 @@ class TestWriteAntigravityIdentity:
         assert out.read_text() == "You are the release-bot for repo X.\n"
         # A fresh settings.json points context.fileName at the ABSOLUTE in-container identity path.
         settings = json.loads((tmp_path / ".gemini" / "settings.json").read_text())
-        assert settings == {
-            "context": {"fileName": str(CONTAINER_HOME / ".gemini" / "GEMINI.md")}
-        }
+        assert settings == {"context": {"fileName": str(CONTAINER_HOME / ".gemini" / "GEMINI.md")}}
 
     def test_preserves_trailing_newline(self, tmp_path):
         out = write_antigravity_identity(tmp_path, "identity text\n")
@@ -553,7 +559,9 @@ class TestWriteSettingsJson:
         data = json.loads(out.read_text())
         assert data == {
             "permissions": {"defaultMode": "acceptEdits"},
-            "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "caveman-remind"}]}]},
+            "hooks": {
+                "SessionStart": [{"hooks": [{"type": "command", "command": "caveman-remind"}]}]
+            },
         }
 
 
@@ -626,7 +634,9 @@ class TestHatagoCurationPassthrough:
         return {"raw": raw, **kw}
 
     def test_stdio_child_carries_every_curation_key(self, tmp_path):
-        servers = [McpServer(name="atlassian", command="pnpm", args=["dlx", "x"], **self._curated())]
+        servers = [
+            McpServer(name="atlassian", command="pnpm", args=["dlx", "x"], **self._curated())
+        ]
         write_hatago_config(tmp_path, servers)
         entry = json.loads((tmp_path / "hatago.config.json").read_text())["mcpServers"]["atlassian"]
         assert entry["tools"] == self.TOOLS
@@ -699,12 +709,17 @@ class TestRequiredSettings:
         }
 
     def test_hooks_rendered_into_native_claude_shape(self):
-        recipe = _hook_recipe("caveman", {
-            "SessionStart": [HookCommand(command="caveman-remind", matcher=None)],
-        })
+        recipe = _hook_recipe(
+            "caveman",
+            {
+                "SessionStart": [HookCommand(command="caveman-remind", matcher=None)],
+            },
+        )
         assert required_settings([], [recipe]) == {
             "permissions": {"defaultMode": "acceptEdits"},
-            "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "caveman-remind"}]}]},
+            "hooks": {
+                "SessionStart": [{"hooks": [{"type": "command", "command": "caveman-remind"}]}]
+            },
         }
 
     def test_matcher_included_when_present(self):
@@ -730,10 +745,18 @@ class TestRequiredSettings:
         # hooks must not ALSO be replayed through the bridge — but every other recipe's hooks
         # in the same stack still ride the bridge as before.
         recipes = [
-            _hook_recipe("context-mode", {
-                "SessionStart": [HookCommand(command="context-mode hook claude-code sessionstart")],
-                "PostToolUse": [HookCommand(command="context-mode hook claude-code posttooluse")],
-            }, skip_harnesses=["omp"]),
+            _hook_recipe(
+                "context-mode",
+                {
+                    "SessionStart": [
+                        HookCommand(command="context-mode hook claude-code sessionstart")
+                    ],
+                    "PostToolUse": [
+                        HookCommand(command="context-mode hook claude-code posttooluse")
+                    ],
+                },
+                skip_harnesses=["omp"],
+            ),
             _hook_recipe("gsd", {"SessionStart": [HookCommand(command="gsd-hook")]}),
         ]
         assert required_settings([], recipes, harness="omp")["hooks"] == {
@@ -743,12 +766,17 @@ class TestRequiredSettings:
     def test_per_entry_skip_drops_only_that_entry(self):
         # The reason per-entry exists: the recipe-wide key is all-or-nothing, so a recipe with one
         # undeliverable event on a harness had to forfeit its deliverable ones too.
-        recipes = [_hook_recipe("cm", {
-            "PreToolUse": [
-                HookCommand(command="nudge", matcher="Bash", skip_harnesses=["omp"]),
-                HookCommand(command="gate", matcher="Bash"),
-            ],
-        })]
+        recipes = [
+            _hook_recipe(
+                "cm",
+                {
+                    "PreToolUse": [
+                        HookCommand(command="nudge", matcher="Bash", skip_harnesses=["omp"]),
+                        HookCommand(command="gate", matcher="Bash"),
+                    ],
+                },
+            )
+        ]
         omp = _recipe_hooks_settings(recipes, "omp")
         assert [g["hooks"][0]["command"] for g in omp["PreToolUse"]] == ["gate"]
         claude = _recipe_hooks_settings(recipes, "claude")
@@ -757,26 +785,41 @@ class TestRequiredSettings:
     def test_event_with_every_entry_skipped_is_omitted_not_empty(self):
         # `{"PreToolUse": []}` is not the same as absent, and Claude Code never writes an empty
         # group itself. context-mode on omp is exactly this shape for all four of its events.
-        recipes = [_hook_recipe("cm", {
-            "PreToolUse": [HookCommand(command="nudge", matcher="Bash", skip_harnesses=["omp"])],
-            "SessionStart": [HookCommand(command="sess", skip_harnesses=["omp"])],
-        })]
+        recipes = [
+            _hook_recipe(
+                "cm",
+                {
+                    "PreToolUse": [
+                        HookCommand(command="nudge", matcher="Bash", skip_harnesses=["omp"])
+                    ],
+                    "SessionStart": [HookCommand(command="sess", skip_harnesses=["omp"])],
+                },
+            )
+        ]
         assert _recipe_hooks_settings(recipes, "omp") == {}
         assert sorted(_recipe_hooks_settings(recipes, "claude")) == ["PreToolUse", "SessionStart"]
 
     def test_per_entry_skip_is_inert_when_harness_is_unknown(self):
         # harness=None is the assemble-time default before a harness is chosen: skip nothing, or the
         # floor and the post-build merge would disagree about which hooks exist.
-        recipes = [_hook_recipe("cm", {
-            "SessionStart": [HookCommand(command="sess", skip_harnesses=["omp"])],
-        })]
+        recipes = [
+            _hook_recipe(
+                "cm",
+                {
+                    "SessionStart": [HookCommand(command="sess", skip_harnesses=["omp"])],
+                },
+            )
+        ]
         assert _recipe_hooks_settings(recipes, None) == {
             "SessionStart": [{"hooks": [{"type": "command", "command": "sess"}]}]
         }
 
     def test_skip_harnesses_is_inert_on_every_other_harness(self):
-        recipes = [_hook_recipe("cm", {"SessionStart": [HookCommand(command="cm-hook")]},
-                                skip_harnesses=["omp"])]
+        recipes = [
+            _hook_recipe(
+                "cm", {"SessionStart": [HookCommand(command="cm-hook")]}, skip_harnesses=["omp"]
+            )
+        ]
         for harness in ("claude", "opencode", "codex", "antigravity"):
             result = required_settings([], recipes, harness=harness)
             assert result["hooks"]["SessionStart"] == [
@@ -786,14 +829,21 @@ class TestRequiredSettings:
     def test_no_harness_skips_nothing(self):
         # The default (harness=None) predates the gate and must stay byte-identical: an
         # assemble-time caller that does not know the harness emits every recipe's hooks.
-        recipes = [_hook_recipe("cm", {"SessionStart": [HookCommand(command="cm-hook")]},
-                                skip_harnesses=["omp"])]
-        assert required_settings([], recipes) == required_settings([], [_hook_recipe(
-            "cm", {"SessionStart": [HookCommand(command="cm-hook")]})])
+        recipes = [
+            _hook_recipe(
+                "cm", {"SessionStart": [HookCommand(command="cm-hook")]}, skip_harnesses=["omp"]
+            )
+        ]
+        assert required_settings([], recipes) == required_settings(
+            [], [_hook_recipe("cm", {"SessionStart": [HookCommand(command="cm-hook")]})]
+        )
 
     def test_skipping_the_only_hook_recipe_omits_the_hooks_key(self):
-        recipes = [_hook_recipe("cm", {"SessionStart": [HookCommand(command="cm-hook")]},
-                                skip_harnesses=["omp"])]
+        recipes = [
+            _hook_recipe(
+                "cm", {"SessionStart": [HookCommand(command="cm-hook")]}, skip_harnesses=["omp"]
+            )
+        ]
         assert required_settings([], recipes, harness="omp") == {
             "permissions": {"defaultMode": "acceptEdits"}
         }
@@ -807,7 +857,12 @@ class TestRequiredSettings:
     def test_defaultmode_always_acceptedits(self):
         # Present regardless of servers/hooks — every container defaults to auto-accept-edits.
         assert required_settings([])["permissions"]["defaultMode"] == "acceptEdits"
-        assert required_settings([McpServer(name="time", command="pnpm")])["permissions"]["defaultMode"] == "acceptEdits"
+        assert (
+            required_settings([McpServer(name="time", command="pnpm")])["permissions"][
+                "defaultMode"
+            ]
+            == "acceptEdits"
+        )
 
 
 class TestStackPermissionMode:
@@ -816,10 +871,14 @@ class TestStackPermissionMode:
 
     def test_unset_permissions_keeps_prior_acceptedits(self):
         # Regression floor: no `permissions:` on the stack → the historical auto-accept default.
-        assert required_settings([], permissions=None)["permissions"]["defaultMode"] == "acceptEdits"
+        assert (
+            required_settings([], permissions=None)["permissions"]["defaultMode"] == "acceptEdits"
+        )
 
     def test_prompt_maps_to_default(self):
-        assert required_settings([], permissions="prompt")["permissions"]["defaultMode"] == "default"
+        assert (
+            required_settings([], permissions="prompt")["permissions"]["defaultMode"] == "default"
+        )
 
     def test_auto_maps_to_claudes_real_auto_mode(self):
         # bd harnessed-8px.8: `auto` USED to be rewritten to `acceptEdits`. That was wrong — `auto`
@@ -834,14 +893,22 @@ class TestStackPermissionMode:
 
     def test_acceptedits_is_how_you_ask_for_the_old_auto(self):
         # The behaviour `auto` used to give is still reachable — under its true name.
-        assert required_settings([], permissions="acceptEdits")["permissions"]["defaultMode"] == "acceptEdits"
+        assert (
+            required_settings([], permissions="acceptEdits")["permissions"]["defaultMode"]
+            == "acceptEdits"
+        )
 
     def test_yolo_maps_to_bypass(self):
-        assert required_settings([], permissions="yolo")["permissions"]["defaultMode"] == "bypassPermissions"
+        assert (
+            required_settings([], permissions="yolo")["permissions"]["defaultMode"]
+            == "bypassPermissions"
+        )
 
     def test_unknown_value_falls_back_to_acceptedits(self):
         # An unrecognized mode never emits an invalid defaultMode — it degrades to the baseline.
-        assert required_settings([], permissions="wat")["permissions"]["defaultMode"] == "acceptEdits"
+        assert (
+            required_settings([], permissions="wat")["permissions"]["defaultMode"] == "acceptEdits"
+        )
 
     def test_write_settings_json_emits_stack_mode(self, tmp_path):
         out = write_settings_json(tmp_path, [], None, "yolo")
@@ -852,7 +919,10 @@ class TestStackPermissionMode:
         # A recipe baked its own settings.json (hooks + an allow grant) but NO defaultMode — the
         # stack's yolo floor must land in the final merged file.
         required = write_settings_json_dict(permissions="yolo")
-        baked = {"permissions": {"allow": ["mcp__other"]}, "hooks": {"PreToolUse": [{"matcher": "Bash"}]}}
+        baked = {
+            "permissions": {"allow": ["mcp__other"]},
+            "hooks": {"PreToolUse": [{"matcher": "Bash"}]},
+        }
         merged = merge_settings(baked, required)
         assert merged["permissions"]["defaultMode"] == "bypassPermissions"
         # baked content is still carried through verbatim
@@ -959,13 +1029,23 @@ class TestMergeSettings:
     # --- GAP 2: hooks union ---
 
     def test_required_hooks_appended_to_new_event(self):
-        required = {"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "remind"}]}]}}
+        required = {
+            "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "remind"}]}]}
+        }
         merged = merge_settings({}, required)
         assert merged == required
 
     def test_required_hooks_appended_alongside_baked_same_event(self):
-        baked = {"hooks": {"SessionStart": [{"matcher": "startup", "hooks": [{"type": "command", "command": "base-hook"}]}]}}
-        required = {"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "recipe-hook"}]}]}}
+        baked = {
+            "hooks": {
+                "SessionStart": [
+                    {"matcher": "startup", "hooks": [{"type": "command", "command": "base-hook"}]}
+                ]
+            }
+        }
+        required = {
+            "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "recipe-hook"}]}]}
+        }
         merged = merge_settings(baked, required)
         assert merged["hooks"]["SessionStart"] == [
             {"matcher": "startup", "hooks": [{"type": "command", "command": "base-hook"}]},
@@ -974,10 +1054,14 @@ class TestMergeSettings:
 
     def test_required_hooks_for_different_event_added_separately(self):
         baked = {"hooks": {"PreToolUse": [{"matcher": "Bash"}]}}
-        required = {"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "remind"}]}]}}
+        required = {
+            "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "remind"}]}]}
+        }
         merged = merge_settings(baked, required)
         assert merged["hooks"]["PreToolUse"] == [{"matcher": "Bash"}]
-        assert merged["hooks"]["SessionStart"] == [{"hooks": [{"type": "command", "command": "remind"}]}]
+        assert merged["hooks"]["SessionStart"] == [
+            {"hooks": [{"type": "command", "command": "remind"}]}
+        ]
 
     def test_no_required_hooks_leaves_baked_hooks_untouched(self):
         baked = {"hooks": {"PreToolUse": [{"matcher": "Bash"}]}}
@@ -985,7 +1069,10 @@ class TestMergeSettings:
         assert merged["hooks"] == {"PreToolUse": [{"matcher": "Bash"}]}
 
     def test_hooks_and_permissions_merge_together(self):
-        baked = {"hooks": {"PreToolUse": [{"matcher": "Bash"}]}, "permissions": {"allow": ["mcp__other"]}}
+        baked = {
+            "hooks": {"PreToolUse": [{"matcher": "Bash"}]},
+            "permissions": {"allow": ["mcp__other"]},
+        }
         required = {
             "permissions": {"allow": [_GRANT]},
             "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "remind"}]}]},
@@ -993,7 +1080,9 @@ class TestMergeSettings:
         merged = merge_settings(baked, required)
         assert merged["permissions"]["allow"] == ["mcp__other", _GRANT]
         assert merged["hooks"]["PreToolUse"] == [{"matcher": "Bash"}]
-        assert merged["hooks"]["SessionStart"] == [{"hooks": [{"type": "command", "command": "remind"}]}]
+        assert merged["hooks"]["SessionStart"] == [
+            {"hooks": [{"type": "command", "command": "remind"}]}
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -1091,7 +1180,11 @@ class TestWarnDuplicateHooks:
             "context-mode",
             hooks={
                 "SessionStart": [HookCommand(command="context-mode hook claude-code sessionstart")],
-                "PreToolUse": [HookCommand(command="context-mode hook claude-code pretooluse", matcher="Bash|Read")],
+                "PreToolUse": [
+                    HookCommand(
+                        command="context-mode hook claude-code pretooluse", matcher="Bash|Read"
+                    )
+                ],
             },
             skip_harnesses=["omp"],
         )
@@ -1099,7 +1192,9 @@ class TestWarnDuplicateHooks:
         # Gate applied: omp gets NO context-mode hooks
         assert "hooks" not in required or not required.get("hooks")
         # Even after a merge against a baked file with some other hooks, no dupes
-        baked = {"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "bd-hook"}]}]}}
+        baked = {
+            "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "bd-hook"}]}]}
+        }
         final = merge_settings(baked, required)
         warns: list[str] = []
         dupes = warn_duplicate_hooks(final, "omp", warn=warns.append)
@@ -1121,8 +1216,14 @@ class TestWarnDuplicateHooks:
         """
         context_mode_hooks = {
             "SessionStart": [HookCommand(command="context-mode hook claude-code sessionstart")],
-            "PreToolUse": [HookCommand(command="context-mode hook claude-code pretooluse", matcher="Bash|Read")],
-            "PostToolUse": [HookCommand(command="context-mode hook claude-code posttooluse", matcher="Bash|Read|Write")],
+            "PreToolUse": [
+                HookCommand(command="context-mode hook claude-code pretooluse", matcher="Bash|Read")
+            ],
+            "PostToolUse": [
+                HookCommand(
+                    command="context-mode hook claude-code posttooluse", matcher="Bash|Read|Write"
+                )
+            ],
             "PreCompact": [HookCommand(command="context-mode hook claude-code precompact")],
         }
         # Gate REMOVED: no skip_harnesses
@@ -1135,7 +1236,9 @@ class TestWarnDuplicateHooks:
         # THE regression: ungated, omp gets context-mode's hooks at all.
         cmds = [
             h["command"]
-            for groups in required["hooks"].values() for g in groups for h in g["hooks"]
+            for groups in required["hooks"].values()
+            for g in groups
+            for h in g["hooks"]
         ]
         assert any("context-mode hook claude-code sessionstart" in c for c in cmds)
 
@@ -1158,9 +1261,13 @@ class TestRequiredHooksAreUnionedNotAppended:
     TWICE per event."""
 
     def _req(self):
-        return {"hooks": {"SessionStart": [
-            {"hooks": [{"type": "command", "command": "context-mode hook sessionstart"}]}
-        ]}}
+        return {
+            "hooks": {
+                "SessionStart": [
+                    {"hooks": [{"type": "command", "command": "context-mode hook sessionstart"}]}
+                ]
+            }
+        }
 
     def test_reapplying_required_to_the_floor_does_not_duplicate(self):
         required = self._req()
@@ -1177,9 +1284,11 @@ class TestRequiredHooksAreUnionedNotAppended:
 
     def test_a_genuinely_different_entry_is_still_added(self):
         required = self._req()
-        baked = {"hooks": {"SessionStart": [
-            {"hooks": [{"type": "command", "command": "somebody-elses-hook"}]}
-        ]}}
+        baked = {
+            "hooks": {
+                "SessionStart": [{"hooks": [{"type": "command", "command": "somebody-elses-hook"}]}]
+            }
+        }
         merged = merge_settings(baked, required)
         cmds = [h["command"] for g in merged["hooks"]["SessionStart"] for h in g["hooks"]]
         assert cmds == ["somebody-elses-hook", "context-mode hook sessionstart"]
@@ -1187,11 +1296,19 @@ class TestRequiredHooksAreUnionedNotAppended:
     def test_same_command_different_matcher_is_kept(self):
         """Two groups differing only by matcher are not duplicates — dropping one would silently
         narrow a recipe's hook coverage."""
-        required = {"hooks": {"PreToolUse": [
-            {"matcher": "Bash", "hooks": [{"type": "command", "command": "guard"}]}
-        ]}}
-        baked = {"hooks": {"PreToolUse": [
-            {"matcher": "Read", "hooks": [{"type": "command", "command": "guard"}]}
-        ]}}
+        required = {
+            "hooks": {
+                "PreToolUse": [
+                    {"matcher": "Bash", "hooks": [{"type": "command", "command": "guard"}]}
+                ]
+            }
+        }
+        baked = {
+            "hooks": {
+                "PreToolUse": [
+                    {"matcher": "Read", "hooks": [{"type": "command", "command": "guard"}]}
+                ]
+            }
+        }
         merged = merge_settings(baked, required)
         assert len(merged["hooks"]["PreToolUse"]) == 2

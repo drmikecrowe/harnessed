@@ -84,6 +84,8 @@ HATAGO_PORT = paths.hatago_port()
 # predictable temp files on a shared HOST filesystem. This is a container-internal path harnessed
 # only ever names. (Do not spell the directive token in prose — ruff reads it as a real directive.)
 _HATAGO_LOG_PATH = "/tmp/hatago.log"  # noqa: S108
+
+
 def mcp_miss_remediation() -> str:
     """The "how to see why" line for a server that never connected.
 
@@ -97,6 +99,7 @@ def mcp_miss_remediation() -> str:
         f"re-run with --keep, then `{paths.active_runtime() or 'podman'} exec <instance> "
         f"cat {_HATAGO_LOG_PATH}`"
     )
+
 
 # How long to wait for hatago's stdio CHILDREN after its own port is up, and how often to re-ask.
 # `wait_ready` covers the port; these cover the gap between the port binding and the children
@@ -123,7 +126,12 @@ class CapabilityResult:
     detail: str = ""  # short status reason (NEVER a config value / token — threat T-02-07)
 
     def to_dict(self) -> dict:
-        return {"name": self.name, "kind": self.kind, "present": self.present, "detail": self.detail}
+        return {
+            "name": self.name,
+            "kind": self.kind,
+            "present": self.present,
+            "detail": self.detail,
+        }
 
 
 @dataclass
@@ -244,7 +252,9 @@ def discover_recipe_tests(recipes) -> list[RecipeTest]:
             continue
         for script in sorted(tests_dir.glob("*.sh")):
             if script.is_file():
-                found.append(RecipeTest(recipe=recipe.name, tests_dir=tests_dir, script=script.name))
+                found.append(
+                    RecipeTest(recipe=recipe.name, tests_dir=tests_dir, script=script.name)
+                )
     return found
 
 
@@ -400,7 +410,9 @@ def run_recipe_tests(
             copied[test.recipe] = _cp(str(test.tests_dir), f"{instance}:{remote_dir}")
         if not copied[test.recipe]:
             results.append(
-                CapabilityResult(name=test.name, kind=TEST, present=False, detail="podman cp failed")
+                CapabilityResult(
+                    name=test.name, kind=TEST, present=False, detail="podman cp failed"
+                )
             )
             continue
         env = {
@@ -463,9 +475,7 @@ def run_test_command(
         # Whatever went wrong at the process boundary, the answer is "this recipe's test did not
         # pass", named and attributable — never a traceback.
         return fold_test_result(test, 1, str(exc))
-    return fold_test_result(
-        test, proc.returncode, (proc.stdout or "") + (proc.stderr or "")
-    )
+    return fold_test_result(test, proc.returncode, (proc.stdout or "") + (proc.stderr or ""))
 
 
 def run_recipe_tests_host(
@@ -590,7 +600,9 @@ def wait_ready(instance: str, *, port: int = HATAGO_PORT, timeout: int = 60) -> 
         try:
             proc = subprocess.run(
                 [_runtime(), "exec", instance, "bash", "-lc", probe],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
         except (subprocess.SubprocessError, OSError):
             proc = None
@@ -839,7 +851,7 @@ def _fileext_from_filesystem(instance: str, subdir: str) -> set[str]:
     """
     raw = _exec(
         instance,
-        f'ls -1 {CONTAINER_HOME}/.claude/{subdir} 2>/dev/null || true',
+        f"ls -1 {CONTAINER_HOME}/.claude/{subdir} 2>/dev/null || true",
     )
     names = {line.strip() for line in raw.splitlines() if line.strip()}
     if subdir == "commands":
@@ -858,7 +870,10 @@ def _skills_from_llm(instance: str, harness: str = "claude") -> set[str]:
 
 
 def introspect(
-    instance: str, harness: str = "claude", *, expect_mcp: Collection[str] = (),
+    instance: str,
+    harness: str = "claude",
+    *,
+    expect_mcp: Collection[str] = (),
 ) -> LiveCapabilities:
     """Gather the live instance's actual capabilities (MCP + skills + commands).
 

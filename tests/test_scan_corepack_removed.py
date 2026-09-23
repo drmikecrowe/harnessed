@@ -60,9 +60,7 @@ def repo_files():
 def strip_comments(text):
     """Drop `#` comment lines. The rationale for deleting corepack necessarily names corepack, so
     a check that reads comments flags the fix as the defect."""
-    return "\n".join(
-        line for line in text.splitlines() if not line.strip().startswith("#")
-    )
+    return "\n".join(line for line in text.splitlines() if not line.strip().startswith("#"))
 
 
 def logical_lines(text):
@@ -198,7 +196,7 @@ class TestTheBaseImageStillProvidesPnpm:
         assert 'NODE_DIR="$(mise where node@22)"' in removal
         assert '[ -n "$NODE_DIR" ]' in removal
         # The command substitution must never be interpolated straight into a delete path again.
-        assert "rm -rf \"$(mise where" not in removal
+        assert 'rm -rf "$(mise where' not in removal
 
     def test_the_layer_verifies_corepack_is_actually_gone(self, removal):
         """A delete that reports success without checking is the same fail-open shape one step
@@ -210,6 +208,7 @@ class TestTheBaseImageStillProvidesPnpm:
         """Ordering is load-bearing: `mise reshim` in the removal layer regenerates the shim dir,
         so it must come after the install that created it, or pnpm's shim is never rebuilt."""
         install = next(i for i, line in enumerate(layers) if "pnpm@" in line)
-        removal = next(i for i, line in enumerate(layers)
-                       if "rm -rf" in line and "corepack" in line)
+        removal = next(
+            i for i, line in enumerate(layers) if "rm -rf" in line and "corepack" in line
+        )
         assert install < removal

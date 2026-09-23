@@ -20,9 +20,7 @@ def _stub_catalog(monkeypatch, tmp_path, *, exists: bool):
     stack_dir = tmp_path / "catalog" / "stacks" / "claude_time"
     if exists:
         stack_dir.mkdir(parents=True)
-        (stack_dir / "stack.yaml").write_text(
-            "name: claude_time\nrecipes: [time]\nservices: []\n"
-        )
+        (stack_dir / "stack.yaml").write_text("name: claude_time\nrecipes: [time]\nservices: []\n")
     monkeypatch.setattr(paths, "find_in_catalog", lambda kind, name: stack_dir)
 
 
@@ -53,7 +51,9 @@ class TestInstallShim:
         _stub_catalog(monkeypatch, tmp_path, exists=True)
         home = _home_in(monkeypatch, tmp_path)
         monkeypatch.setattr(launcher.shutil, "which", lambda _: None)
-        monkeypatch.setattr(launcher.sys, "argv", ["/dev/venv/bin/harnessed", "install", "claude_time"])
+        monkeypatch.setattr(
+            launcher.sys, "argv", ["/dev/venv/bin/harnessed", "install", "claude_time"]
+        )
 
         launcher.install_stack("claude_time")
 
@@ -112,8 +112,6 @@ class TestImageStaleness:
         assert launcher._img_differs("aaa111", "") is False
 
 
-
-
 class TestStoppedLeftover:
     """`_stopped_leftover` decides whether launch() must recreate a stopped instance before
     `pod create` (a same-name pod otherwise 125s "already in use")."""
@@ -157,8 +155,10 @@ class TestSessionActive:
 
     def _top(self, monkeypatch, stdout, *, rc=0):
         from types import SimpleNamespace
+
         monkeypatch.setattr(
-            launcher.subprocess, "run",
+            launcher.subprocess,
+            "run",
             lambda *a, **k: SimpleNamespace(returncode=rc, stdout=stdout),
         )
 
@@ -233,7 +233,9 @@ class TestPrune:
         os.utime(m, (t, t))
 
     def test_exited_idle_is_reaped_without_session_probe(self, monkeypatch, tmp_path):
-        torn, active_calls = self._setup(monkeypatch, tmp_path, [("harnessed-x-11111111", "exited")])
+        torn, active_calls = self._setup(
+            monkeypatch, tmp_path, [("harnessed-x-11111111", "exited")]
+        )
         self._marker(tmp_path, "harnessed-x-11111111", age_min=180)
         launcher.prune(idle=120, dry_run=False)
         assert torn == ["harnessed-x-11111111"]
@@ -253,7 +255,8 @@ class TestPrune:
 
     def test_running_idle_session_is_reaped(self, monkeypatch, tmp_path):
         torn, active_calls = self._setup(
-            monkeypatch, tmp_path, [("harnessed-x-44444444", "running")], session=False)
+            monkeypatch, tmp_path, [("harnessed-x-44444444", "running")], session=False
+        )
         self._marker(tmp_path, "harnessed-x-44444444", age_min=180)
         launcher.prune(idle=120, dry_run=False)
         assert torn == ["harnessed-x-44444444"]
@@ -261,7 +264,8 @@ class TestPrune:
 
     def test_running_attached_session_is_kept(self, monkeypatch, tmp_path):
         torn, _ = self._setup(
-            monkeypatch, tmp_path, [("harnessed-x-55555555", "running")], session=True)
+            monkeypatch, tmp_path, [("harnessed-x-55555555", "running")], session=True
+        )
         self._marker(tmp_path, "harnessed-x-55555555", age_min=180)
         launcher.prune(idle=120, dry_run=False)
         assert torn == []
@@ -269,7 +273,8 @@ class TestPrune:
     def test_running_undetermined_session_is_kept(self, monkeypatch, tmp_path):
         # `_session_active` returns None on a transient `top` failure → must NOT be read as idle.
         torn, _ = self._setup(
-            monkeypatch, tmp_path, [("harnessed-x-66666666", "running")], session=None)
+            monkeypatch, tmp_path, [("harnessed-x-66666666", "running")], session=None
+        )
         self._marker(tmp_path, "harnessed-x-66666666", age_min=180)
         launcher.prune(idle=120, dry_run=False)
         assert torn == []
@@ -359,7 +364,9 @@ class TestResolveMountPath:
         git("commit", "--allow-empty", "-m", "init", cwd=seed)
         default = subprocess.run(
             ["git", "-C", str(seed), "symbolic-ref", "--short", "HEAD"],
-            check=True, capture_output=True, text=True,
+            check=True,
+            capture_output=True,
+            text=True,
         ).stdout.strip()
         bare = tmp_path / "b.git"
         git("clone", "-q", "--bare", str(seed), str(bare))
@@ -370,9 +377,13 @@ class TestResolveMountPath:
 
     def test_none_does_not_widen_for_ordinary_repo(self, tmp_path):
         import subprocess
+
         subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, capture_output=True)
-        subprocess.run(["git", "-C", str(tmp_path), "commit", "--allow-empty", "-m", "init"],
-                       check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(tmp_path), "commit", "--allow-empty", "-m", "init"],
+            check=True,
+            capture_output=True,
+        )
         assert launcher._resolve_mount_path(tmp_path, None) == tmp_path
 
 
@@ -498,27 +509,31 @@ class TestHostClaudeSettingsMerge:
 
         # Profile settings (image/profile defaults) include statusLine and a required hatago grant.
         (prof / "settings.json").write_text(
-            json.dumps({
-                "statusLine": {"type": "command", "command": "ccstatusline"},
-                "permissions": {
-                    "defaultMode": "acceptEdits",
-                    "allow": ["mcp__hatago"],
-                },
-            })
+            json.dumps(
+                {
+                    "statusLine": {"type": "command", "command": "ccstatusline"},
+                    "permissions": {
+                        "defaultMode": "acceptEdits",
+                        "allow": ["mcp__hatago"],
+                    },
+                }
+            )
         )
 
         # Host settings customize model + mode and deny hatago (which harnessed must re-enable).
         host_claude = home / ".claude"
         host_claude.mkdir(parents=True)
         (host_claude / "settings.json").write_text(
-            json.dumps({
-                "model": "sonnet",
-                "permissions": {
-                    "defaultMode": "default",
-                    "allow": ["mcp__mytool"],
-                    "deny": ["mcp__hatago"],
-                },
-            })
+            json.dumps(
+                {
+                    "model": "sonnet",
+                    "permissions": {
+                        "defaultMode": "default",
+                        "allow": ["mcp__mytool"],
+                        "deny": ["mcp__hatago"],
+                    },
+                }
+            )
         )
 
         required = {
@@ -548,27 +563,33 @@ class TestHostClaudeSettingsMerge:
         prof = tmp_path / "prof"
         prof.mkdir()
         (prof / "settings.json").write_text(
-            json.dumps({
-                "statusLine": {
-                    "type": "command",
-                    "command": "/home/harnessed/.local/share/mise/shims/ccstatusline",
-                },
-            })
+            json.dumps(
+                {
+                    "statusLine": {
+                        "type": "command",
+                        "command": "/home/harnessed/.local/share/mise/shims/ccstatusline",
+                    },
+                }
+            )
         )
         host_claude = home / ".claude"
         host_claude.mkdir(parents=True)
         (host_claude / "settings.json").write_text(
-            json.dumps({
-                "statusLine": {
-                    "type": "command",
-                    "command": "/home/mcrowe/.local/share/mise/shims/ccstatusline",
-                },
-            })
+            json.dumps(
+                {
+                    "statusLine": {
+                        "type": "command",
+                        "command": "/home/mcrowe/.local/share/mise/shims/ccstatusline",
+                    },
+                }
+            )
         )
 
         launcher._merge_host_claude_settings(prof, {})
         out = json.loads((prof / "settings.json").read_text())
-        assert out["statusLine"]["command"] == "/home/harnessed/.local/share/mise/shims/ccstatusline"
+        assert (
+            out["statusLine"]["command"] == "/home/harnessed/.local/share/mise/shims/ccstatusline"
+        )
 
     def test_noop_when_host_settings_absent(self, tmp_path, monkeypatch):
         _home_in(monkeypatch, tmp_path)
@@ -590,7 +611,9 @@ class TestOpencodeAttachCmd:
         prof = tmp_path / "prof"
         (prof / "opencode").mkdir(parents=True)
         (prof / "opencode" / "opencode.json").write_text("{}")
-        assert launcher._opencode_attach_cmd(prof, "opencode_bot") == "opencode --agent opencode-bot"
+        assert (
+            launcher._opencode_attach_cmd(prof, "opencode_bot") == "opencode --agent opencode-bot"
+        )
 
     def test_without_persona_keeps_fixed_command(self, tmp_path):
         prof = tmp_path / "prof"
@@ -610,6 +633,7 @@ class TestCredentialForwarding:
         # AF_UNIX socket paths cap at ~108 chars, so use a SHORT /tmp home, not pytest's long tmp_path.
         import shutil
         import tempfile
+
         home = Path(tempfile.mkdtemp(prefix="hshome"))
         socks: list = []
         yield home, socks
@@ -623,6 +647,7 @@ class TestCredentialForwarding:
     @staticmethod
     def _mksock(p: Path, keep: list):
         import socket
+
         p.parent.mkdir(parents=True, exist_ok=True)
         s = socket.socket(socket.AF_UNIX)
         s.bind(str(p))
@@ -706,24 +731,33 @@ class TestCredentialForwarding:
 
     def test_yubikey_present_adds_device(self, monkeypatch):
         from types import SimpleNamespace
+
         patch_all(monkeypatch, "_host_os", lambda: "linux")
         monkeypatch.setattr(
-            launcher.subprocess, "run",
-            lambda *a, **k: SimpleNamespace(returncode=0, stdout="Bus 003 Device 004: ID 1050:0407 Yubico.com\n"),
+            launcher.subprocess,
+            "run",
+            lambda *a, **k: SimpleNamespace(
+                returncode=0, stdout="Bus 003 Device 004: ID 1050:0407 Yubico.com\n"
+            ),
         )
         real_exists = Path.exists
         monkeypatch.setattr(
-            launcher.Path, "exists",
+            launcher.Path,
+            "exists",
             lambda self: True if str(self) == "/dev/bus/usb/003/004" else real_exists(self),
         )
         assert launcher._yubikey_device_args() == ["--device", "/dev/bus/usb/003/004"]
 
     def test_yubikey_absent_returns_empty(self, monkeypatch):
         from types import SimpleNamespace
+
         patch_all(monkeypatch, "_host_os", lambda: "linux")
         monkeypatch.setattr(
-            launcher.subprocess, "run",
-            lambda *a, **k: SimpleNamespace(returncode=0, stdout="Bus 001 Device 002: ID 8087:0029 Intel Corp.\n"),
+            launcher.subprocess,
+            "run",
+            lambda *a, **k: SimpleNamespace(
+                returncode=0, stdout="Bus 001 Device 002: ID 8087:0029 Intel Corp.\n"
+            ),
         )
         assert launcher._yubikey_device_args() == []
 
@@ -795,7 +829,9 @@ class TestCredentialForwarding:
     def test_firewall_appends_egress_domains(self, monkeypatch):
         # Extra domains are passed to the egress-firewall script as positional args.
         captured = {}
-        monkeypatch.setattr(launcher.os.environ, "get", lambda k, d=None: "false" if k == "NO_FIREWALL" else d)
+        monkeypatch.setattr(
+            launcher.os.environ, "get", lambda k, d=None: "false" if k == "NO_FIREWALL" else d
+        )
 
         # Returns a real CompletedProcess, not a bare capture: `_apply_firewall` now FAILS CLOSED on
         # a non-zero exit (bd harnessed-1ao), so it reads the result instead of discarding it. The
@@ -808,23 +844,30 @@ class TestCredentialForwarding:
             return launcher.subprocess.CompletedProcess(cmd, 0, b"", b"")
 
         monkeypatch.setattr(launcher.subprocess, "run", fake_run)
-        launcher._apply_firewall("podman", "inst", ["api.pulumi.com", "get.pulumi.com"],
-                                 netns_anchor="pod", image="img")
+        launcher._apply_firewall(
+            "podman", "inst", ["api.pulumi.com", "get.pulumi.com"], netns_anchor="pod", image="img"
+        )
         assert captured["cmd"][-2:] == ["api.pulumi.com", "get.pulumi.com"]
         assert captured["cmd"][:3] == ["podman", "run", "--rm"]
         assert "/usr/local/sbin/egress-firewall" in captured["cmd"]
 
     def test_firewall_skipped_when_disabled(self, monkeypatch):
         called = {"ran": False}
-        monkeypatch.setattr(launcher.os.environ, "get", lambda k, d=None: "true" if k == "NO_FIREWALL" else d)
-        monkeypatch.setattr(launcher.subprocess, "run", lambda *a, **k: called.__setitem__("ran", True))
-        launcher._apply_firewall("podman", "inst", ["api.pulumi.com"],
-                                 netns_anchor="pod", image="img")
+        monkeypatch.setattr(
+            launcher.os.environ, "get", lambda k, d=None: "true" if k == "NO_FIREWALL" else d
+        )
+        monkeypatch.setattr(
+            launcher.subprocess, "run", lambda *a, **k: called.__setitem__("ran", True)
+        )
+        launcher._apply_firewall(
+            "podman", "inst", ["api.pulumi.com"], netns_anchor="pod", image="img"
+        )
         assert called["ran"] is False
 
     def test_yubikey_no_lsusb_is_clean(self, monkeypatch):
         def boom(*a, **k):
             raise FileNotFoundError("lsusb")
+
         patch_all(monkeypatch, "_host_os", lambda: "linux")
         monkeypatch.setattr(launcher.subprocess, "run", boom)
         assert launcher._yubikey_device_args() == []
@@ -833,15 +876,20 @@ class TestCredentialForwarding:
         # LOW-1: "1050" must match the Yubico VENDOR id (ID 1050:), not a high device number — a
         # line like "Device 1050: ID 1234:5678 Acme" must NOT be selected for --device passthrough.
         from types import SimpleNamespace
+
         real_exists = Path.exists
         patch_all(monkeypatch, "_host_os", lambda: "linux")
         monkeypatch.setattr(
-            launcher.Path, "exists",
+            launcher.Path,
+            "exists",
             lambda self: True if str(self) == "/dev/bus/usb/005/1050" else real_exists(self),
         )
         monkeypatch.setattr(
-            launcher.subprocess, "run",
-            lambda *a, **k: SimpleNamespace(returncode=0, stdout="Bus 005 Device 1050: ID 1234:5678 Acme Widget\n"),
+            launcher.subprocess,
+            "run",
+            lambda *a, **k: SimpleNamespace(
+                returncode=0, stdout="Bus 005 Device 1050: ID 1234:5678 Acme Widget\n"
+            ),
         )
         assert launcher._yubikey_device_args() == []
 
@@ -1021,8 +1069,8 @@ class TestSshDirMounts:
         ssh.mkdir()
         secret = tmp_path / "aws-credentials"
         secret.write_text("[default]\naws_secret = x")
-        (ssh / "config").symlink_to(secret)      # escaping symlink, always-on mount
-        (ssh / "leak.pub").symlink_to(secret)    # escaping symlink, *.pub mount
+        (ssh / "config").symlink_to(secret)  # escaping symlink, always-on mount
+        (ssh / "leak.pub").symlink_to(secret)  # escaping symlink, *.pub mount
         args = launcher._ssh_dir_mounts(tmp_path, [])
         assert not any("aws-credentials" in a for a in args)
         assert not any(a.endswith("/.ssh/config:ro") for a in args)
@@ -1054,19 +1102,32 @@ class TestHostOsPaths:
     def test_op_socket_macos(self, tmp_path, monkeypatch):
         monkeypatch.setattr(launcher.sys, "platform", "darwin")
         got = launcher._op_agent_socket(tmp_path)
-        assert got == tmp_path / "Library" / "Group Containers" / "2BUA8C4S2C.com.1password" / "t" / "agent.sock"
+        assert (
+            got
+            == tmp_path
+            / "Library"
+            / "Group Containers"
+            / "2BUA8C4S2C.com.1password"
+            / "t"
+            / "agent.sock"
+        )
 
     def test_gpg_socket_prefers_gpgconf(self, monkeypatch):
         from types import SimpleNamespace
+
         monkeypatch.setattr(
-            launcher.subprocess, "run",
-            lambda *a, **k: SimpleNamespace(returncode=0, stdout="/run/user/1000/gnupg/S.gpg-agent.ssh\n"),
+            launcher.subprocess,
+            "run",
+            lambda *a, **k: SimpleNamespace(
+                returncode=0, stdout="/run/user/1000/gnupg/S.gpg-agent.ssh\n"
+            ),
         )
         assert launcher._gpg_ssh_socket() == Path("/run/user/1000/gnupg/S.gpg-agent.ssh")
 
     def test_gpg_socket_linux_fallback_when_no_gpgconf(self, monkeypatch):
         def boom(*a, **k):
             raise FileNotFoundError("gpgconf")
+
         monkeypatch.setattr(launcher.subprocess, "run", boom)
         monkeypatch.setattr(launcher.sys, "platform", "linux")
         assert str(launcher._gpg_ssh_socket()).endswith("/gnupg/S.gpg-agent.ssh")
@@ -1086,16 +1147,20 @@ class TestHostOsPaths:
         # Review Finding 4: a failed reverse-forward must NOT return a path (which would point
         # SSH_AUTH_SOCK at a dead socket) — return None so the caller falls back to the note.
         from types import SimpleNamespace
+
         monkeypatch.setattr(
-            launcher.subprocess, "run",
+            launcher.subprocess,
+            "run",
             lambda *a, **k: SimpleNamespace(returncode=255, stdout="", stderr="forward failed"),
         )
         assert launcher._macos_op_socket_mount_source("podman", Path("/host/agent.sock")) is None
 
     def test_macos_relay_returns_vm_sock_on_success(self, monkeypatch):
         from types import SimpleNamespace
+
         monkeypatch.setattr(
-            launcher.subprocess, "run",
+            launcher.subprocess,
+            "run",
             lambda *a, **k: SimpleNamespace(returncode=0, stdout="", stderr=""),
         )
         assert launcher._macos_op_socket_mount_source("podman", Path("/host/agent.sock")) == Path(
@@ -1120,7 +1185,9 @@ class TestBuildDerivedImageNeverTouchesSecrets:
         schema_dir.mkdir(parents=True)
         (schema_dir / ".env.schema").write_text("SNYK_TOKEN=op(op://x/y/z)\n")
         monkeypatch.setattr(Path, "home", lambda: home)
-        monkeypatch.setattr(launcher.shutil, "which", lambda name: "/usr/bin/varlock" if name == "varlock" else None)
+        monkeypatch.setattr(
+            launcher.shutil, "which", lambda name: "/usr/bin/varlock" if name == "varlock" else None
+        )
 
         calls = []
 
@@ -1129,7 +1196,9 @@ class TestBuildDerivedImageNeverTouchesSecrets:
             return subprocess.CompletedProcess(cmd, 0)
 
         monkeypatch.setattr(launcher.subprocess, "run", fake_run)
-        launcher._build_derived_image("podman", "harnessed-x:latest", tmp_path / "Dockerfile", tmp_path, "deadbeef")
+        launcher._build_derived_image(
+            "podman", "harnessed-x:latest", tmp_path / "Dockerfile", tmp_path, "deadbeef"
+        )
 
         assert len(calls) == 1, "build must issue exactly one command: the plain podman build"
         assert calls[0][:2] == ["podman", "build"]
@@ -1155,11 +1224,15 @@ class TestBuildDerivedImageCacheBypass:
     def test_no_cache_flag_absent_by_default(self, monkeypatch, tmp_path):
         calls = self._capture(monkeypatch)
         monkeypatch.delenv("HARNESSED_PODMAN_NO_CACHE", raising=False)
-        launcher._build_derived_image("podman", "harnessed-x:latest", tmp_path / "Dockerfile", tmp_path, "deadbeef")
+        launcher._build_derived_image(
+            "podman", "harnessed-x:latest", tmp_path / "Dockerfile", tmp_path, "deadbeef"
+        )
         assert "--no-cache" not in calls[0]
 
     def test_no_cache_flag_present_when_env_set(self, monkeypatch, tmp_path):
         calls = self._capture(monkeypatch)
         monkeypatch.setenv("HARNESSED_PODMAN_NO_CACHE", "true")
-        launcher._build_derived_image("podman", "harnessed-x:latest", tmp_path / "Dockerfile", tmp_path, "deadbeef")
+        launcher._build_derived_image(
+            "podman", "harnessed-x:latest", tmp_path / "Dockerfile", tmp_path, "deadbeef"
+        )
         assert "--no-cache" in calls[0]

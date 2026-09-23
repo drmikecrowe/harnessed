@@ -4,6 +4,7 @@ Machine-minted stacks live under XDG DATA, NOT in the user's authoring overlay, 
 can distinguish them and a regenerated manifest can never clobber a hand-written one. It must be
 enumerable, because volume-gc/host-gc define an orphan as "its stack no longer resolves".
 """
+
 from __future__ import annotations
 
 from harnessed import paths

@@ -11,6 +11,7 @@ IPv6 counterpart that does nothing. The suite must FAIL on every one of them.
 
 Restores every file it touches (even on error) and verifies the tree came back clean.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -95,8 +96,10 @@ def main() -> int:
     # fail-open mode that makes a mutation score worthless. Prove the suite is green first.
     print("  BASE   verifying the suite passes before any mutation")
     if _run_suite():
-        print("ERROR: target suite fails BEFORE mutation — every mutant would report killed",
-              file=sys.stderr)
+        print(
+            "ERROR: target suite fails BEFORE mutation — every mutant would report killed",
+            file=sys.stderr,
+        )
         return 1
 
     killed = 0
@@ -132,8 +135,9 @@ def main() -> int:
             print(f"  LIVED  {desc}")
             survivors.append(desc)
 
-    print(f"\n  {killed}/{len(MUTANTS)} killed"
-          + (f"  SURVIVORS: {survivors}" if survivors else ""))
+    print(
+        f"\n  {killed}/{len(MUTANTS)} killed" + (f"  SURVIVORS: {survivors}" if survivors else "")
+    )
     return 0 if not survivors else 1
 
 

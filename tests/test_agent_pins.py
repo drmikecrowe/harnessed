@@ -53,10 +53,15 @@ class TestBuildArgShapes:
             load_agent("omp", root=tmp_path)
 
     def test_mapping_pin_exposes_value_not_the_mapping(self, tmp_path):
-        _write(tmp_path, "omp", _HEAD + (
-            "build_args:\n"
-            '  OMP_VERSION: { value: "17.2.11", spec: "github:can1357/oh-my-pi" }\n'
-        ))
+        _write(
+            tmp_path,
+            "omp",
+            _HEAD
+            + (
+                "build_args:\n"
+                '  OMP_VERSION: { value: "17.2.11", spec: "github:can1357/oh-my-pi" }\n'
+            ),
+        )
         agent = load_agent("omp", root=tmp_path)
         assert agent.build_args == {"OMP_VERSION": "17.2.11"}
         assert agent.build_arg_specs == {"OMP_VERSION": "github:can1357/oh-my-pi"}
@@ -67,16 +72,23 @@ class TestBuildArgShapes:
             load_agent("omp", root=tmp_path)
 
     def test_hold_carries_its_reason(self, tmp_path):
-        _write(tmp_path, "omp", _HEAD + (
-            'build_args:\n  OMP_VERSION: { value: "16.4.6", hold: "unqueryable: names no upstream" }\n'
-        ))
+        _write(
+            tmp_path,
+            "omp",
+            _HEAD
+            + (
+                'build_args:\n  OMP_VERSION: { value: "16.4.6", hold: "unqueryable: names no upstream" }\n'
+            ),
+        )
         agent = load_agent("omp", root=tmp_path)
         assert agent.build_arg_holds["OMP_VERSION"].startswith("unqueryable")
 
     @pytest.mark.parametrize("hold", ['hold: ""', "hold: null"])
     def test_empty_hold_reason_is_an_error(self, tmp_path, hold):
         """A hold with no reason is the shape that turns `hold:` into an unaudited escape hatch."""
-        _write(tmp_path, "omp", _HEAD + f'build_args:\n  OMP_VERSION: {{ value: "16.4.6", {hold} }}\n')
+        _write(
+            tmp_path, "omp", _HEAD + f'build_args:\n  OMP_VERSION: {{ value: "16.4.6", {hold} }}\n'
+        )
         with pytest.raises(SchemaError, match="hold"):
             load_agent("omp", root=tmp_path)
 
@@ -95,12 +107,16 @@ class TestBuildArgShapes:
 
 class TestUnpinnableField:
     def test_reason_is_exposed(self, tmp_path):
-        _write(tmp_path, "antigravity", _HEAD + 'unpinnable:\n  AGY_VERSION: "no version selector"\n')
+        _write(
+            tmp_path, "antigravity", _HEAD + 'unpinnable:\n  AGY_VERSION: "no version selector"\n'
+        )
         agent = load_agent("antigravity", root=tmp_path)
         assert agent.unpinnable == {"AGY_VERSION": "no version selector"}
 
     def test_it_is_not_a_build_arg(self, tmp_path):
-        _write(tmp_path, "antigravity", _HEAD + 'unpinnable:\n  AGY_VERSION: "no version selector"\n')
+        _write(
+            tmp_path, "antigravity", _HEAD + 'unpinnable:\n  AGY_VERSION: "no version selector"\n'
+        )
         assert load_agent("antigravity", root=tmp_path).build_args == {}
 
     @pytest.mark.parametrize("reason", ['""', "null"])
@@ -117,10 +133,12 @@ class TestUnpinnableField:
             load_agent("antigravity", root=tmp_path)
 
     def test_same_key_in_build_args_and_unpinnable_is_an_error(self, tmp_path):
-        _write(tmp_path, "omp", _HEAD + (
-            'build_args:\n  OMP_VERSION: "16.4.6"\n'
-            'unpinnable:\n  OMP_VERSION: "no selector"\n'
-        ))
+        _write(
+            tmp_path,
+            "omp",
+            _HEAD
+            + ('build_args:\n  OMP_VERSION: "16.4.6"\nunpinnable:\n  OMP_VERSION: "no selector"\n'),
+        )
         with pytest.raises(SchemaError, match="OMP_VERSION"):
             load_agent("omp", root=tmp_path)
 
@@ -136,9 +154,14 @@ class TestBuildArgvBoundary:
     """What actually reaches `podman build`. The schema is not the boundary — this is."""
 
     def test_mapping_form_reaches_the_argv_as_its_value(self, tmp_path):
-        _write(tmp_path, "omp", _HEAD + (
-            'build_args:\n  OMP_VERSION: { value: "17.2.11", spec: "github:can1357/oh-my-pi" }\n'
-        ))
+        _write(
+            tmp_path,
+            "omp",
+            _HEAD
+            + (
+                'build_args:\n  OMP_VERSION: { value: "17.2.11", spec: "github:can1357/oh-my-pi" }\n'
+            ),
+        )
         flags = _agent_build_arg_flags(load_agent("omp", root=tmp_path))
         assert flags == ["--build-arg", "OMP_VERSION=17.2.11"]
 
@@ -150,9 +173,11 @@ class TestBuildArgvBoundary:
 
     def test_an_unpinnable_entry_contributes_no_flag_at_all(self, tmp_path):
         """The absence IS the assertion: AGY_VERSION names no ARG, so passing it would fail the build."""
-        _write(tmp_path, "antigravity", _HEAD + (
-            'unpinnable:\n  AGY_VERSION: "installer offers no version selector"\n'
-        ))
+        _write(
+            tmp_path,
+            "antigravity",
+            _HEAD + ('unpinnable:\n  AGY_VERSION: "installer offers no version selector"\n'),
+        )
         assert _agent_build_arg_flags(load_agent("antigravity", root=tmp_path)) == []
 
 
@@ -161,22 +186,38 @@ class TestUpdateSeesAgents:
         return [pinupdate.Release(version="17.2.11", published=None)]
 
     def test_a_spec_bearing_pin_is_discovered_and_offered(self, tmp_path):
-        d = _write(tmp_path, "omp", _HEAD + (
-            'build_args:\n  OMP_VERSION: { value: "16.4.6", spec: "github:can1357/oh-my-pi" }\n'
-        ))
+        d = _write(
+            tmp_path,
+            "omp",
+            _HEAD
+            + (
+                'build_args:\n  OMP_VERSION: { value: "16.4.6", spec: "github:can1357/oh-my-pi" }\n'
+            ),
+        )
         report = pinupdate.build_report(
-            [], agent_dirs=[d], resolve=self._resolve, minimum_release_age_minutes=0,
+            [],
+            agent_dirs=[d],
+            resolve=self._resolve,
+            minimum_release_age_minutes=0,
         )
         assert [f.pin.current for f in report.stale] == ["16.4.6"]
         assert report.stale[0].latest == "17.2.11"
 
     def test_a_held_pin_is_listed_but_never_offered(self, tmp_path):
-        d = _write(tmp_path, "omp", _HEAD + (
-            "build_args:\n"
-            '  OMP_VERSION: { value: "16.4.6", spec: "github:can1357/oh-my-pi", hold: "pinned to v16 by choice" }\n'
-        ))
+        d = _write(
+            tmp_path,
+            "omp",
+            _HEAD
+            + (
+                "build_args:\n"
+                '  OMP_VERSION: { value: "16.4.6", spec: "github:can1357/oh-my-pi", hold: "pinned to v16 by choice" }\n'
+            ),
+        )
         report = pinupdate.build_report(
-            [], agent_dirs=[d], resolve=self._resolve, minimum_release_age_minutes=0,
+            [],
+            agent_dirs=[d],
+            resolve=self._resolve,
+            minimum_release_age_minutes=0,
         )
         assert not report.stale
         assert [f.pin.current for f in report.held] == ["16.4.6"]
@@ -185,16 +226,24 @@ class TestUpdateSeesAgents:
         """No `spec:` means no upstream to query. It must be reported, not silently dropped."""
         d = _write(tmp_path, "claude", _HEAD + 'build_args:\n  CLAUDE_VERSION: "2.1.88"\n')
         report = pinupdate.build_report(
-            [], agent_dirs=[d], resolve=self._resolve, minimum_release_age_minutes=0,
+            [],
+            agent_dirs=[d],
+            resolve=self._resolve,
+            minimum_release_age_minutes=0,
         )
         assert [f.pin.current for f in report.unresolved] == ["2.1.88"]
 
     def test_an_unpinnable_agent_reports_under_its_own_status(self, tmp_path):
-        d = _write(tmp_path, "antigravity", _HEAD + (
-            'unpinnable:\n  AGY_VERSION: "installer offers no version selector"\n'
-        ))
+        d = _write(
+            tmp_path,
+            "antigravity",
+            _HEAD + ('unpinnable:\n  AGY_VERSION: "installer offers no version selector"\n'),
+        )
         report = pinupdate.build_report(
-            [], agent_dirs=[d], resolve=self._resolve, minimum_release_age_minutes=0,
+            [],
+            agent_dirs=[d],
+            resolve=self._resolve,
+            minimum_release_age_minutes=0,
         )
         assert [f.pin.key for f in report.unpinnable] == ["AGY_VERSION"]
         assert not report.unresolved and not report.stale and not report.held
@@ -202,7 +251,10 @@ class TestUpdateSeesAgents:
     def test_the_report_identifies_agent_and_key(self, tmp_path):
         d = _write(tmp_path, "antigravity", _HEAD + 'unpinnable:\n  AGY_VERSION: "no selector"\n')
         report = pinupdate.build_report(
-            [], agent_dirs=[d], resolve=self._resolve, minimum_release_age_minutes=0,
+            [],
+            agent_dirs=[d],
+            resolve=self._resolve,
+            minimum_release_age_minutes=0,
         )
         pin = report.unpinnable[0].pin
         assert (pin.recipe, pin.key) == ("antigravity", "AGY_VERSION")
@@ -212,7 +264,10 @@ class TestUpdateSeesAgents:
         which is the argument check_exit_code's own docstring already makes for unresolved pins."""
         d = _write(tmp_path, "antigravity", _HEAD + 'unpinnable:\n  AGY_VERSION: "no selector"\n')
         report = pinupdate.build_report(
-            [], agent_dirs=[d], resolve=self._resolve, minimum_release_age_minutes=0,
+            [],
+            agent_dirs=[d],
+            resolve=self._resolve,
+            minimum_release_age_minutes=0,
         )
         assert report.check_exit_code() == 0
 
@@ -228,28 +283,38 @@ class TestApplyWritesAgentPins:
 
     def _findings(self, agent_dir, latest="17.2.11"):
         return pinupdate.build_report(
-            [], agent_dirs=[agent_dir],
+            [],
+            agent_dirs=[agent_dir],
             resolve=lambda _b, _n: [pinupdate.Release(version=latest, published=None)],
             minimum_release_age_minutes=0,
         ).stale
 
     def test_a_mapping_form_pin_is_actually_rewritten(self, tmp_path):
-        d = _write(tmp_path, "omp", _HEAD + (
-            'build_args:\n'
-            '  OMP_VERSION: { value: "16.4.6", spec: "github:can1357/oh-my-pi" }\n'
-        ))
+        d = _write(
+            tmp_path,
+            "omp",
+            _HEAD
+            + (
+                'build_args:\n  OMP_VERSION: { value: "16.4.6", spec: "github:can1357/oh-my-pi" }\n'
+            ),
+        )
         applied = pinupdate.apply(self._findings(d))
         assert len(applied) == 1
-        assert '17.2.11' in (d / "agent.yaml").read_text()
+        assert "17.2.11" in (d / "agent.yaml").read_text()
         assert load_agent("omp", root=tmp_path).build_args == {"OMP_VERSION": "17.2.11"}
 
     def test_the_rewrite_keeps_the_spec_and_its_comments(self, tmp_path):
         """A bump must be a one-line diff, or a reviewer cannot see what changed."""
-        d = _write(tmp_path, "omp", _HEAD + (
-            "# why this pin exists\n"
-            'build_args:\n'
-            '  OMP_VERSION: { value: "16.4.6", spec: "github:can1357/oh-my-pi" }\n'
-        ))
+        d = _write(
+            tmp_path,
+            "omp",
+            _HEAD
+            + (
+                "# why this pin exists\n"
+                "build_args:\n"
+                '  OMP_VERSION: { value: "16.4.6", spec: "github:can1357/oh-my-pi" }\n'
+            ),
+        )
         pinupdate.apply(self._findings(d))
         text = (d / "agent.yaml").read_text()
         assert "# why this pin exists" in text
@@ -262,12 +327,18 @@ class TestApplyWritesAgentPins:
         mirrors `test_update_pins.py::test_the_mapping_form_is_rewritten_in_place_keeping_its_hold`
         for recipes; the agent rewriter is a different function and inherits none of its guarantees.
         """
-        d = _write(tmp_path, "omp", _HEAD + (
-            "build_args:\n"
-            '  OMP_VERSION: { value: "16.4.6", spec: "github:can1357/oh-my-pi", hold: "v16 by choice" }\n'
-        ))
+        d = _write(
+            tmp_path,
+            "omp",
+            _HEAD
+            + (
+                "build_args:\n"
+                '  OMP_VERSION: { value: "16.4.6", spec: "github:can1357/oh-my-pi", hold: "v16 by choice" }\n'
+            ),
+        )
         report = pinupdate.build_report(
-            [], agent_dirs=[d],
+            [],
+            agent_dirs=[d],
             resolve=lambda _b, _n: [pinupdate.Release(version="17.2.11", published=None)],
             minimum_release_age_minutes=0,
         )
@@ -297,6 +368,8 @@ class TestShippedManifestsStillLoad:
 
 
 _REPO_CATALOG = Path(__file__).resolve().parent.parent / "catalog"
+
+
 class TestA3ClaudeTracksTheVendorChannel:
     """A3, reversed by the owner on 2026-09-23: harnesses track their vendor's latest release —
     "we need to trust their release process." Claude's only upstream is downloads.claude.ai, a
@@ -350,7 +423,8 @@ class TestA3ClaudeTracksTheVendorChannel:
         pin = next(p for p in pins if p.key == "CLAUDE_VERSION")
         assert pin.backend == "unpinnable"
         report = pinupdate.build_report(
-            [], agent_dirs=[_REPO_CATALOG / "agents" / "claude"],
+            [],
+            agent_dirs=[_REPO_CATALOG / "agents" / "claude"],
             resolve=lambda backend, name: [pinupdate.Release(version="99.0.0")],
         )
         assert [f.pin.key for f in report.unpinnable] == ["CLAUDE_VERSION"]

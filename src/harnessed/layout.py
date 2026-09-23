@@ -5,6 +5,7 @@ per-stack profile dir, and the image tags built from a stack/harness pair. They 
 because they are the answers a module needs BEFORE it can do anything else, so importing them from
 launcher.py would point the dependency the wrong way.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -12,6 +13,7 @@ from pathlib import Path
 from . import paths
 from .paths import profile_dir
 from .schema import load_agent
+
 
 def _harnessed_dir() -> Path:
     """harnessed's home (honors HARNESSED_DIR). Build context + catalog live under it.

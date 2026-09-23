@@ -15,7 +15,6 @@ import re
 from pathlib import Path
 
 
-
 from harnessed import mounts
 
 PIN = "0.1.38-test.3"
@@ -131,13 +130,17 @@ class TestOnlyAServerWithNoTokenIsAskedAbout:
         assert mounts._mcp_remote_pending_auth([net], INST, False, home=tmp_path) == []
 
     def test_two_servers_are_reported_independently(self, tmp_path):
-        second = _Server(name="other", args=["dlx", SPEC_ARG, "https://mcp.example.com/mcp", "4000"])
+        second = _Server(
+            name="other", args=["dlx", SPEC_ARG, "https://mcp.example.com/mcp", "4000"]
+        )
         _write_token(tmp_path)  # only the first is authorized
         pending = mounts._mcp_remote_pending_auth([_Server(), second], INST, False, home=tmp_path)
         assert [n for n, _ in pending] == ["other"]
 
     def test_declaration_order_is_preserved(self, tmp_path):
-        second = _Server(name="other", args=["dlx", SPEC_ARG, "https://mcp.example.com/mcp", "4000"])
+        second = _Server(
+            name="other", args=["dlx", SPEC_ARG, "https://mcp.example.com/mcp", "4000"]
+        )
         pending = mounts._mcp_remote_pending_auth([_Server(), second], INST, False, home=tmp_path)
         assert [n for n, _ in pending] == ["atlassian", "other"]
 
@@ -183,11 +186,12 @@ class TestWhatIsHandedToPodmanIsRunnable:
         """The --reauth branch assembles its own list, so it can drift from the pending path — and
         the original bug lived in both."""
         from harnessed import paths
+
         src = (paths.harnessed_home() / "src" / "harnessed" / "launcher.py").read_text(
             encoding="utf-8"
         )
-        block = src[src.index("def _authorize_mcp_remote_servers"):]
-        block = block[:block.index("\ndef ")]
+        block = src[src.index("def _authorize_mcp_remote_servers") :]
+        block = block[: block.index("\ndef ")]
         assert "_mcp_remote_argv(s)" in block
         assert "list(s.args)" not in block, "the reauth branch still passes bare args"
 
@@ -213,6 +217,7 @@ class TestTheStoreLookedAtIsTheStoreMounted:
 class TestTheLaunchSequenceAsksAtTheOnlyMomentItCan:
     def _launcher(self) -> str:
         from harnessed import paths
+
         return (paths.harnessed_home() / "src" / "harnessed" / "launcher.py").read_text(
             encoding="utf-8"
         )
@@ -234,7 +239,7 @@ class TestTheLaunchSequenceAsksAtTheOnlyMomentItCan:
         assert len(found) >= 2, f"expected both call sites, matched {len(found)}"
         for occurrence in found:
             line_start = src.rfind("\n", 0, occurrence.start()) + 1
-            assert not src[line_start:occurrence.start()].strip().startswith("def "), (
+            assert not src[line_start : occurrence.start()].strip().startswith("def "), (
                 "the ordering probe matches the function definition"
             )
 
@@ -259,23 +264,23 @@ class TestTheLaunchSequenceAsksAtTheOnlyMomentItCan:
         there return straight into `_attach`, so without this `--reauth` silently did nothing
         whenever the pod happened to be up."""
         src = self._launcher()
-        branch = src[src.index("if not headless and _container_running(rt, inst):"):]
-        branch = branch[:branch.index("_attach(rt, harness, inst")]
+        branch = src[src.index("if not headless and _container_running(rt, inst):") :]
+        branch = branch[: branch.index("_attach(rt, harness, inst")]
         assert "_authorize_mcp_remote_servers(" in branch
 
     def test_headless_refuses_rather_than_blocking(self):
         """A browser prompt in CI would hang to the job timeout and report nothing useful."""
         src = self._launcher()
-        block = src[src.index("def _authorize_mcp_remote_servers"):]
-        block = block[:block.index("\ndef ")]
+        block = src[src.index("def _authorize_mcp_remote_servers") :]
+        block = block[: block.index("\ndef ")]
         assert "if headless:" in block and "typer.Exit(1)" in block
 
     def test_the_hub_is_stopped_only_where_one_is_running(self):
         """Under http the entrypoint already started hatago, which already holds the callback port
         through its own mcp-remote; under stdio there is no hub until attach."""
         src = self._launcher()
-        block = src[src.index("def _authorize_mcp_remote_servers"):]
-        block = block[:block.index("\ndef ")]
+        block = src[src.index("def _authorize_mcp_remote_servers") :]
+        block = block[: block.index("\ndef ")]
         assert "restart_hub = stk.hub_transport != HUB_TRANSPORT_STDIO" in block
         assert "pkill -f" in block
 
@@ -283,8 +288,8 @@ class TestTheLaunchSequenceAsksAtTheOnlyMomentItCan:
         """`finally`. A cancelled consent must not leave the operator with an instance that has no
         MCP at all — strictly worse than one server short."""
         src = self._launcher()
-        block = src[src.index("def _authorize_mcp_remote_servers"):]
-        block = block[:block.index("\ndef ")]
+        block = src[src.index("def _authorize_mcp_remote_servers") :]
+        block = block[: block.index("\ndef ")]
         assert re.search(r"finally:\s*\n\s*#", block)
 
     def test_the_hub_restart_matches_the_entrypoint(self):
@@ -292,6 +297,7 @@ class TestTheLaunchSequenceAsksAtTheOnlyMomentItCan:
         `exec sleep infinity` would fork a second PID-1 stand-in. That makes it a SECOND copy of the
         command, so the two are pinned together here."""
         from harnessed import paths
+
         src = self._launcher()
         entry = (paths.harnessed_home() / "catalog" / "base" / "harnessed-start").read_text(
             encoding="utf-8"
@@ -310,8 +316,8 @@ class TestTheLaunchSequenceAsksAtTheOnlyMomentItCan:
         """The whole reason to pass it is that an existing token is wrong — revoked, wrong account,
         too few scopes — and those are exactly the ones the pending check reports as fine."""
         src = self._launcher()
-        block = src[src.index("def _authorize_mcp_remote_servers"):]
-        block = block[:block.index("\ndef ")]
+        block = src[src.index("def _authorize_mcp_remote_servers") :]
+        block = block[: block.index("\ndef ")]
         assert "if reauth:" in block
 
 
@@ -323,23 +329,27 @@ class TestAPartiallyWrittenTokenIsNotSuccess:
 
     def test_a_complete_token_is_accepted(self, tmp_path):
         from harnessed.launcher import _token_is_complete
+
         t = tmp_path / "t.json"
         t.write_text(json.dumps({"access_token": "abc"}), encoding="utf-8")
         assert _token_is_complete(t) is True
 
     def test_a_missing_file_is_not(self, tmp_path):
         from harnessed.launcher import _token_is_complete
+
         assert _token_is_complete(tmp_path / "absent.json") is False
 
     def test_the_moment_of_creation_is_not(self, tmp_path):
         """The exact state `writeFile` passes through: opened, still empty."""
         from harnessed.launcher import _token_is_complete
+
         t = tmp_path / "t.json"
         t.write_text("", encoding="utf-8")
         assert _token_is_complete(t) is False
 
     def test_a_half_written_object_is_not(self, tmp_path):
         from harnessed.launcher import _token_is_complete
+
         t = tmp_path / "t.json"
         t.write_text('{"access_token": "ab', encoding="utf-8")
         assert _token_is_complete(t) is False
@@ -347,12 +357,14 @@ class TestAPartiallyWrittenTokenIsNotSuccess:
     def test_an_empty_object_is_not(self, tmp_path):
         """`{}` parses. It carries no token, so it is not a finished consent."""
         from harnessed.launcher import _token_is_complete
+
         t = tmp_path / "t.json"
         t.write_text("{}", encoding="utf-8")
         assert _token_is_complete(t) is False
 
     def test_a_json_scalar_is_not(self, tmp_path):
         from harnessed.launcher import _token_is_complete
+
         t = tmp_path / "t.json"
         t.write_text("null", encoding="utf-8")
         assert _token_is_complete(t) is False
@@ -360,11 +372,12 @@ class TestAPartiallyWrittenTokenIsNotSuccess:
     def test_the_consent_waits_on_the_parsed_form(self):
         """Pinned structurally too: a future edit back to `token.is_file()` reopens the race."""
         from harnessed import paths
+
         src = (paths.harnessed_home() / "src" / "harnessed" / "launcher.py").read_text(
             encoding="utf-8"
         )
-        block = src[src.index("def _run_mcp_remote_consent"):]
-        block = block[:block.index("\ndef ")]
+        block = src[src.index("def _run_mcp_remote_consent") :]
+        block = block[: block.index("\ndef ")]
         assert "_token_is_complete(token)" in block
         assert "token.is_file()" not in block
 
@@ -376,11 +389,12 @@ class TestTheHubStopCannotKillItsOwnShell:
 
     def _block(self) -> str:
         from harnessed import paths
+
         src = (paths.harnessed_home() / "src" / "harnessed" / "launcher.py").read_text(
             encoding="utf-8"
         )
-        block = src[src.index("def _authorize_mcp_remote_servers"):]
-        return block[:block.index("\ndef ")]
+        block = src[src.index("def _authorize_mcp_remote_servers") :]
+        return block[: block.index("\ndef ")]
 
     def test_the_pattern_cannot_match_itself(self):
         block = self._block()
@@ -397,9 +411,11 @@ class TestTheHubStopCannotKillItsOwnShell:
         found = re.search(r"pkill -f '(\[.\][^']*)'", block)
         assert found, "no bracketed pkill pattern found"
         pattern = found.group(1)
-        real = ("/home/harnessed/.local/share/mise/installs/node/22/bin/node "
-                "/home/harnessed/.local/share/pnpm/global/v11/2-x/node_modules/"
-                "@drmikecrowe/hatago-mcp-hub/dist/node/cli.js serve --http --port 3535")
+        real = (
+            "/home/harnessed/.local/share/mise/installs/node/22/bin/node "
+            "/home/harnessed/.local/share/pnpm/global/v11/2-x/node_modules/"
+            "@drmikecrowe/hatago-mcp-hub/dist/node/cli.js serve --http --port 3535"
+        )
         assert re.search(pattern, real)
 
 
@@ -408,19 +424,18 @@ class TestTheHeadlessErrorDoesNotSendTheReaderInACircle:
         """--reauth fails headless in exactly the same way, so naming it there is a loop. The only
         remedy is an interactive launch. Raised by CodeRabbit on PR #375."""
         from harnessed import paths
+
         src = (paths.harnessed_home() / "src" / "harnessed" / "launcher.py").read_text(
             encoding="utf-8"
         )
-        block = src[src.index("def _authorize_mcp_remote_servers"):]
-        block = block[:block.index("\ndef ")]
+        block = src[src.index("def _authorize_mcp_remote_servers") :]
+        block = block[: block.index("\ndef ")]
         # The headless branch only (`--reauth` is legitimately named elsewhere in this function),
         # and CODE only — the comment above the message explains why the flag is withheld, and
         # matching that would assert the opposite of what it says.
-        branch = block[block.index("    if headless:"):]
-        branch = branch[:branch.index("typer.Exit(1)")]
-        emitted = "\n".join(
-            ln for ln in branch.splitlines() if not ln.lstrip().startswith("#")
-        )
+        branch = block[block.index("    if headless:") :]
+        branch = branch[: branch.index("typer.Exit(1)")]
+        emitted = "\n".join(ln for ln in branch.splitlines() if not ln.lstrip().startswith("#"))
         assert "--reauth" not in emitted, "the headless error offers a flag that fails the same way"
         assert "interactively" in emitted, "the headless error does not name the actual remedy"
 
@@ -428,11 +443,12 @@ class TestTheHeadlessErrorDoesNotSendTheReaderInACircle:
 class TestTheConsentKnowsWhenItIsDone:
     def _consent(self) -> str:
         from harnessed import paths
+
         src = (paths.harnessed_home() / "src" / "harnessed" / "launcher.py").read_text(
             encoding="utf-8"
         )
-        block = src[src.index("def _run_mcp_remote_consent"):]
-        return block[:block.index("\ndef ")]
+        block = src[src.index("def _run_mcp_remote_consent") :]
+        return block[: block.index("\ndef ")]
 
     def test_the_token_file_is_the_completion_signal(self):
         """mcp-remote does not exit on success — it becomes the proxy — so waiting for exit would

@@ -48,7 +48,8 @@ class TestContractConformance:
     def test_the_contract_is_exactly_the_six_named_capabilities(self):
         """§3's table is the vocabulary. A seventh abstract operation means the doc drifted."""
         declared = {
-            name for name, obj in vars(ExecutionBackend).items()
+            name
+            for name, obj in vars(ExecutionBackend).items()
             if getattr(obj, "__isabstractmethod__", False)
         }
         assert declared == set(_OPERATIONS)
@@ -125,8 +126,12 @@ class TestHostWireServices:
         """The guard is the whole point: a host launch of a stack with no `services:` must not
         reach for podman at all."""
         monkeypatch.setattr(launcher, "_service_refs", lambda stack: [])
-        monkeypatch.setattr(launcher, "_runtime", lambda: pytest.fail("resolved a container runtime"))
-        monkeypatch.setattr(launcher, "_ensure_services", lambda *a, **k: pytest.fail("started services"))
+        monkeypatch.setattr(
+            launcher, "_runtime", lambda: pytest.fail("resolved a container runtime")
+        )
+        monkeypatch.setattr(
+            launcher, "_ensure_services", lambda *a, **k: pytest.fail("started services")
+        )
         launcher.HostBackend([]).wire_services(_spec(tmp_path))
 
     def test_a_declared_service_is_started(self, monkeypatch, tmp_path):
@@ -143,12 +148,16 @@ class TestHostWireServices:
         monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
         monkeypatch.setattr(launcher, "_resolve_mount_path", lambda p, f: mounted)
         monkeypatch.setattr(
-            launcher, "_ensure_services",
+            launcher,
+            "_ensure_services",
             lambda rt, stack, **kw: seen.update(rt=rt, stack=stack, **kw),
         )
         launcher.HostBackend([]).wire_services(_spec(tmp_path))
         assert seen == {
-            "rt": "podman", "stack": "s", "project_path": tmp_path, "mount_path": mounted,
+            "rt": "podman",
+            "stack": "s",
+            "project_path": tmp_path,
+            "mount_path": mounted,
         }
 
 

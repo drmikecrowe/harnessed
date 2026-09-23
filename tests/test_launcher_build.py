@@ -47,7 +47,8 @@ def built(monkeypatch):
     """Record every (stack, harness) `build` hands to `_build_stack`, doing no real work."""
     calls: list[tuple[str, str]] = []
     monkeypatch.setattr(
-        launcher, "_build_stack",
+        launcher,
+        "_build_stack",
         lambda rt, stack, harness, root=None, **kw: calls.append((stack, harness)),
     )
     monkeypatch.setattr(launcher, "_ensure_local_catalog_links", lambda: None)
@@ -103,6 +104,7 @@ class TestBareBuildReconcile:
 
     def _fake_podman(self, monkeypatch, *, images: str, hashes: dict[str, str]):
         """Stub `podman images` (built-image inventory) and `podman inspect` (recipe-hash label)."""
+
         def fake_run(cmd, **kwargs):
             if cmd[1] == "images":
                 return subprocess.CompletedProcess(cmd, 0, stdout=images, stderr="")
@@ -156,7 +158,9 @@ class TestBareBuildReconcile:
         assert result.exit_code == 0, result.output
         assert ("single", "claude") in built
 
-    def test_previously_built_stack_reconciles_without_a_registry_prefix(self, root, built, monkeypatch):
+    def test_previously_built_stack_reconciles_without_a_registry_prefix(
+        self, root, built, monkeypatch
+    ):
         """Docker prints no `localhost/`, so the strip must stay optional rather than required."""
         self._fake_podman(
             monkeypatch,
@@ -207,7 +211,9 @@ class TestBareBuildReconcile:
             "is already current"
         )
 
-    def test_force_sets_no_cache_env_during_the_build_and_restores_it_after(self, root, built, monkeypatch):
+    def test_force_sets_no_cache_env_during_the_build_and_restores_it_after(
+        self, root, built, monkeypatch
+    ):
         # The env var is process-global plumbing to `_build_derived_image`/`_build_agent_image`/
         # `_build_service_image` (see TestBuildDerivedImageCacheBypass in
         # test_launcher_install.py for proof it actually reaches the podman command) — this test
@@ -229,7 +235,9 @@ class TestBareBuildReconcile:
 
         result = runner.invoke(launcher.app, ["build", "--force", "--root", str(root)])
         assert result.exit_code == 0, result.output
-        assert seen and all(v == "true" for v in seen), "--force must set the cache-bypass env var for the build"
+        assert seen and all(v == "true" for v in seen), (
+            "--force must set the cache-bypass env var for the build"
+        )
         assert os.environ.get("HARNESSED_PODMAN_NO_CACHE") is None, (
             "the CLI command must restore the prior (absent) value once the build finishes, or it "
             "leaks into unrelated later builds in the same process"

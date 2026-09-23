@@ -11,6 +11,7 @@ first check after the build, and deliberately NOT an exception from inside the b
 `container_run` catches to clean up a manifest it just minted. Everything past that point is the
 container launch proper, which needs a live podman and is covered elsewhere.
 """
+
 from __future__ import annotations
 
 from typer.testing import CliRunner
@@ -25,7 +26,8 @@ def _stub_build(monkeypatch, calls: dict):
     """Let the build 'succeed', recording its arguments. Stops nothing by itself."""
     patch_all(monkeypatch, "_runtime", lambda: "podman")
     monkeypatch.setattr(
-        launcher, "_build_stack",
+        launcher,
+        "_build_stack",
         lambda _rt, stack, harness, *_a, **_kw: calls.__setitem__("built", (stack, harness)),
     )
 
@@ -42,8 +44,15 @@ def test_recipes_mint_then_build(monkeypatch, tmp_path):
 
     runner.invoke(
         launcher.app,
-        ["container-run", "claude", _nowhere(tmp_path),
-         "--recipe", "superpowers", "--recipe", "serena"],
+        [
+            "container-run",
+            "claude",
+            _nowhere(tmp_path),
+            "--recipe",
+            "superpowers",
+            "--recipe",
+            "serena",
+        ],
     )
     assert calls["built"] == ("default.serena.superpowers", "claude")
 

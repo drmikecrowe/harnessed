@@ -76,7 +76,11 @@ class _Spy:
         if self.fail:
             raise broker.BrokerError("the secrets broker did not come up on port 39443 within 30s")
         return broker.Broker(
-            instance=inst, pod=pod, session="i0oku", port=39443, cert_dir="/certs",
+            instance=inst,
+            pod=pod,
+            session="i0oku",
+            port=39443,
+            cert_dir="/certs",
         )
 
 
@@ -91,9 +95,7 @@ class TestNoOptInMeansNoBroker:
         assert launcher._broker_start_for(INST, POD, _project(tmp_path, None)) is None
         assert spy.starts == []
 
-    def test_a_schema_without_proxy_starts_no_broker(
-        self, monkeypatch, tmp_path, no_global_schema
-    ):
+    def test_a_schema_without_proxy_starts_no_broker(self, monkeypatch, tmp_path, no_global_schema):
         spy = _Spy()
         monkeypatch.setattr(broker, "start", spy.start)
         assert launcher._broker_start_for(INST, POD, _project(tmp_path, PLAIN_SCHEMA)) is None
@@ -116,9 +118,7 @@ class TestNoOptInMeansNoBroker:
 class TestVarlockMustBeOnPath:
     """The gate's other input, now that the fixture stubs it: no varlock, no broker."""
 
-    def test_no_varlock_on_path_starts_no_broker(
-        self, monkeypatch, tmp_path, no_global_schema
-    ):
+    def test_no_varlock_on_path_starts_no_broker(self, monkeypatch, tmp_path, no_global_schema):
         monkeypatch.setattr(launchenv.shutil, "which", lambda _name: None)
         spy = _Spy()
         monkeypatch.setattr(broker, "start", spy.start)
@@ -157,9 +157,7 @@ class TestTheGlobalSchemaCounts:
         assert launcher._broker_start_for(INST, POD, _project(tmp_path, None)) is not None
         assert spy.starts[0][2] == [str(cfg)]
 
-    def test_both_schemas_are_passed_global_first(
-        self, monkeypatch, tmp_path, no_global_schema
-    ):
+    def test_both_schemas_are_passed_global_first(self, monkeypatch, tmp_path, no_global_schema):
         # --env-file is last-wins and the project must override the global, so the ORDER is the
         # contract, not just the membership.
         cfg = no_global_schema / ".config" / "harnessed"
@@ -304,12 +302,14 @@ def _ok():
         returncode = 0
         stdout = ""
         stderr = ""
+
     return R()
 
 
 def _option_flags(command) -> list[str]:
     """Every CLI flag string declared on a typer command's options."""
     import inspect
+
     flags: list[str] = []
     for param in inspect.signature(command).parameters.values():
         default = param.default
@@ -325,9 +325,15 @@ class TestListReportsBrokerAttachment:
 
     @staticmethod
     def _record(inst=INST, pod=POD, session="i0oku", port=39443):
-        broker._write(broker.Broker(
-            instance=inst, pod=pod, session=session, port=port, cert_dir="/certs",
-        ))
+        broker._write(
+            broker.Broker(
+                instance=inst,
+                pod=pod,
+                session=session,
+                port=port,
+                cert_dir="/certs",
+            )
+        )
 
     def test_an_attached_broker_is_reported(self, capsys):
         self._record()
@@ -359,4 +365,3 @@ class TestListReportsBrokerAttachment:
         out = capsys.readouterr().out
         assert "vlk_" not in out
         assert TOKEN_ISH not in out
-

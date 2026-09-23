@@ -46,9 +46,14 @@ class TestContainerAttach:
     def _run(self, no_strict_mcp, extra=None):
         with pytest.raises(SystemExit):
             launcher._attach(
-                "podman", "claude", "inst", Path("/proj"),
-                stack="s", mount_path=Path("/proj"),
-                extra=extra, no_strict_mcp=no_strict_mcp,
+                "podman",
+                "claude",
+                "inst",
+                Path("/proj"),
+                stack="s",
+                mount_path=Path("/proj"),
+                extra=extra,
+                no_strict_mcp=no_strict_mcp,
             )
 
     def test_default_keeps_strict(self, captured):

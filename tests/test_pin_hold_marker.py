@@ -96,7 +96,9 @@ class TestInstallHold:
         )
         assert r.install is not None, "expected install block to be parsed"
         assert (r.install.cache, r.install.system, r.install.hold) == (
-            "v6.0.3", "apt-get cmake", SKILL_HOLD_REASON,
+            "v6.0.3",
+            "apt-get cmake",
+            SKILL_HOLD_REASON,
         )
 
     def test_unknown_install_field_is_still_rejected(self, tmp_path):
@@ -194,14 +196,18 @@ class TestJsonSchemaDocumentsTheMarker:
     discovers, and `additionalProperties: false` would make a correct recipe look invalid."""
 
     def test_install_hold_is_declared(self):
-        schema = json.loads((Path(__file__).resolve().parents[1] / "schemas" / "recipe.schema.json").read_text())
+        schema = json.loads(
+            (Path(__file__).resolve().parents[1] / "schemas" / "recipe.schema.json").read_text()
+        )
         install = schema["properties"]["install"]
         assert "hold" in install["properties"], "recipe.schema.json must document install.hold"
         assert install["properties"]["hold"]["minLength"] == 1
         assert install["dependentRequired"]["hold"] == ["script"]
 
     def test_tools_accepts_both_the_string_and_the_mapping_form(self):
-        schema = json.loads((Path(__file__).resolve().parents[1] / "schemas" / "recipe.schema.json").read_text())
+        schema = json.loads(
+            (Path(__file__).resolve().parents[1] / "schemas" / "recipe.schema.json").read_text()
+        )
         items = schema["properties"]["tools"]["items"]
         forms = items.get("oneOf") or items.get("anyOf")
         assert forms, "tools items must accept a string OR a {spec, hold} mapping"

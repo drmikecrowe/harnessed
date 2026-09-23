@@ -150,7 +150,9 @@ def test_the_isolated_home_does_not_move_the_graphroot():
     ).stdout.strip()
     real = subprocess.run(
         [rt, "info", "--format", fmt],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
         env={**os.environ, "HOME": str(_REAL_HOME)},
     ).stdout.strip()
     assert isolated == real, (

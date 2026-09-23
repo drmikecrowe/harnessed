@@ -32,7 +32,9 @@ def project(tmp_path, monkeypatch):
     monkeypatch.setattr(paths, "xdg_state_home", lambda: tmp_path / "state")
     patch_all(monkeypatch, "load_stack_with_recipes", lambda root, stack: (None, []))
     patch_all(monkeypatch, "_recipe_env", lambda *a, **k: {"BEADS_DIR": "/p/.beads"})
-    patch_all(monkeypatch, "svc_client_env",
+    patch_all(
+        monkeypatch,
+        "svc_client_env",
         lambda *a, **k: {"BEADS_DOLT_SERVER_PORT": "41234", "BEADS_DOLT_PASSWORD": "s3cret-token"},
     )
     proj = tmp_path / "proj"
@@ -182,7 +184,7 @@ class TestStaleFileFromAnOlderHarnessed:
         _write(project)  # must not raise
 
     def test_the_notice_says_what_deleting_costs(self, project, capsys):
-        """"Safe to delete" alone was wrong for both audiences: `mise run <harness>` stops
+        """ "Safe to delete" alone was wrong for both audiences: `mise run <harness>` stops
         existing, and a shell fed by the pointer goes unconfigured. Both losses are silent."""
         (project / "mise.local.toml").write_text("# managed by harnessed\n")
         _write(project)

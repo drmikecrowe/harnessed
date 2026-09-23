@@ -7,6 +7,7 @@ variants of one stack from collapsing onto each other.
 
 No test shells out to a real `aoe`; `_run` is the seam.
 """
+
 from __future__ import annotations
 
 import json
@@ -46,14 +47,17 @@ class Recorder:
     caring which seam a given command went through.
     """
 
-    def __init__(self, *, profiles=PROFILE_LIST_PRESENT, groups=GROUP_LIST_EMPTY, sessions="[]",
-                 trash=""):
+    def __init__(
+        self, *, profiles=PROFILE_LIST_PRESENT, groups=GROUP_LIST_EMPTY, sessions="[]", trash=""
+    ):
         self.calls: list[list[str]] = []
         self.spawned: list[list[str]] = []
         self._profiles, self._groups, self._sessions = profiles, groups, sessions
         self._trash = trash
 
-    def run(self, exe: str, args: list[str], *, timeout: int = 10) -> subprocess.CompletedProcess[str]:
+    def run(
+        self, exe: str, args: list[str], *, timeout: int = 10
+    ) -> subprocess.CompletedProcess[str]:
         self.calls.append(args)
         if args[:2] == ["profile", "list"]:
             return _ok(self._profiles)
@@ -190,7 +194,9 @@ class TestSyncSession:
         # The skip suppresses a row nobody asked for. `--aoe-group`/`--aoe-title` is asking, so it
         # must win — it used to be read only after the skip had already returned, which accepted
         # both flags and silently registered nothing.
-        aoe.sync_session("container-run", "default", "claude", tmp_path, group="general", title="my-row")
+        aoe.sync_session(
+            "container-run", "default", "claude", tmp_path, group="general", title="my-row"
+        )
         assert _flag(rec.added()[0], "-g") == "general"
         assert _flag(rec.added()[0], "-t") == "my-row"
 
@@ -200,9 +206,7 @@ class TestSyncSession:
         assert _flag(rec.added()[0], "-t") == "my-row"
 
     def test_group_naming_flag_alone_overrules_the_skip(self, rec, tmp_path):
-        aoe.sync_session(
-            "container-run", "default", "claude", tmp_path, group="general"
-        )
+        aoe.sync_session("container-run", "default", "claude", tmp_path, group="general")
         assert _flag(rec.added()[0], "-g") == "general"
 
     def test_title_carries_harness_backend_folder_and_stack(self, rec, tmp_path):
@@ -250,7 +254,9 @@ class TestToolLabel:
         monkeypatch.setattr(
             aoe, "_run", lambda exe, args, **k: _fail() if "--tool" in args else rec.run(exe, args)
         )
-        assert aoe.sync_session("container-run", "serena", "omp", tmp_path, background=False) is True
+        assert (
+            aoe.sync_session("container-run", "serena", "omp", tmp_path, background=False) is True
+        )
 
     def test_a_failed_plain_add_still_fails_a_blocking_register(self, monkeypatch, tmp_path):
         rec = Recorder()
@@ -258,7 +264,9 @@ class TestToolLabel:
         monkeypatch.setattr(
             aoe, "_run", lambda exe, args, **k: _fail() if args[0] == "add" else rec.run(exe, args)
         )
-        assert aoe.sync_session("container-run", "serena", "omp", tmp_path, background=False) is False
+        assert (
+            aoe.sync_session("container-run", "serena", "omp", tmp_path, background=False) is False
+        )
 
 
 class TestTitleUniqueness:
@@ -321,36 +329,42 @@ class TestComposedRecipesInTheTitle:
         (root / "stacks" / name).mkdir(parents=True)
         (root / "stacks" / name / "stack.yaml").write_text(body, encoding="utf-8")
         monkeypatch.setattr(aoe.paths, "generated_catalog_root", lambda: root)
-        monkeypatch.setattr(
-            aoe.paths, "find_in_catalog", lambda kind, n: root / kind / n
-        )
+        monkeypatch.setattr(aoe.paths, "find_in_catalog", lambda kind, n: root / kind / n)
         return root
 
     def test_the_baseline_is_left_out(self, monkeypatch, tmp_path):
         self._mint(
-            monkeypatch, tmp_path, "default.codebase-memory-mcp.gh-issue-tracker",
+            monkeypatch,
+            tmp_path,
+            "default.codebase-memory-mcp.gh-issue-tracker",
             "name: default.codebase-memory-mcp.gh-issue-tracker\n"
             "extends: default\n"
             "recipes:\n  - codebase-memory-mcp\n  - gh-issue-tracker\n",
         )
         project = tmp_path / "main"
         project.mkdir()
-        assert aoe.title_for(
-            "host-run", "default.codebase-memory-mcp.gh-issue-tracker", "claude", project
-        ) == "claude/host main codebase-memory-mcp+gh-issue-tracker"
+        assert (
+            aoe.title_for(
+                "host-run", "default.codebase-memory-mcp.gh-issue-tracker", "claude", project
+            )
+            == "claude/host main codebase-memory-mcp+gh-issue-tracker"
+        )
 
     def test_a_lossy_name_still_yields_the_real_recipe(self, monkeypatch, tmp_path):
         # `beads/team` sanitizes to `beads-team` and forces a digest, so the NAME is not
         # parseable back into the ref. The manifest carries it verbatim.
         self._mint(
-            monkeypatch, tmp_path, "default.beads-team-55bfd6ac",
+            monkeypatch,
+            tmp_path,
+            "default.beads-team-55bfd6ac",
             "name: default.beads-team-55bfd6ac\nextends: default\nrecipes:\n  - beads/team\n",
         )
         project = tmp_path / "main"
         project.mkdir()
-        assert aoe.title_for(
-            "host-run", "default.beads-team-55bfd6ac", "claude", project
-        ) == "claude/host main beads/team"
+        assert (
+            aoe.title_for("host-run", "default.beads-team-55bfd6ac", "claude", project)
+            == "claude/host main beads/team"
+        )
 
     def test_an_authored_stack_names_itself(self, monkeypatch, tmp_path):
         # Its `recipes:` key is its whole content, not a delta -- `default` lists eight. Reading it
@@ -361,9 +375,7 @@ class TestComposedRecipesInTheTitle:
             "name: default\nrecipes:\n" + "".join(f"  - r{i}\n" for i in range(8)),
             encoding="utf-8",
         )
-        monkeypatch.setattr(
-            aoe.paths, "generated_catalog_root", lambda: tmp_path / "generated"
-        )
+        monkeypatch.setattr(aoe.paths, "generated_catalog_root", lambda: tmp_path / "generated")
         monkeypatch.setattr(aoe.paths, "find_in_catalog", lambda kind, n: root / kind / n)
         project = tmp_path / "main"
         project.mkdir()
@@ -380,9 +392,9 @@ class TestComposedRecipesInTheTitle:
         monkeypatch.setattr(aoe, "_composed_recipes", lambda stack: (None, []))
         project = tmp_path / "main"
         project.mkdir()
-        assert aoe.title_for(
-            "container-run", "default", "claude", project
-        ) != aoe.title_for("container-run", "isolated", "claude", project)
+        assert aoe.title_for("container-run", "default", "claude", project) != aoe.title_for(
+            "container-run", "isolated", "claude", project
+        )
 
     def test_two_baselines_sharing_a_recipe_delta_do_not_collide(self, monkeypatch, tmp_path):
         """The title must stay injective over the STACK, now that the stack is in the command.
@@ -404,15 +416,17 @@ class TestComposedRecipesInTheTitle:
         for name, base in (("default.serena", "default"), ("isolated.serena", "isolated")):
             (root / "stacks" / name).mkdir(parents=True)
             (root / "stacks" / name / "stack.yaml").write_text(
-                f"name: {name}\nextends: {base}\nrecipes:\n  - serena\n", encoding="utf-8",
+                f"name: {name}\nextends: {base}\nrecipes:\n  - serena\n",
+                encoding="utf-8",
             )
         monkeypatch.setattr(aoe.paths, "generated_catalog_root", lambda: root)
         monkeypatch.setattr(aoe.paths, "find_in_catalog", lambda kind, n: root / kind / n)
         project = tmp_path / "main"
         project.mkdir()
 
-        assert aoe.title_for("container-run", "default.serena", "claude", project) != \
-            aoe.title_for("container-run", "isolated.serena", "claude", project)
+        assert aoe.title_for("container-run", "default.serena", "claude", project) != aoe.title_for(
+            "container-run", "isolated.serena", "claude", project
+        )
 
     def test_the_default_baseline_is_still_hidden(self, monkeypatch, tmp_path):
         """Fixing the collision must not put `default.` back on every row.
@@ -422,13 +436,17 @@ class TestComposedRecipesInTheTitle:
         non-default baseline is shown.
         """
         self._mint(
-            monkeypatch, tmp_path, "default.serena",
+            monkeypatch,
+            tmp_path,
+            "default.serena",
             "name: default.serena\nextends: default\nrecipes:\n  - serena\n",
         )
         project = tmp_path / "main"
         project.mkdir()
-        assert aoe.title_for("container-run", "default.serena", "claude", project) == \
-            "claude/container main serena"
+        assert (
+            aoe.title_for("container-run", "default.serena", "claude", project)
+            == "claude/container main serena"
+        )
 
     def test_an_unreadable_manifest_falls_back_to_the_stack_name(self, monkeypatch, tmp_path):
         def boom(kind, n):
@@ -590,9 +608,11 @@ class TestUserNamedRows:
         # The row runs `mise run <harness>`, so the echo lands on the mise task's `run` line — which
         # is this string. Left off, a restart from the dashboard would re-derive group and title and
         # add a SECOND row beside the one the user placed.
-        tokens = shlex.split(aoe.command_for(
-            "host-run", "s", "claude", tmp_path, group="a-chosen-group", title="a titled row"
-        ))
+        tokens = shlex.split(
+            aoe.command_for(
+                "host-run", "s", "claude", tmp_path, group="a-chosen-group", title="a titled row"
+            )
+        )
         assert tokens[-5:] == ["--aoe-group", "a-chosen-group", "--aoe-title", "a titled row", "--"]
 
     def test_an_existing_row_is_adopted_not_duplicated(self, monkeypatch, tmp_path):
@@ -606,7 +626,9 @@ class TestUserNamedRows:
     def test_the_on_disk_group_key_is_accepted_too(self, monkeypatch, tmp_path):
         # `aoe list --json` renames the stored `group_path` to `group`; tolerate either so a rename
         # upstream costs a duplicate row at worst, never an exception.
-        rec = Recorder(sessions=self._row(group="a-chosen-group", title="a titled row", key="group_path"))
+        rec = Recorder(
+            sessions=self._row(group="a-chosen-group", title="a titled row", key="group_path")
+        )
         rec.install(monkeypatch)
         aoe.sync_session(
             "host-run", "s", "claude", tmp_path, group="a-chosen-group", title="a titled row"
@@ -693,8 +715,7 @@ class TestForgetStackReadsTheLauncherScript:
     """
 
     def _row(self, script: Path, sid: str = "s1") -> str:
-        return json.dumps([{"id": sid, "path": str(script.parent),
-                            "command": f"{script} --"}])
+        return json.dumps([{"id": sid, "path": str(script.parent), "command": f"{script} --"}])
 
     def _rec(self, monkeypatch, sessions: str) -> Recorder:
         return Recorder(sessions=sessions).install(monkeypatch)
@@ -722,7 +743,7 @@ class TestForgetStackReadsTheLauncherScript:
         script = tmp_path / "claude-container"
         script.write_text(
             f"#!/bin/sh\n{launchscript.SENTINEL}\n"
-            f"exec harnessed container-run claude {tmp_path} --stack serena \"$@\"\n",
+            f'exec harnessed container-run claude {tmp_path} --stack serena "$@"\n',
             encoding="utf-8",
         )
         rec = self._rec(monkeypatch, self._row(script))
@@ -733,7 +754,7 @@ class TestForgetStackReadsTheLauncherScript:
         script = tmp_path / "claude-container"
         script.write_text(
             f"#!/bin/sh\n{launchscript.SENTINEL}\n"
-            f"exec harnessed container-run claude {tmp_path} --stack alpha \"$@\"\n",
+            f'exec harnessed container-run claude {tmp_path} --stack alpha "$@"\n',
             encoding="utf-8",
         )
         rec = self._rec(monkeypatch, self._row(script))
@@ -744,7 +765,7 @@ class TestForgetStackReadsTheLauncherScript:
         script = tmp_path / "claude-host"
         script.write_text(
             f"#!/bin/sh\n{launchscript.SENTINEL}\n"
-            f"exec harnessed host-run claude {tmp_path} --stack serena \"$@\"\n",
+            f'exec harnessed host-run claude {tmp_path} --stack serena "$@"\n',
             encoding="utf-8",
         )
         rec = self._rec(monkeypatch, self._row(script))
@@ -761,7 +782,7 @@ class TestForgetStackReadsTheLauncherScript:
         script = tmp_path / "claude-alpha-container"
         script.write_text(
             f"#!/bin/sh\n{launchscript.SENTINEL}\n"
-            f"exec harnessed container-run claude {tmp_path} --stack beta \"$@\"\n",
+            f'exec harnessed container-run claude {tmp_path} --stack beta "$@"\n',
             encoding="utf-8",
         )
         rec = self._rec(monkeypatch, self._row(script))
@@ -808,8 +829,9 @@ class TestForgetStackReadsTheLauncherScript:
 
     def test_an_unbalanced_quote_in_the_script_is_left_alone(self, monkeypatch, tmp_path):
         script = tmp_path / "claude-serena-container"
-        script.write_text("#!/bin/sh\nexec harnessed container-run claude --stack 'serena\n",
-                          encoding="utf-8")
+        script.write_text(
+            "#!/bin/sh\nexec harnessed container-run claude --stack 'serena\n", encoding="utf-8"
+        )
         rec = self._rec(monkeypatch, self._row(script))
         aoe.forget_stack("container-run", "serena")
         assert rec.removed() == []
@@ -872,7 +894,9 @@ class TestForgetStackReadsTheLauncherScript:
 class TestNeverRaises:
     """A dashboard is not worth failing a launch over."""
 
-    @pytest.mark.parametrize("exc", [OSError("boom"), subprocess.TimeoutExpired("aoe", 10), ValueError("x")])
+    @pytest.mark.parametrize(
+        "exc", [OSError("boom"), subprocess.TimeoutExpired("aoe", 10), ValueError("x")]
+    )
     def test_sync_swallows_subprocess_failure(self, monkeypatch, tmp_path, exc):
         monkeypatch.setattr(aoe, "_bin", lambda: "/usr/bin/aoe")
         monkeypatch.setattr(aoe, "_run", lambda *a: (_ for _ in ()).throw(exc))
@@ -943,10 +967,14 @@ class TestWriteDispatch:
     def test_blocking_mode_reports_a_failed_write(self, monkeypatch, tmp_path):
         rec = Recorder().install(monkeypatch)
         monkeypatch.setattr(
-            aoe, "_run",
+            aoe,
+            "_run",
             lambda exe, args, **k: rec.run(exe, args) if args[1:2] == ["list"] else _fail(),
         )
-        assert aoe.sync_session("container-run", "serena", "claude", tmp_path, background=False) is False
+        assert (
+            aoe.sync_session("container-run", "serena", "claude", tmp_path, background=False)
+            is False
+        )
 
     def test_detached_dispatch_is_reported_as_success(self, rec, tmp_path):
         assert aoe.sync_session("container-run", "serena", "claude", tmp_path) is True
@@ -954,7 +982,7 @@ class TestWriteDispatch:
     def test_already_registered_is_success_without_writing(self, monkeypatch, tmp_path):
         rec = Recorder(
             sessions=f'[{{"id": "s1", "path": "{tmp_path}", '
-                     f'"command": "{tmp_path}/claude-serena-container --"}}]'
+            f'"command": "{tmp_path}/claude-serena-container --"}}]'
         ).install(monkeypatch)
         assert aoe.sync_session("container-run", "serena", "claude", tmp_path) is True
         assert rec.spawned == []
@@ -1005,13 +1033,28 @@ class TestCreateAoeOnly:
     once rather than three times through the CLI.
     """
 
-    def _register(self, monkeypatch, *, ok: bool, only: bool, drift: str | None = None,
-                  repairing: bool = False) -> dict:
+    def _register(
+        self,
+        monkeypatch,
+        *,
+        ok: bool,
+        only: bool,
+        drift: str | None = None,
+        repairing: bool = False,
+    ) -> dict:
         seen: dict = {}
 
         def fake_sync(
-            verb, stack, harness, project_path, *, background=True, group=None, title=None,
-            no_strict_mcp=False, on_drift=None,
+            verb,
+            stack,
+            harness,
+            project_path,
+            *,
+            background=True,
+            group=None,
+            title=None,
+            no_strict_mcp=False,
+            on_drift=None,
         ):
             seen.update(verb=verb, stack=stack, harness=harness, background=background)
             if drift is not None and on_drift is not None:
@@ -1072,8 +1115,9 @@ class TestCreateAoeOnly:
         # The report fires BEFORE the blocking write. If the rename lands and the re-add then
         # fails, the row has already moved — saying "left the existing row as it is" would send
         # the user looking for it under its old title.
-        seen = self._register(monkeypatch, ok=False, only=True, drift="drift abc123",
-                              repairing=True)
+        seen = self._register(
+            monkeypatch, ok=False, only=True, drift="drift abc123", repairing=True
+        )
         assert seen["exit"] == 1
         err = capsys.readouterr().err
         assert "left the existing row" not in err
@@ -1106,7 +1150,8 @@ class TestHookPlacement:
         (tmp_path / "stack.yaml").write_text("name: broken\n")
         monkeypatch.setattr(launcher.paths, "find_in_catalog", lambda *a: tmp_path)
         monkeypatch.setattr(
-            launcher.aoe, "sync_session",
+            launcher.aoe,
+            "sync_session",
             lambda *a, **k: (registered.append(a), True)[1],
         )
 
@@ -1144,9 +1189,7 @@ class TestLaunchFlagsReachTheRow:
 
     def _seen(self, monkeypatch, tmp_path) -> dict:
         seen: dict = {}
-        monkeypatch.setattr(
-            launcher.aoe, "sync_session", lambda *a, **k: (seen.update(k), True)[1]
-        )
+        monkeypatch.setattr(launcher.aoe, "sync_session", lambda *a, **k: (seen.update(k), True)[1])
         (tmp_path / "stack.yaml").write_text("name: s\n")
         monkeypatch.setattr(launcher.paths, "find_in_catalog", lambda *a: tmp_path)
         return seen
@@ -1200,7 +1243,13 @@ class TestCommandFor:
         # args for the agent.
         cmd = aoe.command_for("host-run", "serena", "claude", Path("/p"))
         assert cmd.split() == [
-            "harnessed", "host-run", "claude", "/p", "--stack", "serena", "--",
+            "harnessed",
+            "host-run",
+            "claude",
+            "/p",
+            "--stack",
+            "serena",
+            "--",
         ]
 
     def test_no_strict_mcp_is_recorded(self):
@@ -1217,8 +1266,13 @@ class TestCommandFor:
         # Pins ORDER as well as content: the command is the identity key on the fallback path, so
         # two launches that differ only in how the flags are arranged must not become two rows.
         cmd = aoe.command_for(
-            "host-run", "serena", "claude", Path("/p"),
-            no_strict_mcp=True, group="g", title="a titled row",
+            "host-run",
+            "serena",
+            "claude",
+            Path("/p"),
+            no_strict_mcp=True,
+            group="g",
+            title="a titled row",
         )
         assert cmd == (
             "harnessed host-run claude /p --stack serena --no-strict-mcp-config "
@@ -1250,6 +1304,7 @@ class TestCommandDrift:
     """
 
     TITLE = "claude/host proj serena"
+
     # Path-dependent since the row invokes the project's own launcher script, so it is derived per
     # test rather than a module constant.
     def _ours(self, proj: Path) -> str:
@@ -1260,11 +1315,20 @@ class TestCommandDrift:
     def _renames(self, rec: Recorder) -> list[list[str]]:
         return [a for a in rec.calls if a[:2] == ["session", "rename"]]
 
-    def _sessions(self, tmp_path: Path, command: str, *, title: str | None = None,
-                  path: str | None = None, sid: str | None = "abc123") -> str:
-        row: dict = {"title": self.TITLE if title is None else title,
-                     "path": str(tmp_path) if path is None else path,
-                     "command": command}
+    def _sessions(
+        self,
+        tmp_path: Path,
+        command: str,
+        *,
+        title: str | None = None,
+        path: str | None = None,
+        sid: str | None = "abc123",
+    ) -> str:
+        row: dict = {
+            "title": self.TITLE if title is None else title,
+            "path": str(tmp_path) if path is None else path,
+            "command": command,
+        }
         if sid is not None:
             row["id"] = sid
         return json.dumps([row])
@@ -1314,20 +1378,27 @@ class TestCommandDrift:
         self._sync(proj)
         # WRITES ONLY. `session` also prefixes the `session list-trash` read that `_sessions`
         # issues, so matching on the bare verb counted a read as one of the writes under test.
-        verbs = ["rename" if a[:2] == ["session", "rename"] else a[0]
-                 for a in rec.calls if a[:2] == ["session", "rename"] or a[0] == "add"]
+        verbs = [
+            "rename" if a[:2] == ["session", "rename"] else a[0]
+            for a in rec.calls
+            if a[:2] == ["session", "rename"] or a[0] == "add"
+        ]
         assert verbs == ["rename", "add", "add"], "the key must be freed before the re-add"
 
     def test_repair_renames_only_the_matched_row_in_our_profile(self, monkeypatch, proj):
         rows = json.loads(self._sessions(proj, "harnessed host-run claude /proj --"))
-        rows.append({"id": "other", "title": "someone else", "path": str(proj),
-                     "command": "harnessed host-run claude /elsewhere --"})
+        rows.append(
+            {
+                "id": "other",
+                "title": "someone else",
+                "path": str(proj),
+                "command": "harnessed host-run claude /elsewhere --",
+            }
+        )
         rec = Recorder(sessions=json.dumps(rows)).install(monkeypatch)
         self._sync(proj)
         [rename] = self._renames(rec)
-        assert rename == [
-            "session", "rename", "abc123", "-t", self.STALE_TITLE, "-p", aoe.PROFILE
-        ]
+        assert rename == ["session", "rename", "abc123", "-t", self.STALE_TITLE, "-p", aoe.PROFILE]
 
     def test_the_stale_title_carries_the_row_id(self, monkeypatch, proj):
         # A bare "(stale)" suffix would collide with an earlier repair's leftover at the same
@@ -1431,8 +1502,15 @@ class TestCommandDrift:
     def test_adopted_row_is_never_drift_checked(self, monkeypatch, proj):
         # Both flags switch identity to (group, title) precisely so a row whose command
         # `command_for` could not produce is ADOPTED. Its command is the user's business.
-        rows = [{"id": "abc123", "group": "g", "title": "t", "path": str(proj),
-                 "command": "anything at all"}]
+        rows = [
+            {
+                "id": "abc123",
+                "group": "g",
+                "title": "t",
+                "path": str(proj),
+                "command": "anything at all",
+            }
+        ]
         rec = Recorder(sessions=json.dumps(rows)).install(monkeypatch)
         seen: list[str] = []
         assert self._sync(proj, group="g", title="t", on_drift=lambda m, r: seen.append(m)) is True
@@ -1452,10 +1530,13 @@ class TestCommandDrift:
         # further along. Needs an already-odd aoe state to reach, which is exactly when a launch
         # should still behave.
         rows = [
-            {"id": "first", "title": self.TITLE, "path": str(proj),
-             "command": "harnessed host-run claude /a --"},
-            {"id": "second", "title": self.TITLE, "path": str(proj),
-             "command": "mise run omp --"},
+            {
+                "id": "first",
+                "title": self.TITLE,
+                "path": str(proj),
+                "command": "harnessed host-run claude /a --",
+            },
+            {"id": "second", "title": self.TITLE, "path": str(proj), "command": "mise run omp --"},
         ]
         rec = Recorder(sessions=json.dumps(rows)).install(monkeypatch)
         assert self._sync(proj) is True
@@ -1464,10 +1545,18 @@ class TestCommandDrift:
     def test_one_unrepairable_row_blocks_the_add_even_if_another_is_ours(self, monkeypatch, proj):
         # The foreign row keeps the key whatever we do to the other, so the add cannot land.
         rows = [
-            {"id": "ours", "title": self.TITLE, "path": str(proj),
-             "command": "harnessed host-run claude /a --"},
-            {"id": "theirs", "title": self.TITLE, "path": str(proj),
-             "command": "claude --dangerously-skip-permissions"},
+            {
+                "id": "ours",
+                "title": self.TITLE,
+                "path": str(proj),
+                "command": "harnessed host-run claude /a --",
+            },
+            {
+                "id": "theirs",
+                "title": self.TITLE,
+                "path": str(proj),
+                "command": "claude --dangerously-skip-permissions",
+            },
         ]
         rec = Recorder(sessions=json.dumps(rows)).install(monkeypatch)
         seen: list[tuple[str, bool]] = []
@@ -1494,24 +1583,33 @@ class TestCommandDrift:
         the rows aoe refuses slip past the scan — the silent exit-0 failure this all exists to
         stop. Reachable through `--aoe-title ' foo '`.
         """
-        rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --",
-                        title=f"  {self.TITLE} ")
+        rec = self._rec(
+            monkeypatch, proj, "harnessed host-run claude /proj --", title=f"  {self.TITLE} "
+        )
         self._sync(proj)
         assert len(self._renames(rec)) == 1
 
     def test_an_adopted_row_matches_despite_surrounding_space(self, monkeypatch, proj):
         # Same trimming, on the (group, title) identity: aoe stored the trimmed form, so an
         # untrimmed --aoe-title must still recognise its own row instead of adding a second.
-        rows = [{"id": "abc123", "group": "g", "title": "t", "path": str(proj),
-                 "command": "anything at all"}]
+        rows = [
+            {
+                "id": "abc123",
+                "group": "g",
+                "title": "t",
+                "path": str(proj),
+                "command": "anything at all",
+            }
+        ]
         rec = Recorder(sessions=json.dumps(rows)).install(monkeypatch)
         assert self._sync(proj, group="g", title="  t  ") is True
         assert rec.added() == []
 
     def test_same_path_different_title_is_not_drift(self, monkeypatch, proj):
         seen: list[str] = []
-        rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --",
-                        title="omp/host proj serena")
+        rec = self._rec(
+            monkeypatch, proj, "harnessed host-run claude /proj --", title="omp/host proj serena"
+        )
         self._sync(proj, on_drift=lambda m, r: seen.append(m))
         assert self._renames(rec) == []
         assert seen == []
@@ -1519,8 +1617,9 @@ class TestCommandDrift:
 
     def test_same_title_different_path_is_not_drift(self, monkeypatch, proj):
         seen: list[str] = []
-        rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --",
-                        path=str(proj.parent))
+        rec = self._rec(
+            monkeypatch, proj, "harnessed host-run claude /proj --", path=str(proj.parent)
+        )
         self._sync(proj, on_drift=lambda m, r: seen.append(m))
         assert self._renames(rec) == []
         assert seen == []
@@ -1534,27 +1633,46 @@ class TestCommandDrift:
         assert rec.added() == []
         assert self._renames(rec) == []
 
-    @pytest.mark.parametrize("command", [
-        "", "   ", "unclosed 'quote", "echo harnessed", "/usr/bin/harnessedx run",
-        "harnessedx foo", "mise-en-place run", "sudo harnessed host-run x",
-        "claude", "npm run mise", "run mise", "MISE run claude",
-        # `mise` is not the key — `mise run` is. A hand-written row driving mise any other way is
-        # somebody else's row, and classifying it as ours would license DELETING it. Found by
-        # mutants_aoe_drift.py M4, which survived until these three existed.
-        "mise", "mise exec -- claude", "mise watch test",
-        # `mise run` is the prefix of EVERY mise task anyone ever wrote. Only a task named for a
-        # real harness is one of ours; a user's own `mise run dev` row is not ours to rewrite.
-        "mise run dev --", "mise run test", "mise run build --",
-    ])
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "",
+            "   ",
+            "unclosed 'quote",
+            "echo harnessed",
+            "/usr/bin/harnessedx run",
+            "harnessedx foo",
+            "mise-en-place run",
+            "sudo harnessed host-run x",
+            "claude",
+            "npm run mise",
+            "run mise",
+            "MISE run claude",
+            # `mise` is not the key — `mise run` is. A hand-written row driving mise any other way is
+            # somebody else's row, and classifying it as ours would license DELETING it. Found by
+            # mutants_aoe_drift.py M4, which survived until these three existed.
+            "mise",
+            "mise exec -- claude",
+            "mise watch test",
+            # `mise run` is the prefix of EVERY mise task anyone ever wrote. Only a task named for a
+            # real harness is one of ours; a user's own `mise run dev` row is not ours to rewrite.
+            "mise run dev --",
+            "mise run test",
+            "mise run build --",
+        ],
+    )
     def test_is_ours_rejects_hostile_commands(self, command):
         assert aoe._is_ours(command) is False
 
-    @pytest.mark.parametrize("command", [
-        "harnessed host-run claude /p --stack s --",
-        "harnessed launch omp /p --stack s --",
-        "mise run claude --",
-        "mise run omp",
-    ])
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "harnessed host-run claude /p --stack s --",
+            "harnessed launch omp /p --stack s --",
+            "mise run claude --",
+            "mise run omp",
+        ],
+    )
     def test_is_ours_accepts_the_shapes_we_write(self, command):
         assert aoe._is_ours(command) is True
 
@@ -1573,8 +1691,14 @@ class TestCommandDrift:
         assert self._renames(rec) == [], "no id, nothing safe to rename"
 
     def test_drift_survives_unresolvable_path(self, monkeypatch, proj):
-        rows = [{"id": "abc123", "title": self.TITLE, "path": {"not": "a path"},
-                 "command": "harnessed host-run claude /p --"}]
+        rows = [
+            {
+                "id": "abc123",
+                "title": self.TITLE,
+                "path": {"not": "a path"},
+                "command": "harnessed host-run claude /p --",
+            }
+        ]
         rec = Recorder(sessions=json.dumps(rows)).install(monkeypatch)
         # `is True` on purpose: a bare "did not raise" would be satisfied by the blanket
         # `except Exception` swallowing a TypeError, which is a broken scan, not a survived one.
@@ -1650,16 +1774,22 @@ class TestTrashedRowsDoNotBlockRegistration:
     """
 
     def _row(self, proj: Path, sid: str = "abc123abc123abc1") -> str:
-        return json.dumps([{
-            "id": sid,
-            "title": "claude/host proj serena",
-            "path": str(proj),
-            "command": f"{proj}/claude-serena-host --",
-        }])
+        return json.dumps(
+            [
+                {
+                    "id": sid,
+                    "title": "claude/host proj serena",
+                    "path": str(proj),
+                    "command": f"{proj}/claude-serena-host --",
+                }
+            ]
+        )
 
     def _trash_line(self, sid: str = "abc123abc123abc1") -> str:
-        return (f"Trashed sessions in profile 'harnessed':\n"
-                f"  {sid}  claude/host proj serena  (trashed 2026-08-23T00:04:31.590726053+00:00)\n")
+        return (
+            f"Trashed sessions in profile 'harnessed':\n"
+            f"  {sid}  claude/host proj serena  (trashed 2026-08-23T00:04:31.590726053+00:00)\n"
+        )
 
     def test_a_live_row_still_suppresses_the_add(self, monkeypatch, tmp_path):
         proj = tmp_path / "proj"
@@ -1717,14 +1847,22 @@ class TestARefusedDuplicateIsNotAFailure:
                     # The row the labelled add already created now holds (title, path).
                     if plain_rc:
                         return subprocess.CompletedProcess(
-                            args=[], returncode=plain_rc, stdout="",
-                            stderr="Error: Session already exists with same title and path\n")
+                            args=[],
+                            returncode=plain_rc,
+                            stdout="",
+                            stderr="Error: Session already exists with same title and path\n",
+                        )
                     return _ok()
-                rec._sessions = json.dumps([{
-                    "id": "abc123abc123abc1", "title": aoe.title_for(
-                        "host-run", "serena", "claude", proj),
-                    "path": str(proj), "command": f"{proj}/claude-serena-host --",
-                }])
+                rec._sessions = json.dumps(
+                    [
+                        {
+                            "id": "abc123abc123abc1",
+                            "title": aoe.title_for("host-run", "serena", "claude", proj),
+                            "path": str(proj),
+                            "command": f"{proj}/claude-serena-host --",
+                        }
+                    ]
+                )
                 return _ok()
             return real(exe, args, timeout=timeout)
 
@@ -1735,18 +1873,16 @@ class TestARefusedDuplicateIsNotAFailure:
         proj = tmp_path / "proj"
         proj.mkdir()
         self._rec(monkeypatch, proj, plain_rc=1)
-        assert aoe.sync_session(
-            "host-run", "serena", "claude", proj, background=False
-        ) is True, "the labelled add created the row; the refused retry is not a failure"
+        assert aoe.sync_session("host-run", "serena", "claude", proj, background=False) is True, (
+            "the labelled add created the row; the refused retry is not a failure"
+        )
 
     def test_exit_zero_on_the_retry_still_reports_success(self, monkeypatch, tmp_path):
         # aoe 1.13.2's behavior. Both must pass, which is the point of asking rather than inferring.
         proj = tmp_path / "proj"
         proj.mkdir()
         self._rec(monkeypatch, proj, plain_rc=0)
-        assert aoe.sync_session(
-            "host-run", "serena", "claude", proj, background=False
-        ) is True
+        assert aoe.sync_session("host-run", "serena", "claude", proj, background=False) is True
 
     def test_a_row_that_never_appeared_still_reports_failure(self, monkeypatch, tmp_path):
         # The check must not paper over a real failure: nothing registered, nothing in the list.
@@ -1763,9 +1899,7 @@ class TestARefusedDuplicateIsNotAFailure:
             return real(exe, args, timeout=timeout)
 
         monkeypatch.setattr(aoe, "_run", run)
-        assert aoe.sync_session(
-            "host-run", "serena", "claude", proj, background=False
-        ) is False
+        assert aoe.sync_session("host-run", "serena", "claude", proj, background=False) is False
 
     def test_the_detached_path_is_unchanged(self, monkeypatch, tmp_path):
         # A detached batch has not necessarily run yet, so there is nothing to re-read; `_spawn`'s

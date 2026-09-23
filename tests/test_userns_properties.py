@@ -37,13 +37,15 @@ from harnessed import launcher, paths
 
 # Argv fragments as they really appear: flags, `-v host:ctr` pairs, paths, and userns in every
 # spelling the tree has ever emitted.
-_USERNS = st.sampled_from([
-    "--userns=keep-id",
-    "--userns=keep-id:uid=1000,gid=1000",
-    "--userns=keep-id:uid=1001,gid=1001",
-    "--userns=auto",
-    "--userns=host",
-])
+_USERNS = st.sampled_from(
+    [
+        "--userns=keep-id",
+        "--userns=keep-id:uid=1000,gid=1000",
+        "--userns=keep-id:uid=1001,gid=1001",
+        "--userns=auto",
+        "--userns=host",
+    ]
+)
 _OTHER = st.sampled_from(["-v", "a:b", "--rm", "run", "--entrypoint", "sh", "-c", "true", "--user"])
 _ARG = st.one_of(_USERNS, _OTHER)
 

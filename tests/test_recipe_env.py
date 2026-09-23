@@ -26,6 +26,8 @@ from harnessed.schema import (
     load_recipe,
     resolve_recipe_env,
 )
+
+
 def _entry(name: str, scope: str = "workspace", location: str = "host") -> PersistEntry:
     return PersistEntry(scope=scope, location=location, name=name, path=None, vcs=None)
 
@@ -248,7 +250,9 @@ class TestLauncherDelivery:
         # The `podman run` argv is composed by the container backend's apply_isolation — that single
         # call is both the isolation boundary and the only way env crosses it (bd harnessed-0tk.1).
         source = inspect.getsource(launcher.ContainerBackend.apply_isolation)
-        pos = {name: source.index(f"*{name},") for name in ("recipe_env", "socket_env", "setup_env")}
+        pos = {
+            name: source.index(f"*{name},") for name in ("recipe_env", "socket_env", "setup_env")
+        }
         assert pos["recipe_env"] < pos["socket_env"], (
             "recipe env: must be passed BEFORE the folder-env contract so the contract wins"
         )
@@ -288,7 +292,8 @@ class TestHostLaunchDelivery:
         # fails only in a checkout that HAS those gitignored trees, which is why it passed in a
         # worktree and broke on main.
         monkeypatch.setattr(
-            launcher, "load_stack_with_recipes",
+            launcher,
+            "load_stack_with_recipes",
             lambda root, stack: (Stack(name="hostspike"), [r]),
         )
 
@@ -318,9 +323,7 @@ class TestDockerfileEmission:
     def _write(self, tmp_path, recipes) -> str:
         prof = tmp_path / "prof"
         prof.mkdir()
-        return emit.write_derived_dockerfile(
-            prof, "s", "claude", recipes
-        ).read_text()
+        return emit.write_derived_dockerfile(prof, "s", "claude", recipes).read_text()
 
     def test_env_becomes_image_env(self, tmp_path):
         r = Recipe(name="superpowers", env={"SUPERPOWERS_DISABLE_TELEMETRY": "1"}, root=tmp_path)
@@ -367,13 +370,17 @@ class TestShippedRecipesUseTheField:
         recipe = load_recipe(paths.find_in_catalog("recipes", ref), strict=True)
         assert var in recipe.env
         # Container mode reproduces exactly what the retired Dockerfile ENV said.
-        assert resolve_recipe_env(recipe, mode="container", project_path=tmp_path)[var] == expected_ctr
+        assert (
+            resolve_recipe_env(recipe, mode="container", project_path=tmp_path)[var] == expected_ctr
+        )
         dockerfile = recipe.root / "Dockerfile"
         body = dockerfile.read_text() if dockerfile.is_file() else ""
         assert not any(ln.startswith(f"ENV {var}") for ln in body.splitlines())
 
     @pytest.mark.parametrize("ref,var", [("context-mode", "CONTEXT_MODE_DIR")])
-    def test_path_valued_ones_leave_the_pod_home_behind_on_host(self, ref, var, tmp_path, monkeypatch):
+    def test_path_valued_ones_leave_the_pod_home_behind_on_host(
+        self, ref, var, tmp_path, monkeypatch
+    ):
         """The regression this whole field exists to prevent: a host launch must never be handed
         /home/harnessed/... , which does not exist there."""
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))

@@ -27,6 +27,7 @@ from ruamel.yaml.error import MarkedYAMLError
 from . import paths
 from .console import _err
 
+
 def _resolve_dir(root: Path | None, kind: str, name: str) -> Path:
     """Resolve catalog/<kind>/<name>.
 
@@ -39,6 +40,7 @@ def _resolve_dir(root: Path | None, kind: str, name: str) -> Path:
     if root is None:
         return paths.find_in_catalog(kind, name)
     return Path(root) / kind / paths.catalog_relpath(name)
+
 
 # Harness → config directory name (Claude Code canonical, design §8). The harness is a run-time
 # positional (`harnessed <stack> <harness>`), not a stack field; a stack may not be named after one.
@@ -341,9 +343,7 @@ def _parse_persist(raw_persist) -> PersistSpec:
     entries: list[PersistEntry] = []
     for i, raw in enumerate(raw_persist):
         if not isinstance(raw, dict):
-            raise SchemaError(
-                f"persist entry [{i}] must be a mapping, got {type(raw).__name__!r}"
-            )
+            raise SchemaError(f"persist entry [{i}] must be a mapping, got {type(raw).__name__!r}")
 
         scope = raw.get("scope")
         if scope is None:
@@ -381,9 +381,7 @@ def _parse_persist(raw_persist) -> PersistSpec:
                     "(global entries bind-mount the real host path as-is)"
                 )
             if vcs is not None:
-                raise SchemaError(
-                    f"persist entry [{i}]: 'vcs' is not valid for scope: global"
-                )
+                raise SchemaError(f"persist entry [{i}]: 'vcs' is not valid for scope: global")
             if name is not None:
                 raise SchemaError(
                     f"persist entry [{i}]: use 'path' (not 'name') for scope: global — "
@@ -433,8 +431,7 @@ def _parse_persist(raw_persist) -> PersistSpec:
                     )
                 if vcs not in _PERSIST_VALID_VCS:
                     raise SchemaError(
-                        f"persist entry [{i}]: unknown vcs {vcs!r} — "
-                        "valid values: tracked, ignored"
+                        f"persist entry [{i}]: unknown vcs {vcs!r} — valid values: tracked, ignored"
                     )
             else:
                 if vcs is not None:
@@ -512,17 +509,40 @@ class HookCommand:
 
 # Claude Code's documented hook event names (code.claude.com/docs/en/hooks). Validated so a typo
 # (e.g. `SessionStarts`) fails at parse time instead of silently installing a dead hook.
-_VALID_HOOK_EVENTS = frozenset({
-    "SessionStart", "Setup", "SessionEnd",
-    "UserPromptSubmit", "UserPromptExpansion", "Stop", "StopFailure",
-    "PreToolUse", "PostToolUse", "PostToolUseFailure", "PostToolBatch",
-    "PermissionRequest", "PermissionDenied",
-    "SubagentStart", "SubagentStop", "TaskCreated", "TaskCompleted", "TeammateIdle",
-    "ConfigChange", "CwdChanged", "FileChanged", "InstructionsLoaded",
-    "WorktreeCreate", "WorktreeRemove",
-    "PreCompact", "PostCompact", "MessageDisplay", "Notification",
-    "Elicitation", "ElicitationResult",
-})
+_VALID_HOOK_EVENTS = frozenset(
+    {
+        "SessionStart",
+        "Setup",
+        "SessionEnd",
+        "UserPromptSubmit",
+        "UserPromptExpansion",
+        "Stop",
+        "StopFailure",
+        "PreToolUse",
+        "PostToolUse",
+        "PostToolUseFailure",
+        "PostToolBatch",
+        "PermissionRequest",
+        "PermissionDenied",
+        "SubagentStart",
+        "SubagentStop",
+        "TaskCreated",
+        "TaskCompleted",
+        "TeammateIdle",
+        "ConfigChange",
+        "CwdChanged",
+        "FileChanged",
+        "InstructionsLoaded",
+        "WorktreeCreate",
+        "WorktreeRemove",
+        "PreCompact",
+        "PostCompact",
+        "MessageDisplay",
+        "Notification",
+        "Elicitation",
+        "ElicitationResult",
+    }
+)
 
 
 def _parse_hooks(raw_hooks) -> tuple[dict[str, list[HookCommand]], list[str]]:
@@ -575,7 +595,9 @@ def _parse_hooks(raw_hooks) -> tuple[dict[str, list[HookCommand]], list[str]]:
                 )
             matcher = entry.get("matcher")
             if matcher is not None and not isinstance(matcher, str):
-                raise SchemaError(f"recipe 'hooks.{event}' entry 'matcher' must be a string: {entry!r}")
+                raise SchemaError(
+                    f"recipe 'hooks.{event}' entry 'matcher' must be a string: {entry!r}"
+                )
             entry_skip = _parse_hooks_skip_harnesses(
                 entry.get("skip_harnesses"), label=f"hooks.{event}[].skip_harnesses"
             )
@@ -633,6 +655,7 @@ class SetupConfigItem:
       * derive — a template over repo-identity primitives ({repo}, {gcd_db}, …), resolved silently.
       * prompt — asked on first launch (default is a template too); non-interactive → uses default.
     The resolved value reaches `setup.script` as the env var HARNESSED_CFG_<KEY>."""
+
     key: str
     derive: str | None = None
     prompt: str | None = None
@@ -717,9 +740,7 @@ def _parse_setup(raw_setup) -> "SetupSpec | None":
     if confirm is not None and (not isinstance(confirm, str) or not confirm.strip()):
         raise SchemaError("recipe 'setup.confirm', if set, must be a non-empty string")
     if confirm and not script:
-        raise SchemaError(
-            "recipe 'setup.confirm' gates 'script' — it means nothing without one"
-        )
+        raise SchemaError("recipe 'setup.confirm' gates 'script' — it means nothing without one")
     config = _parse_setup_config(raw_setup.get("config"))
 
     # `run` is deliberately absent here: it is rejected by name above, which fires first and says
@@ -757,9 +778,9 @@ _REF_REPO_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
 class InstallRef:
     """One declared upstream ref: what `update` queries, and what `install.sh` fetches."""
 
-    repo: str            # owner/repo
-    ref: str             # a version tag or a FULL 40-hex SHA — floating is rejected, as for tools:
-    hold: str | None = None   # rule 5: scope is THIS ref, not the recipe
+    repo: str  # owner/repo
+    ref: str  # a version tag or a FULL 40-hex SHA — floating is rejected, as for tools:
+    hold: str | None = None  # rule 5: scope is THIS ref, not the recipe
 
 
 def derived_cache_key(refs: "dict[str, InstallRef]") -> str | None:
@@ -848,6 +869,7 @@ class InstallSpec:
     `install` sees a strictly PROJECT-INDEPENDENT env (see launcher._install_env): the folder-env
     vars a build cannot know are deliberately absent rather than present-but-wrong.
     """
+
     # Relative path to the bash script inside the recipe dir. OPTIONAL, but only because a
     # ROOT-ONLY install exists: a recipe whose install is ENTIRELY system-level (apt-get, a binary
     # landing in /usr/local/bin) has no user-level half to put in a script, yet still must be able
@@ -1004,12 +1026,14 @@ def _parse_setup_config(raw_config) -> list["SetupConfigItem"]:
         unknown = sorted(set(entry) - {"key", "derive", "prompt", "default"})
         if unknown:
             raise SchemaError(f"recipe 'setup.config' '{key}': unknown field(s) {unknown}")
-        out.append(SetupConfigItem(
-            key=key,
-            derive=str(derive).strip() if derive else None,
-            prompt=str(prompt).strip() if prompt else None,
-            default=str(default) if default is not None else None,
-        ))
+        out.append(
+            SetupConfigItem(
+                key=key,
+                derive=str(derive).strip() if derive else None,
+                prompt=str(prompt).strip() if prompt else None,
+                default=str(default) if default is not None else None,
+            )
+        )
     return out
 
 
@@ -1022,7 +1046,9 @@ def _parse_conflicts(raw_conflicts) -> list[str]:
     conflicts: list[str] = []
     for entry in raw_conflicts:
         if not isinstance(entry, str) or not entry.strip():
-            raise SchemaError(f"recipe 'conflicts' entries must be non-empty strings, got {entry!r}")
+            raise SchemaError(
+                f"recipe 'conflicts' entries must be non-empty strings, got {entry!r}"
+            )
         conflicts.append(entry.strip())
     return conflicts
 
@@ -1118,10 +1144,18 @@ class Recipe:
 # Restated rather than imported because emit imports schema — the dependency cannot be reversed.
 # tests/test_schema.py asserts this set equals emit._PERMISSION_DEFAULT_MODE's keys, so the two
 # cannot drift silently.
-_STACK_PERMISSIONS_MODES = frozenset({
-    "acceptEdits", "auto", "bypassPermissions", "default", "dontAsk", "plan",
-    "prompt", "yolo",
-})
+_STACK_PERMISSIONS_MODES = frozenset(
+    {
+        "acceptEdits",
+        "auto",
+        "bypassPermissions",
+        "default",
+        "dontAsk",
+        "plan",
+        "prompt",
+        "yolo",
+    }
+)
 
 # How the harness reaches the hatago hub. Named constants rather than bare strings so the emitter,
 # the launcher and the entrypoint cannot drift from the parser — the same reason
@@ -1455,11 +1489,30 @@ def _parse_fileext(raw_list) -> list[FileExt]:
 # `hooks` is now TYPED (GAP 2, `_parse_hooks`) — it stays in this set as a typed key, not a forward
 # one; `_recipe_raw_strings` still scans its raw string values too (harmless double-duty, catches a
 # stray floating ref inside a hook `command` string).
-KNOWN_RECIPE_FIELDS = frozenset({
-    "name", "description", "mcp", "skills", "commands", "rules", "expect", "persist", "init",  # typed
-    "conflicts", "hooks", "setup", "install", "egress", "tools", "env", "services",  # typed
-    "plugins", "deps", "scripts",  # D-14 forward fields (see _recipe_raw_strings)
-})
+KNOWN_RECIPE_FIELDS = frozenset(
+    {
+        "name",
+        "description",
+        "mcp",
+        "skills",
+        "commands",
+        "rules",
+        "expect",
+        "persist",
+        "init",  # typed
+        "conflicts",
+        "hooks",
+        "setup",
+        "install",
+        "egress",
+        "tools",
+        "env",
+        "services",  # typed
+        "plugins",
+        "deps",
+        "scripts",  # D-14 forward fields (see _recipe_raw_strings)
+    }
+)
 
 
 def _levenshtein(a: str, b: str) -> int:
@@ -1487,8 +1540,7 @@ def _validate_recipe_fields(raw: dict, manifest: Path) -> None:
     if not unknown:
         return
     described = [
-        f"{f!r}" + (f" (did you mean {s!r}?)" if (s := _suggest_field(f)) else "")
-        for f in unknown
+        f"{f!r}" + (f" (did you mean {s!r}?)" if (s := _suggest_field(f)) else "") for f in unknown
     ]
     raise SchemaError(
         f"{manifest}: unknown recipe field(s) in --strict mode: {', '.join(described)}. "
@@ -1513,7 +1565,6 @@ def _parse_egress(raw_egress, manifest: Path) -> list[str]:
             )
         out.append(host)
     return out
-
 
 
 def _parse_tools(raw_tools, manifest: Path) -> tuple[list[str], dict[str, str]]:
@@ -1737,7 +1788,7 @@ def _parse_env(raw_env, manifest: Path) -> dict[str, str]:
         if isinstance(val, bool) or val is None:
             raise SchemaError(
                 f"{manifest}: env value for {name!r} must be a string or number, got {val!r} — "
-                "quote it (e.g. \"1\") so the value is unambiguous"
+                'quote it (e.g. "1") so the value is unambiguous'
             )
         out[name] = str(val)
     return out
@@ -1756,7 +1807,7 @@ def _validate_env_templates(env: dict[str, str], persist: PersistSpec, manifest:
                     f"{manifest}: env {var}: unknown placeholder '{{{ph}}}'. Known: "
                     "{persist:<name>}, {project_dir}, {host_home}"
                 )
-            ref = ph[len("persist:"):]
+            ref = ph[len("persist:") :]
             if ref not in names:
                 known = ", ".join(sorted(names)) or "(none declared)"
                 raise SchemaError(
@@ -1773,7 +1824,11 @@ def _persist_entry_dir(
     assert entry.name is not None  # noqa: S101 — narrows for the checker; the parser already rejects a nameless non-global entry
     if entry.location == "in_repo":
         # Path-preserving in both modes — but anchored at the checkout, so it needs the project.
-        return None if project_path is None else str(paths.persist_in_repo_dir(project_path, entry.name))
+        return (
+            None
+            if project_path is None
+            else str(paths.persist_in_repo_dir(project_path, entry.name))
+        )
     if mode == "container":
         # Where _persist_mounts bind-mounts it — a fixed container path, project-independent, which
         # is exactly why this case survives being baked into the image at build time.
@@ -1785,9 +1840,7 @@ def _persist_entry_dir(
     return str(paths.persist_workspace_dir(recipe.name, project_path, entry.name))
 
 
-def resolve_recipe_env(
-    recipe: Recipe, *, mode: str, project_path: Path | None
-) -> dict[str, str]:
+def resolve_recipe_env(recipe: Recipe, *, mode: str, project_path: Path | None) -> dict[str, str]:
     """Resolve a recipe's `env:` templates for one mode ('container' or 'host').
 
     `project_path=None` means BUILD time (no project exists yet): any var whose value needs the
@@ -1811,10 +1864,10 @@ def resolve_recipe_env(
                     return ""
                 return str(project_path)
             if ph.startswith("persist:"):
-                entry = by_name.get(ph[len("persist:"):])
+                entry = by_name.get(ph[len("persist:") :])
                 if entry is None:  # unreachable: _validate_env_templates rejects this at load
                     raise SchemaError(
-                        f"recipe '{recipe.name}': env {_var}: no persist entry '{ph[len('persist:'):]}'"
+                        f"recipe '{recipe.name}': env {_var}: no persist entry '{ph[len('persist:') :]}'"
                     )
                 val = _persist_entry_dir(recipe, entry, mode=mode, project_path=project_path)
                 if val is None:
@@ -1870,11 +1923,24 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Rec
     )
 
 
-KNOWN_STACK_FIELDS = frozenset({
-    "name", "extends", "recipes", "services", "harnesses", "permissions", "instructions",
-    "forward_git_credentials", "ssh_keys", "forward_aws_sso", "isolated_auth", "hatago", "state",
-    "hub_transport",
-})
+KNOWN_STACK_FIELDS = frozenset(
+    {
+        "name",
+        "extends",
+        "recipes",
+        "services",
+        "harnesses",
+        "permissions",
+        "instructions",
+        "forward_git_credentials",
+        "ssh_keys",
+        "forward_aws_sso",
+        "isolated_auth",
+        "hatago",
+        "state",
+        "hub_transport",
+    }
+)
 # `hatago` stays in the KNOWN set deliberately after its removal (bd harnessed-1t4.1): it must reach
 # `_reject_removed_hatago_override`, whose message says what replaced it, rather than dying in the
 # generic "unknown field / did you mean" path.
@@ -1899,7 +1965,8 @@ def _validate_stack_fields(raw: dict, manifest: Path) -> None:
     if not unknown:
         return
     described = [
-        f"{f!r}" + (f" (did you mean {s!r}?)" if (s := _suggest_field(f, KNOWN_STACK_FIELDS)) else "")
+        f"{f!r}"
+        + (f" (did you mean {s!r}?)" if (s := _suggest_field(f, KNOWN_STACK_FIELDS)) else "")
         for f in unknown
     ]
     raise SchemaError(
@@ -1927,7 +1994,9 @@ def _resolve_parent_stack_dir(parent: str, stack_dir: Path, manifest: Path) -> P
         ) from exc
 
 
-def _resolve_stack_extends(raw: dict, stack_dir: Path, manifest: Path, chain: tuple[Path, ...]) -> dict:
+def _resolve_stack_extends(
+    raw: dict, stack_dir: Path, manifest: Path, chain: tuple[Path, ...]
+) -> dict:
     """Merge a stack manifest onto the one it `extends:`, returning a single flat manifest.
 
     Merging happens on the RAW dict, before any field parsing, so inheritance needs no per-field
@@ -2205,7 +2274,9 @@ def load_service(root: Path | None, name: str) -> ServiceDef:
                     f"(known: {', '.join(sorted(_CLIENT_ENV_TOKENS))})"
                 )
         if "{socket}" in value and not socket:
-            raise SchemaError(f"{manifest}: client_env[{key!r}] uses {{socket}} but none is declared")
+            raise SchemaError(
+                f"{manifest}: client_env[{key!r}] uses {{socket}} but none is declared"
+            )
         if ("{port}" in value or "{host}" in value) and socket:
             raise SchemaError(
                 f"{manifest}: client_env[{key!r}] uses {{host}}/{{port}} on a socket-only service"
@@ -2278,7 +2349,8 @@ def load_stack_with_recipes(
     """
     stack = load_stack(_resolve_dir(root, "stacks", stack_name))
     recipes = [
-        load_recipe(_resolve_dir(root, "recipes", ref), strict=strict, ref=ref) for ref in stack.recipes
+        load_recipe(_resolve_dir(root, "recipes", ref), strict=strict, ref=ref)
+        for ref in stack.recipes
     ]
     _check_recipe_conflicts(stack.name, recipes)
     if root is None:
@@ -2404,8 +2476,9 @@ def _require_immutable_build_arg(key: str, value: str, manifest: Path) -> str:
     return pin
 
 
-def _parse_agent_build_args(raw_args, manifest: Path
-                            ) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+def _parse_agent_build_args(
+    raw_args, manifest: Path
+) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
     """Split `build_args` into (values, specs, holds), accepting a scalar or a mapping per key."""
     values: dict[str, str] = {}
     specs: dict[str, str] = {}
@@ -2526,9 +2599,9 @@ _INIT_EXIT_RE = re.compile(r"(^|[;&|(){}\s])exit(\s|$|[;&|)])")
 # `:latest` in URL path segments uses `/latest/` (no colon), so `:latest\b` matches only Docker
 # image tags (e.g. `node:latest`) without false-positives on URL paths.
 _FLOATING_REF_RE = re.compile(
-    r'--branch\s+(main|master|HEAD)\b'
-    r'|:latest\b'
-    r'|@latest\b',
+    r"--branch\s+(main|master|HEAD)\b"
+    r"|:latest\b"
+    r"|@latest\b",
     re.IGNORECASE,
 )
 # --- bd harnessed-1t4.6: a clone ref must be IMMUTABLE, not merely "not main" ---------------------
@@ -2555,11 +2628,11 @@ _CLONE_REF_RE = re.compile(r'--branch(?:=|\s+)(?P<ref>"[^"]*"|\'[^\']*\'|\S+)')
 # `(X+)*` shape and went exponential, hanging outright on a 480-character failing input where this
 # form stays at 0.006 ms.
 _IMMUTABLE_REF_RE = re.compile(
-    r'^(?:[0-9a-fA-F]{40}|v?[0-9]+(?:\.[0-9]+)*(?:[-.][0-9A-Za-z.]+)?(?:\+[0-9A-Za-z.]+)?)$'
+    r"^(?:[0-9a-fA-F]{40}|v?[0-9]+(?:\.[0-9]+)*(?:[-.][0-9A-Za-z.]+)?(?:\+[0-9A-Za-z.]+)?)$"
 )
 # `"$FOO"` / `${FOO}` — catalog scripts pin via `FOO_REF="v6.0.3"` and clone `--branch "$FOO_REF"`,
 # so the gate follows exactly one hop to the literal assignment in the same body.
-_SHELL_VAR_REF_RE = re.compile(r'^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$')
+_SHELL_VAR_REF_RE = re.compile(r"^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$")
 # --- bd harnessed-po7: an ARCHIVE download is a clone by another spelling -------------------------
 # `curl .../archive/main.tar.gz` moves exactly as much as `--branch main`, but `_CLONE_REF_RE` only
 # ever looked at `--branch`, so a branch-pinned archive sailed through the gate that exists to stop
@@ -2577,7 +2650,7 @@ _SHELL_VAR_REF_RE = re.compile(r'^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$')
 _ARCHIVE_REF_RE = re.compile(
     r'(?:github\.com/(?:[^/\s"\']+/){1,2}archive/'
     r'|codeload\.github\.com/(?:[^/\s"\']+/){1,2}(?:tarball|zipball|tar\.gz|zip)/)'
-    r'(?P<qualifier>refs/heads/|refs/tags/)?'
+    r"(?P<qualifier>refs/heads/|refs/tags/)?"
     r'(?P<ref>[^\s"\'|>?&]+?)'
     r'(?:\.tar\.gz|\.tgz|\.zip)?(?=$|[\s"\'|>?&])'
 )
@@ -2587,17 +2660,17 @@ _ARCHIVE_REF_RE = re.compile(
 #   fetch oakoss/agent-skills "$OAKOSS_SHA" ...
 # and the ref simply is not knowable from the URL line. Failing closed would reject a recipe that
 # is pinned exactly right, so the literal case (the reported bug) is what this gate catches.
-_POSITIONAL_PARAM_RE = re.compile(r'^\$\{?\d+\}?$')
+_POSITIONAL_PARAM_RE = re.compile(r"^\$\{?\d+\}?$")
 _SHELL_ASSIGN_RE = re.compile(
-    r'^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(\"[^\"]*\"|\'[^\']*\'|\S*)\s*$', re.MULTILINE
+    r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(\"[^\"]*\"|\'[^\']*\'|\S*)\s*$", re.MULTILINE
 )
 # A Dockerfile RUN instruction. Used by `validate_container_only_declared` to detect the half of a
 # partially migrated recipe that a host launch cannot execute.
-_DOCKERFILE_RUN_RE = re.compile(r'^\s*RUN\s', re.MULTILINE)
+_DOCKERFILE_RUN_RE = re.compile(r"^\s*RUN\s", re.MULTILINE)
 # A bare DNS hostname: labels of alnum/hyphen joined by dots, a 2+ char alpha TLD, ≤253 chars.
 # No scheme, path, port, or wildcard — the egress firewall resolves each to IPs via getent.
 _HOSTNAME_RE = re.compile(
-    r'^(?=.{1,253}$)([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+    r"^(?=.{1,253}$)([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$"
 )
 # Offending token → the pnpm equivalent the author must use (BLD-03 "points at the pnpm equivalent").
 _NPM_TO_PNPM = {
@@ -2780,7 +2853,7 @@ def _mutable_archive_ref(body: str, recipe: "Recipe | None" = None) -> str | Non
 # to locate the subcommand. The ARGUMENT text is then walked token by token, because a ref here is
 # positional — there is no flag to key off, which is precisely why the earlier gates missed it.
 _GIT_FETCH_RE = re.compile(
-    r'\bgit\b(?:\s+-{1,2}[A-Za-z][^\s]*(?:\s+[^-\s]\S*)?)*\s+fetch\b(?P<args>[^\n;&|)]*)'
+    r"\bgit\b(?:\s+-{1,2}[A-Za-z][^\s]*(?:\s+[^-\s]\S*)?)*\s+fetch\b(?P<args>[^\n;&|)]*)"
 )
 # BOTH SETS BELOW WERE AUDITED AGAINST THE BINARY, not against memory or the man page's prose.
 # Misclassifying ONE option is a false ACCEPT, and it happened three times before the audit: an
@@ -2795,28 +2868,69 @@ _GIT_FETCH_RE = re.compile(
 #
 # Options taking NO value. An option in neither set fails the walk CLOSED (see `_mutable_fetch_ref`)
 # rather than being guessed at — the posture `_IMMUTABLE_REF_RE` takes for refs, applied to flags.
-_FETCH_FLAG_OPTS = frozenset({
-    "-q", "--quiet", "-v", "--verbose", "--progress", "--no-progress",
-    "--all", "--tags", "--no-tags", "--prune", "--prune-tags", "-p", "-P",
-    "-f", "--force", "-a", "--append", "-n", "--dry-run", "-t",
-    "--unshallow", "--update-shallow", "--refetch", "--atomic", "-k", "--keep",
-    "--set-upstream", "--write-fetch-head", "--no-write-fetch-head",
-    "--recurse-submodules", "--no-recurse-submodules", "--ipv4", "--ipv6",
-    # Reads like a value-taking option and is not: `git fetch --negotiate-only` answers
-    # "fatal: must supply remote when using --negotiate-only", not "requires a value". Listed as
-    # value-taking until review of PR #355, where it consumed `origin` and let `main` through.
-    "--negotiate-only",
-})
+_FETCH_FLAG_OPTS = frozenset(
+    {
+        "-q",
+        "--quiet",
+        "-v",
+        "--verbose",
+        "--progress",
+        "--no-progress",
+        "--all",
+        "--tags",
+        "--no-tags",
+        "--prune",
+        "--prune-tags",
+        "-p",
+        "-P",
+        "-f",
+        "--force",
+        "-a",
+        "--append",
+        "-n",
+        "--dry-run",
+        "-t",
+        "--unshallow",
+        "--update-shallow",
+        "--refetch",
+        "--atomic",
+        "-k",
+        "--keep",
+        "--set-upstream",
+        "--write-fetch-head",
+        "--no-write-fetch-head",
+        "--recurse-submodules",
+        "--no-recurse-submodules",
+        "--ipv4",
+        "--ipv6",
+        # Reads like a value-taking option and is not: `git fetch --negotiate-only` answers
+        # "fatal: must supply remote when using --negotiate-only", not "requires a value". Listed as
+        # value-taking until review of PR #355, where it consumed `origin` and let `main` through.
+        "--negotiate-only",
+    }
+)
 # Options whose value is a SEPARATE token, so that token is not a positional. The `--opt=value`
 # spelling needs no entry here: it is one token either way.
-_FETCH_VALUE_OPTS = frozenset({
-    "--depth", "--deepen", "--jobs", "-j", "--refmap", "--upload-pack",
-    "--shallow-since", "--shallow-exclude", "--negotiation-tip",
-    "--server-option", "-o", "--filter", "--submodule-prefix",
-})
+_FETCH_VALUE_OPTS = frozenset(
+    {
+        "--depth",
+        "--deepen",
+        "--jobs",
+        "-j",
+        "--refmap",
+        "--upload-pack",
+        "--shallow-since",
+        "--shallow-exclude",
+        "--negotiation-tip",
+        "--server-option",
+        "-o",
+        "--filter",
+        "--submodule-prefix",
+    }
+)
 # `-qv` — ONE dash, two or more letters, so it is a bundle of short options rather than one option.
 # `--x` is excluded by the single leading dash; `-C` alone is excluded by the length.
-_SHORT_OPT_BUNDLE_RE = re.compile(r'^-[A-Za-z]{2,}$')
+_SHORT_OPT_BUNDLE_RE = re.compile(r"^-[A-Za-z]{2,}$")
 
 
 def _mutable_fetch_ref(body: str, recipe: "Recipe | None" = None) -> str | None:
@@ -2876,11 +2990,7 @@ def _mutable_fetch_ref(body: str, recipe: "Recipe | None" = None) -> str | None:
             # safe, but for a false reason that sends an author hunting a pin problem they do not
             # have. A value-taking member is legal only as the LAST of a bundle, which is also
             # git's rule.
-            parts = (
-                [f"-{ch}" for ch in name[1:]]
-                if _SHORT_OPT_BUNDLE_RE.match(name)
-                else [name]
-            )
+            parts = [f"-{ch}" for ch in name[1:]] if _SHORT_OPT_BUNDLE_RE.match(name) else [name]
             for position, part in enumerate(parts):
                 if part in _FETCH_VALUE_OPTS:
                     if position == len(parts) - 1 and "=" not in token:
@@ -2986,9 +3096,7 @@ _LINE_CONTINUATION_RE = re.compile(r"\\\s*\n\s*")
 # of the line made `mise use -g node@20 && mise use -g python` a single match, so `finditer` never
 # saw the second command and its unversioned `python` was invisible. Found by a test written to kill
 # a surviving mutant — the mutant was cosmetic, the bug it pointed at was not.
-_MISE_ACQUIRE_RE = re.compile(
-    r"\bmise\s+(?:use|install)\b(?P<tail>(?:(?!&&|\|\||;|\||>|<)[^\n])*)"
-)
+_MISE_ACQUIRE_RE = re.compile(r"\bmise\s+(?:use|install)\b(?P<tail>(?:(?!&&|\|\||;|\||>|<)[^\n])*)")
 # A spec must START like one — a letter, digit, or quote. That also excludes the shell operator a
 # bare `mise install` is followed by: `mise use -g X && mise install` once reported the spec as '&&'.
 _SPEC_TOKEN_RE = re.compile(r"^(?:\"[^\"]+\"|'[^']+'|[A-Za-z0-9][^\s]*)$")
@@ -2999,9 +3107,7 @@ _SHELL_COMMAND_SPLIT_RE = re.compile(r"&&|\|\||;")
 # What counts as a version on a mise spec: a shell variable (the pin lives in build_args) or a
 # version-like literal. Deliberately narrow — an unrecognised shape fails closed rather than being
 # guessed at, matching `_IMMUTABLE_REF_RE`'s posture.
-_SPEC_VERSION_RE = re.compile(
-    r"@(?:\$\{[A-Za-z_]\w*\}|\$[A-Za-z_]\w*|v?\d[\w.+-]*)\s*$"
-)
+_SPEC_VERSION_RE = re.compile(r"@(?:\$\{[A-Za-z_]\w*\}|\$[A-Za-z_]\w*|v?\d[\w.+-]*)\s*$")
 # The two ways a piped installer can be carrying a pin: an explicit `--version` flag, or a variable
 # whose NAME says it holds a version.
 #
@@ -3089,13 +3195,16 @@ def _mise_specs(line: str):
         # truncation rather than silently under-counting: a missing acquisition would be excused by
         # somebody else's `unpinnable:` entry. Found by adversarial review round 2.
         if tail.count('"') % 2 or tail.count("'") % 2:
-            yield f"mise:{tail.strip()}", (
-                f"mise arguments {tail.strip()!r} have an unbalanced quote, so this lint "
-                f"cannot verify what follows on that command"
+            yield (
+                f"mise:{tail.strip()}",
+                (
+                    f"mise arguments {tail.strip()!r} have an unbalanced quote, so this lint "
+                    f"cannot verify what follows on that command"
+                ),
             )
         for token in tail.split():
             if token.startswith("-"):
-                continue                       # a flag, not a spec
+                continue  # a flag, not a spec
             if not _SPEC_TOKEN_RE.match(token):
                 # Unrecognised shape — e.g. `mise use -g $(cat tools.txt)`. FAIL CLOSED, the same
                 # posture `_IMMUTABLE_REF_RE` takes: a token this cannot read is a token whose
@@ -3106,7 +3215,10 @@ def _mise_specs(line: str):
             spec = token.strip("\"'")
             # A bare tool name (`mise use -g node`) is as unpinned as a specless backend ref; both
             # resolve @latest at build time, which is what bd harnessed-2o9 was about.
-            yield f"mise:{spec}", None if _SPEC_VERSION_RE.search(spec) else f"mise acquires {spec!r}"
+            yield (
+                f"mise:{spec}",
+                None if _SPEC_VERSION_RE.search(spec) else f"mise acquires {spec!r}",
+            )
 
 
 def _unversioned_acquisitions(dockerfile_body: str) -> list[str]:
@@ -3140,8 +3252,9 @@ def _unversioned_acquisitions(dockerfile_body: str) -> list[str]:
     return out
 
 
-def validate_agent_pin(agent_name: str, dockerfile_body: str, *,
-                       unpinnable: dict[str, str]) -> None:
+def validate_agent_pin(
+    agent_name: str, dockerfile_body: str, *, unpinnable: dict[str, str]
+) -> None:
     """AC-9: reject a floating ref OR an unversioned acquisition in an AGENT image.
 
     `unpinnable` is the agent manifest's declared non-pins (D7). A non-empty mapping suppresses the
@@ -3186,8 +3299,8 @@ def validate_agent_pin(agent_name: str, dockerfile_body: str, *,
     if len(unpinnable) < count:
         detail = (
             "declares no `unpinnable:` reason"
-            if not unpinnable else
-            f"declares {len(unpinnable)} `unpinnable:` entr{'y' if len(unpinnable) == 1 else 'ies'} "
+            if not unpinnable
+            else f"declares {len(unpinnable)} `unpinnable:` entr{'y' if len(unpinnable) == 1 else 'ies'} "
             f"for {count} unversioned acquisitions"
         )
         raise PinValidationError(
@@ -3225,7 +3338,8 @@ def _lint_script_file(recipe: Recipe, field_name: str, rel_path: str) -> None:
             f"recipe '{recipe.name}': {field_name} '{rel_path}' not found at {path}"
         )
     body = "\n".join(
-        line for line in path.read_text(encoding="utf-8").splitlines()
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
         if not line.lstrip().startswith("#")
     )
     match = _RAW_NPM_RE.search(body)
@@ -3327,7 +3441,7 @@ def validate_no_claude_writes(recipe: Recipe, dockerfile_body: str) -> None:
     raise RecipeLintError(
         f"recipe '{recipe.name}': Dockerfile references '~/.claude'. Content delivered that way is "
         "invisible to a host launch AND hidden by the profile bind-mount in a container. Write it "
-        "into \"$HARNESSED_CONFIG_DIR\" from install.script instead, which lands in both modes."
+        'into "$HARNESSED_CONFIG_DIR" from install.script instead, which lands in both modes.'
     )
 
 
@@ -3412,6 +3526,8 @@ def expected_capabilities(stack: Stack, recipes: list[Recipe]) -> Capabilities:
     # De-dup while preserving order (a recipe may both ship and declare the same name).
     dedup = lambda xs: list(dict.fromkeys(xs))
     return Capabilities(
-        mcp_servers=dedup(mcp), skills=dedup(skills),
-        commands=dedup(commands), plugins=dedup(plugins),
+        mcp_servers=dedup(mcp),
+        skills=dedup(skills),
+        commands=dedup(commands),
+        plugins=dedup(plugins),
     )

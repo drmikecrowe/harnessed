@@ -61,7 +61,9 @@ class TestPruneUnlaunchableOmpBlocks:
 
     def test_drops_only_the_unresolvable_stack(self, monkeypatch, tmp_path):
         agent = self._agent_dir(monkeypatch, tmp_path)
-        (agent / "RULES.md").write_text(self._block("gone") + self._block("alive"), encoding="utf-8")
+        (agent / "RULES.md").write_text(
+            self._block("gone") + self._block("alive"), encoding="utf-8"
+        )
         monkeypatch.setattr(
             launcher.staleness, "stack_resolves", lambda _root, name: name == "alive"
         )

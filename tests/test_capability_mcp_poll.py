@@ -101,7 +101,9 @@ class TestThePollWaits:
     def test_a_partial_result_does_not_end_the_poll(self, monkeypatch):
         """One of two children connecting first must not be mistaken for 'this is all there is'."""
         _hatago_returning(
-            monkeypatch, {"a": "connected"}, {"a": "connected", "b": "connected"},
+            monkeypatch,
+            {"a": "connected"},
+            {"a": "connected", "b": "connected"},
         )
         _llm_returning(monkeypatch, {})
 
@@ -289,8 +291,8 @@ class TestTheReportCarriesNoChildProcessOutput:
         rendered = report_mod.render_markdown(
             capability.build_report("s", expected, capability.LiveCapabilities(mcp={}))
         )
-        assert "hatago.log" in rendered          # the pointer survives
-        assert "```" not in rendered, (          # ...and no fenced block quoting container output
+        assert "hatago.log" in rendered  # the pointer survives
+        assert "```" not in rendered, (  # ...and no fenced block quoting container output
             f"the markdown report grew a quoted block: {rendered}"
         )
 
@@ -326,21 +328,29 @@ class TestTheTestVerbPublishesNothingFromTheContainer:
 
     def _report(self, monkeypatch, *, declared: set[str], connected: set[str]):
         expected = schema.Capabilities(
-            mcp_servers=sorted(declared), skills=[], commands=[], plugins=[],
+            mcp_servers=sorted(declared),
+            skills=[],
+            commands=[],
+            plugins=[],
         )
         monkeypatch.setattr(capability.schema, "load_stack_with_recipes", lambda _r, _s: (None, []))
         monkeypatch.setattr(capability.schema, "expected_capabilities", lambda _s, _r: expected)
         monkeypatch.setattr(capability, "launch_headless", lambda *a, **k: "inst")
         monkeypatch.setattr(capability, "wait_ready", lambda *a, **k: True)
         monkeypatch.setattr(
-            capability, "introspect",
+            capability,
+            "introspect",
             lambda *a, **k: capability.LiveCapabilities(mcp={n: "connected" for n in connected}),
         )
         monkeypatch.setattr(capability, "teardown", lambda *a, **k: None)
         # If anything tried to shell into the container for output, this would fire.
-        monkeypatch.setattr(capability, "_exec", lambda *a, **k: pytest.fail(
-            "run_capability_test read from the container after introspection — T-02-07"
-        ))
+        monkeypatch.setattr(
+            capability,
+            "_exec",
+            lambda *a, **k: pytest.fail(
+                "run_capability_test read from the container after introspection — T-02-07"
+            ),
+        )
         return capability.run_capability_test(".", "s", "claude", run_tests=False)
 
     def test_a_missing_server_yields_a_pointer_and_no_container_bytes(self, monkeypatch):

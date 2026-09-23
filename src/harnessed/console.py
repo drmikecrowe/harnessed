@@ -6,6 +6,7 @@ warning counters, and `_acknowledge_warnings` reads one of them — a warning pr
 would be silently dropped from the count. The dependency direction is the one the split requires:
 launcher and its extracted modules both import from here, and this module imports neither.
 """
+
 from __future__ import annotations
 
 import re

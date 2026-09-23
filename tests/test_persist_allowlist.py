@@ -102,7 +102,7 @@ class TestDefaultDeny:
             persist.resolve_global_persist(str(target))
         msg = str(ei.value)
         assert str(paths.persist_allowlist_path()) in msg  # names the file to edit
-        assert str(_real(target)) in msg                   # names the exact line to add
+        assert str(_real(target)) in msg  # names the exact line to add
 
 
 class TestAllowed:
@@ -199,17 +199,17 @@ class TestTheGuardFollowsTheMappingInsteadOfAssumingIt:
         "mapping, expected",
         [
             # RESOLVED — the mapping tells us exactly which host uid the pod writes as.
-            ("--userns=keep-id:uid=1000,gid=1000", "caller"),   # the pinned form
-            ("--userns=keep-id:gid=1000,uid=1000", "caller"),   # reversed — `\b` matches after `,`
+            ("--userns=keep-id:uid=1000,gid=1000", "caller"),  # the pinned form
+            ("--userns=keep-id:gid=1000,uid=1000", "caller"),  # reversed — `\b` matches after `,`
             ("--userns=keep-id:uid=01000,gid=1000", "caller"),  # zero-padded
-            ("--userns=host", "image"),                         # no namespace: container 1000 IS host 1000
+            ("--userns=host", "image"),  # no namespace: container 1000 IS host 1000
             # UNRESOLVED — the pod writes as a uid this function cannot compute.
-            ("--userns=keep-id", None),                         # the bug: image uid maps to a SUBUID
-            ("--userns=keep-id:uid=1001,gid=1001", None),       # mapped onto somebody else
-            ("--userns=keep-id:uid=10000,gid=1000", None),      # 1000 is a PREFIX of 10000, not a match
-            ("--userns=keep-id:subuid=1000", None),             # `uid=` inside a longer word: no `\b`
-            ("--userns=auto", None),                            # private range
-            ("--userns=nomap", None),                           # host user excluded entirely
+            ("--userns=keep-id", None),  # the bug: image uid maps to a SUBUID
+            ("--userns=keep-id:uid=1001,gid=1001", None),  # mapped onto somebody else
+            ("--userns=keep-id:uid=10000,gid=1000", None),  # 1000 is a PREFIX of 10000, not a match
+            ("--userns=keep-id:subuid=1000", None),  # `uid=` inside a longer word: no `\b`
+            ("--userns=auto", None),  # private range
+            ("--userns=nomap", None),  # host user excluded entirely
         ],
     )
     def test_the_mapping_is_parsed_not_guessed(self, monkeypatch, mapping, expected):

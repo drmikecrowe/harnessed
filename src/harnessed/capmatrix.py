@@ -23,6 +23,7 @@ WHAT THIS DELIBERATELY DOES NOT COVER:
 This module imports nothing from `launcher` and never will (tests/test_module_boundaries.py): the
 backends live there, so the dependency points INTO this table, not back out.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -40,22 +41,22 @@ PRIMITIVES = ("skills", "tools", "install", "setup_script", "servers", "services
 #: backend name (as declared by `ExecutionBackend.name`) → primitive → support level.
 MATRIX: dict[str, dict[str, str]] = {
     "host": {
-        "skills": SUPPORTED,        # materialized into the host CLAUDE_CONFIG_DIR
-        "tools": SUPPORTED,         # stack bin dir + mise shims on PATH
-        "install": SUPPORTED,       # _host_run_installs; the container-only half is install.system's job
+        "skills": SUPPORTED,  # materialized into the host CLAUDE_CONFIG_DIR
+        "tools": SUPPORTED,  # stack bin dir + mise shims on PATH
+        "install": SUPPORTED,  # _host_run_installs; the container-only half is install.system's job
         "setup_script": SUPPORTED,  # one cross-backend mechanism since bd harnessed-0tk.9
-        "servers": SUPPORTED,       # native .mcp.json, no hub
-        "services": SUPPORTED,      # HostBackend.wire_services -> _ensure_services (bd harnessed-2sm)
-        "egress": DEGRADED,         # HostBackend.isolation is `none`; apply_isolation does nothing
+        "servers": SUPPORTED,  # native .mcp.json, no hub
+        "services": SUPPORTED,  # HostBackend.wire_services -> _ensure_services (bd harnessed-2sm)
+        "egress": DEGRADED,  # HostBackend.isolation is `none`; apply_isolation does nothing
     },
     "container": {
         "skills": SUPPORTED,
         "tools": SUPPORTED,
         "install": SUPPORTED,
         "setup_script": SUPPORTED,
-        "servers": SUPPORTED,       # fronted by the hatago hub
-        "services": SUPPORTED,      # pod sidecars
-        "egress": SUPPORTED,        # _apply_firewall, default-DROP with the recipe's allowlist
+        "servers": SUPPORTED,  # fronted by the hatago hub
+        "services": SUPPORTED,  # pod sidecars
+        "egress": SUPPORTED,  # _apply_firewall, default-DROP with the recipe's allowlist
     },
 }
 
@@ -121,24 +122,25 @@ def gaps(backend: str, recipes) -> list[Gap]:
         column = MATRIX[backend]
     except KeyError:
         raise KeyError(
-            f"no capability column for backend {backend!r} "
-            f"(known: {', '.join(sorted(MATRIX))})"
+            f"no capability column for backend {backend!r} (known: {', '.join(sorted(MATRIX))})"
         ) from None
     found = []
     for recipe in recipes:
         for primitive in sorted(declared_primitives(recipe)):
             if column.get(primitive) == DEGRADED:
-                found.append(Gap(
-                    recipe=recipe.name,
-                    primitive=primitive,
-                    # `.get`, not `[...]`. A DEGRADED cell whose detail nobody wrote is a developer
-                    # error, and `test_every_degraded_cell_has_a_detail` fails the build for it —
-                    # but it must not raise HERE. This is a diagnostic: aborting someone's launch
-                    # because the warning about their launch is incomplete would be a strictly
-                    # worse outcome than the gap it was trying to describe.
-                    detail=_DETAIL.get(
-                        (backend, primitive),
-                        f"{primitive!r} is not honored on the {backend} backend",
-                    ),
-                ))
+                found.append(
+                    Gap(
+                        recipe=recipe.name,
+                        primitive=primitive,
+                        # `.get`, not `[...]`. A DEGRADED cell whose detail nobody wrote is a developer
+                        # error, and `test_every_degraded_cell_has_a_detail` fails the build for it —
+                        # but it must not raise HERE. This is a diagnostic: aborting someone's launch
+                        # because the warning about their launch is incomplete would be a strictly
+                        # worse outcome than the gap it was trying to describe.
+                        detail=_DETAIL.get(
+                            (backend, primitive),
+                            f"{primitive!r} is not honored on the {backend} backend",
+                        ),
+                    )
+                )
     return found

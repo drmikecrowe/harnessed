@@ -3,6 +3,7 @@
 Two regressions found together while debugging why every `--last` aoe row was failing. They are
 independent, and both are about a directory harnessed redirects that it should not have.
 """
+
 from __future__ import annotations
 
 import json
@@ -49,9 +50,11 @@ def _toml_trusted_config_paths(paths_: list[str]) -> str:
     are therefore covered by `test_malformed_toml_fails_closed`, which asserts the behaviour that
     actually matters for them: harnessed grants nothing and the launch survives.
     """
-    return "[settings]\ntrusted_config_paths = [" + ", ".join(
-        json.dumps(p, ensure_ascii=False) for p in paths_
-    ) + "]\n"
+    return (
+        "[settings]\ntrusted_config_paths = ["
+        + ", ".join(json.dumps(p, ensure_ascii=False) for p in paths_)
+        + "]\n"
+    )
 
 
 class TestHostLaunchKeepsTheUsersMiseTrustStore:
@@ -90,7 +93,9 @@ class TestHostLaunchKeepsTheUsersMiseTrustStore:
         The value is the OUTER stack's, which this process cannot name — so the removal has to
         recognise the shape, not a known stack.
         """
-        outer = paths.xdg_data_home() / "harnessed" / "tools" / "some-other-stack" / "mise" / "state"
+        outer = (
+            paths.xdg_data_home() / "harnessed" / "tools" / "some-other-stack" / "mise" / "state"
+        )
         env = {"MISE_STATE_DIR": str(outer), "PATH": "/usr/bin"}
         hostrun._apply_host_mise_env(env, "s")
         assert "MISE_STATE_DIR" not in env

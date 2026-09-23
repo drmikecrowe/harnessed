@@ -85,6 +85,7 @@ def test_the_ledger_lists_every_extracted_module():
     second one. Most such modules were carved out of launcher.py; the rest still owe it the same
     one-way dependency.
     """
+
     def imports_harnessed_console(path: Path) -> bool:
         # The relative `from .console import ...` specifically — `rich.console` is a different
         # module that several untouched files import.
@@ -96,7 +97,8 @@ def test_the_ledger_lists_every_extracted_module():
         return False
 
     users_of_console = sorted(
-        p.name for p in SRC.glob("*.py")
+        p.name
+        for p in SRC.glob("*.py")
         if p.name not in ("console.py", "launcher.py") and imports_harnessed_console(p)
     )
     unlisted = sorted(set(users_of_console) - set(EXTRACTED))

@@ -5,6 +5,7 @@ a fact. None of them create, start, stop or remove anything; that orchestration 
 launcher.py. They live together because several modules need to ask these questions, and a module
 that imported them from launcher would invert the dependency the split depends on.
 """
+
 from __future__ import annotations
 
 import typer
@@ -36,38 +37,48 @@ def _runtime() -> str:
 
 
 def _image_exists(rt: str, image: str) -> bool:
-    return _bounded(
-        [rt, "image", "inspect", image],
-        timeout=_PODMAN_QUERY_TIMEOUT,
-        capture_output=True,
-    ).returncode == 0
+    return (
+        _bounded(
+            [rt, "image", "inspect", image],
+            timeout=_PODMAN_QUERY_TIMEOUT,
+            capture_output=True,
+        ).returncode
+        == 0
+    )
 
 
 def _container_running(rt: str, name: str) -> bool:
     result = _bounded(
         [rt, "container", "inspect", "-f", "{{.State.Running}}", name],
         timeout=_PODMAN_QUERY_TIMEOUT,
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     return result.returncode == 0 and result.stdout.strip() == "true"
 
 
 def _container_exists(rt: str, name: str) -> bool:
     """True if a container named `name` exists in any state (running, exited, created)."""
-    return _bounded(
-        [rt, "container", "inspect", name],
-        timeout=_PODMAN_QUERY_TIMEOUT,
-        capture_output=True,
-    ).returncode == 0
+    return (
+        _bounded(
+            [rt, "container", "inspect", name],
+            timeout=_PODMAN_QUERY_TIMEOUT,
+            capture_output=True,
+        ).returncode
+        == 0
+    )
 
 
 def _pod_exists(rt: str, pod: str) -> bool:
     """True if a podman pod named `pod` exists in any state (created/running/exited)."""
-    return _bounded(
-        [rt, "pod", "inspect", pod],
-        timeout=_PODMAN_QUERY_TIMEOUT,
-        capture_output=True,
-    ).returncode == 0
+    return (
+        _bounded(
+            [rt, "pod", "inspect", pod],
+            timeout=_PODMAN_QUERY_TIMEOUT,
+            capture_output=True,
+        ).returncode
+        == 0
+    )
 
 
 def _stopped_leftover(rt: str, inst: str, pod: str) -> bool:
@@ -87,7 +98,8 @@ def _inspect_id(rt: str, kind: str, ref: str, fmt: str) -> str:
     r = _bounded(
         [rt, kind, "inspect", "-f", fmt, ref],
         timeout=_PODMAN_QUERY_TIMEOUT,
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     return r.stdout.strip() if r.returncode == 0 else ""
 
@@ -105,8 +117,9 @@ def _img_differs(current: str, used: str) -> bool:
 def _container_stale(rt: str, name: str, image: str) -> bool:
     """True if the running container was created from a different image than current `image:latest`
     (i.e. the image was rebuilt since the container started — a re-attach would run the old build)."""
-    return _img_differs(_inspect_id(rt, "image", image, "{{.Id}}"),
-                        _inspect_id(rt, "container", name, "{{.Image}}"))
+    return _img_differs(
+        _inspect_id(rt, "image", image, "{{.Id}}"), _inspect_id(rt, "container", name, "{{.Image}}")
+    )
 
 
 def _rt_uses_pods(rt: str) -> bool:
