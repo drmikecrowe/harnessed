@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c9f8e1f7f370b6723928e8476767bbb4e1b1832fb8c514740d27b1463ef68789",
+  "pageVersion": "sha256:af3f480da203449e8d5b598f83d62a56dbb915333791a59ca0051af4eb9d4561",
   "claims": [
     {
       "id": "claim_252d58a4136d4bab8deb980788528260",
@@ -26,7 +26,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/assemble.py",
-          "version": "repo-file-v1:sha256:bdbaaf7fd9c5abee69ab06b07c7ae2844a7863e6a90d8dbd68af186f2754889e"
+          "version": "repo-file-v1:sha256:ca9dd4921ea93937b01a617bc5c90f0377140b9a4c8168bb05e391303dd0cc51"
         },
         {
           "resource": "repo://src/harnessed/emit.py",
@@ -48,7 +48,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/assemble.py",
-          "version": "repo-file-v1:sha256:bdbaaf7fd9c5abee69ab06b07c7ae2844a7863e6a90d8dbd68af186f2754889e"
+          "version": "repo-file-v1:sha256:ca9dd4921ea93937b01a617bc5c90f0377140b9a4c8168bb05e391303dd0cc51"
         },
         {
           "resource": "repo://src/harnessed/emit.py",
@@ -70,7 +70,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/assemble.py",
-          "version": "repo-file-v1:sha256:bdbaaf7fd9c5abee69ab06b07c7ae2844a7863e6a90d8dbd68af186f2754889e"
+          "version": "repo-file-v1:sha256:ca9dd4921ea93937b01a617bc5c90f0377140b9a4c8168bb05e391303dd0cc51"
         },
         {
           "resource": "repo://src/harnessed/launcher.py#L686-L693",
@@ -84,7 +84,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/assemble.py",
-          "version": "repo-file-v1:sha256:bdbaaf7fd9c5abee69ab06b07c7ae2844a7863e6a90d8dbd68af186f2754889e"
+          "version": "repo-file-v1:sha256:ca9dd4921ea93937b01a617bc5c90f0377140b9a4c8168bb05e391303dd0cc51"
         }
       ]
     },
@@ -94,7 +94,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/assemble.py",
-          "version": "repo-file-v1:sha256:bdbaaf7fd9c5abee69ab06b07c7ae2844a7863e6a90d8dbd68af186f2754889e"
+          "version": "repo-file-v1:sha256:ca9dd4921ea93937b01a617bc5c90f0377140b9a4c8168bb05e391303dd0cc51"
         }
       ]
     },
@@ -230,14 +230,22 @@
     },
     {
       "id": "claim_8f82c042c4034e99b43e3ef0d06efc9b",
-      "statement": "launcher._build_agent_image builds the per-harness agent image named by catalog/agents/<harness>/agent.yaml's image: field; the manifest's build_args are the single source of pinned versions passed as --build-arg, and the agent Dockerfiles' ARGs carry no defaults and guard with `:?` so an omitted flag fails rather than handing the installer an empty argument. Built at most once per process.",
+      "statement": "launcher._build_agent_image builds the per-harness agent image named by catalog/agents/<harness>/agent.yaml's image: field. For pinned harnesses (codex, omp, opencode) the manifest's build_args are the single source of pinned versions passed as --build-arg, and the ARGs carry no defaults and guard with `:?` so an omitted flag fails rather than silently installing the newest version. Since the 2026-09-23 owner decision, claude and antigravity are conceded: their manifests declare unpinnable: instead of build_args, the installer runs with no version argument, the image moves on every rebuild, and _agent_build_arg_flags contributes no flag for an unpinnable entry. validate_agent_image is re-applied at this build site (not only in assemble), and the image is built at most once per process.",
       "evidence": [
         {
-          "resource": "repo://catalog/base/Dockerfile.harnessed-claude",
-          "version": "repo-file-v1:sha256:0d672be813f19b300a0cc00ddad273cf7a4394818e1af1604f1a327b85088649"
+          "resource": "repo://catalog/agents/claude/agent.yaml#L17-L23",
+          "version": "repo-lines-v1:sha256:1888e870ce578b3ca627c0d25516749a0071a0f6de3d35e3232f2b13233faf24:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGI2YWZjNjEyOWFmMmQ5ZjY1ZTNkMTgxMjk3ZmNjZDZjOTY4MDIxZTM4NmJiMGU2ZjQ3ZTA5OTJmMTdhN2QzNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYmJiMDAwZjY3MTM1ZTZjZmE5MDIwYTM3OGQ5MDQzMDQxMTM0ZjNmYjgwNzIxYmEzODcyMWJjYWUyODQyMmYzNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjkwMzdkMDJiZWE2MDIwZGQxMWZjOTc2YWJjZDAxZjJlZmM5NDdhYzA4YTk4MmVjNGE3NjVhOWI0NzJlMmUyMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDE1Mjg3NzRiZjc0M2E0Y2IyNDBjMTU3ZGRhNzU1MzEwZmI4MzA5NWNhOTkzODk5YTE5ODgzNDY1MzQwMWE2NCJ9"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L603-L658",
+          "resource": "repo://catalog/base/Dockerfile.harnessed-claude#L4-L21",
+          "version": "repo-lines-v1:sha256:ad08534ae820eb5db3cd8b69c1356482d13595d04c82d8d464e8f90aa3d25692:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkZWFhNzZlNDdlYzUzNTk3OGUxODM4ZTRkOGJmNGE5OTE4YTFmYzU5YjM5NjA0MzQ1YjFjMjk3Njg3YzhjZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3ZTEwMzQyMTZmYThhMjUwMTZlYTQ3YWVjYWNlMWQ1M2EzMjA0Y2U0ODYyNmVjYTQ2NTA0MmE2NzFlMmIzZDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRiZGMwMzA0M2NhN2ZjODM4MzVlMDZhZTZhZDYzOThmZTA3MzU4MjExMTJiNWI3ZTY0Mjk2YTJmNTEwYTNmZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU1Y2U1YWM4ZDUyNDY0NmNlYmZmYzYyNTE5ZmI1NGM1ZjQ2ZTU2ZmU1MDJiOWIxNzk0N2E5Y2RjOTI0N2IyOGEifQ"
+        },
+        {
+          "resource": "repo://catalog/base/Dockerfile.harnessed-codex#L20-L32",
+          "version": "repo-lines-v1:sha256:a0fa9a01b923e1b38b3c213c05ca3d149544f54f0064cfb27cb0d0b621b28894:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxMDY5ZWY0NDhiMmViOGI1YzBhNGVkNmMyNTIyNDY2OGU3MDE5NTg5NWY0ODRiZDFmYjNmODNmYWVkMzcyZWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmZWE4YWFlZGM4OGExNTRlM2I2ZjMyNTI1ZTBiNTZmMDNkYTZkNGVlYWE3YTkyNDcwNGZmNTE2MjM4N2RlMTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZhYjY3Mzc5YzIwNzU4NzUxNjYxMDg3ODQzNjM3YWM3N2JiYTIyZjM5ZjRkMmIwNzVmOTA0MGMzNjE5MWQ5NGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJiNjgzNGU0NWNhMjc2ZjUyZWNkNzc0MTE3MmU1OTY2NjZlNzUxMDZjZDRkZTNkNjZmMjEwZjcwZGIxMGVlYTkifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L604-L659",
           "version": "repo-lines-v1:sha256:73d04776e15005640fda316f5d365d210df9569aade5f5cb943e689894f61ad0:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1ZGIzMTk0MThhMjFjZjEyMzg0NTRkM2YyZDU1NGJmMWZlNTE1NDNkMGRjYzFhM2Q3ZTUzNzYzZDZmNmFkOTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjNzQ4N2I1YjYwOTQwZDIwZmVmZDI2ZTY2NWUyZmMxNzRlMjg3YTY0MjQ3ZDhlMmQ0ZDA5MzcyMjc5NDY5ZGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZlMDliZDQ4YmVkZDM4ZjM5YTFmNzVmYjhmYmQ5YWNiMjQyNWY5NDgzZTVlZWMwNDgwMTgxNWIyMWRkOGY0ZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3OWFlZDU0OGM1Yjg4YTBkNTRmNmE2ZWEzZjk2ODQ2N2VjMmYxODNmYTE1OWQ1Y2NhZTgxMmQ2YzU4N2E0ZDkifQ"
         }
       ]
@@ -294,7 +302,7 @@
         },
         {
           "resource": "repo://src/harnessed/schema.py",
-          "version": "repo-file-v1:sha256:bc04b0d80d05b9ec82139ce127a82d6f87f91fcb6b23b6918c00668cfa270870"
+          "version": "repo-file-v1:sha256:0ca7e5d8e343875f43df9d7eec616593ee7c920f3015590340223a00fe9fc4e5"
         }
       ]
     },
@@ -338,19 +346,15 @@
     },
     {
       "id": "claim_6c196c24ebaa4b498719519dd7e4bd45",
-      "statement": "assemble.compute_recipe_hash is a SHA-256 over the stack's full build closure — the stack.yaml bytes, every file under each recipe directory (sorted), and every referenced service directory, with service names drawn from the same three sources _service_refs uses; each service contribution is length-prefixed (4-byte name, 8-byte content) so a/b+c cannot collide with a+bc and the service name is framed in because paths are service-relative. The hash is stamped as the harnessed.recipe-hash image LABEL by _build_derived_image (not a side-file), so it can never drift from the image it describes.",
+      "statement": "assemble.compute_recipe_hash is a SHA-256 over the stack's full build closure — the stack.yaml bytes, every file under each recipe directory (sorted), and every referenced service directory, with service names drawn from the same three sources _service_refs uses. Each service contribution is length-prefixed field by field (4-byte service name and file-relative-path lengths, 8-byte content length) so a/b+c cannot collide with a+bc, and the service name is framed in because paths are service-relative. A service root is accepted only on a service.yaml marker, not a bare directory, so a hollow overlay services/<name> cannot shadow the real repo copy. The hash is stamped as the harnessed.recipe-hash image LABEL by _build_derived_image (not a side-file), so it can never drift from the image it describes.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/assemble.py",
-          "version": "repo-file-v1:sha256:bdbaaf7fd9c5abee69ab06b07c7ae2844a7863e6a90d8dbd68af186f2754889e"
+          "resource": "repo://src/harnessed/assemble.py#L110-L136",
+          "version": "repo-lines-v1:sha256:31973f1a4e8d382ddf23174480d36a9d2c471ab74c0cd5e67b8210b1b26c33e5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxNTU4N2JhMGQ3MDFiZmQwN2Q3ZmQyOTUyNDczNWQwMGM3N2M5YmZkMDcyYjRjOTFkYzI5YjkxMWE1MDE3YjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiMTQxMTQ2ZDQyOGY2ZTRmZDQ1ODk2NjA2NDkzYjg2OTJiODEwNjIzMGZmZTU1YjlmYjBmNTFlZjdmNDA3NDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyMDAzMDRiMzNkNThmNDg2NGViYTAyMWZlMTNjOGZjZTIxNmZhY2EwNzkwOWJjMjQ5MTcwNjhmZjRmY2M5MGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJkYjZhMmIzOGUxOWRmOWVkZjUwMWI1ZWQ1Y2QxMjI5ZmViNTU5OWJkNDljMjU5NmEwYWE1NTRhMTg1NDE2YTIifQ"
         },
         {
-          "resource": "repo://src/harnessed/launcher.py#L710-L715",
-          "version": "repo-lines-v1:sha256:0de2dedbfc92414a01b38c52a285d3dfa5a6341ac0a84361c88dbb465d010137:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjliNmQyN2QwMzc5M2EzMDYzNjk2ZWM5ZmU5OGYwZTAwYmU2OTIxOGZlOWZkODI4NGZiZjk4MDU5MTI1MzQ0MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWY5ZDZiMzUyYzNiODUzYWM2NjNkZGQ3MjAwNWRhMWU5Y2ZmY2UyMDUyMzE2NzczODllOTRlN2Y4ZDZiY2M2NyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGRmNzVhMGY5ODdhZWVkYmRmNDVjZGRhYjc3NWNmNWRjMjgxMzgyY2YwMGYwMTk0YTQ5OTFkODA0NTllOTMwOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjIzY2RjNDAyMzc3NWQ1YWE5Y2RmNzhkMDVmYTMyZTA2YTZiNWNjNDI1ZWMxMWM2MGMxN2ZlMWU5YTU1ZThjYSJ9"
-        },
-        {
-          "resource": "repo://src/harnessed/launcher.py#L776-L791",
-          "version": "repo-lines-v1:sha256:996180165bc053485153b3c2c53d810a68904da87c1fedb4035990b374e3e049:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxOTI4ZTM1MWJmYjQ4ZDJmYzdlY2VkMzZhZGFkY2FkMGY0OTM0YmJkNjgwMzM5NjY1YTc1MjBmZWY2MTcyN2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5MTI4MzQ4MjFiOWI2YTM0NjA4YzhmM2UxZWFhNGMyZjNhYmU0M2JiNmJkOTI1OGQ5NjYwOTdmOGQxOTZjNTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2YzQ2YmM3YzQxYjFlMmNlYzIxMWU3NzljOGZhMDJmYmNkMjEyMjE2YjNmNDQyOTZjYzYzM2I0NDlhODA3NmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkYWNlZTQwYWMxNTU0ZjA5YjMxZDc4NjYyMWI4ZTQwNjQ1YmEzMjA1YmMwZGExZTdmNmZjYzM0YzliNTc3NmMifQ"
+          "resource": "repo://src/harnessed/launcher.py#L1019-L1053",
+          "version": "repo-lines-v1:sha256:6bb724702f8a1bddb488567d5e03df293c4ff1f108e459df7a895e5105d2b1f5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5Y2U0ZTJkYWM2ZmZhYTU1OTE1OTdlMjA1MjQwMWFiNzIyMGYxNDEwMWZmOWMyMjA0NWIwOTUwNTE1YTNhYjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkNGNhNGY4YmVmYjQzZmIxNzUyOTdkZDA1Y2I3MjA0NTBlYjliN2JiNmM0ZDlmYmFmMTg1ZmIxZWMzNWY3OWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzZTQzZGRiMjFkMGM5ZmU2NmI0ZmY4MGJlYmQxZmFmZjg0ZmJlZWI4MzlmYzg1NGQ3ZDQ5MGNlMTY0YWE1NTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzODVhNzRmNDhlMWZlNGRiNzRiOWZlNGU2N2U5YjkzZmUyY2RkNzk2Zjc3NmExNDhiZGE4YmJiNWQ0ODM4MGEifQ"
         }
       ]
     },
@@ -412,11 +416,15 @@
     },
     {
       "id": "claim_76b9598fab194a7aa654c8763c02d86e",
-      "statement": "The volume population step must use the same userns mapping as the pod (paths.USERNS_ARG, --userns=keep-id:uid=1000,gid=1000): a volume first populated under the default userns is unusable by the agent — uid 1000 inside reads the files as owner 999 and every write EACCESes.",
+      "statement": "The volume population step must use the same userns mapping as the pod, via paths.userns_args(rt): --userns=keep-id:uid=1000,gid=1000 on podman (paths.USERNS_ARG, pinning the mapping to the image's uid so ownership stops depending on the invoking host uid) and --userns=host on docker, which has no keep-id. A volume first populated under the default userns is unusable by the agent — uid 1000 inside reads the files as owner 999 and every write EACCESes.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/paths.py",
-          "version": "repo-file-v1:sha256:b2f4c8d4cc2a7dacddbfc9e47578dc19b0a00f866ee0335bea907783f19f732a"
+          "resource": "repo://src/harnessed/paths.py#L109-L128",
+          "version": "repo-lines-v1:sha256:390fefe5795005058d8c1ff505cbcf6ece3696861a15a8d6ad44799ebc9ce7d9:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2NDBjYjMwMDcxMzE0YzgxMThkZWIzMGUwYmRmMmY4OTIzNzhjNzg5MGNmY2IzYjdjNzI1NWM3OWMwMGY0NmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1NmU0NDhjNTRkNmZjNDEyMmNlOWRmMzQxOTZlN2Q0OGQ0YmJmZDk2ZjEwZTI4NzFiZGFlOWYzOGJkZWNjZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzMTA3ZTMwZjU1NjRmZDJmZWFlMzQxOWI4MDAyMTAzNmM0ZTg5ZDVkM2IxYmY0MjVmZjkxOTk0NDg1NTg1ZTgifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L33-L53",
+          "version": "repo-lines-v1:sha256:71557db214ad92973f5cfccfe30690f05857fe8b90a7071735cd49dd30502c94:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhY2Q0MTcxZDRmMmI0MjdjMjZmZTVhMDM4OThmZDc2MjlhYzlkNDU2ZTEyZmVjYzRkNDM3ZDY4ZTI3MDI4MWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5MTgwYjkwY2Y4ODhlZDdkNTcyOWVhOTFhYjc4YWYyODg3OTI1MmVjYTQ1ZWY5ODRmNjk2ZjBkMjVlYjZkNTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyZjIzYTFiMTQ4ZjBhMmJiYTA5NzJhYTg5MDlkZGE0YzJkNDExOGUyYmRhYzMwYjZjZmNmMDBkN2Q4N2QzNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE4YTdkYzE1N2Y5OTg4NmU1N2Y3YTQ4NWI5MTY5ZmQ5Nzc0NzUzMDU5OGVlYjY5ZGJiOGYzM2E2NGEwOTdkNTAifQ"
         },
         {
           "resource": "repo://src/harnessed/volumes.py",
@@ -590,7 +598,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/launcher.py#L546-L574",
-          "version": "repo-lines-v1:sha256:e77a5ad392ea0af725c154fb8c8b23556c0c54c12016d7a50d51acf0d64a231e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmMzUzZjAwMGZlNTYzNDMyNTM5MTQ4YjZjNDg2NzY3YzdiZDk5NTcwNGU4NTk1OTUwMzQ2N2NlMzU0MmM2NzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0NTNiMDI5ZGNhOWQ5OThmYWQyYjIzNjZhYmNlYjAyYjZiODVmZTFiZTEzNGZiM2Y3YzQwOGVmZDMxZGIxZTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwY2Y2ODJlODNlMjA3YzI1YjRjNzRiM2UwMmE5MTljMGE2MmQ4OTMxYWYzYmU5YTQ2NTRkM2EyODEwZTk3YzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkxODRlNzZkNmExMTdkNDI0MmZlNWUyOWViMDNhNWVkNTc4MGY2NmZlNzNkNTcxYmQ2NzVhODE5NjE5ZjM3ZjAifQ"
+          "version": "repo-lines-v1:sha256:a441397cdcc2773fd585ebefa4fb718a0e01aeddd02f761589e588fe61b22e01:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmMzUzZjAwMGZlNTYzNDMyNTM5MTQ4YjZjNDg2NzY3YzdiZDk5NTcwNGU4NTk1OTUwMzQ2N2NlMzU0MmM2NzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0NTNiMDI5ZGNhOWQ5OThmYWQyYjIzNjZhYmNlYjAyYjZiODVmZTFiZTEzNGZiM2Y3YzQwOGVmZDMxZGIxZTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwY2Y2ODJlODNlMjA3YzI1YjRjNzRiM2UwMmE5MTljMGE2MmQ4OTMxYWYzYmU5YTQ2NTRkM2EyODEwZTk3YzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkxODRlNzZkNmExMTdkNDI0MmZlNWUyOWViMDNhNWVkNTc4MGY2NmZlNzNkNTcxYmQ2NzVhODE5NjE5ZjM3ZjAifQ"
         },
         {
           "resource": "repo://src/harnessed/launcher.py#L872-L995",
@@ -618,7 +626,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/schema.py",
-          "version": "repo-file-v1:sha256:bc04b0d80d05b9ec82139ce127a82d6f87f91fcb6b23b6918c00668cfa270870"
+          "version": "repo-file-v1:sha256:0ca7e5d8e343875f43df9d7eec616593ee7c920f3015590340223a00fe9fc4e5"
         }
       ]
     },
@@ -628,11 +636,11 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/assemble.py",
-          "version": "repo-file-v1:sha256:bdbaaf7fd9c5abee69ab06b07c7ae2844a7863e6a90d8dbd68af186f2754889e"
+          "version": "repo-file-v1:sha256:ca9dd4921ea93937b01a617bc5c90f0377140b9a4c8168bb05e391303dd0cc51"
         },
         {
           "resource": "repo://src/harnessed/schema.py",
-          "version": "repo-file-v1:sha256:bc04b0d80d05b9ec82139ce127a82d6f87f91fcb6b23b6918c00668cfa270870"
+          "version": "repo-file-v1:sha256:0ca7e5d8e343875f43df9d7eec616593ee7c920f3015590340223a00fe9fc4e5"
         }
       ]
     },
@@ -666,7 +674,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/assemble.py",
-          "version": "repo-file-v1:sha256:bdbaaf7fd9c5abee69ab06b07c7ae2844a7863e6a90d8dbd68af186f2754889e"
+          "version": "repo-file-v1:sha256:ca9dd4921ea93937b01a617bc5c90f0377140b9a4c8168bb05e391303dd0cc51"
         }
       ]
     },
@@ -706,7 +714,7 @@
         },
         {
           "resource": "repo://src/harnessed/paths.py",
-          "version": "repo-file-v1:sha256:b2f4c8d4cc2a7dacddbfc9e47578dc19b0a00f866ee0335bea907783f19f732a"
+          "version": "repo-file-v1:sha256:4c8951896c506d5e219c534290687bee8ce1d7d5ca7d7dfd9119844f7ad8e215"
         }
       ]
     },
@@ -726,7 +734,7 @@
       "evidence": [
         {
           "resource": "repo://src/harnessed/schema.py",
-          "version": "repo-file-v1:sha256:bc04b0d80d05b9ec82139ce127a82d6f87f91fcb6b23b6918c00668cfa270870"
+          "version": "repo-file-v1:sha256:0ca7e5d8e343875f43df9d7eec616593ee7c920f3015590340223a00fe9fc4e5"
         }
       ]
     },
@@ -831,6 +839,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-21T14:50:01.893Z"
+    "at": "2026-09-23T13:20:55.348Z"
   }
 }

@@ -5,7 +5,7 @@ description: "The two launch backends that live in launcher.py — ContainerBack
 tags: [execution-backends, backend-contract, capability-set, sequencing, launchspec, provision-tools, apply-isolation, seed-auth, secrets-broker, capmatrix, module-boundaries, hostbackend, containerbackend, gating]
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
+    at: 2026-09-23T13:20:55.348Z
 sources:
   - id: openwiki-source-f2bd22307a3451ac2519580c
     resource: repo://BACKENDS.md

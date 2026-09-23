@@ -72,8 +72,6 @@ sources:
     resource: repo://src/harnessed/svcguards.py
   - id: openwiki-source-5e89566b7a4e43a53be5c7b2
     resource: repo://src/harnessed/svcstate.py
-  - id: openwiki-source-49ee9cf3450e26c1ce6d9dc6
-    resource: repo://src/harnessed/synclinks.py
   - id: openwiki-source-4d719c6f3a70a2ece04f213b
     resource: repo://src/harnessed/toollock.py
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
@@ -82,10 +80,10 @@ sources:
     resource: repo://tests/test_launch_parity.py
   - id: openwiki-source-bbf9cc1f144f5efff8ae1505
     resource: repo://tests/test_module_boundaries.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-23T13:20:55.348Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
+    at: 2026-09-23T13:20:55.348Z
 ---
 
 # System overview: what harnessed is and the stage owners
@@ -355,9 +353,15 @@ fields (preserved on `.raw` so recipes can grow). `synclinks.py` fans each recip
 recipes shipping the same skill name is an error naming both sources, never a last-wins
 overwrite). `emit.py` writes the profile artifacts (`.mcp.json`, the settings floor,
 `hatago.config.json`, the derived Dockerfile, the install-env contract). `assemble.py` orchestrates
-the chain, runs the fail-fast authoring gates (pin lint, raw-npm rejection,
-`validate_no_claude_writes`, `validate_container_only_declared`, script lints), computes the
-recipe-closure content hash, and stamps the profile. `staleness.py` owns the `.build-stamp` that
+the chain, runs the fail-fast authoring gates (pin lint — on recipe *and* agent Dockerfiles —
+raw-npm rejection, `validate_no_claude_writes`, `validate_container_only_declared`, script lints),
+and stamps the profile last with `staleness.write_stamp`. Two distinct hashes exist, and they are
+not the same thing: the **staleness stamp** (`staleness.compute_stamp`: harnessed version +
+`stack.yaml` bytes + every recipe dir) is what `assemble()` writes into the profile's
+`.build-stamp`, while the **recipe-closure hash** (`assemble.compute_recipe_hash`, which *also*
+covers every referenced service directory and is length-framed to be collision-safe) is computed by
+the callers — `launcher.py` stamps it as the `harnessed.recipe-hash` image label and `hosthome.py`
+uses it in the host backend's tool-tree stamp. `staleness.py` owns the `.build-stamp` that
 lets a later launch detect that the catalog inputs changed. None of the five invokes podman/docker
 or touches a daemon socket — that boundary is what makes `harnessed-tools assemble` workable
 without a runtime and what lets the host backend assemble in-process on every launch.

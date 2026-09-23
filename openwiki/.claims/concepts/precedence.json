@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:69e0f809abb6b1f5e6dee8522366993c56471971b2de9e722f114330e0009794",
+  "pageVersion": "sha256:a0756f9b955232b0b8f00f3bc7f35809cd51b5e08fe3fa3adfb0cb7472f5e3d7",
   "claims": [
     {
       "id": "claim_73d761a2d54d4334a3547ee28ca9061d",
@@ -158,7 +158,7 @@
         },
         {
           "resource": "repo://src/harnessed/schema.py#L1785-L1826",
-          "version": "repo-lines-v1:sha256:b6dd759f1c9011d11dd22dbd943c6a9bddacb2b969cbc702b0c915052e24df47:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4YWNiYzlkMjc5YzY1MWU2MzM3MThmYTYwNzRkMDg1MzdiMDgxMTI1YWFhNTQ0YzZhNGYzOTRmY2I4MTgxN2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiNDQ3YTlkMDRlZTAwZWYwNmI3YmNhZGM4MWU1MmExNWMyNjgzNTk4OGE0ZDNjMzViNjBhYzgzMTMyMzMxZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRmNWYwNTBlOTVlZWUyMzRlOTFmZDQwZjEyMWZlZjhkYmUzZjNlZGI0ZWIyZjAzNzFlYjVmMjM0YzdhNmFmNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFlYjZmOGYwNjA4ODg1NjA2YjliZGYxNDZlZjk5MmVhZTJlZTM2OGZiNzVmYzE2YzE0YzRkNDkxYjJjMjAyMzMifQ"
+          "version": "repo-lines-v1:sha256:01cc222fadf77c815fbff530151cae2e910dca5a56ac4ccf7d7713145af1ed61:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxMmQzM2M0Yjg1MjY3ZGViNGYxMTEzNDQ4ZTJkNTgyOWYzM2E3ZDIwNjFkMzUwNmM1NGMwNTU2ZDM1NjM4ZmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiNDQ3YTlkMDRlZTAwZWYwNmI3YmNhZGM4MWU1MmExNWMyNjgzNTk4OGE0ZDNjMzViNjBhYzgzMTMyMzMxZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRmNWYwNTBlOTVlZWUyMzRlOTFmZDQwZjEyMWZlZjhkYmUzZjNlZGI0ZWIyZjAzNzFlYjVmMjM0YzdhNmFmNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFlYjZmOGYwNjA4ODg1NjA2YjliZGYxNDZlZjk5MmVhZTJlZTM2OGZiNzVmYzE2YzE0YzRkNDkxYjJjMjAyMzMifQ"
         }
       ]
     },
@@ -278,33 +278,33 @@
     },
     {
       "id": "claim_6910837fb54944a0b362347fdafa97a9",
-      "statement": "Catalog entries resolve across roots searched user overlay (~/.config/harnessed/catalog) first, shipped repo catalog second, and the generated root ($XDG_DATA_HOME/harnessed/generated) last and only when it exists: `find_in_catalog` returns the first existing candidate so the overlay wins on a name clash, `list_catalog` dedupes by name the same way, and the generated root is last so a machine-minted stack can never shadow an authored one.",
+      "statement": "Catalog entries resolve across roots searched user overlay (~/.config/harnessed/catalog) first, shipped repo catalog second, and the generated root ($XDG_DATA_HOME/harnessed/generated) last and only when it exists: `find_in_catalog` returns the first existing marker-bearing candidate so the overlay wins on a name clash (a hollow dir falls through to a lower root), `list_catalog` dedupes by name the same way, and the generated root is last so a machine-minted stack can never shadow an authored one.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/paths.py#L205-L223",
+          "resource": "repo://src/harnessed/paths.py#L401-L419",
           "version": "repo-lines-v1:sha256:eec03cdd379568ca0d82aa51ba928a7c6a57b63873944a177f9a1bc8c04ad0bc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyNjJlYTEzMTM1NzY4ZjhmNzRiMjkzOGFiODQ5MDVlMzVlN2ViZjAwNGQxNDAwZTk3OWVkYmU2OTYxNWU3YjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwNDY4YTUyNGQ5OGE4Yzc0ZDg1ODJmYmYxNmFmMDU0YzU4NjkyZGEzMDNmMzcwZjk3YjNmNjVlZTYwOTIxOGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2ZTdhNzcyMjU4NzUyYjY0YTRlN2I5Mjk1MzkzMzFmZDU2NWFmZTVhNDUxNjlkMDllYzIyN2I1YmI5NWYyMjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY5N2U2MTQwMjhjYmE2OTc4YzFhZjRkMmI1OWRiMWY5OWRkNmE4NDE1YjU3NTQ5ZGI1ZWZiNTRkMTI2ZDQxMTUifQ"
         },
         {
-          "resource": "repo://src/harnessed/paths.py#L245-L275",
-          "version": "repo-lines-v1:sha256:c71d16211cf9c13601ed01806b1bd9f337a24ad1cf608dc50ab14de3632a5ea3:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5YTRiMTU0ODc3MmIxMDJjNjBlYWZkYWI0NWU3M2I2M2I1MDYwYjdlNWNiMTY3MzA5ZjU4NDE4OWM0NmMwNzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTYwMGE3M2QyZTAyZjM1MmI5MGZlZjFkOGQ2MzgxMWJhNGE4ZWUwYzFiZWFhN2FlNDY1OGYzNmFhMmUxOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ4ZTEyMzg1ZjBhNGYzMjQ5NGM0NGU4MWRhOWZjMzE2Y2RlMDRjZjk5YjNlYTliOTIyM2Y1NmJlMzY2NTdiZTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmNDc0NGUyZDRhNGZlYjZmODU0NTUwZjFjMWZiNjFhZjU2NTQ4NDUwMWM2ODY4Yjg0YmIzZjYyYjdmNmM0NzkifQ"
+          "resource": "repo://src/harnessed/paths.py#L443-L459",
+          "version": "repo-lines-v1:sha256:4e50b2b0d0d83086046a7ba705e1deced34fd1d78219ebf1402d006f766aedf9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5YTRiMTU0ODc3MmIxMDJjNjBlYWZkYWI0NWU3M2I2M2I1MDYwYjdlNWNiMTY3MzA5ZjU4NDE4OWM0NmMwNzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliMjA5NGRkZDYzMzJhNmUxZjU3YmJlZGVjMWM0ZDgwODkwNTAxNDY0ZDYzOWU0OWVlYTY5NzJkZDhlMDc3ZGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ4ZTEyMzg1ZjBhNGYzMjQ5NGM0NGU4MWRhOWZjMzE2Y2RlMDRjZjk5YjNlYTliOTIyM2Y1NmJlMzY2NTdiZTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkZDY3MjBkMTU2YjU3ODg1YTY1YmUyOWM3NjNlNGJiMmM3ZDExMjc4NjQzMTBmNTI2MWQ0YzI3MDRlZTZkYzkifQ"
         },
         {
-          "resource": "repo://src/harnessed/paths.py#L332-L343",
-          "version": "repo-lines-v1:sha256:81fe20d431bd2af42018ac4d88d5097a68a7b48d2c028800224e089111ab2bb9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxNTIxMjAzOWEzYWVkNDBmZDUzMWZmYmZkZTMxMDhhMjA0MjhmNzBkODQ3NDAxZGQyY2VmMWI5NmJiY2VkYjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxYmYyYzIxMmQxNmRiN2VhZjVlNGI1ODM2ZGEwMjVmM2UyZmYzNzdkMDRiODNlZWZhNTE4OWFlNDc4NTk0NGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1ZjAyYWI4N2VhZTdhZmU0MDM4Yjc5ZDI1YzMyMzMzOGU0ZGU2ZjRiNTdjY2Q1NzY1NDFiY2Y4OWE0NzkzMDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlZDViOTNjZGE1NDliODk4Yjk4NGRlYWJhZDViZjEyZTE1MGExMTA0NjczZTA2YjdjYTczMWQwM2NjM2NkY2EifQ"
+          "resource": "repo://src/harnessed/paths.py#L491-L500",
+          "version": "repo-lines-v1:sha256:6e223a6498f097876476c89cfe107c053b7a142e76b887ff391c3dc4e19438bd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4YzA5ZmE3ZDNiMGU4ZWVmNDE2NzhjYWVkZDkyOTIzMmE1MjJhOTk5Mzg2MDdlZGNhNTBmNDdkZjRkM2M1ZTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjYjU3Yzg2ZGIwZTc5YTM5NDY0NWUyNGRiMjkzZDhkOTI2MmNlNDk2ZTUwMzA4NDEyY2RmOTczMWM3ZjQyZmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5ZjkzMDgzYzE5NzEyMWI5ODI3MDBiYThhZmFiZDE3MjJjZjFkM2U3NDA0NTA5ZTgwZWZhMjcyNDdmNjJmMDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc5ODg0OTE0NDc3OWY0Y2FmZDU5YWVkMzg3YTEyNTczYzYzZTU1NzgzYWNjNTk5ZDA0M2Q4ZDdkMjZhNjRkZjYifQ"
         }
       ]
     },
     {
       "id": "claim_83310495f61849c389dfe11a6d14ea6f",
-      "statement": "Because the overlay's win is also a silent loss, the loader warns when a recipe resolves from the user overlay and shadows the repo copy — `load_stack_with_recipes` on the production path prints once per name which copy is used and which is shadowed (sessions had quietly assembled stale overlay content causing real regressions); only recipes warn, stacks/agents/services stay silent, and `default` is exempt as a documented blessed override.",
+      "statement": "Because the overlay's win is also a silent loss, the loader warns when a recipe resolves from the user overlay and shadows the repo copy — on the production path (`root is None` in `load_stack_with_recipes`) `_warn_overlay_shadowed_recipes` prints once per name (memoized in `_overlay_shadow_warned`) which copy is used and which is shadowed, via `paths.overlay_shadowed_repo_path` which only counts marker-bearing entries on both sides (sessions had quietly assembled stale overlay content causing real regressions); only recipes warn, stacks/agents/services stay silent, and `default` is exempt as a documented blessed override.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/paths.py#L261-L275",
-          "version": "repo-lines-v1:sha256:f8fdb0e970a40dcb17d1c80d7d3a7d24234ea8c2e7ce20192c59bae7872c48ce:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2MjhkYzUxM2ExODYxMmMzZjY1NGRhNGVkZDkwMTNmOGJlYzg1MWE1MGM1OTkzMTdjNjFlMDZjNDY1OTdlYjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTYwMGE3M2QyZTAyZjM1MmI5MGZlZjFkOGQ2MzgxMWJhNGE4ZWUwYzFiZWFhN2FlNDY1OGYzNmFhMmUxOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhlZjZmMzA0MDExYWQ3MmE2NTEyOTlkMmZmMjMyZjNkODE2MWJhOWZhOGJlN2M2NjUzNzE1ZWE2YjQ5MTJhMjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmNDc0NGUyZDRhNGZlYjZmODU0NTUwZjFjMWZiNjFhZjU2NTQ4NDUwMWM2ODY4Yjg0YmIzZjYyYjdmNmM0NzkifQ"
+          "resource": "repo://src/harnessed/paths.py#L462-L479",
+          "version": "repo-lines-v1:sha256:6ba6ecdf9bcfa0e97cec1d62c212265cc48d0fabf0fe52ef898fed6961bc0415:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2MjhkYzUxM2ExODYxMmMzZjY1NGRhNGVkZDkwMTNmOGJlYzg1MWE1MGM1OTkzMTdjNjFlMDZjNDY1OTdlYjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTYwMGE3M2QyZTAyZjM1MmI5MGZlZjFkOGQ2MzgxMWJhNGE4ZWUwYzFiZWFhN2FlNDY1OGYzNmFhMmUxOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhlZjZmMzA0MDExYWQ3MmE2NTEyOTlkMmZmMjMyZjNkODE2MWJhOWZhOGJlN2M2NjUzNzE1ZWE2YjQ5MTJhMjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmNDc0NGUyZDRhNGZlYjZmODU0NTUwZjFjMWZiNjFhZjU2NTQ4NDUwMWM2ODY4Yjg0YmIzZjYyYjdmNmM0NzkifQ"
         },
         {
-          "resource": "repo://src/harnessed/schema.py#L2228-L2284",
-          "version": "repo-lines-v1:sha256:4d0a9aafecda3a9384a75206c3c3d6aeceb0afb8d54c6e569b99d3559f1f4b56:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3N2NiNzI4ZTY5YzYxZDNkNjQwNDc2MTQ2NWIwY2MyOTJmYzMyNGMxNjhlOTFjN2Q5ZjRhMjFjYmY0NjY0NGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjZDcwMmEwOWVkYmE0MzRjMzIwN2YyMTBkYjA5ZmVjYmMxODQyMmRhNjk0NDFkYzI2MWI3NWJiY2YwNjU1NzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE2ZDkwNjk2Njk2ZjkzNDUyNTQ0ZGNlN2I1NGUyZDYwZWM0ZDczNThhZDBiZjUwMWE0MjIyNWEwYjg1M2M4YzQifQ"
+          "resource": "repo://src/harnessed/schema.py#L2332-L2379",
+          "version": "repo-lines-v1:sha256:d6a1ae3cbd0c92c0a82712cb6e01bb124c3beb0a3c223d243a9f6199b7c3a7a9:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjYjRhNTk5NmNmZTdhZmExNjg2ZTRmNjZhYTY0ZjM5YTZiZDkxMTQwMmM1MzMyNWI4N2IwZDNlMzhlZjI3MmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjZDcwMmEwOWVkYmE0MzRjMzIwN2YyMTBkYjA5ZmVjYmMxODQyMmRhNjk0NDFkYzI2MWI3NWJiY2YwNjU1NzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ODYxYWM4ZTcwNGY3NzZkZDhkNzg2YjIzYTdjNmUxMzIwMzViNmVjNWVjOWMyNmVkMzhkYTFjMjRhZTliMDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE2ZDkwNjk2Njk2ZjkzNDUyNTQ0ZGNlN2I1NGUyZDYwZWM0ZDczNThhZDBiZjUwMWE0MjIyNWEwYjg1M2M4YzQifQ"
         }
       ]
     },
@@ -320,29 +320,25 @@
     },
     {
       "id": "claim_6b2d28a856414b08b3fcc7a8c45111a6",
-      "statement": "Stack `extends:` merges on the RAW dict before field parsing: recipes/services/harnesses/ssh_keys UNION (parent entries first, deduped), every other declared field is a child-wins override with omitted keys inherited (declared values replace, they do not deep-merge), `name` is never inherited, `extends` is consumed, chains are allowed, and cycles are an error; the parent resolves against the child's own catalog root first so an overlay stack can extend a repo one.",
+      "statement": "Stack `extends:` merges on the RAW dict before field parsing: recipes/services/harnesses/ssh_keys UNION (parent entries first, deduped), every other declared field is a child-wins override with omitted keys inherited (declared values replace, they do not deep-merge), `name` is never inherited, `extends` is consumed, chains are allowed, and cycles are an error. Parent resolution is itself precedence-ordered: with an explicit root (fixture tree) the parent resolves under that root alone, never the production roots; in production the user overlay is checked first (an overlay parent overrides the shipped one for every child), then the sibling directory next to the child, then the remaining catalog roots — so an overlay stack can extend a repo one.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/schema.py#L1879-L1883",
-          "version": "repo-lines-v1:sha256:bb7682ec43507356a3c36ab319392d349c597c2b822bd935047d60347c7c3ca2:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2MxY2Q2MTFkZGM5NjAwNTNiYzA1NTFkYWE2ODE0MzZmMzAzMGI2Y2E2NTFhZjEzYTNjMjQyZjNmMDgwMWZiNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODg1MzlkN2M3M2I4MTQzYmJjODJjOGJkMzdkODdhYjBkZTJiZGFhYjc4M2I2ZWRiNmMxYjEyNDRhMWI1MzA0ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmNkZDg3OGU3MjRkNGQzMDJlNDZhYTgyMzc0Njk3YWQwYjdhZTU2ZGQxZTIyZDFmMjE0ZDgyOTA0YjkzYmNlZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzc3ZTNkMjM5ZTllYjI3NmYzNGRmOWE5NmFmZTFiMTk1M2MxNmFlNmQ5MGY4OWRmYzQ2ZDliZjNiMjk3YzhmYyJ9"
+          "resource": "repo://src/harnessed/schema.py#L1978-L2012",
+          "version": "repo-lines-v1:sha256:ccf58bd684b546cf755b0945f292524bb6a4a02e41c186ee7393da37c71c3abb:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNjM3ODdjMjYxOGNhNDZjNTlmNmQ2ZTA4ODUwMWYxMzNhNWRkNmE2YTZiMWZiYTg3NWEyM2U2YjM4ZGY3MjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlNjU3ZmFhOTA3MWRhMGZjNWZjOTE1N2EyMWI1NDYyZmEwNTNmY2FhYjM4NjRjMTAwZThlMmRkN2FlZWQ1NmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI3Yzc0ZDY1OWIxYjI1NmZhNDc5NzhhMzY1MzZjOWFmNDU0ODQ2YTM1NDE0OWI5MTQ4N2MwMzFjYjIwNWU5OWIifQ"
         },
         {
-          "resource": "repo://src/harnessed/schema.py#L1908-L1924",
-          "version": "repo-lines-v1:sha256:1e835f6a2f9f2ea391586d209ef361c26de920cd3a3a887264f30fa5b0632bf4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlOGZmM2E4MWM0ZGQ3NDhmMWQyNTc4MzY4ZjU0NWY3ZjFiMzU4OWY1OTRlOTIzOGRhMmFmZWI5MWJlODJjMjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlNjU3ZmFhOTA3MWRhMGZjNWZjOTE1N2EyMWI1NDYyZmEwNTNmY2FhYjM4NjRjMTAwZThlMmRkN2FlZWQ1NmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjczZDY3MjRlOTE3YWIxZGEwOTI3ZTUyZDcxMWZlZGYyZmJkNzY4YzhjYTIxNDc1MDVkMWJkYTY5YzUzZWNmYjIifQ"
-        },
-        {
-          "resource": "repo://src/harnessed/schema.py#L1927-L1967",
-          "version": "repo-lines-v1:sha256:dfa717aa38228ed0ba33573254ad84ce6eb0b48c7349b4554d1848326b4fa014:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZWVhYjA5YmEzNTY2OWVkN2UyMzY2ZDJlMGI0MDExODMyMTBjOGVlMzdhYzVlOTM4MTg1OGRmYmU3YTUyODQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3MjE1ODE2NDg3YTEwNGMyOGM0NTM0ZDY2Nzg4OTU2NDYxMGM0MTQwZTFiMjFkMWUwZDUyMjFkOTdmMjExMDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjMzEzZjYwNzQ3N2IwZWQzNjQ3ZmU3MjVhMzUzMGI4NjM4ZmM1ZjBhMzQ1ZWM4M2UzOTVhNmU4NDY0ZDQ0MjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiZmJhODRmODYxODU2YzZkNmVkYjA4NDNhZTFkNjNmZTgzNjRkY2E5ZTI3NzZjNjU3MjA1ZjhjNTY3MjIxMDYifQ"
+          "resource": "repo://src/harnessed/schema.py#L2015-L2057",
+          "version": "repo-lines-v1:sha256:282a13debcd8059fe808db22d98cbe04590c084901f2dad4fb92ac2c54559807:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4OTFmYTU0MTM1ZTc3ZDU5YTBkYTQwYWVmZWI2N2FlZjQ2Y2ZhMTExOTJlYWVjOGE0YzFmNDJjZmExNjVlNGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3MjE1ODE2NDg3YTEwNGMyOGM0NTM0ZDY2Nzg4OTU2NDYxMGM0MTQwZTFiMjFkMWUwZDUyMjFkOTdmMjExMDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjMzEzZjYwNzQ3N2IwZWQzNjQ3ZmU3MjVhMzUzMGI4NjM4ZmM1ZjBhMzQ1ZWM4M2UzOTVhNmU4NDY0ZDQ0MjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlNTIxYzkyNmVmNzcxNzE0MGFmYjNhNTRiZTIzMmJjMGRiNzI4ZTVhZGU5OWNkOGIwODhhNzI2ZDdiZDNkOGYifQ"
         }
       ]
     },
     {
       "id": "claim_fd9f4c72d2d44d8b82dd6c4d6110c056",
-      "statement": "Unknown stack top-level fields are rejected rather than ignored because tolerant parsing once let an `extends:` written before the feature existed look accepted while inheriting nothing for months.",
+      "statement": "Unknown stack top-level fields are rejected rather than ignored (`_validate_stack_fields` against `KNOWN_STACK_FIELDS`, with did-you-mean suggestions) because tolerant parsing once let an `extends:` written before the feature existed look accepted while inheriting nothing for months.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/schema.py#L1886-L1905",
-          "version": "repo-lines-v1:sha256:aeadd2691430a44898072e08b9a7c0754606e5e11d8c0afd76398b83ff6a7413:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjNTRkZmFkNDE0NmNlMzI1MzJiNzc5MmYyYjM5NGY0MGIxMjVhODMzMTEyZDliZjVkZGQ2MjE4MDM4NDQ1MTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAzYmUwMjY3NDA3MzRkNzA3MTFmOGViZDdjMzY1ZmNjZTY5NWM0OWM2NWEzMmFhYTJjMTdiNDI5NzYzNmJhM2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5MGNhNWJkODhjMDAxNjM4ZGRkZmJkMGM3YWUxZTM4NmRlYWVlM2EwMjFlYjRiYzRjOGEyMTFjZjhkOTgxNzIifQ"
+          "resource": "repo://src/harnessed/schema.py#L1955-L1975",
+          "version": "repo-lines-v1:sha256:96050d215f3ce4c0a71bff9e6505d90d5938d5d5283fb28914ea92577bf4b07f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjNTRkZmFkNDE0NmNlMzI1MzJiNzc5MmYyYjM5NGY0MGIxMjVhODMzMTEyZDliZjVkZGQ2MjE4MDM4NDQ1MTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAzYmUwMjY3NDA3MzRkNzA3MTFmOGViZDdjMzY1ZmNjZTY5NWM0OWM2NWEzMmFhYTJjMTdiNDI5NzYzNmJhM2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3MGZjMzRjZTI3OWVjOWQ1NmE2NmUzMzUwYjJhZDQ1N2FkNzlkNTE0M2NiNWNjZTYyMTdjZjRiNjk4YzdkNTQifQ"
         }
       ]
     },
@@ -449,6 +445,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-20T12:51:12.657Z"
+    "at": "2026-09-23T13:20:55.348Z"
   }
 }

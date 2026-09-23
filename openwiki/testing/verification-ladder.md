@@ -48,6 +48,8 @@ sources:
     resource: repo://tests/test_external_contracts_live.py
   - id: openwiki-source-3ab0707808526f92ef714a7c
     resource: repo://tests/test_live_verification_debt.py
+  - id: openwiki-source-bbf9cc1f144f5efff8ae1505
+    resource: repo://tests/test_module_boundaries.py
   - id: openwiki-source-e4aa10136657cfbe2fe4ad8c
     resource: repo://tests/test_wheel_packaging.py
   - id: openwiki-source-6b70da595cfd5823cd7cabe6
@@ -56,10 +58,10 @@ sources:
     resource: repo://tools/openwiki-retry-patch.py
   - id: openwiki-source-42360cb3e257ef7023d23d39
     resource: repo://tools/preflight.sh
-generated: { by: "openwiki/0.5.1", at: "2026-09-21T14:50:01.893Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-23T13:20:55.348Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-21T14:50:01.893Z
+    at: 2026-09-23T13:20:55.348Z
 ---
 
 # The verification ladder
@@ -139,6 +141,20 @@ JSON schemas, and the shell scripts under `tools/`. This is also why `mutmut`'s 
 be wider than `tests/` (see [Mutation testing](#mutation-testing)) — and why a missing asset errors
 at collection, which makes every mutant report "survived" for want of a runnable suite rather than
 failing the assertion it weakened.
+
+### The direction rule for the launcher split
+
+One architecture invariant gets its own enforcement file rather than a comment:
+`tests/test_module_boundaries.py` holds the direction rule of the `launcher.py` split (bd
+harnessed-4l8) — pure, derivable logic lives in focused modules, `launcher.py` keeps the Typer
+surface and podman orchestration, and dependencies point INTO the modules and never back out. The
+moment one module reaches back into launcher, the direction reverses and every later extraction
+inherits an import cycle. The check parses imports over the AST (so a docstring legitimately naming
+`launcher` is not a finding, and a function-local `import launcher` on a branch no test takes still
+is), and a companion test fails when any module importing `harnessed.console` is missing from the
+`EXTRACTED` ledger — because a module absent from the list is unenforced, which is indistinguishable
+from compliant. That ledger test is the single assertion to keep in mind when adding a new module:
+add it to `EXTRACTED` or the boundary silently stops applying to it.
 
 **What it does not prove.** Any container behaviour. The `ubuntu-latest` runner has no podman, so
 every `HARNESSED_PODMAN`-gated integration test **skips** there. That is deliberate and it is not
@@ -501,7 +517,8 @@ Expected capabilities are **derived, never hardcoded**: `schema.expected_capabil
 unions two sources — (1) what the assembler can *see* (`mcp.servers`, and the standalone
 `skills:`/`commands:` dirs it fans into the profile), and (2) what a recipe *declares* via `expect:`
 for capabilities it delivers through its Dockerfile or install script, which the assembler cannot
-infer. The union is de-duplicated order-preserving (`dict.fromkeys`), so a recipe that both ships and
+infer — across the four capability kinds (MCP servers, skills, commands, plugins). The union is
+de-duplicated order-preserving (`dict.fromkeys`), so a recipe that both ships and
 declares the same name counts once. A recipe that bakes a tree into the image must list it under
 `expect:` — that is the whole contract (`catalog/recipes/superpowers` lists all fourteen skills,
 installed by `install.sh` precisely because the declarative `skills:` field cannot see them; `rtk`,

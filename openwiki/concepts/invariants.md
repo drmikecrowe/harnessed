@@ -1,8 +1,8 @@
 ---
 type: "Reference"
 title: "Invariants: the deliberate deviations a reader must not clean up"
-description: "The catalog of constraints that read like defects but are load-bearing — each with the production failure it prevents and the bd id or issue number the source names. Now includes the secrets-broker/door invariants. The page to consult before 'fixing' anything in src/harnessed/."
-tags: [invariants, deliberate-deviations, fail-closed, cleanup-hazards, sequencing, naming-collisions, secrets-broker, pod-networking]
+description: "The catalog of constraints that read like defects but are load-bearing — each with the production failure it prevents and the bd id or issue number the source names. Now includes the secrets-broker/door and service-guard invariants. The page to consult before 'fixing' anything in src/harnessed/."
+tags: [invariants, deliberate-deviations, fail-closed, cleanup-hazards, sequencing, naming-collisions, secrets-broker, pod-networking, service-guards]
 sources:
   - id: openwiki-source-362e06c30ccfdafd87339cb0
     resource: repo://ARCHITECTURE.md
@@ -46,6 +46,8 @@ sources:
     resource: repo://src/harnessed/schema.py
   - id: openwiki-source-2e234f8645cb88b1fd759f98
     resource: repo://src/harnessed/setupenv.py
+  - id: openwiki-source-701b80efd5b63cec9f3d8dc3
+    resource: repo://src/harnessed/svcguards.py
   - id: openwiki-source-5e89566b7a4e43a53be5c7b2
     resource: repo://src/harnessed/svcstate.py
   - id: openwiki-source-4d719c6f3a70a2ece04f213b
@@ -56,10 +58,10 @@ sources:
     resource: repo://tests/test_broker_pod_args.py
   - id: openwiki-source-b591b855d79d54f7c2ab0900
     resource: repo://tests/test_userns_properties.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-16T21:10:52.541Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-23T13:20:55.348Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
+    at: 2026-09-23T13:20:55.348Z
 ---
 
 
@@ -124,6 +126,8 @@ entries sit inside), [build pipeline](/openwiki/workflows/build.md),
 | dynstack's narrowed `[a-z0-9-]` alphabet | folding `_` and `.` looks gratuitous | silent join collisions onto one manifest/image/volume pair |
 | No shared launch driver over the backend contract | an ABC with six methods begs an orchestrator | the two backends' orderings — a "driver" is a reorder in a refactor's clothes |
 | Stale overlay symlinks are re-pointed, never user-removed | an abort looks safer than a heuristic | bd harnessed-ng5: the podman-gated suite was unrunnable |
+| Service guards abort BEFORE a destructive start; placement is never self-healed | starting anyway looks more available | a second, EMPTY data dir whose missing contents read as data loss |
+| A service that dies or never becomes healthy aborts the launch | a warning is the softer choice | an agent attached to a service it cannot talk to (harnessed-dwt, harnessed-709) |
 
 ---
 
@@ -703,6 +707,51 @@ never a real choice", and it made the podman-gated suite unrunnable — every te
 the first stale link aborted all the rest, and the links it left pointing into a deleted tmp tree
 aborted every later run too. Only a symlink is ever unlinked, never its target; a genuinely foreign
 link still aborts with the manual-removal message.
+
+## Service guards: assert before start, abort on death, never self-heal
+
+`svcguards.py` is pure assertion — its functions read host state and raise; starting, stopping and
+health-checking the container stay in `launcher.py`. They run only for `scope: project` services,
+only after the launch has actually decided to create the container (launcher calls
+`persist.guard_ownership`, then `mkdir`, then `_assert_data_dir_unlocked`, then
+`_assert_placement_unchanged` immediately before `podman run`), because each guard's side effects
+and aborts must fire only when a container is about to be created. Note the source's own honesty
+(NOTE 2026-08-08): every service currently in the catalog defaults to `scope: global`, so neither
+guard fires today — they are the generic contract for the next project-scoped service, kept after
+beads-server (which did exercise them) was removed.
+
+- **The lock guard matches on cwd, not the command line.** `_assert_data_dir_unlocked` scans `/proc`
+  for a HOST process whose *cwd* is inside the service's data dir and whose exe name is
+  `svc.exclusive_lock`. cwd is what identifies the contended resource — a `dolt sql-server`
+  chdirs into the data dir it locks, while the port or db name on its command line does not.
+  Unreadable `/proc` entries (other users' processes, processes that exited mid-scan) are skipped,
+  not errors. Without the guard, a host process holding the exclusive on-disk lock makes the
+  sidecar die on startup, and the symptom lands far from the cause: clients fail against a socket
+  that was never created, and the engine's own advice ("start the server yourself") is
+  unactionable inside an agent container that deliberately ships no engine binary.
+- **The placement guard refuses rather than picks.** `data.persist` can be placed `in_repo` or on
+  the host, and the two placements do not notice each other — launching the host placement over a
+  checkout that already holds an in-repo workspace would silently start a second, EMPTY data dir,
+  which reads to the user as data loss. `_assert_placement_unchanged` records the last placement in
+  a marker and aborts on disagreement, **deliberately not self-healing**: both placements may hold
+  real data by then, and picking one would discard the other. The marker lives in the git **common**
+  dir (`<gcd>/harnessed-placement.json`) — shared by every worktree of the checkout, so the record
+  cannot disagree between them, and never tracked by git, which a `location: host` placement (whose
+  whole point is leaving no trace in the user's repo) requires. Writing the marker is best-effort:
+  it only ever *prevents* a future mistake, so a read-only or not-yet-existing git dir must not take
+  down the launch in front of it. Deleting the record (`rm <marker>`) is the user's escape hatch.
+- **`podman run -d` returning 0 is a claim about creation, not health.** It exits 0 once the
+  container is CREATED, so a service whose process dies a moment later leaves the launch believing
+  it succeeded. `_assert_service_running` re-reads the container state and `_abort_dead_service`
+  surfaces the reason from `podman logs --tail 20` rather than making the user go find it — the
+  reason is already in the container's log.
+- **A healthcheck that never passes aborts the launch** (`_wait_service_healthy`, harnessed-dwt).
+  It used to warn and continue, which closed only half of the silent-degradation class:
+  harnessed-709 made a service that *dies* abort, but one that starts, stays up, and never becomes
+  usable still sailed through — and the agent then comes up attached to a service it cannot talk
+  to, failing somewhere far from the cause. There is no `required:` flag on purpose: a stack does
+  not attach a sidecar whose health it is indifferent to, and a warning nobody can act on is not a
+  lesser failure, just a later one.
 
 ## Smaller traps that read like bugs
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1e9c9df303992f8a6957cdb7129e008829a5f72703201fc4b645a7b1bcb8366f",
+  "pageVersion": "sha256:e81be1cdffb126e5a334b444423d32f80a88fea5f49823498c7b2dde2111ede5",
   "claims": [
     {
       "id": "claim_ff26409f53a94907a3855d0c14a03448",
@@ -514,19 +514,19 @@
     },
     {
       "id": "claim_0bbfb2f2cf524c7fa1b76230c003d4aa",
-      "statement": "`harnessed update` gates offered bumps on a minimum release age modelled on pnpm's `minimumReleaseAge`: `DEFAULT_MINIMUM_RELEASE_AGE_MINUTES = 10080` (7 days, measured 2026-07-25 when all five offered pins were younger than a week). A too-fresh newest release does not mean \"no update\" — the newest release that IS old enough is offered and the skipped newer one is named (`skipped_newer`); pins whose only newer candidates are too fresh land in a separate `cooling` bucket that `apply` refuses even if passed the wrong bucket, and a newer release with no publish date is classified `unresolved` (\"review it by hand\") because its age cannot be checked.",
+      "statement": "`harnessed update` gates offered bumps on a minimum release age modelled on pnpm's `minimumReleaseAge`: `DEFAULT_MINIMUM_RELEASE_AGE_MINUTES = 10080` (7 days, measured 2026-07-25 when all five offered pins were younger than a week). A too-fresh newest release does not mean \"no update\" — the newest release that IS old enough is offered and the skipped newer one is named (`skipped_newer`); pins whose only newer candidates are too fresh land in a separate `cooling` bucket that `apply` refuses even if passed the wrong bucket, and a newer release with no publish date (when every newer candidate is undated) is classified `unresolved` (\"review it by hand\") because its age cannot be checked.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/update.py#L560-L603",
-          "version": "repo-lines-v1:sha256:afda72129ba41d4191cd593dd9675f405119ef197ba5e9dfc58458ed45188519:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2MmQ5YjA5OTc5NmZjMmQwMzMxMTYxYTNiMzMwYWFjMDY1ZjQzN2Y0YWZjNjI5MTk1NzY5ODU2YTY3NGQzZjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiNGIyZDI5MWQ4OWU0ZmZjNjliNjYwMTUxYWFmMmM5MGFmOTkxZDI4MDE3NWI5ZDRjZDAyNDgwMzBmMjVkMWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVmNzQ3MjE5MTlkNWQ3N2MzZDY3ZjE0MDYyYThkMzQ0ZmNjYjA0NDUxNDY3OTdlNzM1MDM0NDc1NmMzMjc2ZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwODRhNDg1YWQ5NTQzMmMzZjViOGI2MzhhOGFkYmNkYjI3YjA3YTIxMzM4OWU5ZTFkYTRmMTNhMmEyNWM5ODMifQ"
+          "resource": "repo://src/harnessed/launcher.py#L4666-L4694",
+          "version": "repo-lines-v1:sha256:6ba1e9653017f411c7132c869aaa0af8540a5c3002dcace541bfaf89af157563:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5ZTMxNDExMGZjMTE5NDVhZWIxYTUyM2JlZDY0YzgzOWYyNDdjMjhkNjE3MjFkYmNiMGE4NDZjMjk2ZTk1MDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0YzdlNmQzMTk4NDM2N2ExYzI3N2ZjNmQxMjE0NTdlYWM1ZjE2N2E3ZmM4ODUzZWJmOWUwNWZkZjIwODFhNmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU2Nzg2NTk2MGIyMzJiOWU3MzJhZTJiYzQ5ZDg0NjM0OThiMDU5MmFlZjMxMjczNzE1Mzk2N2M5MGFkYzJlOTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI2M2QwMTgzZmQ0MWM2YTZhZTFlZTY5MjEwNDA5OGYzMGYzMGFiODEwMWIxOWJjYjk4MmYzYTE3YTJkNzRkNTcifQ"
         },
         {
-          "resource": "repo://src/harnessed/update.py#L71-L79",
-          "version": "repo-lines-v1:sha256:f3c6e5ac3ae08e37fb31c726dc0204a6daa641f6bd83935b2ddd6f589a774f77:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzJmNjlkYTJhOGM2MjBmYzE0YzBjZjM0M2Q1ZmNmNWMyYWVhZDgyMGIwZjI4ZWEwZWVmNjRiY2Y5NTkwYjRjNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWY0MGQ1MzU5ZDcyZjUwNjJhYzA2YTM3YTQwOGQzNmY1NTI0YjUyZDI1OTAyYjg3OWQ4YjM2MWYwODY0NmVhNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmZkOTdiZDhjODQxYWI4MTkxZTVkZDJmOTQ4ZDMzMjRiOTI0Nzg2NTNmYWY5NDVjMDU0N2E5MDdhNDg1NzQ2MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjU0OWU5NjgzY2JlYjZiNzI1NWFjOTdhNWI4YzQ0NDQ3YWIxZWI5MTJhZDU0MTFiODk2Y2NmMjQyZDEzM2RlZSJ9"
+          "resource": "repo://src/harnessed/update.py#L603-L673",
+          "version": "repo-lines-v1:sha256:e18d425b02a23516f54fc770079109275deb3c474bc00ec56a864d98ff631ed7:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmYTlkYjRjYmE5MTU3ZGRmYmRlZjAxODRmYTMyZGFiZjg3ODFiMWFhZTVjYTczMjA0NGQwYmQ4NzkwYWNkODMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiNGIyZDI5MWQ4OWU0ZmZjNjliNjYwMTUxYWFmMmM5MGFmOTkxZDI4MDE3NWI5ZDRjZDAyNDgwMzBmMjVkMWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdhMDdiNjdjZmI3YjEzMWE1ZmNjYzgwNTY3Mzc3YTY5MzJmNzM5MTM3MjgwZDgyODU2ZDgxZGQ3OGMxYzdlZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwODRhNDg1YWQ5NTQzMmMzZjViOGI2MzhhOGFkYmNkYjI3YjA3YTIxMzM4OWU5ZTFkYTRmMTNhMmEyNWM5ODMifQ"
         },
         {
-          "resource": "repo://src/harnessed/update.py#L960-L977",
-          "version": "repo-lines-v1:sha256:579460180b1ecce916b047e9a4c5f5ae7d493ef767448eade8fff8da063dc4eb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkNTJkOTg5MDBhNzE2MzY4YTA5YjNiOTg4MGE2YzMyY2ZhMzRjY2VkNDQ1ZjI1N2ZjMDY3NWJjNWFmZWZlNjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2YWQwNTJjNDRiOTUzZjBkODMyODZhMmRkZGVjMjE4NWU3ZjE4OWRiMGU0ZjUwMmM2ZjA2ZjM0NzU4NDU0YTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJhODY4OTYzMDY2MTdiNTU5MzlhNTI5NWM5ODZlMTIwYjcxOWQ4ZDQ4ZTZhYTRmODUzNjYwOTg4NTg1NDMyMWIifQ"
+          "resource": "repo://src/harnessed/update.py#L80-L88",
+          "version": "repo-lines-v1:sha256:f3c6e5ac3ae08e37fb31c726dc0204a6daa641f6bd83935b2ddd6f589a774f77:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzJmNjlkYTJhOGM2MjBmYzE0YzBjZjM0M2Q1ZmNmNWMyYWVhZDgyMGIwZjI4ZWEwZWVmNjRiY2Y5NTkwYjRjNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWY0MGQ1MzU5ZDcyZjUwNjJhYzA2YTM3YTQwOGQzNmY1NTI0YjUyZDI1OTAyYjg3OWQ4YjM2MWYwODY0NmVhNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmZkOTdiZDhjODQxYWI4MTkxZTVkZDJmOTQ4ZDMzMjRiOTI0Nzg2NTNmYWY5NDVjMDU0N2E5MDdhNDg1NzQ2MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGQ0MjhkNmE5ZjRkODY1NDhjMGFiMDA5MWFiODk2OTcwZjg0YzFjMjc5NzU5NDA5ZmFmZWE2MDhkMGE5OGUzNSJ9"
         }
       ]
     },
@@ -535,12 +535,12 @@
       "statement": "The update sweep covers four sources on one classification path (same cooldown, hold semantics, and buckets, so no pin is reported differently): recipe `tools:`, agent manifests (`agent.yaml` pins live in `build_args.<KEY>.value`; A7 — agents used not to be swept at all, which is how three agents reached main with unpinned downloads), the TRACKED template `catalog/base/extra-tools.default.txt` (never the user's host `~/.config/harnessed/extra-tools.txt` — a bump must land as a reviewable diff; an unpinned entry is skipped entry-by-entry so one bad line cannot blind `--check` to the rest), and a declared `unpinnable` backend sorted into its own bucket before the resolvable check so \"cannot be pinned\" is never misread as a resolver failure.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L4650-L4675",
-          "version": "repo-lines-v1:sha256:bfd586fdc1e17da5f3da5df529dc7f79a2a6aa578f6cc02ab4ecd66cd7860340:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3MzM0ZmM1OTVmOWEyNjk3ODRiZTgyNDk0MGZiZDY5MDA1MDExNTI1YTdkNjMyYTdjZDg4MDA2MmJiYThjMTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMyODIzYjhiNGE4NzJlODBkNmUxYzJlNDBkMTY0MjgyMGYwNzUwMDAxOTZlMTY5NzEyMjNhODY2YWVhMWEwNzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI5YWYyYmFlZGY0ZGI3MzA0MTNkODQ2ZDg0YmUxOGIzNDJlMjRhODE5MWQ0YTc5MWMxMTM0Njc1NDFjNmIwMTcifQ"
+          "resource": "repo://src/harnessed/launcher.py#L4701-L4732",
+          "version": "repo-lines-v1:sha256:d417084644002c6fb47ec59ed9989e3c1cfd06169c66dbc432cc3250c03952dc:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3MzM0ZmM1OTVmOWEyNjk3ODRiZTgyNDk0MGZiZDY5MDA1MDExNTI1YTdkNjMyYTdjZDg4MDA2MmJiYThjMTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNmNjk4MDA5MzM4MzgwNDI3ZDk2NzczMzUwYjg1NDI1NDg4Y2VkMjZiODY4Nzc4NWNiMjAxZDVlMzFjMzRiMTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI5YWYyYmFlZGY0ZGI3MzA0MTNkODQ2ZDg0YmUxOGIzNDJlMjRhODE5MWQ0YTc5MWMxMTM0Njc1NDFjNmIwMTcifQ"
         },
         {
-          "resource": "repo://src/harnessed/update.py#L606-L720",
-          "version": "repo-lines-v1:sha256:83972b40d987367570d3e767ecbb219722d336fbbcbc4caf9e60e0bdcdd34230:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyNTI3ODE4Njk0NDkxZGE1ZjMwZWY5NzU5NjA3MjY0MDI0NDA1ZDQ0MGUzYzRiOWNmYTMzZDU3NTVmNDdmM2ExIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJkNWUxYTE3M2Q1YjE0YTEzOTE3YWMwOGQ4ZTExYjY1YjZkOTBkOTU0YWUyNDY0ZWJiN2QxNjM3M2UxNTQ3OThlIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJiZDAxNDdhODcxMmI0YWM3NDUzODExOTFjMjQ5NzllMmJkZTQ3OTE5YjQ3MGNhZmMxYTk1ZDU2NWUzMGJkYzU2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4YWE1Yjk2ZWE0NDZmMzk4N2NiOWY5Y2NiMzNjMmQ2NzY1ZGI0NzIyNWVmNjE5M2QxZDJhZGFmN2M3YTQ3ZTc5In0"
+          "resource": "repo://src/harnessed/update.py#L676-L760",
+          "version": "repo-lines-v1:sha256:590df237b31317c954b0cff846ec71fd7644ffede175316717e7cb85645837d9:eyJzZWxlY3RlZExpbmVDb3VudCI6ODUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1Mjc4MTg2OTQ0OTFkYTVmMzBlZjk3NTk2MDcyNjQwMjQ0MDVkNDQwZTNjNGI5Y2ZhMzNkNTc1NWY0N2YzYTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxZTIwM2IzMTM3ZmIzNjAxYjc2NDMwYjhiMTQxNzFkYjYyYTFhZTQ2ZTY3MTU5ZGUyMGM1ZGZmNTZlZjBjMGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkMDE0N2E4NzEyYjRhYzc0NTM4MTE5MWMyNDk3OWUyYmRlNDc5MTliNDcwY2FmYzFhOTVkNTY1ZTMwYmRjNTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEwMmRiOWQ4Y2IyMDkyMDMyMjk0ZDE1ODg2YzhmNWE5MmNlZTFjNTE2N2MxYWNlNWM2ZWVlMzNjZTZkOThlNzYifQ"
         }
       ]
     },
@@ -645,10 +645,36 @@
           "version": "repo-file-v1:sha256:a8eb553a221efb0adbc7d6fe7cdc8e18bce7ea5f1df0550766b4add23d15f19b"
         }
       ]
+    },
+    {
+      "id": "claim_d5b0d95d1d364e218aff08ecf82ff668",
+      "statement": "Harness pins (those discovered from agent manifests, `pin.harness = True`) are the exception to the 7-day release-age gate (owner decision 2026-09-23): they ride `HARNESS_MINIMUM_RELEASE_AGE_MINUTES = 2880` (2 days) held as a preference, not a gate — when every newer release is younger than that (or undated), the newest is offered anyway and flagged `fresh`, rendered and prompted with its age, and harness pins never park in `cooling`. An explicit `--minimum-release-age` overrides both windows, and a `hold` still outranks both.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L4722-L4731",
+          "version": "repo-lines-v1:sha256:b44e095e61ab99197ac2214197c58da53ba275591f0aeb2d50358077fea13884:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyOTdkYWRhYWQxNjU3OThiNWU2OWUwZTA3Y2ZhNWU5N2QyNDk1N2NmMTBhZTlhNjJiMWQyYzdlNWQ4NDNlNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0MzNkMGVhOWVjZjJmMzljOWE1MDQwNzM5NWVlNDExNzJmZTY4MmM5Yzg4NWEzNTA4Zjc1YmRlZTE1MWVmZmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE0NjkwYzRiYmQ1NWJjOTU3ZTAyMGRhMmQ2ZjVhNjQ4OTZmYTkxNWYxMTNlMWMzYjIyZWFjZmUwNGMxNGExN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA5ZmNhZTBiMTc0OTE4M2E4OTk0MTZlOTlhNWMzM2IxMDgxM2I5YjA3MTEwZmUwMTQ2MjUwYzliZDI2YzZmOTAifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L219-L261",
+          "version": "repo-lines-v1:sha256:8f9d0d71eaccca56ad2f309eba27246ba0d0dcd86b9625bd0ae19ee1d6463728:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmYjY1YzhlMTU3ZjNlZmYyYjlhNjBkNzZmNTM1Y2RhZTY0NTk5ZjVjMTljMGViMDBjYTMzZTM5ZTkxM2VhZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1NDc0Y2ViYjlhMWNkNTY2NmE0OTJkNmUzMTM1OWEwMjYzY2ZlNDhmM2UzZWIwZjlkZTBjMmE5ZmU3Y2ZjOWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdiMWZkMGM1YmM5ZDRiNmQ1ZTkwOGQyZjQxMWU3MzgxMWY4NzVmMmJiZjRmZDFiMThlZDNjZGFiYWY2NGZiMDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRiN2EwZDBjMGI1ZGRhNDYyYmJhOGI5NzlkYjZhOWU5YjUwNjVhOTFkZTkzM2U2MTMyMDZlZDRkM2ZlZGU4OWMifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L654-L661",
+          "version": "repo-lines-v1:sha256:3b307bc7afe51829f80f8cb0ec69a44ca7daff0bfe15bcfec2abea68ba4130db:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDJlOWIwNWU0YjBjYzhiYmU5M2NhYjJlNjJmMzQ5NTg4M2NkYWQwZDg1ZTg5NWQ4MDUzYzczNThmNTM5YWE0MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTgwZDllMmU2YTY3MjAwYTUyMWFiYzg3MjE1YTU3YzEwNTJhYzg1NWQ0ZDRlYTllOTQyNmE4MDNjNjNlMTg0OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjk4ZTJiNjQyNmZkYzdhYjI2NDJjYmQ4YjY1N2NjOTYzOGIzNDBlOGYwNzNkMGJhNjdmMjVlMWU4ZTc4M2JjNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDY4ODQ1YmUyODdhM2I1ZTcyNWFiZTgzMWFjZmI4MGQxNWM4MWRkN2JkODg0NWYwNTk3NTFlYzFiOGFkZDkxMCJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L90-L97",
+          "version": "repo-lines-v1:sha256:17fef1bb52f911d8dbc3001ae774f558fba106243b159ff4a05979b12249a311:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDdlYWZiNDMwMzUwMTE2MzkyMTc4NGJjM2UyYzdmY2I4MTRiYzk4MWU3ZjQ2ZTc2MjRkODRlYWJiYTllODYxNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWM5YzM4MzkwMDY3ZWQ4MmE1MDZlY2NlM2YwN2Q0NTg3ZTllNjdhNTE3OWIxM2YwMzE0NzZlZTk0OWU5NDA2MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTBjZjQzMzM3MzA5OTkzOGM3NzViYjRhNjVhYmVmZTg4MGZmNjlkYTBlYTkyODQ0MDQwZWE1M2E0MDEzMjljZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjU0OWU5NjgzY2JlYjZiNzI1NWFjOTdhNWI4YzQ0NDQ3YWIxZWI5MTJhZDU0MTFiODk2Y2NmMjQyZDEzM2RlZSJ9"
+        },
+        {
+          "resource": "repo://tests/test_update_cooldown.py#L147-L160",
+          "version": "repo-lines-v1:sha256:bd31a3d454d4a9f398f48c9bd06567dd1ce31b80dfce711f1cb7a469d80028ff:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlMjMwZDQzMWI2MTEzNjBjOTA0NWMwMWViNDAyODZhOTk5OTAyNmIyOWY1MTdhNjAzNjFlZGU1Mzg0ZDdlMWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkZWI4MTFmZDMzZDc0NGY3Y2JiNzQ4NmRmODUxZDJmN2NkNzk2MmE1MmJlNDJiMDVhODcyYTUzNjg5OTFlYTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3OTlhZjU3MjU5MjMxY2I1NjYzZGE1NmY4NjU2MGY4MjU0ODk2MGZkYWRmMjRiYzQ4ZGIwMzc0ODkwMTFmMjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY3Nzg3YTA0MzBkNGMzZmFiYjgyMGU1OGEwZjAxNzhkMzkxNmQxNDg5YjUxMDA2Njg2Yjc1MWI5OWE3MDgyYTYifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-21T14:50:01.893Z"
+    "at": "2026-09-23T13:20:55.348Z"
   }
 }

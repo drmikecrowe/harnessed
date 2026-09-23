@@ -18,10 +18,10 @@ sources:
     resource: repo://tools/openwiki-retry-patch.py
   - id: openwiki-source-bb9438d561f4cbb6d5d38c49
     resource: repo://tools/run-tests.sh
-generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-23T13:20:55.348Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
+    at: 2026-09-23T13:20:55.348Z
 ---
 
 # Wiki automation: mise tasks, the retry patch, and the CI update workflow
@@ -306,7 +306,10 @@ future `repo-lines-v2`) are reported as unverifiable instead of silently checked
 either shortcut would let the gate go quietly green. When a block moved but is byte-identical,
 the tool scans the file for any window of the recorded length whose digest matches and reports
 `moved`, not `changed`; only a genuinely changed digest (or a file that is gone) exits 1. Exit 2
-means the wiki or its Claims are unreadable. Full gate semantics live in the
+means the wiki or its Claims are unreadable. The tool also reports a `staleURI` count separately —
+evidence the digest still matches at a new location but whose published `#Lx-Ly` was never rewritten
+(openwiki does not update the resource URI when it relocates a block) — flagged as a reader-facing
+accuracy problem, not drift. Full gate semantics live in the
 [verification ladder](/openwiki/testing/verification-ladder.md).
 
 ---

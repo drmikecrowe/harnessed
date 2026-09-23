@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:fcd56f78155bc4f384a1fd608a6b358387b6b0cbfc6b463a02bbe238b59e8183",
+  "pageVersion": "sha256:b14a912244bc0e1632c0602783ffe274b19059115877b1de9c4d33c8d3703959",
   "claims": [
     {
       "id": "claim_6ddd0ca903ef45e3bb6a4c2ae0ab3120",
@@ -731,10 +731,58 @@
           "version": "repo-lines-v1:sha256:ca7b0e3940a4bdfc0cc5d155736221a2403c832ba4259bb790c7033efcd03804:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhZjAwZTVjODE3NzU4ZDRkY2M1NjRmNzRlYmI1NzI2MzdjZWJmYTNmNjk5NWMwMWY5N2Q1ZDdmYWVmMWIyMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzNmI5MjVkMTY4MTlkMWZhZDMzNTlmMTQ2YTY4MzdkZjJiMjRmMWVlNzg2ODUxNjk3ZjgzMjRiOTA3OWM3OWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY3MGJiZThiYjZiMTIyMTU2NzNiZGE0MDI1NTZmYmVmYmEyMjI0ODc0Yzc4OWRkMTRhODVlMDI1MjlkOGIxMTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI5ZjkxODg1ZmYwZDgwYWZkNmViMTFhNDM2YTBlOWMxN2NiNjAxNzFkOTBmZDJlZDVlZmNkZmQyNGE4ZDE0MzIifQ"
         }
       ]
+    },
+    {
+      "id": "claim_4231f3549b4f44ad9cac0d28193ed977",
+      "statement": "The service lock guard matches host contention by cwd, not command line: _assert_data_dir_unlocked scans /proc for a host process whose exe name equals svc.exclusive_lock and whose cwd is inside the service's data dir, and aborts the launch with exit 1 before the container starts; unreadable /proc entries are skipped rather than errors.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/svcguards.py#L25-L70",
+          "version": "repo-lines-v1:sha256:454eea50df13aa47c38eb03c0a15b942072447c4ae52381381506ddf1575ea3c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiOThkN2EzODBmMGZiMGM0MmM5MzAzZDJlYzgwZmUyNGQwODI4OGNjZDA5NTAzODFkMmRmN2M0NTQ5MWU0NmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1NjM4NDk0YzUxMmIzNjBmZjE1Y2E1OGMxY2U4ZjdiOTQ4YzZjM2VjNTRmOGU1N2Q1ZTJmMzU2NDdjYTAxNTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM4MjdiZGNkMTc4MGMzODdkODZmOGFjOWM2MjIwM2I3MWQyYjZmNjQ5MjMzYTVhZTFlMTc2NmUyZDBiYTE1MzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFlMjJhODVlNThiMDllZWM0OGIyNjdkMGMyYzY1NTNkMzdkZWJkMzNkMjQwMDgxZjc0MGNjMjFlMWNhNWExYTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5dfdb9a14553413f8df42070fbebe421",
+      "statement": "The svcguards assertions run only for scope: project services and only immediately before the container is created (launcher calls guard_ownership, mkdir, _assert_data_dir_unlocked, _assert_placement_unchanged just before podman run); per the source's NOTE 2026-08-08 every catalog service currently defaults to scope: global, so the guards are the generic contract for the next project-scoped service, kept after beads-server was removed.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2041-L2049",
+          "version": "repo-lines-v1:sha256:5f41825f0325c6e46f91c981e1748e8eb2aa6ffb7db1d3d08702fc258b6bf07e:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmU5YmJhYjRjYjA0ZmVhNjg4NTQyNjJlOTMwZjNiM2IyNGI5ZjViMTFjMmIzYTViMDhlYjI3MWQxZGI1N2YzOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWE3YjdkN2I0Yzk1ZmFmNjBhY2YzZTdiMDlhNTI3ZDBiZjRkM2E3YzQzMTlkOWZkMjgwODk5YmRlMTgzZmU5YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2U3ZWRjMzk1NjcxOWNiN2Y1NWYwYWM1MWZlYjM4NDNlNGFkNGZkMjgzZWExODhmYzBjY2UxYTViZTYzNWE3ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjgxNWMxNzE4OGE1NzYxZGY3YmViOWM2ODFmNDM0OTZhMWNiMzg0ZTk4YWM5NmJlZDc2OGRlMTI2YmZkMTdlYiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/svcguards.py#L97-L101",
+          "version": "repo-lines-v1:sha256:d57b02e9a7e7cc5a788b711bd6e3653c8e82cff5be66f8c2b857638d677c05f9:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2I0ZTU0ZjE2Y2ViMWM0MGYyOGZmMDNkMjFiYjY0NTgwNTJiMDJkM2ZhNWM1ZTY5ODFhYmM5ZTM3YzM5YTQ0MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODMwMzAyN2Y3MGMwYjAxYmRkNDM1YzQ2MzgwODZlMGJkNWVhYjc5NzlmYzBiMDUyMWQzYjNkODZjMjA2MWViYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDQ3ZTc3ZTllMjE3MWI0Y2NkMzEyZWIxOTE5NTM5MTk4OGM0MTFkZDlmM2RkOTVmOGZjYmE0ZWRkNzEzNzBkMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzc0MGU1NDhhNTMxYjg3MWIxNmU2Zjc2NzMyOGJiNjNjY2NjNWE0MDM3ZThlODRlMzVkY2QyNmI4ZWJlNGQ2MiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_084797bd920943778bd2098667830214",
+      "statement": "The placement guard records the last data.persist placement in a marker file inside the git COMMON dir (<gcd>/harnessed-placement.json) — shared across worktrees and never tracked by git — and aborts with exit 1 when the current launch wants a different placement; it is deliberately not self-healing because both placements may hold real data, and writing the marker is best-effort so a read-only or missing git dir cannot take down the launch.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/svcguards.py#L73-L135",
+          "version": "repo-lines-v1:sha256:130e1d001418e6c17de27a3d5aaf27840be31fe3a9a052914112936285196fa8:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzM2U4ZjhmODQxZmYzODA2NTcyMjc1MzE2OWZmNWY4NmY0NTkyZjVlMjNjZTkxZTdkNDc1NjJkMTg3ODUxMzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwNjJlNThlYTBiMGZkMTk1YmEwNzY2MTNiNjMwZDU5ZTY3YmQ0NzBiYjE5ZTk3YTIwYzkwMjM2NmU1YmEwZTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMxYWM3YThlZTBhNzcyMDc2YmYzMjYyOTkyMmZjYWQ4OTkyNTEzNjYxY2NhMDc1NDVkMmNmZjE1Y2UxNjcyZGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM5MmJiN2U1MDg0ODViOWM0ZDQ3NmY5MzJkNjBjZjIyZjRjMDM3MDdiNWIxYjYwYmM3MjEyNjlhNzQ3MDQ1ZGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7dca3aba51cf4140852cb76d2471d533",
+      "statement": "podman run -d exiting 0 certifies creation, not health: _assert_service_running re-reads the container state and _abort_dead_service surfaces the reason from the container log; and _wait_service_healthy aborts the launch when a service's healthcheck never passes (harnessed-dwt — harnessed-709 had already made a dying service abort), with no required: flag because a stack does not attach a sidecar whose health it is indifferent to.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2060-L2085",
+          "version": "repo-lines-v1:sha256:753398e5173436ad2fe42e88f30cb7359cab90c4b775c0bca45b4192aa612a97:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmNjdiYzZmMWJhZWNjODk3M2FlODM5M2FhYjk4Yjk3NGU2NWQ0NjVhMGEzZTcyMmY4YmY4Y2YxMWRhMzhiZmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4ZmZjOGI3ZDE2NDY5YmI0OWVlOGEyMDQyZjc3N2MzMDRlOGRjNDdjZGZjNTMxMWFkNGIxMDcxODdlYzg3MjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjMTg0MWU3YTIyNDVlOWQwMTU2OWEyNmI4ZDViMGM0MjU1ZDliOGJiMGNiMGM0NjBlMTdjZTA1ZTc1ZjRhOGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM5ZTdjMjczMTUxNTMxNDZiZDlhZTM1NzAwODZhN2E2NzlmMmE1ZDY2OTMxOGI3NGY3MzMzOWZmNTVhNWZlOGYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/svcguards.py#L148-L167",
+          "version": "repo-lines-v1:sha256:76b73a1c952f42bddc8e900f7ac8f4dafbea5d7cce1ab02b32b9f8173e8c647e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0NTAwNTM3YmM0NTJhMTVjYTU1ODliYTBkM2IzYWI1Y2U1MGJlMWQ4MjMxMGY3YWRlZDg2MDE5NGFjYWM3ZmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3ZmZlODAzZjU1MmEyZWY4ZTg0YWNkNDE2M2Y1ZmFhYjg0YjNjNTFlZTA1NDAzYTViZDg0NjBjYzkwNGE1ZjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFiMmM3NmMyMWRlMDE0ODY2YzM4MWE3OWFjOGE1ZjQzNjA5OTVjOWY2NTQ1NjFhZjI4MDdiMTY2MmIzYzVkZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-20T12:51:12.657Z"
+    "at": "2026-09-23T13:20:55.348Z"
   }
 }

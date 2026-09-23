@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a735ffd15a0daa7e19805ac291f86c9a60f1445d8c7e36ada8f2e91530c4d83b",
+  "pageVersion": "sha256:970e5bad5d4c73d983907cdd1bbfff229c0f5a3f3117d1ba9c01134f0c359a1e",
   "claims": [
     {
       "id": "claim_b90a0ef34e7e4e1d815bf6dd523d7df3",
@@ -399,10 +399,24 @@
           "version": "repo-lines-v1:sha256:f6c4426132e5b26226c1fb2d115b36ab853cb2d8554686767415bf47dcf1c22e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkOTVmYzA0YTgwYzk1MmY0OWNlNDE4ODYyN2M1M2IwZmJlOGM0NDA0MWI5NTJkNTkyYWNkMWRlOTk4NjE0NjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjY2JjNzA5MTk1NzgyMjg5YmYyNWQyMGRjN2QwMjYyYTk1NmRhODgxYTgwMGU4M2UzOGFmZjkxMGZmMDViOWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_bf7ff1486f514c94b62fbdb94cd56e13",
+      "statement": "openwiki-drift reports relocated evidence whose #Lx-Ly span was not rewritten as a separate `staleURI` count, distinct from drift, because openwiki does not update the resource URI when it relocates a block; the recorded selectedLineCount in the version payload is authoritative for the digest's window length and wins over the URI span.",
+      "evidence": [
+        {
+          "resource": "repo://tools/openwiki-drift.py#L258-L263",
+          "version": "repo-lines-v1:sha256:6a6b9efb34ed722f6a35573aeb6175a7bd92fa545b2de89dbe5f7b0255c5a3f5:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjc1NTQ4MmU2MjMxN2Q3ZTM0MTgzZDY2NWIxOTEzODQ3ZWU1MmIwNWI2YjFkZDYwMTBlMmE3YTE3NmU4ZTVlNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTRhMDkzOGNmZjBlZDQ5MTRlZjI4ZWJkZmQ1NTNjNGI5YWMxNTFmZjQyNTQyMTMwMWY3ZWMwZmJlNzhmZGU5OCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTcxOGIxMjQwMjlkNmMzMjRjMTJiZjk4NGY3OWE4MzdlMTFmZDEwOTNkOWZjYmE4ZTY2M2IyMzFlNDVlMzVmZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzFlYmVmNjhjMDRlYzIzN2UzYWY5ZDY2ZDgzYzM2YmFmZTgzY2I4ZWM3YWY5MWZjZjU3Y2E1Y2UyZGViZTY3OCJ9"
+        },
+        {
+          "resource": "repo://tools/openwiki-drift.py#L73-L89",
+          "version": "repo-lines-v1:sha256:befb4429407133e37b19c7af643d0cf0140cef090024c7ed5fb9ea37481e443b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzZDAwY2YyNzA5NjRkNDRhMTNkZmFjODc1MmIwOWZjYzQzNWIwZjE5YjMxNmFiY2Y4MWE3YWE2NGJiMTIyZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4NWRiMmRlN2MwNGRiOWIzZGRlMzg3MDM5NmQwYTI5ZTg1MjM1OTQ3M2RkYjU0NzExY2IxYzYyN2MwM2Q2YmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhZTZlNDRjNWQzYWExZmEwNTFiMzdjOTVhYzNmMjA2M2FkMzI4ZTk1NGJkNjBlOGY3YmIxMDY0N2QxNjAzNWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUwOTRhYTEyMGZkMWJkY2RjMDBkOTcwMWI1YjNmMTczMzIwODhiZjExZTJjNmUyMDA5MDk2YzY2ZmQ1ZTY0YTAifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-20T12:51:12.657Z"
+    "at": "2026-09-23T13:20:55.348Z"
   }
 }

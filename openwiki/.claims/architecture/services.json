@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:82103ae9fe153e0c45e4c10fb59013493bfcee8421a2e8b2869d901b9df7793c",
+  "pageVersion": "sha256:1077206de720a2808190989aba5933808b576c3d1a683df260bc93ba36ddb2d2",
   "claims": [
     {
       "id": "claim_70b25d784d2e49d29875cccf2e8dedc9",
@@ -119,8 +119,8 @@
       "statement": "load_service enforces the service manifest shape: name and image required, scope must be global or project, `scope: project` requires data.persist and never gets a named volume (volume defaults to `<name>-data` only for global), `exclusive_lock` requires project scope, a declared port must be 1-65535 with socket-backed services allowed to omit it, and client_env templates may use only {host}/{port}/{socket}/{password} — with {host}/{port} rejected on socket-only services and {socket} rejected when no socket is declared.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/schema.py#L2122-L2225",
-          "version": "repo-lines-v1:sha256:496bb7997e445c2d28240077c981e1bee7336e8246921b24367e282d1ea0b9c3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1YjlhN2Q3ZDllNzRmZTFjMTM3OWY5NjRjNTczYzI4NzZhNDBhMTQyOWQxNjcyMzU2NzdlNmY2MDhlMTkwMzY0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzMGMxZjE4OGYxNDJlZDdhODI0NjgwYjIwNzE3MmM1NTE5YmM2MTRhNDhmZGE3Y2YxNjdlZGI4ZGRmNzk5NTZjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4YTJiN2Q1YzQ5ZDk2YTRlOGY5YjAxMTA1YTU1NzcxOWE4ZmRlNGNkMzNmOTdhMmU2Mzc4OWRjZDYzZTFlMjFlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjMmNiNWU1NDAzNGIxOTYwNDAzYTMyZWE0ZTRhYWJkYjgxNDAzNmI3MTJiYzdlMWZkZDRjMGQ0ZjA5YTMzZDRjIn0"
+          "resource": "repo://src/harnessed/schema.py#L2214-L2319",
+          "version": "repo-lines-v1:sha256:9c3b627361b03da976d457850051702fb8ece2617d9671733ffb23240e61211c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1YjlhN2Q3ZDllNzRmZTFjMTM3OWY5NjRjNTczYzI4NzZhNDBhMTQyOWQxNjcyMzU2NzdlNmY2MDhlMTkwMzY0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzMGMxZjE4OGYxNDJlZDdhODI0NjgwYjIwNzE3MmM1NTE5YmM2MTRhNDhmZGE3Y2YxNjdlZGI4ZGRmNzk5NTZjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4YTJiN2Q1YzQ5ZDk2YTRlOGY5YjAxMTA1YTU1NzcxOWE4ZmRlNGNkMzNmOTdhMmU2Mzc4OWRjZDYzZTFlMjFlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjMmNiNWU1NDAzNGIxOTYwNDAzYTMyZWE0ZTRhYWJkYjgxNDAzNmI3MTJiYzdlMWZkZDRjMGQ0ZjA5YTMzZDRjIn0"
         }
       ]
     },
@@ -639,6 +639,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-20T12:51:12.657Z"
+    "at": "2026-09-23T13:20:55.348Z"
   }
 }

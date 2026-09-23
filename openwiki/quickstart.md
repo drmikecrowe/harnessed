@@ -40,10 +40,10 @@ sources:
     resource: repo://tools/preflight.sh
   - id: openwiki-source-bb9438d561f4cbb6d5d38c49
     resource: repo://tools/run-tests.sh
-generated: { by: "openwiki/0.5.1", at: "2026-09-21T14:50:01.893Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-23T13:20:55.348Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-21T14:50:01.893Z
+    at: 2026-09-23T13:20:55.348Z
 ---
 
 # Quickstart: set up, build, launch, and where to read next
@@ -303,14 +303,48 @@ flowchart TD
 
 ## Where to go next
 
-Route by task, not by directory. This wiki is a small set of specialist pages; each row below is
-the whole map:
+Route by task, not by directory. This wiki is a small set of specialist pages; the tables below
+are the whole map.
+
+### Understanding the system
 
 | Task or question | Page |
 | --- | --- |
+| The top-level map: the build-and-launch pipeline stages (stack+harness → profile → image → running pod), which module owns each stage, the container/host split | [architecture/overview](/openwiki/architecture/overview.md) |
 | How authored `catalog/` content (stacks, recipes, agents) is loaded, validated, and consumed by the build — schema guards like the immutable-build-arg check and typo guardrail | [architecture/catalog-and-schema](/openwiki/architecture/catalog-and-schema.md) |
+| The two launch paths and their asymmetry: what differs, what invariants must hold in both, why both live in `launcher.py` | [architecture/backends](/openwiki/architecture/backends.md) |
+| How declared services become sidecar containers, how addresses reach the agent and the host, which service state is persisted versus re-derived | [architecture/services](/openwiki/architecture/services.md) |
+| What harnessed persists (persist dirs, XDG state, stable ports, passwords, fingerprints), where, and what breaks if it is deleted | [architecture/state](/openwiki/architecture/state.md) |
+| How secrets are resolved on the host (1Password-backed broker) and deliberately never written to disk or into image layers | [architecture/secrets-broker](/openwiki/architecture/secrets-broker.md) |
+
+### Concepts that span modules
+
+| Task or question | Page |
+| --- | --- |
+| The canonical precedence table: layered env files, recipe vs harnessed-owned values, global vs project overrides — one row per conflict, its winner, and the failure the loser once produced | [concepts/precedence](/openwiki/concepts/precedence.md) |
+| The env-var contract between harnessed, harnesses, recipes, and the agent: who sets what and what each side may rely on | [concepts/env-contract](/openwiki/concepts/env-contract.md) |
+| End-to-end credential flow: where secrets enter, what resolves them, host-only paths, what never reaches disk or an image layer | [concepts/credentials](/openwiki/concepts/credentials.md) |
+| The credential-proxy migration: classification modes, the schema-declares-proxy gate, unproxied-secret warnings, and its tracked limitation | [concepts/credential-proxy](/openwiki/concepts/credential-proxy.md) |
+| The load-bearing oddities a reader must not clean up: ordering, timeouts, and defensive checks that fix named issues | [concepts/invariants](/openwiki/concepts/invariants.md) |
+
+### Doing the work
+
+| Task or question | Page |
+| --- | --- |
 | Stack + harness → profile → image: assembly order, recipe-hash staleness, layer caching, `jobs/-j` concurrency, security-scan invocation | [workflows/build](/openwiki/workflows/build.md) |
+| Running an agent in the container backend: what the pod gets, service addresses, mounts, lifecycle | [workflows/container-run](/openwiki/workflows/container-run.md) |
+| Running an agent on the host backend: host-home construction, fingerprint gating, and why it is not the container path mirrored | [workflows/host-run](/openwiki/workflows/host-run.md) |
+| Creating and using dynamically generated stacks: the dynstack path, project-scoped state, how they differ from catalog stacks | [workflows/dynamic-stacks](/openwiki/workflows/dynamic-stacks.md) |
+| Using the capability oracle to prove an environment supports a stack — and exactly what it does and does not prove | [workflows/capability-test](/openwiki/workflows/capability-test.md) |
 | The full verb surface: every command, its options, and which backend/runtime each requires | [operations/cli](/openwiki/operations/cli.md) |
 | What ships, how it is pinned, and how it is scanned — extra-tools and image-layer pins, `harnessed update`'s staleness sweep with its minimum-release-age gate, the osv-scanner + pip-audit scan layer | [operations/supply-chain](/openwiki/operations/supply-chain.md) |
-| What each supported harness expects from harnessed: launch command shape, env contract, `agent.yaml` fields, how harness selection alters the launch path | [integrations/harnesses](/openwiki/integrations/harnesses.md) |
+
+### Integrations and verification
+
+| Task or question | Page |
+| --- | --- |
+| How catalog agents (claude, codex, omp, opencode) become harnesses: pinning, shared images, overlay shadowing, what assemble injects per agent | [integrations/harnesses](/openwiki/integrations/harnesses.md) |
+| The `aoe` CLI and the launch scripts harnessed emits, including their JSON surfaces and lifecycle behavior | [integrations/aoe-and-launch-scripts](/openwiki/integrations/aoe-and-launch-scripts.md) |
+| How this repository dogfoods itself: the openwiki recipe and its wiki-automation entry points | [integrations/openwiki-recipe](/openwiki/integrations/openwiki-recipe.md) |
+| How the wiki is kept honest: the openwiki recipe's automation, evidence-anchor discipline, what update runs do | [operations/wiki-automation](/openwiki/operations/wiki-automation.md) |
 | What each verification gate proves and what it does not: the pytest suite, live tests behind `HARNESSED_PODMAN=1`, lint layers, the pin check | [testing/verification-ladder](/openwiki/testing/verification-ladder.md) |

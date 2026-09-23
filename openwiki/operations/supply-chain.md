@@ -46,12 +46,14 @@ sources:
     resource: repo://tests/test_recipe_pin_hygiene.py
   - id: openwiki-source-45aae4ce11629bd1314329a5
     resource: repo://tests/test_toollock_wiring.py
+  - id: openwiki-source-89cbbb3693567edd35fcc057
+    resource: repo://tests/test_update_cooldown.py
   - id: openwiki-source-854929ba43f12d27e96036d0
     resource: repo://tests/test_update_pins.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-21T14:50:01.893Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-23T13:20:55.348Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-21T14:50:01.893Z
+    at: 2026-09-23T13:20:55.348Z
 ---
 
 # Supply chain and pinning: what ships, how it is pinned, and how it is scanned
@@ -204,8 +206,9 @@ every pin surface and offers bumps. Its classification rules (each pinned by a t
   of the registry is not stale.
 - **Resolver failures and unknown packages are `unresolved`, never `current`** — a registry
   timeout must never read as up-to-date. A newer release whose backend gives **no publish date**
-  is also `unresolved` ("review it by hand"), because its age cannot be checked against the
-  minimum-release-age gate.
+  (and has no dated sibling to offer) is also `unresolved` ("review it by hand"), because its age
+  cannot be checked against the minimum-release-age gate — with one exception: a *harness* pin
+  (see below) is offered undated-newest flagged `fresh`.
 
 ### The minimum-release-age gate (pnpm `minimumReleaseAge`)
 
@@ -219,7 +222,30 @@ and the newer one it passed over is named in the finding (`skipped_newer`) — r
 would leave a stale pin stale for a week even when a mature intermediate release exists. A pin
 whose only newer candidates are all too fresh lands in a separate **`cooling`** bucket, and
 `apply` refuses cooling pins even if a caller passes the wrong bucket, so the cooldown cannot be
-raced.
+raced. A newer release with no publish date is `unresolved` ("review it by hand") *when every*
+newer candidate is undated — the age guarantee cannot be honoured for a release whose age is
+unknown, and harnessed deliberately diverges from pnpm's
+`minimumReleaseAgeIgnoreMissingTime=true` here because every registry it queries is public and
+does supply dates.
+
+**Harness pins are the exception** (owner decision 2026-09-23: "a harness tracks its vendor's
+latest — we need to trust their release process"). Pins discovered from agent manifests carry
+`pin.harness = True` and ride `HARNESS_MINIMUM_RELEASE_AGE_MINUTES = 2880` (**2 days**), and that
+window is a *preference, not a gate*: when every newer release is younger than it — or undated —
+the newest is offered anyway and flagged **`fresh`**, rendered with its age ("inside the harness
+release-age window, offered because a harness tracks its vendor's latest") and carried into the
+accept prompt, so accepting it is a decision, not a surprise. Harness pins therefore never park in
+`cooling`; recipe and extra-tools pins keep the full 7-day gate in the same report. An explicit
+`--minimum-release-age` overrides **both** windows, preserving the flag's pre-split one-knob
+contract (launcher passes it as `minimum_release_age_minutes` *and*
+`harness_minimum_release_age_minutes`). `build_report` picks the window per pin inside the loop
+(`harness_age if pin.harness else minimum_release_age_minutes`), so the split lives entirely in
+`_select`'s caller, and the hold still outranks both windows — a held pin is never offered
+whatever its age. Both halves — the pnpm-style "newest old-enough wins" selection and the harness
+exception — are pinned by `tests/test_update_release_selection.py` and
+`TestHarnessesTrackLatest` in `tests/test_update_cooldown.py`; the general cooldown behaviour
+(withholding, `cooling` never failing `--check`, `apply` refusing the bucket) lives in the same
+file's `TestCooldownWithholdsFreshReleases`.
 
 `--check` is the CI mode: it writes nothing and exits non-zero only for a pin that is stale AND
 resolvable AND unheld AND past the cooldown (extra-tools pins included) — building a report must
