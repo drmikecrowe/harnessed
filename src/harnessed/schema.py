@@ -1911,10 +1911,14 @@ def _validate_stack_fields(raw: dict, manifest: Path) -> None:
 def _resolve_parent_stack_dir(parent: str, stack_dir: Path, manifest: Path) -> Path:
     """Locate the stack named by `extends:`.
 
-    Same catalog root as the child first (so a fixture tree, or a self-contained overlay, resolves
-    within itself), then the normal catalog search (user overlay first, then the repo) — which is
-    what lets a stack in the user overlay extend one shipped in the repo catalog.
+    The user overlay wins first: an overlay `<parent>` overrides the shipped one for EVERY child,
+    repo-shipped or overlay-authored — the same precedence find_in_catalog applies everywhere
+    else. Then the same catalog root as the child (a fixture tree, or a self-contained overlay,
+    resolves within itself), then the remaining catalog roots (repo shipped, generated).
     """
+    overlay = paths.user_catalog() / "stacks" / paths.catalog_relpath(parent)
+    if (overlay / "stack.yaml").is_file():
+        return overlay
     sibling = stack_dir.parent / parent
     if (sibling / "stack.yaml").is_file():
         return sibling

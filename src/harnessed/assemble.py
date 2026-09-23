@@ -111,7 +111,9 @@ def compute_recipe_hash(stack_yaml: Path, recipes: list[Recipe]) -> str:
         service_dir: Path | None = None
         for croot in service_catalog_roots:
             cand = croot / "services" / name
-            if cand.is_dir():
+            # Marker, not bare dir: a hollow overlay services/<name> must not shadow the real
+            # copy, or this hash covers an empty dir while runtime loads the repo one.
+            if (cand / "service.yaml").is_file():
                 service_dir = cand
                 break
         if service_dir is None:

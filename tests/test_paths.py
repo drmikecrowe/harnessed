@@ -399,3 +399,52 @@ class TestListCatalogVarieties:
         recipes = self._catalog(monkeypatch, tmp_path)
         self._recipe(recipes / "a" / "b" / "c")
         assert paths.list_catalog("recipes") == []
+
+
+class TestFindInCatalog:
+    """Per-name resolution across the catalog roots: user overlay first, marker-defined entries.
+
+    A directory counts as an entry only when it carries the kind's marker manifest — a hollow
+    dir (a rename mid-flight, a half-authored recipe) must fall through to a real copy in a
+    lower root instead of shadowing it and dying on a missing manifest.
+    """
+
+    def _roots(self, monkeypatch, tmp_path):
+        """Isolated overlay (XDG_CONFIG_HOME) + repo catalog (HARNESSED_DIR); returns both roots."""
+        monkeypatch.setenv("HARNESSED_DIR", str(tmp_path / "home"))
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        return (
+            tmp_path / "xdg" / "harnessed" / "catalog",
+            tmp_path / "home" / "catalog",
+        )
+
+    def _recipe(self, d: Path) -> None:
+        d.mkdir(parents=True)
+        (d / "recipe.yaml").write_text("name: x\n")
+
+    def test_overlay_entry_wins_over_the_repo_copy(self, monkeypatch, tmp_path):
+        overlay, repo = self._roots(monkeypatch, tmp_path)
+        self._recipe(overlay / "recipes" / "mine")
+        self._recipe(repo / "recipes" / "mine")
+        assert paths.find_in_catalog("recipes", "mine") == overlay / "recipes" / "mine"
+
+    def test_hollow_overlay_dir_falls_through_to_the_repo_copy(self, monkeypatch, tmp_path):
+        """THE regression: a rename leaves the overlay dir behind without its recipe.yaml, and
+        the shipped copy must still resolve instead of the load dying on the hollow dir."""
+        overlay, repo = self._roots(monkeypatch, tmp_path)
+        (overlay / "recipes" / "mine").mkdir(parents=True)
+        self._recipe(repo / "recipes" / "mine")
+        assert paths.find_in_catalog("recipes", "mine") == repo / "recipes" / "mine"
+
+    def test_name_resolving_nowhere_returns_the_highest_precedence_candidate(
+        self, monkeypatch, tmp_path
+    ):
+        """The not-found contract: the returned path points at the overlay so the loader's error
+        names the highest-precedence root. The overlay kind dir must EXIST for the overlay to be
+        a root at all (catalog_roots skips a missing one)."""
+        overlay, _repo = self._roots(monkeypatch, tmp_path)
+        (overlay / "recipes").mkdir(parents=True)
+        resolved = paths.find_in_catalog("recipes", "ghost")
+        assert resolved == overlay / "recipes" / "ghost"
+        assert not resolved.exists()

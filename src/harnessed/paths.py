@@ -436,17 +436,20 @@ def catalog_relpath(name: str) -> Path:
 
 
 def find_in_catalog(kind: str, name: str) -> Path:
-    """Resolve catalog/<kind>/<name> across the catalog roots (user first); first existing wins.
+    """Resolve catalog/<kind>/<name> across the catalog roots (user first); first real entry wins.
 
     `kind` is the plural dir: agents | recipes | services | stacks. `name` may be a variety
-    ref (see `catalog_relpath`). Returns the resolved directory even if absent (so the loader raises
-    a clear not-found pointing at the highest-precedence root).
+    ref (see `catalog_relpath`). An entry is a directory carrying the kind's marker manifest
+    (`_KIND_MARKER`): a hollow dir (a rename mid-flight, a half-authored recipe) must fall
+    through to a real copy in a lower root, not shadow it. Returns the resolved directory even
+    if absent (so the loader raises a clear not-found pointing at the highest-precedence root).
     """
     rel = catalog_relpath(name)
+    marker = _KIND_MARKER[kind]
     roots = catalog_roots()
     for r in roots:
         cand = r / kind / rel
-        if cand.exists():
+        if (cand / marker).is_file():
             return cand
     return roots[0] / kind / rel
 
@@ -454,16 +457,19 @@ def find_in_catalog(kind: str, name: str) -> Path:
 def overlay_shadowed_repo_path(kind: str, name: str) -> Path | None:
     """The repo-catalog path a user-overlay entry shadows; None when nothing is shadowed.
 
-    Shadowed means BOTH copies exist: `user_catalog()/<kind>/<relpath>` AND
-    `harnessed_home()/catalog/<kind>/<relpath>`. On a name clash the overlay wins (see
+    Shadowed means BOTH copies are real entries (each carries its kind's marker manifest):
+    `user_catalog()/<kind>/<relpath>` AND `harnessed_home()/catalog/<kind>/<relpath>`. On a name
+    clash the overlay wins (see
     `catalog_roots`), so the repo copy is never read — a session then quietly assembles stale
     overlay content while the newer repo copy sits unused. That silent drift has already caused
     real regressions, which is why the loader warns on it. `name` may be a variety ref (see
     `catalog_relpath`).
     """
     rel = catalog_relpath(name)
+    marker = _KIND_MARKER[kind]
     repo = harnessed_home() / "catalog" / kind / rel
-    if (user_catalog() / kind / rel).exists() and repo.exists():
+    overlay = user_catalog() / kind / rel
+    if (overlay / marker).is_file() and (repo / marker).is_file():
         return repo
     return None
 

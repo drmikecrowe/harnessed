@@ -124,3 +124,10 @@ class TestOverlayShadowedRepoPath:
     def test_repo_only_returns_none(self, monkeypatch, tmp_path):
         _install(monkeypatch, tmp_path, repo=["only-repo"])
         assert paths.overlay_shadowed_repo_path("recipes", "only-repo") is None
+
+    def test_hollow_overlay_dir_is_not_a_shadow(self, monkeypatch, tmp_path):
+        """An overlay dir without its recipe.yaml is debris, not an override: no shadow pair, so
+        the repo copy stays the effective one (see paths.find_in_catalog's marker rule)."""
+        xdg, _home = _install(monkeypatch, tmp_path, repo=["stale"], stack_recipes=["stale"])
+        (xdg / "harnessed" / "catalog" / "recipes" / "stale").mkdir(parents=True)
+        assert paths.overlay_shadowed_repo_path("recipes", "stale") is None
