@@ -3,14 +3,19 @@
 #
 # Exposes headroom_compress / headroom_retrieve / headroom_stats as stdio MCP tools the agent
 # calls on demand to shrink large tool outputs, logs, and JSON before reasoning over them.
-# No skill (upstream ships none), no hooks, no service, no Dockerfile. MCP-tools mode only —
-# the proxy/wrap modes (transparent whole-traffic compression) are deferred (network
-# intermediary model harnessed lacks). See PLAN.md.
+# No skill (upstream ships none), no hooks, no service, no Dockerfile.
+#
+# TWO modes ship here. MCP-tools mode (below): the agent calls headroom_compress / _retrieve /
+# _stats on demand. Proxy mode (init.run, bottom): an optimization proxy binds 127.0.0.1:8787
+# before the harness starts and ANTHROPIC_BASE_URL is pointed at it — only when the user had
+# not already repointed it (the proxy has no upstream override; it targets the Anthropic API).
+# See PLAN.md.
 name: headroom
 description: >
   Context compression via the headroom MCP server — headroom_compress / headroom_retrieve /
   headroom_stats. On-demand JSON/code/structured compression (60–95% fewer tokens); originals
-  retrievable via CCR. MCP-tools mode only (no proxy).
+  retrievable via CCR. Plus a per-launch optimization proxy on 127.0.0.1:8787 (init.run) that
+  exports ANTHROPIC_BASE_URL when unset. Compression is never a launch blocker.
 # setup: none needed — local compression, no account or key, no image edit
 
 # --- MCP layer ---
@@ -48,3 +53,42 @@ mcp:
       transport: stdio
       env:
         HEADROOM_UPDATE_CHECK: "off"
+
+# --- Proxy mode (init.run) ---
+# init.run is SOURCED into the attach shell on EVERY launch (Model A), container and host alike,
+# and its exports reach the harness process (host: _host_run_inits + _propagate_init_env). That
+# is the one seam where a daemon starts BEFORE the harness with the agent env already pointed at
+# it — install.sh cannot (fingerprint-gated, once per stack, exports die inside a subprocess).
+#
+# Gate order:
+# 1. ANTHROPIC_BASE_URL already set → touch nothing. The proxy has no upstream override (it
+#    targets the Anthropic API), so a gateway user must not be hijacked.
+# 2. uvx absent (host without uv) → warn, continue. A port that never opens does the same: the
+#    background uvx keeps fetching and the NEXT launch finds the proxy up. Compression is an
+#    enhancement, never a launch blocker — a FAILING init aborts the attach, so every path here
+#    exits 0.
+# 3. Port 8787 already bound → reuse it; never double-spawn.
+#
+# Separate uvx env from the MCP server, same 0.27.0 pin: the proxy needs the [proxy] extra
+# (fastapi/uvicorn) — [mcp] cannot start it, verified: "Error: Proxy dependencies not installed.
+# Run: pip install headroom-ai[proxy]". Warm bind is ~5s; the FIRST-EVER spawn pays the PyPI
+# fetch (93 packages incl. transformers) in the background, and the NEXT launch finds the port
+# up — the wait window below only has to cover a warm start.
+init:
+  run: |
+    if [ -z "${ANTHROPIC_BASE_URL:-}" ]; then
+      if command -v uvx >/dev/null 2>&1; then
+        _hr_up() { (exec 3<>/dev/tcp/127.0.0.1/8787) 2>/dev/null; }
+        if ! _hr_up; then
+          HEADROOM_UPDATE_CHECK=off nohup uvx --from 'headroom-ai[proxy]==0.27.0' headroom proxy --port 8787 >/tmp/headroom-proxy.log 2>&1 &
+        fi
+        for _hr_i in $(seq 30); do _hr_up && break; sleep 0.5; done
+        if _hr_up; then
+          export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
+        else
+          echo "headroom: proxy not reachable on 127.0.0.1:8787 (log: /tmp/headroom-proxy.log); continuing without it" >&2
+        fi
+      else
+        echo "headroom: proxy mode needs uvx on PATH; continuing without it" >&2
+      fi
+    fi
