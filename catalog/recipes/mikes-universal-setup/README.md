@@ -12,7 +12,26 @@ rules until the split described in `recipe.yaml`: a rule earns permanent context
 violating it is silent or irreversible, and everything with a trigger legible in advance became a
 skill. The rules that referenced them keep a one-line pointer.
 
-Ships as rules + skills + an `install.script`. No MCP server, no Dockerfile.
+Ships as rules + skills + a guard hook + an `install.script`. No MCP server, no Dockerfile.
+
+## The dangerous-find guard hook
+
+`hooks:` declares one Claude-native `PreToolUse` hook (matcher `Bash`). The assembler merges it
+into the profile's `settings.json`; the script itself, `hooks/block-dangerous-find.py`, is copied
+next to it by `install.sh`. On every Bash call it parses the command, resolves each `find`
+starting path (including `~`/`$HOME` spellings, relative paths, and the implicit `.`, which blocks
+`find .` whenever the session's cwd is `/` or home), and exits 2 — Claude Code's block-and-show
+stderr contract, mapped to an omp `tool_call` block by the claude-hooks bridge — when a path
+resolves to `/` or a home directory.
+
+Blocked examples: `find /`, `find / -name '*.log'`, `sudo find "$HOME" -type f`, `/usr/bin/find ~`,
+`find "$HOME/"`, `find /tmp /`. It is deliberately conservative: paths constructed in a variable,
+aliases, and `env find` get past it — a pre-execution hook cannot analyze arbitrary shell
+indirection. It backs the `denied-commands` rule (never run the `find` binary in shell), which
+covers the general case; the hook covers the case where the rule is ignored.
+
+If the script is missing, the hook command exits 0 — a missing seatbelt fails open, because python
+would otherwise exit 2 on its own and block every Bash call in the session.
 
 ## Provenance
 
