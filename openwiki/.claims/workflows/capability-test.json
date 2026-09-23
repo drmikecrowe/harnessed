@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:162e6281cf15f1b63fa3704549cbe7f7285e45f1f8498568ffd3ee1c0d9fc537",
+  "pageVersion": "sha256:2269d3ad82e114c8e1a35a82640ccc584728de937d57e3c921a7adcf4e8c6282",
   "claims": [
     {
       "id": "claim_2fb8a606a96a4476af1bfd3cee8955d2",
       "statement": "The capability test's expectation set is derived from the manifest, never hardcoded: schema.expected_capabilities(stack, recipes) returns a Capabilities object unioning, per recipe, the assembler-visible surfaces (mcp.servers[].name plus the standalone fanned skills:/commands: dirs) with whatever the recipe declares via its expect: block (skills, commands, plugins, mcp), de-duplicated order-preserving.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/schema.py#L203-L217",
+          "resource": "repo://src/harnessed/schema.py#L205-L219",
           "version": "repo-lines-v1:sha256:50f5f694b8f4adde1b79c85c5390bc07d7dffd9473df8675baa1ae790fbff2b5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiYWMwZmEyOTY2OWRiMTlkMDVjZjFhNzAzN2MxMjFjYWI3NDc0Zjc1MzIwY2U2ZTI1OWQ3Y2JjZTFkNWI4M2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJjNTI3NzA2NWE0NWRmZmUzNWVlMjkyODVmOWIzM2JhNmI0YmM1MTY5OGMxY2NmMWNmOWYzMWM2ZTE5MzI5YTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhMmM2OWE0NjcxM2ZkNjk3YTE4MWQ1MGJlZjRkODAzMGZmOWE4NjI5YTZkZTI3YjFmOTBjM2RjZjkyMDg0MmUifQ"
         },
         {
-          "resource": "repo://src/harnessed/schema.py#L3313-L3347",
-          "version": "repo-lines-v1:sha256:45456cf402215ad9eaaa6511eb3e5d8fd159f227a0f96005506db6146082b667:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2ZmJhZTBiOTFkNDRmYzBkNDlmNWRlNjkxZGE2ZmM0MzFmMjYwMTM0YmY3MzFlMGUyMWY3NjQ4MDk0MzM0Y2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://src/harnessed/schema.py#L3527-L3553",
+          "version": "repo-lines-v1:sha256:8c33076dbbedb5f56e12e7e37538666c9a83b6c0d8e96632312022dc7e4af795:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4ZjkzOTg2YWFhYTBjN2FmOGVlZjJkMTAxZjg3MWFhZWQ5YmY1NDMxZTVjZGUwMGMxNjk1ZjI3ZDY0OTE1NTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFhNzdjOWY5NTVhMWVjMTBjYTUzYjJiZjQyYmIyMDZkYWU4ZmFiZGU3ZTA0MDk2ZTU1ZDQ3NTZkYmVhNWU3MWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -433,6 +433,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-20T12:51:12.657Z"
+    "at": "2026-09-23T13:20:55.348Z"
   }
 }

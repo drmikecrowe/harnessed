@@ -6,6 +6,8 @@ tags: [harnesses, claude, omp, opencode, antigravity, codex, hatago, mcp, agent-
 sources:
   - id: openwiki-source-485d0e59d600803dc64867c3
     resource: repo://catalog/agents/antigravity/agent.yaml
+  - id: openwiki-source-e5bf46666000bd68717f274f
+    resource: repo://catalog/agents/claude/agent.yaml
   - id: openwiki-source-f33dd129340a2a04d06bf5d7
     resource: repo://catalog/agents/codex/agent.yaml
   - id: openwiki-source-e97e467aad41adb4abb9095b
@@ -32,18 +34,16 @@ sources:
     resource: repo://src/harnessed/hostrun.py
   - id: openwiki-source-ecbe6256d6933ca2c8c9678f
     resource: repo://src/harnessed/launcher.py
-  - id: openwiki-source-543fcb721a3a990cb4f9dbbb
-    resource: repo://src/harnessed/layout.py
   - id: openwiki-source-9e1601e7fac817552c717cd7
     resource: repo://src/harnessed/mounts.py
   - id: openwiki-source-7536da5c015fc2813c7693c5
     resource: repo://src/harnessed/schema.py
   - id: openwiki-source-dedbae614432467fbfc419d9
     resource: repo://src/harnessed/update.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-21T14:50:01.893Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-23T13:20:55.348Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-21T14:50:01.893Z
+    at: 2026-09-23T13:20:55.348Z
 ---
 
 # Harness integrations: one canonical profile, five readers
@@ -151,9 +151,9 @@ is a Dockerfile ARG name, and its value may be a scalar or a mapping:
 
 ```yaml
 build_args:
-  CODEX_VERSION: {value: "0.154.0", spec: "npm:@openai/codex"}   # resolvable — update can offer a bump
-  BUN_VERSION: {value: "1.3.14", hold: "unqueryable: …"}          # pinnable but not resolvable — held
-  OMP_VERSION: "18.1.13"                                          # scalar — stringified, same validation
+  CODEX_VERSION: {value: "0.155.1", spec: "npm:@openai/codex"}     # resolvable — update can offer a bump
+  OMP_VERSION: {value: "18.2.7", spec: "github:can1357/oh-my-pi"}  # resolvable via the github backend
+  BUN_VERSION: {value: "1.3.14", hold: "unqueryable: …"}           # pinnable but not resolvable — held
 ```
 
 `load_agent` flattens both shapes to plain `NAME -> value` strings, so every downstream reader sees
@@ -163,16 +163,23 @@ for `harnessed update` (never a second installer — the Dockerfile performs the
 freeze with a mandatory stated reason. `unpinnable:` is the top-level concession mapping
 (`NAME -> reason`, same ARG-name namespace as `build_args`, so "declared in both" is a reachable
 error, not a vacuous one): an entry there never reaches `--build-arg`, because it names an ARG the
-Dockerfile does not declare. antigravity is the worked example — no `build_args` at all, everything
-under `unpinnable:` with the reason naming the integrity mechanism that blocks pinning.
+Dockerfile does not declare. Two harnesses are conceded this way — antigravity, the worked example
+(no `build_args` at all, every acquisition under `unpinnable:` with the reason naming the integrity
+mechanism that blocks pinning), and, since the owner's **2026-09-23 decision reversal**, claude:
+its manifest dropped the held 2.1.223 pin entirely and moved `CLAUDE_VERSION` to `unpinnable:`
+because downloads.claude.ai exposes moving channel pointers no resolver backend can query —
+harnesses track their vendor's latest release by policy, so the claude image installs the current
+stable and moves only on a human rebuild. codex and omp remain pinned (codex's pin is resolvable
+via npm; omp's `OMP_VERSION` via github, its `BUN_VERSION` held as unqueryable).
 
 Consumption sites:
 
 - `launcher._agent_build_arg_flags` turns `Agent.build_args` into the `--build-arg` list; the
   agent Dockerfile's ARGs carry **no defaults**, so a pin change here cache-busts exactly the version
   layer. `_build_agent_image` builds the image at most once per process (N stacks sharing a harness
-  share one agent image), and even bare `harnessed build` passes claude's manifest args, because the
-  claude image is itself an agent image.
+  share one agent image), and even bare `harnessed build` passes claude's manifest args — empty
+  today since the 2026-09-23 concession, but the argv boundary stays because it is the invariant:
+  omitting the flags there once made `harnessed build` fail while the per-stack path went green.
 - `assemble.validate_agent_image` lints the agent's Dockerfile the way `validate_pin` lints a
   recipe's, at **both** build sites plus `assemble()` — a gate with a documented way around it gets
   walked around. It fails closed: an unreadable Dockerfile is not an agent that passes.

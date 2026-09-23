@@ -4,10 +4,14 @@ title: "Build pipeline: from stack and harness to profile, images, and populated
 description: "The end-to-end harnessed build: in-process emit-only assembly, the staged podman build context, the base/agent/derived image lineage, fingerprint-gated volume population, the baked-settings merge, and the two scan passes — naming the module that owns each stage and the exact order they run in."
 tags: [build, assemble, emit, profile, derived-image, agent-image, build-context, cache-mounts, recipe-hash, volumes, parallel-builds, scan, podman]
 sources:
+  - id: openwiki-source-e5bf46666000bd68717f274f
+    resource: repo://catalog/agents/claude/agent.yaml
   - id: openwiki-source-e916c387e9195be48f6d9d41
     resource: repo://catalog/base/Dockerfile.harnessed-base
   - id: openwiki-source-3825905815efff0287628e28
     resource: repo://catalog/base/Dockerfile.harnessed-claude
+  - id: openwiki-source-847694293edccc1d5cba4d95
+    resource: repo://catalog/base/Dockerfile.harnessed-codex
   - id: openwiki-source-c799522f988c7842c7395388
     resource: repo://catalog/base/harnessed-scan
   - id: openwiki-source-c45652791b6bc8bb3a3f3d3e
@@ -44,10 +48,10 @@ sources:
     resource: repo://tests/test_build_cache_mounts.py
   - id: openwiki-source-f725ea11f1806a58b06d7f3e
     resource: repo://tests/test_launch_parity.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-21T14:50:01.893Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-23T13:20:55.348Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-21T14:50:01.893Z
+    at: 2026-09-23T13:20:55.348Z
 ---
 
 # Build pipeline: from stack and harness to profile, images, and populated volumes
@@ -90,7 +94,7 @@ flowchart TD
     dock --> fan["synclinks.LinkSyncer.fan - skills commands rules into .claude"]
     fan --> identity["stack identity per harness, then staleness.write_stamp written last"]
     identity --> base["Stage 5 launcher._build_base_image - hatago and the scanners are baked here"]
-    base --> agent["launcher._build_agent_image - pin-gated build args from agent.yaml"]
+    base --> agent["launcher._build_agent_image - build args from agent.yaml, pinned or unpinnable"]
     agent --> rh["Stage 6 assemble.compute_recipe_hash"]
     rh --> derived["launcher._build_derived_image - labels harnessed.recipe-hash"]
     derived --> vols["Stage 7 volumes._ensure_stack_volumes - fingerprint-gated installs"]
@@ -317,11 +321,22 @@ Dockerfile is the source of truth, and it contains no scan layer.
   would silently propagate into all of them.
 - `_build_agent_image(rt, harness)` → the per-harness agent image, named by
   `catalog/agents/<harness>/agent.yaml`'s `image:` field, resolved by `layout._agent_image`. The
-  manifest's `build_args` are the single source of pinned versions, passed as `--build-arg` by
-  `_agent_build_arg_flags`; the agent Dockerfiles' `ARG`s carry **no defaults** and guard with
-  `:?` — an empty `CLAUDE_VERSION` is never a valid pin, so a build path that omits the flag fails
-  rather than handing the installer an empty argument and accepting whatever it decides that means.
-  Built at most once per process (N stacks sharing a harness share one agent image).
+  manifest is the single source of version pins, and it speaks in two shapes:
+  - **Pinned harnesses** (codex, omp, opencode): the manifest's `build_args` are passed as
+    `--build-arg` by `_agent_build_arg_flags`; the agent Dockerfiles' `ARG`s carry **no defaults**
+    and guard with `:?` — an empty `CODEX_VERSION` would make mise read "newest", so an omitted flag
+    fails rather than silently restoring the floating install the pin exists to remove.
+  - **Conceded harnesses** (claude, antigravity): since the owner's 2026-09-23 decision ("harnesses
+    track their vendor's latest release"), `agent.yaml` declares `unpinnable:` instead of
+    `build_args:`, and `Dockerfile.harnessed-claude` runs the installer with **no version argument**
+    (there is no queryable upstream registry to resolve a pin against). `_agent_build_arg_flags`
+    contributes nothing for an `unpinnable:` entry — it names an ARG the Dockerfile does not declare
+    — so claude moves on every rebuild of its image. `validate_agent_image` passes the manifest's
+    `unpinnable` set to `validate_agent_pin`, which knows the difference.
+
+  `validate_agent_image(harness)` is re-applied here (not only inside `assemble()`): this is a build
+  site, and the lazy per-harness path arrives without assembling anything. Built at most once per
+  process (N stacks sharing a harness share one agent image).
 - `_build_derived_image(rt, derived, dockerfile, ctx, recipe_hash)` →
   `harnessed-<harness>-<stack>:latest` from the emitted Dockerfile. It labels the image
   `harnessed=true` (how `rescan` finds it) and `harnessed.recipe-hash=<hash>`, and **never** passes
@@ -344,10 +359,11 @@ Dockerfile bodies then append on top of the agent's layers. This is why the orde
 `--build-arg` at all — the emitter's in-file `ARG HARNESS=<harness>` default is what makes the tag
 resolve.
 
-The cache consequence is the one to hold onto: an agent pin bump produces a new parent image, which
-invalidates the cached layers of every derived stack image built `FROM` it — each stack's expensive
-recipe layers (the apt/root bodies the volumes cannot carry) rebuild for a change that touched no
-recipe.
+The cache consequence is the one to hold onto: a new parent image — an agent pin bump for a pinned
+harness, or **any rebuild at all** for a conceded one like claude, which now tracks the vendor's
+current stable — invalidates the cached layers of every derived stack image built `FROM` it; each
+stack's expensive recipe layers (the apt/root bodies the volumes cannot carry) rebuild for a change
+that touched no recipe.
 
 **The repo disagrees with itself about the lineage, and the code sides with the parent lineage.**
 Three launcher comments (`_build_base_image`'s docstring, `_build_agent_image`'s NOTE, and the block in
@@ -515,11 +531,14 @@ closure: the `stack.yaml` bytes, every file under each recipe directory (sorted 
 referenced service directory. Service names come from the same three sources `_service_refs` uses —
 `recipe.servers[].service`, `recipe.services`, and the stack's own `services:` — because an edit to
 a service's Dockerfile or entrypoint must move the hash just as a recipe edit does. Each service
-contribution is **length-prefixed** (4-byte name length, 8-byte content length) so a file `a/b`
-with content `c` cannot collide with file `a` with content `bc`, and the service **name** is framed
-in too, because the file paths are relative to the service dir and two same-content services would
-otherwise be indistinguishable. Catalog roots are searched in the same order the runtime resolves
-them (user overlay wins on a name clash).
+contribution is **length-prefixed field by field** — the service name and every file's relative
+path as 4-byte lengths, the file contents as an 8-byte length — so a file `a/b` with content `c`
+cannot collide with file `a` with content `bc`, and the service **name** is framed in too, because
+the file paths are relative to the service dir and two same-content services would otherwise be
+indistinguishable. Catalog roots are searched in the same order the runtime resolves them (user
+overlay wins on a name clash), and a service root is only accepted on a **marker, not a bare dir**:
+a candidate must contain `services/<name>/service.yaml`, so a hollow overlay directory cannot shadow
+the real repo copy and make the hash cover an empty tree while the runtime loads the repo one.
 
 The hash is stamped as the **`harnessed.recipe-hash` image label** by `_build_derived_image`, not
 kept in a side-file manifest, so **the hash can never drift from the image it describes**.
@@ -578,7 +597,8 @@ mount whose gate was mere existence. The rule to keep: **never mount a profile d
 config subtree**.
 
 The populate step must use the **same userns mapping as the pod** (`paths.userns_args(rt)` —
-`--userns=keep-id:uid=1000,gid=1000` on podman, runtime-appropriate on docker): a volume first
+`--userns=keep-id:uid=1000,gid=1000` on podman, `--userns=host` on docker, which has no
+`keep-id`): a volume first
 populated under the default userns is unusable by the agent — uid 1000 inside reads the files as
 owner 999 and every write EACCESes. On **docker**, where a newly created named volume is born
 `root:root`, `volumes._chown_volume_for_docker` chowns a freshly created volume to
@@ -721,10 +741,11 @@ argument as above, applied to the fan-out rather than inside it.
 
 ## Bare `build`: the reconciliation loop
 
-`harnessed build` with no stack runs `_build_images_cmd` (base + claude, with
-`validate_agent_image("claude")` re-applied because this path builds an agent image without going
-through `assemble()` — a gate with a documented way around it is a gate that will be walked around),
-then `_reconcile_stacks`:
+`harnessed build` with no stack runs `_build_images_cmd` (base + claude — claude's build args are
+taken from its manifest exactly as `_build_agent_image` would, which since the 2026-09-23 concession
+is an empty list today, with `validate_agent_image("claude")` re-applied because this path builds an
+agent image without going through `assemble()` — a gate with a documented way around it is a gate
+that will be walked around), then `_reconcile_stacks`:
 
 1. `_stale_pairs` collects pairs in scope: every **declared** `(stack, harness)` from each stack's
    `harnesses:` list (these build even with no image yet — how a bare build provisions a newly

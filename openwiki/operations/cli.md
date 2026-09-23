@@ -40,10 +40,10 @@ sources:
     resource: repo://systemd/harnessed-rescan.timer
   - id: openwiki-source-42c2d17b3e89eec55f2e4419
     resource: repo://tests/test_update_cli.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-21T14:50:01.893Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-23T13:20:55.348Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-21T14:50:01.893Z
+    at: 2026-09-23T13:20:55.348Z
 ---
 
 # Operations: the command surface and lifecycle verbs
@@ -466,8 +466,14 @@ Two bounds frame the scans, both chosen against recorded incidents:
 ## `update`: pin maintenance
 
 `harnessed update` sweeps every resolvable pin in the catalog — recipe `tools:` entries, **agent
-manifests**, and the base image's `extra-tools` list — resolves latest versions through the pin's
-backend (npm / PyPI / GitHub releases / mise), and offers bumps. The design's invariants:
+manifests**, and the base image's `extra-tools` list (the shipped `extra-tools.default.txt`
+template, not the user's host file — a bump has to land as a reviewable diff) — resolving latest
+versions through the pin's backend (npm / PyPI / GitHub releases / mise), and offers bumps. Both
+sources are gathered **before** the empty-catalog guard, so a catalog of agents and no recipes
+still reports its pins (including unpinnable ones) instead of a green `--check` over pins nobody
+has looked at. Resolution goes **through the module attribute**
+(`pinupdate.resolve_releases`), so a test or a future offline mode can swap the resolver. The
+design's invariants:
 
 - **Five buckets, all printed even in `--check`**: *stale* (offered), *cooling* (newer exists but
   is younger than the release-age window — shown with its age, because "wait" should be a decision
@@ -490,17 +496,35 @@ backend (npm / PyPI / GitHub releases / mise), and offers bumps. The design's in
   gates. `any` stays the default so the interactive caller and every existing test keep today's
   behaviour.
 - **The release-age cooldown** (`--minimum-release-age`, default 10080 minutes = 7 days, pnpm's
-  `minimumReleaseAge` semantics and unit): a compromised or broken publish is usually yanked
-  within days. A too-fresh newest release does not mean "no update" — the newest version that *is*
-  old enough is offered instead, and the skipped newer one is named.
+  `minimumReleaseAge` semantics and unit; `0` disables the gate): a compromised or broken publish is
+  usually yanked within days. A too-fresh newest release does not mean "no update" — the newest
+  version that *is* old enough is offered instead, and the skipped newer one is named. An undated
+  release is never selectable (the age guarantee cannot be honoured for it) and lands in
+  *unresolved* with that reason.
+- **HARNESS pins are the exception** (owner decision, 2026-09-23 — a harness tracks its vendor's
+  latest, "we need to trust their release process"): agent pins discovered from agent manifests ride
+  their own shorter window (`HARNESS_MINIMUM_RELEASE_AGE_MINUTES = 2880` = 2 days), and for them
+  the window is a **preference, not a gate**: when every newer release is younger than even that
+  (or undated), the newest is offered anyway and the finding is flagged `fresh` — rendered with its
+  age in the report *and* carried into the interactive prompt, so accepting it is an informed
+  decision (`--yes` still has the record printed above it). Harness pins never park in *cooling*;
+  recipe and extra-tools pins keep the full 7-day gate. An explicit `--minimum-release-age`
+  overrides both windows, keeping the flag one knob for every pin.
 - **Interactive mode prompts per pin** (`Bump <recipe> <spec>: <current> -> <latest>?`, default
-  yes); `--yes/-y` accepts every offered bump without prompting — but even `--yes` cannot write
-  a cooling pin: `apply` refuses those outright, so a caller that hands it the wrong bucket
-  still cannot install a too-fresh version. Held pins are never prompted for at all.
+  yes, a fresh harness bump appending its age); `--yes/-y` accepts every offered bump without
+  prompting — but even `--yes` cannot write a cooling pin: `apply` refuses those outright, so a
+  caller that hands it the wrong bucket still cannot install a too-fresh version. Held pins are
+  never prompted for at all (the hold outranks the age gate: a held pin is never offered whatever
+  its age, but is still listed with whatever newer version exists).
 - **`apply` is an allow-list of per-file rewriters**, not an else-branch to a text rewriter: YAML
-  round-trippers for recipe/agent manifests, a plain-text rewriter for the extra-tools list, and
-  **an unrecognized file is skipped** rather than naively line-edited — the fail-closed posture
-  that costs a bump nobody asked for instead of a corrupted catalog file.
+  round-trippers for recipe/agent manifests (field-valued pins — an agent's `build_args` value, a
+  recipe `install.ref` — get their own round-tripping rewriters, because a spec-string swap cannot
+  reach them and a bump would be offered, accepted, and silently never written), a plain-text
+  rewriter for the extra-tools list, and **an unrecognized file is skipped** rather than naively
+  line-edited — the fail-closed posture that costs a bump nobody asked for instead of a corrupted
+  catalog file. A recipe that ships a `mise.lock` is **relocked as part of the same write** (once
+  per manifest, after the loop, from the finished manifest) — the pin and the checksums beside it
+  are one fact.
 - **After writing**, the verb names the bumped recipes, the affected stacks, and prints the literal
   `harnessed build`/`harnessed test` commands to verify before committing — a bumped pin is a code
   change like any other, and printing the commands is the difference between a reminder and a task

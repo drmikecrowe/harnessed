@@ -3,6 +3,9 @@ type: architecture
 title: "The host secrets broker: one varlock proxy per instance (Topology B)"
 description: "The two places host credentials enter a launch: the varlock secrets broker (Epic #388 Phase 1, Topology B) with its @proxy plus --no-secrets gate, pasta door at 169.254.1.1 and no-leak lifecycle record; and credmounts.py, which references the host's live credential stores (1Password agent, gpg-agent, YubiKey, gh, git identity) into the container as -v/-e/--device args without ever copying secret material."
 tags: [secrets-broker, varlock, credential-proxy, topology-b, pasta, egress-firewall, teardown, reconcile, no-secrets, pod, credmounts, ssh-agent-forwarding, yubikey]
+verified:
+  - by: openwiki/0.5.1
+    at: 2026-09-23T13:20:55.348Z
 sources:
   - id: openwiki-source-f82224b7b5b27300d9ecc2dc
     resource: repo://catalog/base/egress-firewall.sh
@@ -33,9 +36,6 @@ sources:
   - id: openwiki-source-bbf9cc1f144f5efff8ae1505
     resource: repo://tests/test_module_boundaries.py
 generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
-verified:
-  - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
 ---
 
 # The host secrets broker: one varlock proxy per instance (Topology B)

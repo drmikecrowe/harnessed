@@ -16,8 +16,6 @@ sources:
     resource: repo://catalog/recipes/serena/setup.sh
   - id: openwiki-source-df8a875728326c7711bc5325
     resource: repo://catalog/recipes/superpowers/install.sh
-  - id: openwiki-source-c45652791b6bc8bb3a3f3d3e
-    resource: repo://src/harnessed/assemble.py
   - id: openwiki-source-085f2349c58adb4062c2803f
     resource: repo://src/harnessed/broker.py
   - id: openwiki-source-0f0f277c40d34909acb07908
@@ -44,12 +42,14 @@ sources:
     resource: repo://src/harnessed/volumes.py
   - id: openwiki-source-2d6ad5b59b5bca036a93519d
     resource: repo://tests/test_claude_container_auth.py
+  - id: openwiki-source-568f82b2292ea5e02ccb4db8
+    resource: repo://tests/test_install_script.py
   - id: openwiki-source-f725ea11f1806a58b06d7f3e
     resource: repo://tests/test_launch_parity.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-18T12:41:13.644Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-23T13:20:55.348Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
+    at: 2026-09-23T13:20:55.348Z
 ---
 
 # The env contracts: launch env, folder env, and install env across both modes
@@ -408,6 +408,12 @@ the host via `os.environ`.
   recipe `env:` passed **first** among the `-e` block and harnessed-owned values later.
 - Host mode: `env.update(install_env(...))` runs after `env.update(recipe_env)`, and
   `os.environ.update(harnessed_env(...))` runs after `os.environ.update(_recipe_env(...))`.
+
+`tests/test_install_script.py::TestPrecedence` locks this in **as ORDER, not values**: the container
+test asserts the merged `-e` argv carries `HARNESSED_MODE=container` and not the recipe's attempted
+override, the host test asserts `env.update(recipe_env)` textually precedes `emit.install_env(` in
+`_host_run_installs`'s source, and a third test runs a real install to confirm the contract actually
+wins on the host.
 
 The two orderings are not independent facts: reversing either one **silently inverts precedence
 between the modes**, which is the harnessed-8px.2 merge defect and the same reason the delivery

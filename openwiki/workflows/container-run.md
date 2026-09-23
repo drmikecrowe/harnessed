@@ -50,10 +50,10 @@ sources:
     resource: repo://tests/test_broker_pod_args.py
   - id: openwiki-source-f725ea11f1806a58b06d7f3e
     resource: repo://tests/test_launch_parity.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-23T13:20:55.348Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
+    at: 2026-09-23T13:20:55.348Z
 ---
 
 # Container launch: `container-run` end to end
@@ -198,11 +198,19 @@ After resolution, before any podman write:
 0. `_require_supported_harness(harness)` — `schema.HARNESS_CONFIG_DIR` is the accepted set
    (claude, omp, opencode, antigravity, codex).
 1. `--no-firewall` sets `os.environ["NO_FIREWALL"] = "true"` — the opt-out from the egress firewall.
-2. `--no-secrets` sets `os.environ["NO_SECRETS"] = "true"` — the opt-out from the host secrets
+2. `_preflight_runtime(rt)` — docker only, before anything is created (#456): a **rootless docker daemon
+   is refused** with an actionable message, because the container's uid 1000 would be drawn from a
+   subuid range harnessed cannot predict and every file written through a bind mount would land owned
+   by an unreadable id. A rootful daemon accepts any invoking uid (`--user` handles the mapping, which
+   is why every GitHub runner at uid 1001 works), and podman is unconditionally fine — `USERNS_ARG`
+   names the mapping outright. `persist.guard_ownership` already refuses such a mapping, but only
+   where it is consulted, and a stack with no `persist:` entries would otherwise run all the way into
+   the bind-mount failure.
+3. `--no-secrets` sets `os.environ["NO_SECRETS"] = "true"` — the opt-out from the host secrets
    broker, read through the same env mechanism and truthy for `1`/`true`/`yes`. Parallel to
    `--no-firewall` by design: the launch keeps working, with secrets resolved into the container env
    as they always were.
-3. `anchor_path` (`path` or cwd) must exist. Then `_resolve_start_dir` runs **first** (launcher →
+4. `anchor_path` (`path` or cwd) must exist. Then `_resolve_start_dir` runs **first** (launcher →
    `attachcmd._resolve_start_dir`): the "project" is wherever the agent *starts*, and everything
    downstream — instance identity, persist keys, `container -w` — keys on the resolved `start_dir`.
    `launch main --agent-start-folder sub` and `(cd main/sub && launch main)` are therefore the same
@@ -232,7 +240,7 @@ After resolution, before any podman write:
    which can block — a user should not answer a prompt without having seen the gap.
 9. `_prompt_setup_notices` — the `[O]k / [T]erminal / [D]ismiss / [Q]uit` prompt over user-facing
    `setup:` notices. `[T]erminal` ORs `--shell` on.
-10. `_validate_direct_servers(launch_servers, harness)` — **the rule the container path enforces at
+11. `_validate_direct_servers(launch_servers, harness)` — **the rule the container path enforces at
     launch because it never assembles.** `assemble`'s guard against a `direct:` server on a harness
     that cannot honour one runs on the build path and the host path, both of which assemble. An
     image built *before* a recipe gained `direct:` reaches launch with servers the harness will

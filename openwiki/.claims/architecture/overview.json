@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:15bcd149c39f00d10812f2839eca6300215a74a7da067aaa236c6bdbbd4bfa8f",
+  "pageVersion": "sha256:9f5b2e5ccc0fbf1b0e92645b55d62accf1d5dc3722e7aa81be981c76d9f4e8e5",
   "claims": [
     {
       "id": "claim_2fd6b866ccaa44049f2b3f72a0bceff7",
@@ -270,31 +270,27 @@
     },
     {
       "id": "claim_05719e9a24584517b31906915e04236a",
-      "statement": "schema.py, synclinks.py, emit.py, assemble.py, and staleness.py form the emit-only assembly chain: schema parses and validates manifests into typed objects (unknown fields preserved on .raw), synclinks fans recipes' skills/commands/rules into .claude/ failing fast on name collisions, emit writes the profile artifacts (.mcp.json, settings floor, hatago.config.json, derived Dockerfile), assemble orchestrates and runs the fail-fast authoring gates plus the recipe-closure hash, and staleness owns the .build-stamp — none of the five invokes podman/docker or touches a daemon socket.",
+      "statement": "schema.py, synclinks.py, emit.py, assemble.py, and staleness.py form the emit-only assembly chain: schema parses and validates manifests into typed objects (unknown fields preserved on .raw), synclinks fans recipes' skills/commands/rules into .claude/ failing fast on name collisions, emit writes the profile artifacts (.mcp.json, settings floor, hatago.config.json, derived Dockerfile), assemble orchestrates the chain, runs the fail-fast authoring gates (including pin lint on both recipe and agent Dockerfiles) and stamps the profile last via staleness.write_stamp, and staleness owns the .build-stamp (compute_stamp = harnessed version + stack.yaml bytes + recipe dirs). The separate recipe-closure hash (assemble.compute_recipe_hash, which additionally covers referenced service directories with length framing) is computed by callers — launcher.py stamps it as the harnessed.recipe-hash image label and hosthome.py uses it in the host tool-tree stamp — not inside assemble(). None of the five modules invokes podman/docker or touches a daemon socket.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/assemble.py#L1-L12",
-          "version": "repo-lines-v1:sha256:3b6a6e56be558a1c5f053e54398da6c6b7eb420fcedb43a210cb15f98701c7e3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkMTZmNTcxZGZhNmM0MmVhOGU5MmI0YTg3NDljOGMzMzVlNmMyOWRiODkxNTJmMGI5MWZjZTNiMzhjZTZlNzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1YjZlODcwNmI0MzA0N2YyYTZkYjY3ZjEzMjYzODU5NTYwNGU2N2YzNjk2Njg3NmNlMDE1OGYwMDUzZTZiZDEifQ"
+          "resource": "repo://src/harnessed/assemble.py#L253-L378",
+          "version": "repo-lines-v1:sha256:3578c1b777e265d286c31b5135ea2f35212982fc9ff013bf94f67d72ddfa7573:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4Mzk0NDAwMDc3MjBkOGQ5OGYxMmUyNTNlNTFiOWUyMTY0NGQwZDg0MTEyYzYyMTllYjBlYzk3Y2JlYTEwNjBiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzMGMxZjE4OGYxNDJlZDdhODI0NjgwYjIwNzE3MmM1NTE5YmM2MTRhNDhmZGE3Y2YxNjdlZGI4ZGRmNzk5NTZjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4Y2M0YTdkMWNjNzk2YWJhM2U0NjcyMzMyN2Y1MTdlOWY4MTE5ODJkMjUwZjA3MDI5ODZlNGI1NzY0YWQ5NTg5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         },
         {
-          "resource": "repo://src/harnessed/assemble.py#L249-L358",
-          "version": "repo-lines-v1:sha256:5d951aa0627535ff57d249d74c616de14a12a8b7da8a5165443df358be349fa8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4Mzk0NDAwMDc3MjBkOGQ5OGYxMmUyNTNlNTFiOWUyMTY0NGQwZDg0MTEyYzYyMTllYjBlYzk3Y2JlYTEwNjBiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMDhhYThjZmNmMTUwZGZmY2ZlM2JjYzNjMTUzMTdkY2NiYjRjOWNjMmI4NTFkZDk1MzhmNzk2MmJhMDQ5Mjc1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4Y2M0YTdkMWNjNzk2YWJhM2U0NjcyMzMyN2Y1MTdlOWY4MTE5ODJkMjUwZjA3MDI5ODZlNGI1NzY0YWQ5NTg5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4MzJiZWRkYWY1YWZkOTUxNzMzOTUyY2RhMGQ2M2I1ODkzNjY3NDZmZjliZTE3OWY3YTUzYzY1NGZhOWM5NjQ1In0"
+          "resource": "repo://src/harnessed/assemble.py#L56-L69",
+          "version": "repo-lines-v1:sha256:b8a8164e21ed7a816b108bee8b50629e00c9f6af6e722675dc62b2ac70ba5cc8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4MmVlOTFkNTQxMjI3YjU5YmM0YjYzMWRmYTg1OGZlOThkOGIyNjc1NDIyOTE3NjZiM2RlNWIzM2UxNWY1NDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg5MzQ0ZDg5NmM1ZWZkMDk5ZjVjZWE3ZGUzMDU1MWI0YTMzN2JjOGZhZjRiYTFlZDRjM2ZkMDZiNTQwOGViNjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQyOGUxNWU4OWIxMDFhMmQwOGZkN2UzNTY3YTAwNDViMDNkNDY5ZDQ0NDQ2MjhmNGU4MWNlZTEyYmE5NTIxNTUifQ"
         },
         {
-          "resource": "repo://src/harnessed/emit.py#L1-L12",
-          "version": "repo-lines-v1:sha256:3d2bbd1c31cab1e9fa33e2fc0b6dd3ae190353f42602dc04d78ec7d8a900b996:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkYTcxYzlhMzYwMzI5YzExYWZjY2I0MGY0NTdhZDFhODYxZjBjYTA5ZTlhNmQ3ZjcxOThkNTIzZmY5YmZmMTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1YjZlODcwNmI0MzA0N2YyYTZkYjY3ZjEzMjYzODU5NTYwNGU2N2YzNjk2Njg3NmNlMDE1OGYwMDUzZTZiZDEifQ"
+          "resource": "repo://src/harnessed/hosthome.py#L46-L46",
+          "version": "repo-lines-v1:sha256:c4cca799cdbaef0fa529603bdb8a405b761e9897e3355200e5c8d584a2174b86:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzRjY2E3OTljZGJhZWYwZmE1Mjk2MDNiZGI4YTQwNWI3NjFlOTg5N2UzMzU1MjAwZTVjOGQ1ODRhMjE3NGI4NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzRjY2E3OTljZGJhZWYwZmE1Mjk2MDNiZGI4YTQwNWI3NjFlOTg5N2UzMzU1MjAwZTVjOGQ1ODRhMjE3NGI4NiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzhjODM5NjAyYTYwZDRlZWQzODE0ZTNkMWJkMTEyNTdiODVlMDE5NTBhMjU1MGMxOGYxZjhhM2IwODgxZWNjYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWJkZjNkNDk2OTI5OWE5YmNjMmY4NzM5ZmU4MjgyNjMxZDE2ODJhZGYwNjhiM2Q4MzE0MGZiYTRmOGQ4ZmUzNSJ9"
         },
         {
-          "resource": "repo://src/harnessed/schema.py#L1-L14",
-          "version": "repo-lines-v1:sha256:408e986e9d8fa51b13c370cac08cb921341a5a2e3085977eb7fd8a997d6a6891:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5YjA3OWJlMDM5N2E5ZjcxYzczNjJkMzgyMmJlODA4MDk5NDBhOWFiZmFmYTIyYjZhY2M1NzFkODFkNjdjNGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1YjZlODcwNmI0MzA0N2YyYTZkYjY3ZjEzMjYzODU5NTYwNGU2N2YzNjk2Njg3NmNlMDE1OGYwMDUzZTZiZDEifQ"
+          "resource": "repo://src/harnessed/launcher.py#L713-L713",
+          "version": "repo-lines-v1:sha256:115aa25ba1c66e1a4d7da0079feda6acbc8b898dddcd832ed2b4df23d2794d23:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTE1YWEyNWJhMWM2NmUxYTRkN2RhMDA3OWZlZGE2YWNiYzhiODk4ZGRkY2Q4MzJlZDJiNGRmMjNkMjc5NGQyMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTE1YWEyNWJhMWM2NmUxYTRkN2RhMDA3OWZlZGE2YWNiYzhiODk4ZGRkY2Q4MzJlZDJiNGRmMjNkMjc5NGQyMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGE2NGMzOThhOTEzZDY1MWZhOTdhOTY1YmMxNTQxZTgzNGEzMTY0M2I2YWI2ZjI5YzgwZTBhNjYxMDgzOTQ0ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzRhOTk3MzgyMzM1NTM3MzRjNzc2M2M4OTE5OTY1YmM5ZTY1MjdjZTljZmU5ZjJiZGIxZjcyMzUzMjM0NzMzMSJ9"
         },
         {
-          "resource": "repo://src/harnessed/staleness.py#L1-L15",
-          "version": "repo-lines-v1:sha256:25c40ffb3361e95b4579cb14759ce289a2d9a6ac99af23160019135c7130d7e1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0MmM2MTVlMGM3OTJkNzAyMjE0ZWYyNTZlNjA1MzE5Yzc2MGZiMDI3YTM4YzU2OGJjNDY2YzQ1MmQ1OTFhZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1YjZlODcwNmI0MzA0N2YyYTZkYjY3ZjEzMjYzODU5NTYwNGU2N2YzNjk2Njg3NmNlMDE1OGYwMDUzZTZiZDEifQ"
-        },
-        {
-          "resource": "repo://src/harnessed/synclinks.py#L1-L10",
-          "version": "repo-lines-v1:sha256:6b381f83734920a45ff550415b36f568f497b08819bcb0af7cb6eb9bd01ba16c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5YzEzOTRhZTE0ZGQxZGFlMzFhODFhNjAwM2NjYzUxNmM5NjE1ZDQ2OWY3ZTU4MDlkMjJiMDg4YTUzMTkyMmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1YjZlODcwNmI0MzA0N2YyYTZkYjY3ZjEzMjYzODU5NTYwNGU2N2YzNjk2Njg3NmNlMDE1OGYwMDUzZTZiZDEifQ"
+          "resource": "repo://src/harnessed/staleness.py#L52-L74",
+          "version": "repo-lines-v1:sha256:743c86e7e5bcbc7db49fbd558948cde1ec53bc2464808031d8d2c1620d8e18ff:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhYzI5NGMwNmNkNWFjZDA0YjA4NzY2ZTI3OWIwNGM4MGU3ZjE2YmZlZmMyYThmMGMxY2RjNjc3ZjhmYjA3YTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2MzRjYWY4Y2MyODYzY2ZkYjkyNDg0NWEyMWZhN2M3N2VlNDU1NzgyZGUxNWZlMTY2ZTBkOTEyZGNkNzUxODAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEzYTc1MjMwZjY5MmZjMTMwYzNjNGFkZDQzYTM2YmQ4OTQxNDJkNjNiNzRkZTkwZTAwYThjOWI5MjdkNTE4YmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY2Zjc3ODk2ZWUyYzE2MzBmMGY5YzgyMTY4YzcyMWJiMTQ0NDA4YjU2NmMwNDU5YWExNTZkMDBiMzRkOTRiYmEifQ"
         }
       ]
     },
@@ -719,6 +715,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-20T12:51:12.657Z"
+    "at": "2026-09-23T13:20:55.348Z"
   }
 }

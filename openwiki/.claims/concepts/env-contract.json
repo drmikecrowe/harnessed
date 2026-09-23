@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7ffeaac3b312b9f6e55a97d78d97f597295143c7d4d175fc4fe8ad3dec9a096a",
+  "pageVersion": "sha256:11cc2bc565e3b907753ac3381435588ec16ef4a024339af6fe4058adf5755ddf",
   "claims": [
     {
       "id": "claim_89b9018576c54312a09266c5c908552c",
@@ -365,12 +365,12 @@
       "statement": "Catalog lints guard the contracts' boundaries: validate_no_claude_writes rejects a recipe Dockerfile referencing ~/.claude (that content is invisible to a host launch and hidden by the profile bind-mount in a container — it belongs in install.script writing $HARNESSED_CONFIG_DIR), and validate_container_only_declared rejects a recipe with an install: whose Dockerfile still has a RUN but declares no install.system: reason, because that shape silently delivers less on a host launch than the recipe promises.",
       "evidence": [
         {
-          "resource": "repo://ARCHITECTURE.md#L453-L467",
-          "version": "repo-lines-v1:sha256:0e2750e2d222bde18bb9906a0e5f8a2a56c6891c3637372e2a966228659f8459:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzNTMxNGZiNjExNzliODRhODVlNDEwMTlmYjI3N2IzZjEzM2EwNTBhNjVmMzYxNDdmMTVmNTA2NDNhZjY3YzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0MmRmMDQ4MjRmYTk4ZmE1NTJiMmQ0MjE3OTY0NzEwMTQ4MjRjZWU1ODkyZTE0MzEyNWU5Mjc4ZmFiYTkzMzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI2NjNjNzkyYTY3MjM0ZDQ5ZjIyYWUwZjUwZTg2YWFiODY0YWRlMzZhNjJiN2FhZjQzMzFhNTM1MmNiYzNhYjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwN2U2MWZkMzFhNDg2ZDRhNzZlNDY0NDg5YzIzOWFiMzljZWVjZTVkZTU3NWRjZWI2YzkyNjFjNDkxNWEzNWMifQ"
+          "resource": "repo://ARCHITECTURE.md#L469-L473",
+          "version": "repo-lines-v1:sha256:fbe74e4745499e788121d1e9e39c3284b4b8055c0bb4e623fa968c78091e0867:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWQzOTI1ZmE4ZTU3NjRmNGQ2MzBkM2YwMzVhYmFkMDdhYzhjMmJmYTUwYzJkYTA4YzJjZWNiZDRiNDU5OTk2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjE4NmU4OTBjZjY1N2YwODg3OTQxMjE0YWRjMTE2MmUxZmZkNmU4ZjE0MzE0NzdmOGIwNmExZjM4YTliMGE1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQ4OThkNzg2NjY1ODg0MWYxZjFkYTk3MTZjNTlmMDE0M2E3YTdmMmM5OTQzMDI4OGMyYTE3YzlkODc4NmE3NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTU0ZmFkNTAwOTcxYzYxMzk1NzdhMDQ2YjMzOTk2YTkwOTQ4MmE4N2M4MGEzYjFiMTQ0NWRhMjI0ZWNmYzczOCJ9"
         },
         {
-          "resource": "repo://src/harnessed/schema.py#L3240-L3290",
-          "version": "repo-lines-v1:sha256:b6eb1d19c610ec8364a24b792a4005948384eceb134f0334f2e7d6a909c476ac:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkNzZiMzlmYjI3NDVkZGUyYzQ0MTY2M2VjZmYzMTE1ZjY1MGM5YmE2NzdlODA3MWM3MGQ2NDJlZWExM2E5MmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjMjQzZGJlNTY3NDcyMTJiOWM3MDgwZTgzY2Q0MmNmMTdkMjIxMzFmZWU2N2JkZWEyY2U5MWNmMmU5Nzk0NTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkifQ"
+          "resource": "repo://src/harnessed/schema.py#L3444-L3495",
+          "version": "repo-lines-v1:sha256:c58ea8dc42e5304d0f6b91bb5624e814b386f4904ccf5dde6fc8634bee751a78:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkNzZiMzlmYjI3NDVkZGUyYzQ0MTY2M2VjZmYzMTE1ZjY1MGM5YmE2NzdlODA3MWM3MGQ2NDJlZWExM2E5MmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI5OWE0MTg0NjZkYWE5NGI0N2MwODM2NGY4Njg4M2VmZWFiNGZmYTQ2OTNhNjI2NWEyNTAzYjAwNDg2OTA2ZDEifQ"
         }
       ]
     },
@@ -463,12 +463,8 @@
       "statement": "The .sh bodies both contracts carry are linted as files by _lint_script_file, shared by validate_setup_script and validate_install_script, which rejects floating refs and raw npm/npx inside the script text — because the pin gates that read manifest strings and Dockerfile text never see a file, so without this gate the pin would drift back into the script body and out of the contract's env keys.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/assemble.py#L275-L287",
-          "version": "repo-lines-v1:sha256:608ddd61f9e45871cc78680e40ea64603520b181b049e55f4daa08c1f5e369c5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0MWQ0N2IwOTBlNjYyZDFlZjgzOGZiNjA0MGE5ZDFjZWI1YWVkZGUxMWJhYjQ2ZGE1YTdiZjk3M2FkZWY5NTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY4ZTdjMTExMzI3ODA1NDIyMTYyYTYxYmUyYjZhZjhhNmIwZmYwNjg4ZTQyYWFhYjUzODA5YjViOTIxNzMyM2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhOTk5YjBhMWQyYjM5NDE3OWUyMzE3YWZiZTA3NmM1M2RmM2ViM2FiMzQ3NDMxM2QxMjNjMzRkMzE2ZGVmYjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU3NTU1YWRkODg5ODM5ZGFkYzdlMDEyZTY4MTY2OTRkMWQ2MjBmZTdlZjc0YzRmYzlmMDUxMGQ4MjA1YThjNmIifQ"
-        },
-        {
-          "resource": "repo://src/harnessed/schema.py#L3131-L3205",
-          "version": "repo-lines-v1:sha256:83a29834fdc8286b9f7f691fca4344a3dcaf08e526f3502c4e103d885b8f1bd3:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxMWRjZTdlZGNlNGY0NWZlMmI2ODU1OWE3MzY4NzVlMGRmYjAzOTlmOTljNzg1M2ExYTZjYzI2ZmE0ODA4YWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1ZjY4OGQ2YjE5MGQwZjk2MWEwY2ViY2ZhODk5MTUxOTc4ZTEzNGM1NTI4MzAyMmQ1YTU3NzU4YjhlZmEzYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxNTljZmVkZTE1NDVhOTJkYWE0YTMzNzJhN2I1ZWExNGVmZWE5MGIwMjNjMTQ5YzQyZjVhZmZhODU3MWRkMDgifQ"
+          "resource": "repo://src/harnessed/schema.py#L3334-L3409",
+          "version": "repo-lines-v1:sha256:4d7c912719ad3aa4babd27d3d3c8f36c9467a0a04f2cd216e2e7338cca022555:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxMWRjZTdlZGNlNGY0NWZlMmI2ODU1OWE3MzY4NzVlMGRmYjAzOTlmOTljNzg1M2ExYTZjYzI2ZmE0ODA4YWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1ZjY4OGQ2YjE5MGQwZjk2MWEwY2ViY2ZhODk5MTUxOTc4ZTEzNGM1NTI4MzAyMmQ1YTU3NzU4YjhlZmEzYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxNTljZmVkZTE1NDVhOTJkYWE0YTMzNzJhN2I1ZWExNGVmZWE5MGIwMjNjMTQ5YzQyZjVhZmZhODU3MWRkMDgifQ"
         }
       ]
     },
@@ -619,10 +615,20 @@
           "version": "repo-lines-v1:sha256:41049eb5b2c2a855db2782ea094905d92852a2381f42ef89c97b4086f647cb55:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzNDVmNThmYjVjNmRlOWZkZWUyOThmNDM1YTcwNjM1NTJkNzc4ZWIxNWNmOTkwMDM4NzZhMDExMDg5MmMzNTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiNzQ0YWRjM2FlZDJhMjllYWEwMjBjNzEzM2IwMzVkNGFjMWZiYThiNzIxNTdhNzI4MDAyMGM1YWQzZTlkMjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBkZmY3Y2E2ZGZjZDk5NDdkZmU5MjJkZWZmMTAxYTY3NDdkZmI1MjI3OGZjOTc0OTU1NDUxZDRhZjIzNjMwODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4N2ZhZGUwNmFhNDZjMDEwMjQ5YTI1ODAyNjg1MThmZWYzNmRmNDg1ODJhZDdjYTZlMjNhYTFjZDZhYzNjMmQifQ"
         }
       ]
+    },
+    {
+      "id": "claim_932857ca0e0c4c40bbf61e984d121f78",
+      "statement": "tests/test_install_script.py::TestPrecedence asserts install-env precedence as ORDER, not values: the container test checks the merged -e argv carries HARNESSED_MODE=container rather than the recipe's override, the host test checks env.update(recipe_env) textually precedes emit.install_env( in _host_run_installs source, and a real host install confirms the contract wins.",
+      "evidence": [
+        {
+          "resource": "repo://tests/test_install_script.py#L603-L650",
+          "version": "repo-lines-v1:sha256:e9342891f9682fc87cc2a19566f36687d9d598abdaa6391f7ceca9eb7405a861:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjODY3YTdlZDg0NjY5NWI2YTJmMGVjNTAwMzE1ODhjYWU0ZTI4NTUxZTdjYzVhYzE4Y2EzYzViNDhkMzkwNWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxNTQ2ZTJhNGRlM2VjMmI5ZjEwOTk3YjE2NjExYzFjYjBjNjY1YmMyMTViM2I0ZmM5MWZmMmY5Y2FkMjYyNTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3YjEyNzdlNjU4NjlkYTk3NWJmMDVhNTZkNGI0OGNkMDY1YTgwMzZjZWM5ZGUyNWJhZmYyZmM2ZWQxYTU3Y2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjNmMzMGFlZjk1Zjc3NTdjMWUyOTVjZjkwYjRhODkwN2E5OWRhMmFkMTBkYTRkOWJkNjIzNWI1N2FmMTk2MjkifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-20T12:51:12.657Z"
+    "at": "2026-09-23T13:20:55.348Z"
   }
 }

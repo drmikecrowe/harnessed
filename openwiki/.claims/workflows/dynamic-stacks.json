@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5eebd4d99618c23fa1559a9f26d71c354adc92f8ec9a445632733e4afc87669f",
+  "pageVersion": "sha256:68f36f084895f201bf9bff702b457fd5204489af9dd7f13dadbf0f2b690640ff",
   "claims": [
     {
       "id": "claim_1eb0f66fba014692a026a6fb1af5170b",
@@ -237,8 +237,12 @@
           "version": "repo-lines-v1:sha256:b3b3e9266acdf0e00919bb9aeb7cb8fe241205abe342c6980d9a7336dbf8f2e4:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjAzNjY4Y2NjMzUwNjM4Nzg3ZTUwMjI0NjhiMmI5MTEyNzYzMDI2ODMxMTZhODU2NjVhMTc1ZmE1ZDIzMDM5NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjIzNjRjZTcyNDFiMWQ5YjAxZGQyODg1M2Q2NjJiNWZlZTJhZjY2NjRlN2I4MDlkMDAyZDIwZGE0YWYwZWY3NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2FmM2QxZjA0MjE2ZTA2NGJhMDYwOTUyMGVjYTY1ODcyZjcxM2RiN2ViZGM2Y2IwZDBlMjc1MGVhYjhlOGM1YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjA0MTY5N2I1YWY0NDYyOWJmNDYwZmQyYmRmMWYwZTYyYjEzYmQ4N2EyOWYzMjI4ZmJlM2E4MDQzNzgwZDIxNCJ9"
         },
         {
-          "resource": "repo://src/harnessed/schema.py#L1886-L1905",
-          "version": "repo-lines-v1:sha256:aeadd2691430a44898072e08b9a7c0754606e5e11d8c0afd76398b83ff6a7413:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjNTRkZmFkNDE0NmNlMzI1MzJiNzc5MmYyYjM5NGY0MGIxMjVhODMzMTEyZDliZjVkZGQ2MjE4MDM4NDQ1MTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAzYmUwMjY3NDA3MzRkNzA3MTFmOGViZDdjMzY1ZmNjZTY5NWM0OWM2NWEzMmFhYTJjMTdiNDI5NzYzNmJhM2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5MGNhNWJkODhjMDAxNjM4ZGRkZmJkMGM3YWUxZTM4NmRlYWVlM2EwMjFlYjRiYzRjOGEyMTFjZjhkOTgxNzIifQ"
+          "resource": "repo://src/harnessed/schema.py#L1955-L1975",
+          "version": "repo-lines-v1:sha256:96050d215f3ce4c0a71bff9e6505d90d5938d5d5283fb28914ea92577bf4b07f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjNTRkZmFkNDE0NmNlMzI1MzJiNzc5MmYyYjM5NGY0MGIxMjVhODMzMTEyZDliZjVkZGQ2MjE4MDM4NDQ1MTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAzYmUwMjY3NDA3MzRkNzA3MTFmOGViZDdjMzY1ZmNjZTY5NWM0OWM2NWEzMmFhYTJjMTdiNDI5NzYzNmJhM2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3MGZjMzRjZTI3OWVjOWQ1NmE2NmUzMzUwYjJhZDQ1N2FkNzlkNTE0M2NiNWNjZTYyMTdjZjRiNjk4YzdkNTQifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py#L2060-L2071",
+          "version": "repo-lines-v1:sha256:02d9f93884bc02352b5829f0ce64dd529bcef223992c34683ece89b0aaa8205c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhNDA2MDRkZmM2NGRlZGY4ZDVhNjZlOTdiZDAyY2Q5NjFiMDNlODMyMDRmMWIzNDlkNGU4ZjIwYWI2MzNlZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0NTQzZmU2ODUxMWY0NDY0NjI4ZmVlZDI5YWVlZjM1ZmE5NGM2YmQ1NzYxYzYyMzRkZWI0YjFiNzkxM2YwODQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY0YTNiYWNjMWEyMzI1ODFlMGI4YTE2NzJhZjI3NDA0ZGY2NjE3MmVkYjlmMzRiNmU1NzJiMGYyZTBjZmZkZjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkZTkxYTViZTEzNjVmNzMwMTBiODZiMzI0ZjJiZmEzODg3OTNhMzQ5MmZlZjYwYTAyZDk2OGI5NDM2OGUzNDEifQ"
         }
       ]
     },
@@ -414,11 +418,15 @@
     },
     {
       "id": "claim_96d90637255d4fae9c762e17db6efb54",
-      "statement": "A content-derived stack name is what can push an instance name past Linux's 64-character HOST_NAME_MAX, and podman derives the hostname from the pod name, so `harnessed-omp-default.beads-team.serena.superpowers-f6eb0941-59258991` (69 chars) killed every launch with `sethostname: Invalid argument` on the infra container until `paths.container_hostname` began truncating the middle — keeping the `harnessed-<harness>-` head and the whole trailing project hash, purely cosmetic because nothing keys on the hostname.",
+      "statement": "A content-derived stack name is what can push an instance name past Linux's 64-character HOST_NAME_MAX, and podman derives the hostname from the pod/container name, so `harnessed-omp-default.beads-team.serena.superpowers-f6eb0941-59258991` (69 chars) killed every launch with `sethostname: Invalid argument` on the infra container until `paths.container_hostname` began truncating the middle — keeping the `harnessed-<harness>-` head and the whole trailing project hash, purely cosmetic because nothing keys on the hostname.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/paths.py#L414-L436",
-          "version": "repo-lines-v1:sha256:ddc464462eaf9b412833f1b72374343c60ce438e1c75b4265edd44f7b0dea2d2:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwMWIwZTAzOTY5OTkyNTA5OGY0Yjg4OTBkNTEzMDA2NTU4ZmMwOTExNzk4NjM2YmM1MWM3YzcxZTIzODQzNDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4NTFhMGY0ZTQ1NzI5ODk1MDE3MTQ3NmQwNmM0OWFiY2E4NDIxZDMyNGZjNTY1YTE4NjU5ZDA5YmEwZDRjZmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMxODViMzdjNTY4N2QzODA1YzY2ZGYwNjZiNTUxMmYxYmNlM2Q1NzQ2YzdkZWE1MmFiNDRiYjkzMDliNzMxOGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzODlhY2FlNTlmMGIxZDc4YmU5NGQ3NWU3NWYxNDBkYWMyMzhmOTExMzc2ODUxNGQzNTcwZmM1MWZlMTA1MWYifQ"
+          "resource": "repo://src/harnessed/launcher.py#L3599-L3603",
+          "version": "repo-lines-v1:sha256:9cfdaa77c843fa4cb8f777e4d294a00c15f77492344ec293ee36ca800500667e:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGI3NjYzZDQ1NDhhNmY5OWZiNGJhNzMyZWE0MGM5MjMyMTA0OGQwMzg0MDhhNDQxYjFmZTU4MDdlMmY2MDgwNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDlmNmM4N2U0NDlhNzI5Y2I2M2RjNTlkYzZlNDQ5NWE1ZDQ5MGJmZTRiOTE5MmQwZTZjMTY1NGIwZDFlNDA1OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGJhYWFiMzFhNmRkZTViNmFkZDdkYjc1YTliYTIxZGM1M2U3OTA2MmVkZDZhNGY1NjA1ODE1ZTUyNzVmYTZiNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjViODg4MTIyNTJiZmYzNTRkMWU4NDQ2ZDg3YTVmMDIxZmU2Nzc2Zjk3YWU1ZGYwZDJmZWRiZjBmMDI1NDA1OSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L625-L647",
+          "version": "repo-lines-v1:sha256:084b58daf9c77a876a6239a8fe51c4d2929acc1900db1b1b80726568d746ae4a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwMWIwZTAzOTY5OTkyNTA5OGY0Yjg4OTBkNTEzMDA2NTU4ZmMwOTExNzk4NjM2YmM1MWM3YzcxZTIzODQzNDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0MDljOGE0MWFhMjVhOWI5YzgyMzU0ZWMxMWNlNTBkY2NlMDU2YjU1NWM5NDJhZTU1NjhmNmZmNGY1Nzg2NzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMxODViMzdjNTY4N2QzODA1YzY2ZGYwNjZiNTUxMmYxYmNlM2Q1NzQ2YzdkZWE1MmFiNDRiYjkzMDliNzMxOGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzODlhY2FlNTlmMGIxZDc4YmU5NGQ3NWU3NWYxNDBkYWMyMzhmOTExMzc2ODUxNGQzNTcwZmM1MWZlMTA1MWYifQ"
         }
       ]
     },
@@ -607,6 +615,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-20T12:51:12.657Z"
+    "at": "2026-09-23T13:20:55.348Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e40c7c0c0430dcdddcd9c2e56bb551275afdee6fb57854fde74581502b8b7140",
+  "pageVersion": "sha256:abd4bc9eb99bc72d4ba94e38c5ed292bbb3a1934d4f0fde655ae3bbc88d5376e",
   "claims": [
     {
       "id": "claim_53d617e673d544d78bcddfca751dbff6",
@@ -184,11 +184,11 @@
     },
     {
       "id": "claim_9c6aef758a034aebbe702e881f6e9b9d",
-      "statement": "The capability test derives expectations, never hardcodes them: schema.expected_capabilities unions what the assembler can see (mcp.servers plus the fanned skills/commands dirs) with what recipes declare via expect: for capabilities delivered through their Dockerfile or install script, de-duplicated order-preserving — so a recipe that bakes content into its image must declare it, and the manifest is the oracle.",
+      "statement": "The capability test derives expectations, never hardcodes them: schema.expected_capabilities unions what the assembler can see (recipe mcp.servers plus the fanned skills/commands dirs) with what recipes declare via expect: (mcp, skills, commands, plugins) for capabilities delivered through their Dockerfile or install script, de-duplicated order-preserving — so a recipe that bakes content into its image must declare it, and the manifest is the oracle.",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/schema.py#L3313-L3347",
-          "version": "repo-lines-v1:sha256:45456cf402215ad9eaaa6511eb3e5d8fd159f227a0f96005506db6146082b667:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2ZmJhZTBiOTFkNDRmYzBkNDlmNWRlNjkxZGE2ZmM0MzFmMjYwMTM0YmY3MzFlMGUyMWY3NjQ4MDk0MzM0Y2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://src/harnessed/schema.py#L3517-L3553",
+          "version": "repo-lines-v1:sha256:492991db18450bb38ba474d27cc8343c429ab23da9185b5cb63ce50d6648be47:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2ZmJhZTBiOTFkNDRmYzBkNDlmNWRlNjkxZGE2ZmM0MzFmMjYwMTM0YmY3MzFlMGUyMWY3NjQ4MDk0MzM0Y2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -527,10 +527,20 @@
           "version": "repo-lines-v1:sha256:5b994e0696afea2f82ada86dd6cccbd93dbe11a91bbd458d297650e3df8675b3:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzYyMzMxNWY2OTdiZDhkMjJkYjc4N2MzNDM0N2QxYjg0ZjFhMzgwYzY3Y2VhZWUwM2Q4Njk4YTFiODgyOTFhMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzc2OWQyMzdjZDQyMGI5ZDM4Yjk4MWEwYTRmNjc3MDE5MGE0YTgzZGNhMWZlNTZjNGY1YmExZTJjYmMwZWY3NiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjBiN2Q5NTIxODVmZGQwZTFiY2FiY2U1OWQ1YjdlZmE0Y2QxYWNmNWY1MmFjNWE5NDM1NWIzMjUyZDc2ZGJkZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDdiNzhkMWUzM2M4ZTJlMGYzOTYzYzQyMDU5OTA0ODU3ZWQ5NGI4ZThlN2FjOTJmOWYxZTA4YjczOGNiYjgxMCJ9"
         }
       ]
+    },
+    {
+      "id": "claim_d1de1f33d12a4d09b18ed55bcd2c34c1",
+      "statement": "The launcher-split direction rule is enforced by tests/test_module_boundaries.py: every module in the EXTRACTED ledger must not import launcher (checked over parsed AST imports at any nesting depth, so docstrings are exempt and function-local imports are caught), and a ledger test fails when any module importing harnessed.console is missing from EXTRACTED — because an unlisted module is unenforced, which is indistinguishable from compliant.",
+      "evidence": [
+        {
+          "resource": "repo://tests/test_module_boundaries.py#L52-L103",
+          "version": "repo-lines-v1:sha256:27bbd6cb5e25822978c02b6b657510b348cc8d869ca528bb662977450be91014:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0YjA2NzJlZjJlNzQyMmRkZTA3MWZhZWYzMGY4OWEzODk1NDc1Y2M5ODcxM2YzMWIwM2I2NjNjZDY2ZDViOWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzMjAxYjZjNTU4MTViMDM5MmYwOGI4ZmIxOTQ0M2I3YWJiMzFjNGM1NWUyZmY5ODc1ODVkMGYxYjk5MzRmNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzZDE3MWRlNzU0MzFhMDIxYTBkOTRmYTc2ZmFiZjBkNzEzOWM4OThjMWEwYjQ0YjQzY2E2MDkwM2ZhMWI4NDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.1",
-    "at": "2026-09-21T14:50:01.893Z"
+    "at": "2026-09-23T13:20:55.348Z"
   }
 }

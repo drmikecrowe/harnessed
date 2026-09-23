@@ -42,10 +42,10 @@ sources:
     resource: repo://src/harnessed/volumes.py
   - id: openwiki-source-568f82b2292ea5e02ccb4db8
     resource: repo://tests/test_install_script.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-20T12:51:12.657Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-23T13:20:55.348Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-20T12:51:12.657Z
+    at: 2026-09-23T13:20:55.348Z
 ---
 
 # Precedence: who wins when sources conflict
@@ -349,9 +349,15 @@ downstream validator sees one fully-resolved manifest and inheritance needs no p
   carried into the result.
 
 Chains are allowed (a stack extending a stack extending another); a cycle is an error. The parent
-resolves against the child's **own catalog root first** (so a fixture tree or a self-contained
-overlay resolves within itself), then the normal catalog search — which is what lets a stack in the
-user overlay extend one shipped in the repo.
+resolves through `_resolve_parent_stack_dir`, and the order there is a precedence rule of its own:
+with an explicit `root` (a fixture/test tree) the parent resolves under that root ALONE — the
+production roots, overlay included, are never consulted, so a fixture cannot inherit from whatever
+the developer happens to have installed. In production the **user overlay is checked first**: an
+overlay copy of `<parent>` overrides the shipped one for EVERY child, repo-shipped or
+overlay-authored — the same precedence `find_in_catalog` applies everywhere else. Then the
+sibling directory next to the child (a self-contained overlay resolves within itself), then the
+remaining catalog roots (repo shipped, generated) — which is what lets a stack in the user overlay
+extend one shipped in the repo.
 
 Unknown stack fields are **rejected**, not ignored. Parsing used to be tolerant, and an `extends:`
 written before the feature existed looked accepted while inheriting nothing for months — silently

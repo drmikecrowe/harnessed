@@ -8,6 +8,10 @@ sources:
     resource: repo://.github/workflows/pin-check.yml
   - id: openwiki-source-ea70eb6c045047448e446296
     resource: repo://.gitignore
+  - id: openwiki-source-e5bf46666000bd68717f274f
+    resource: repo://catalog/agents/claude/agent.yaml
+  - id: openwiki-source-3825905815efff0287628e28
+    resource: repo://catalog/base/Dockerfile.harnessed-claude
   - id: openwiki-source-d766da7f3cd4a16bcf2efe79
     resource: repo://catalog/recipes/floating-recipe/recipe.yaml
   - id: openwiki-source-7aaef99ed3f0b637b5f16fae
@@ -48,10 +52,10 @@ sources:
     resource: repo://tests/test_recipe_uniformity.py
   - id: openwiki-source-a488585d132d26b93d838e43
     resource: repo://tests/test_tools_field_parity.py
-generated: { by: "openwiki/0.5.1", at: "2026-09-21T14:50:01.893Z" }
+generated: { by: "openwiki/0.5.1", at: "2026-09-23T13:20:55.348Z" }
 verified:
   - by: openwiki/0.5.1
-    at: 2026-09-21T14:50:01.893Z
+    at: 2026-09-23T13:20:55.348Z
 ---
 
 # Catalog: schema, roots, resolution, and packaging
@@ -156,9 +160,13 @@ The ordering encodes three deliberate decisions:
    the user authors, and mixing generated manifests into it means `harnessed list` cannot tell them
    apart and a regenerated file silently clobbers a hand edit.
 
-`find_in_catalog` returns the first root where `catalog/<kind>/<ref>` exists; when no root matches it
-returns the highest-precedence root's candidate path anyway, so the loader raises a not-found that
-names a concrete directory rather than a bare absence.
+`find_in_catalog` returns the first root where the ref's directory **carries the kind's marker
+manifest** (`_KIND_MARKER` — `recipe.yaml`, `agent.yaml`, …), not merely where it exists: a hollow
+directory (a rename mid-flight, a half-authored recipe) must fall through to a real copy in a lower
+root rather than shadow it. When no root matches it returns the highest-precedence root's candidate
+path anyway, so the loader raises a not-found that names a concrete directory rather than a bare
+absence. `paths.overlay_shadowed_repo_path` applies the same marker test to answer "which repo copy
+is being shadowed by my overlay entry" — the question the shadow warning below needs answered.
 
 ### All enumeration goes through `paths.list_catalog`
 
@@ -211,11 +219,15 @@ no per-field knowledge and every validator downstream sees one fully-resolved fl
 | `name` | never inherited — a stack is identified by its own directory |
 | `extends` | consumed by the merge and never appears in the result |
 
-The parent is located by `_resolve_parent_stack_dir`: the **same catalog root as the child first**
-(so a fixture tree or a self-contained overlay resolves within itself), then the normal catalog
-search — which is what lets an overlay stack extend one shipped in the repo. **Chains are allowed**
-(a stack may extend a stack that extends another); **a cycle is an error**, detected by threading
-the visited-directory chain through the recursion and naming the whole loop.
+The parent is located by `_resolve_parent_stack_dir`. With an explicit `root` (a fixture/test tree)
+it resolves **only** under that root — a fixture cannot inherit from whatever the developer happens
+to have installed. On the production path (`root is None`) the **user overlay wins first**: an
+overlay `<parent>` overrides the shipped one for every child, repo-shipped or overlay-authored —
+exactly the precedence `find_in_catalog` applies everywhere else. Then the same directory as the
+child (so a self-contained overlay resolves within itself), then the remaining catalog roots — which
+is what lets an overlay stack extend one shipped in the repo. **Chains are allowed** (a stack may
+extend a stack that extends another); **a cycle is an error**, detected by threading the
+visited-directory chain through the recursion and naming the whole loop.
 
 Unknown stack fields are rejected **unconditionally** (not a `--strict` flag). Stack parsing used to
 be tolerant, which meant an unsupported or misspelled key did nothing, silently — an `extends:`
@@ -329,7 +341,11 @@ Where the rule applies:
   a single entry cannot excuse every other unversioned install in the same file. `validate_agent_image`
   resolves with `root=None` deliberately (the agent image is always built across every root) and
   **fails closed** on a Dockerfile it cannot read — a gate that returns silently for an input it
-  could not examine is indistinguishable from one that examined it and approved.
+  could not examine is indistinguishable from one that examined it and approved. `unpinnable:` is a
+  real, exercised state, not a vestige: the claude agent concedes `CLAUDE_VERSION` (owner decision
+  2026-09-23 — harnesses track their vendor's latest release), so
+  `catalog/base/Dockerfile.harnessed-claude` runs the vendor installer with no version argument and
+  moves on a rebuild.
 - **Agent `build_args` values** — `_require_immutable_build_arg`, called for every entry of
   `build_args:` whether it is a bare scalar or a `{value:, spec:, hold:}` mapping. This is the only
   place a build_arg's VALUE is ever seen: `validate_agent_pin` reads Dockerfile *text*, where the
@@ -348,8 +364,15 @@ Where the rule applies:
 
 `harnessed update --check` (weekly cron in `.github/workflows/pin-check.yml`) sweeps every recipe
 and agent manifest across the active catalog roots for pins with a newer upstream release past the
-minimum release age. Held pins (`install.hold`, a `tools:` entry's `hold`, an agent `build_args`
-hold) are listed for information and never offered for bumping, and never fail `--check`.
+minimum release age (7 days by default, pnpm's `minimumReleaseAge` posture: a compromised publish is
+usually yanked within days; `--minimum-release-age` overrides it, and harness agent pins ride their
+own shorter 2-day window because harnesses deliberately track their vendor's latest). The report has
+its own section per state — offered bumps, `cooling` (a newer release exists but is too new; named,
+not hidden), `held` (`install.hold`, a `tools:` entry's `hold`, an agent `build_args` hold — listed
+for information, never offered for bumping), `unresolved` (loud: a pin nobody could check must not
+read as "fine"), and `unpinnable` (agents conceded to track upstream). `--check` exits non-zero only
+for a stale, unheld, resolvable, past-cooldown pin, and `--fail-on major` narrows that to bumps that
+cross a major version boundary.
 
 ### Raw npm/npx rejection
 
