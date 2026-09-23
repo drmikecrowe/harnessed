@@ -58,8 +58,8 @@ from .schema import (
 __all__ = [
     "DEFAULT_MINIMUM_RELEASE_AGE_MINUTES",
     "EXTRA_TOOLS_LABEL",
-    "Finding",
     "HARNESS_MINIMUM_RELEASE_AGE_MINUTES",
+    "Finding",
     "Pin",
     "Release",
     "Report",
