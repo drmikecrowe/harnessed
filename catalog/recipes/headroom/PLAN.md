@@ -231,3 +231,24 @@ API. The recipe therefore pins the SDK the way `time` does (`--with mcp==1.29.0`
 real container: without the pin the child crashes three connect attempts in a row; with it, the
 capability probe reports connected, and a live `tools/call` round-trip (compress 71.8% claimed
 savings on a mixed payload, then retrieve by hash returning the byte-identical original) passes.
+
+## Correction, 2026-09-23: proxy mode ships via `init.run`
+
+The deferral above claimed harnessed has "no seam to inject a proxy into the agent's LLM path."
+It has one: recipe `init.run` is sourced into the attach shell on every launch (Model A) and its
+exports reach the harness process — container-side in the attach shell itself, host-side through
+`_host_run_inits` + `_propagate_init_env` before the `os.execvpe` handoff. The recipe now starts
+`headroom proxy --port 8787` there, self-gated on the port, and exports `ANTHROPIC_BASE_URL`
+only when the proxy answers AND the user had not already repointed it (verified against 0.27.0:
+`headroom proxy --help` exposes no upstream override — its upstream is the Anthropic API — so an
+existing gateway `ANTHROPIC_BASE_URL` must be left untouched).
+
+Deliberately NOT an `install.sh`: install is fingerprint-gated (once per stack), runs in a
+subprocess whose exports die, and a daemon started there is never restarted or re-gated. The
+per-launch init hook gives the self-gate + env propagation the proxy needs.
+
+What this does NOT claim: lifecycle management. The proxy is an unmanaged daemon — no mid-session
+crash restart, no health repair. Container: dies with the pod. Host: the nohup orphan outlives the
+harness session and is reused by later launches; stopping it is the user's call. `headroom wrap` stays unnecessary: harnessed
+owns the launch, so wrap's "start proxy + repoint base URL + exec agent" is exactly what init.run
+plus the export already do.
