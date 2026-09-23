@@ -292,3 +292,104 @@ class TestHarnessWindowSurface:
         assert "harness" in out.lower() and "days" in out
         body = (with_agent.parent / "agents" / "cx" / "agent.yaml").read_text()
         assert '"2.0.0"' in body, "a 1-day-old harness release is offered, not parked in cooling"
+
+
+class TestUnpinnableHarnessesAlwaysUpgrade:
+    """Owner ask 2026-09-23: running `harnessed update` must UPGRADE claude, not merely
+    report it. An unpinnable harness has no pin to bump — its upgrade is a cache-bypassed
+    image rebuild of the agent image plus every built stack image on it. Apply mode offers
+    it; `--check` never rebuilds."""
+
+    @pytest.fixture
+    def unpinnable(self, catalog, monkeypatch):
+        agent_dir = catalog.parent / "agents" / "cx"
+        agent_dir.mkdir(parents=True)
+        (agent_dir / "agent.yaml").write_text(
+            "type: agent\nharness: cx\nimage: harnessed-cx\n"
+            "dockerfile: catalog/base/Dockerfile.harnessed-cx\n"
+            "unpinnable:\n  CX_VERSION: unqueryable upstream\n"
+        )
+        monkeypatch.setattr(launcher, "HARNESS_CONFIG_DIR", {"cx": ".claude"})
+        monkeypatch.setattr(launcher, "_runtime", lambda: "docker")
+        # Keep the unit tests off the real container runtime: the sweep answers an empty
+        # image list, and `_refresh_unpinnable_harness` itself is replaced per-test.
+        from types import SimpleNamespace
+        monkeypatch.setattr(
+            launcher, "_bounded",
+            lambda *a, **kw: SimpleNamespace(returncode=0, stdout="", stderr=""),
+        )
+        return catalog
+
+    def test_apply_mode_rebuilds_the_unpinnable_image_even_with_nothing_stale(self, unpinnable, monkeypatch):
+        monkeypatch.setattr(
+            update, "resolve_releases",
+            lambda backend, name, **kw: _table({"x": "1.0.0", "y": "9.9.9"}, name),
+        )
+        seen = []
+        monkeypatch.setattr(
+            launcher, "_refresh_unpinnable_harness", lambda rt, h: seen.append((rt, h)) or []
+        )
+        result = runner.invoke(launcher.app, ["update", "--yes"])
+        assert result.exit_code == 0
+        assert seen == [("docker", "cx")]
+        assert "image refreshed" in _plain(result.output)
+
+    def test_check_never_rebuilds(self, unpinnable, monkeypatch):
+        def boom(rt, h):
+            raise AssertionError("rebuild attempted")
+
+        monkeypatch.setattr(launcher, "_refresh_unpinnable_harness", boom)
+        result = runner.invoke(launcher.app, ["update", "--check"])
+        assert result.exit_code == 1  # the stale recipe pin still fails the check
+        assert "npm:x@1.0.0" in (unpinnable / "stale" / "recipe.yaml").read_text()
+
+    def test_declining_leaves_images_alone(self, unpinnable, monkeypatch):
+        seen = []
+        monkeypatch.setattr(
+            launcher, "_refresh_unpinnable_harness", lambda rt, h: seen.append((rt, h)) or []
+        )
+        result = runner.invoke(launcher.app, ["update"], input="n\ny\n")
+        assert result.exit_code == 0
+        assert "Rebuild the cx image" in _plain(result.output)
+        assert seen == []
+        # the bump prompt after the declined offer still ran
+        assert "npm:x@1.5.0" in (unpinnable / "stale" / "recipe.yaml").read_text()
+
+    def test_a_failed_rebuild_degrades_to_a_warning_and_still_bumps(self, unpinnable, monkeypatch):
+        def boom(rt, h):
+            raise RuntimeError("machine down")
+
+        monkeypatch.setattr(launcher, "_refresh_unpinnable_harness", boom)
+        result = runner.invoke(launcher.app, ["update", "--yes"])
+        assert result.exit_code == 0
+        assert "cx rebuild failed" in _plain(result.output)
+        assert "npm:x@1.5.0" in (unpinnable / "stale" / "recipe.yaml").read_text()
+
+    def test_built_pairs_narrows_the_label_sweep_to_one_harness(self, unpinnable, monkeypatch):
+        from types import SimpleNamespace
+        monkeypatch.setattr(
+            launcher, "_bounded",
+            lambda *a, **kw: SimpleNamespace(
+                returncode=0,
+                stdout=(
+                    "localhost/harnessed-cx-alpha\n"
+                    "harnessed-omp-beta\n"
+                    "localhost/harnessed-cx:latest\n"
+                ),
+                stderr="",
+            ),
+        )
+        pairs = launcher._built_pairs_for("docker", "cx")
+        assert pairs == [("alpha", "cx")], pairs
+
+
+class TestUpgradeAlias:
+    """`harnessed upgrade` is the same command under its other spelling — the owner runs the
+    ritual by both names (2026-09-23), and one of them must not be a usage error."""
+
+    def test_upgrade_applies_bumps_like_update(self, catalog, monkeypatch):
+        monkeypatch.setattr(launcher, "_refresh_unpinnable_harness", lambda rt, h: [])
+        monkeypatch.setattr(launcher, "_built_pairs_for", lambda rt, h: [])
+        result = runner.invoke(launcher.app, ["upgrade", "--yes"])
+        assert result.exit_code == 0
+        assert "npm:x@1.5.0" in (catalog / "stale" / "recipe.yaml").read_text()
