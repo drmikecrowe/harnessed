@@ -11,7 +11,7 @@
 # (github.com/vercel-labs/agent-browser) installs a STUB SKILL.md that defers to the installed CLI
 # precisely so the instructions never go stale. A frozen copy defeats that design.
 name: mikes-universal-setup
-description: "Mike's baseline rules (coding stance, tool preferences, confirmation gates, token economy) plus a set of generic utility skills — an example personal always-on setup."
+description: "Mike's baseline rules (coding stance, tool preferences, confirmation gates, token economy) plus a set of generic utility skills and a Bash guard hook that blocks dangerous find invocations — an example personal always-on setup."
 
 # COMPANION TOOLS ASSUMED PRESENT. skills/search-tools names `rtk` and context-mode's
 # `ctx_batch_execute` outright instead of hedging ("if your stack provides a reducer"), because this
@@ -60,6 +60,41 @@ rules:
   # resumed from the project root. Concrete instance of execution-discipline's drift failure; a
   # declared worktree switch is explicitly exempt.
   - path: rules/working-directory-stability
+
+# --- Guard-hook layer (GAP 2) ---
+# A PreToolUse hook on Bash that blocks `find` rooted at / or a home directory — the
+# silent-and-irreversible class (`find / -delete`, `find ~ -type f -exec rm …`), where by the time
+# anything could intervene, the damage is done. The complement of the denied-commands RULE above:
+# the rule ("never run the find binary in shell") has to be obeyed to work; this hook cannot be
+# disobeyed. Enforcement lives in a hook for the same reason confirmation gates live in a rule —
+# each covers the failure mode the other cannot.
+#
+# The body is a FILE (hooks/block-dangerous-find.py), not an inline one-liner (caveman's shape):
+# ~150 lines of shlex tokenizing does not fit a `command:` string. install.sh copies it into
+# $HARNESSED_CONFIG_DIR/hooks/ — the dir beside the settings.json this declaration is merged into —
+# and the command resolves it through ${CLAUDE_CONFIG_DIR:-$HOME/.claude}, which is that same dir
+# in both modes: SET on host launches (→ the stack home, where $HOME/.claude does not exist),
+# UNSET in a container (→ ~/.claude, which install.sh wrote at build).
+#
+# The `[ -f ] || exit 0` guard is load-bearing: with the script MISSING, python itself exits 2 —
+# and here exit 2 does not read as "hook failed", it reads as BLOCK EVERY BASH CALL for the whole
+# session. A missing script must fail open (the hook is a seatbelt, not the brake); the script's
+# own un-parseable-payload path deliberately fails closed.
+#
+# No skip_harnesses, unlike context-mode's PreToolUse: omp needs none. The claude-hooks bridge maps
+# exit code 2 to a tool_call block (verified against the published 0.5.0 index.ts, extractDecision)
+# and matcherMatches compares `Bash` against omp's `bash` case-insensitively; harnesses that do not
+# read Claude settings.json never fire it at all.
+#
+# Knowingly conservative: paths built in a variable, aliases, and `env find` get past it — a
+# pre-execution hook cannot analyze arbitrary shell indirection. It raises the floor under the
+# rule; it is not a sandbox.
+hooks:
+  PreToolUse:
+    - matcher: Bash
+      command: >-
+        sh -c 'script="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/block-dangerous-find.py";
+        [ -f "$script" ] && exec python3 "$script"; exit 0'
 
 # Skills arrive two ways:
 #   1. install.script FETCHES the UNMODIFIED third-party skills at pinned commit SHAs — they are NOT

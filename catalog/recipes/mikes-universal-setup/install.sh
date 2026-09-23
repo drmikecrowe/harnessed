@@ -86,3 +86,13 @@ ste="$cache/aminblg/${HARNESSED_REPO_AMINBLG##*/}-${HARNESSED_REF_AMINBLG}/skill
 rm -rf "$HARNESSED_CONFIG_DIR/skills/simple-english"
 cp -rL "$ste" "$HARNESSED_CONFIG_DIR/skills/simple-english"
 test -f "$HARNESSED_CONFIG_DIR/skills/simple-english/SKILL.md"
+
+# The dangerous-find guard (hooks/block-dangerous-find.py): too big to inline in recipe.yaml's
+# `hooks:` command (caveman's one-liner shape), so it ships as a file and lands NEXT TO the
+# settings.json the assembler merges its PreToolUse declaration into. The hook command resolves it
+# through ${CLAUDE_CONFIG_DIR:-$HOME/.claude}, which is this same dir in both modes — $HARNESSED_
+# CONFIG_DIR is not in the hook's runtime env, but CLAUDE_CONFIG_DIR is (set on host launches; the
+# container's ~/.claude is the unset fallback). Local copy — no fetch, so no pin/hold applies.
+mkdir -p "$HARNESSED_CONFIG_DIR/hooks"
+cp "$HARNESSED_RECIPE_DIR/hooks/block-dangerous-find.py" "$HARNESSED_CONFIG_DIR/hooks/block-dangerous-find.py"
+test -f "$HARNESSED_CONFIG_DIR/hooks/block-dangerous-find.py"
