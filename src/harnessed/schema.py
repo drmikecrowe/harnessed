@@ -1975,14 +1975,28 @@ def _validate_stack_fields(raw: dict, manifest: Path) -> None:
     )
 
 
-def _resolve_parent_stack_dir(parent: str, stack_dir: Path, manifest: Path) -> Path:
+def _resolve_parent_stack_dir(
+    parent: str, stack_dir: Path, manifest: Path, root: Path | None = None
+) -> Path:
     """Locate the stack named by `extends:`.
 
-    The user overlay wins first: an overlay `<parent>` overrides the shipped one for EVERY child,
-    repo-shipped or overlay-authored — the same precedence find_in_catalog applies everywhere
-    else. Then the same catalog root as the child (a fixture tree, or a self-contained overlay,
-    resolves within itself), then the remaining catalog roots (repo shipped, generated).
+    `root` given → a fixture/test tree: resolve the parent under that root ALONE. The production
+    catalog roots, user overlay included, are never consulted, so a fixture cannot inherit from
+    whatever the developer happens to have installed.
+
+    `root` None (production) → the user overlay wins first: an overlay `<parent>` overrides the
+    shipped one for EVERY child, repo-shipped or overlay-authored — the same precedence
+    find_in_catalog applies everywhere else. Then the same catalog root as the child (a
+    self-contained overlay resolves within itself), then the remaining catalog roots (repo
+    shipped, generated).
     """
+    if root is not None:
+        confined = _resolve_dir(root, "stacks", parent)
+        if (confined / "stack.yaml").is_file():
+            return confined
+        raise SchemaError(
+            f"{manifest}: extends: '{parent}' — no such stack under catalog root {root}"
+        )
     overlay = paths.user_catalog() / "stacks" / paths.catalog_relpath(parent)
     if (overlay / "stack.yaml").is_file():
         return overlay
@@ -1999,7 +2013,7 @@ def _resolve_parent_stack_dir(parent: str, stack_dir: Path, manifest: Path) -> P
 
 
 def _resolve_stack_extends(
-    raw: dict, stack_dir: Path, manifest: Path, chain: tuple[Path, ...]
+    raw: dict, stack_dir: Path, manifest: Path, chain: tuple[Path, ...], root: Path | None = None
 ) -> dict:
     """Merge a stack manifest onto the one it `extends:`, returning a single flat manifest.
 
@@ -2022,12 +2036,12 @@ def _resolve_stack_extends(
     if not isinstance(parent_name, str):
         raise SchemaError(f"{manifest}: 'extends' must be a stack name (a string)")
 
-    parent_dir = _resolve_parent_stack_dir(parent_name, stack_dir, manifest).resolve()
+    parent_dir = _resolve_parent_stack_dir(parent_name, stack_dir, manifest, root).resolve()
     if parent_dir in chain:
         cycle = " -> ".join(p.name for p in (*chain, parent_dir))
         raise SchemaError(f"{manifest}: 'extends' cycle: {cycle}")
 
-    parent_raw = _load_stack_raw(parent_dir, chain=(*chain, parent_dir))
+    parent_raw = _load_stack_raw(parent_dir, chain=(*chain, parent_dir), root=root)
 
     merged = dict(parent_raw)
     for key, value in raw.items():
@@ -2043,7 +2057,9 @@ def _resolve_stack_extends(
     return merged
 
 
-def _load_stack_raw(stack_dir: Path, chain: tuple[Path, ...] = ()) -> dict:
+def _load_stack_raw(
+    stack_dir: Path, chain: tuple[Path, ...] = (), root: Path | None = None
+) -> dict:
     """Read + validate one stack manifest and fold in whatever it `extends:`."""
     manifest = stack_dir / "stack.yaml"
     if not manifest.is_file():
@@ -2052,13 +2068,13 @@ def _load_stack_raw(stack_dir: Path, chain: tuple[Path, ...] = ()) -> dict:
     if "name" not in raw:
         raise SchemaError(f"{manifest}: required field 'name' is missing")
     _validate_stack_fields(raw, manifest)
-    return _resolve_stack_extends(raw, stack_dir, manifest, chain)
+    return _resolve_stack_extends(raw, stack_dir, manifest, chain, root)
 
 
-def load_stack(stack_dir: Path) -> Stack:
+def load_stack(stack_dir: Path, root: Path | None = None) -> Stack:
     stack_dir = Path(stack_dir)
     manifest = stack_dir / "stack.yaml"
-    raw = _load_stack_raw(stack_dir, chain=(stack_dir.resolve(),))
+    raw = _load_stack_raw(stack_dir, chain=(stack_dir.resolve(),), root=root)
     # A stack is resolved by DIRECTORY name (`_resolve_dir(root, "stacks", stack_name)`), so the
     # directory is the identity and `name:` is a restatement of it. Nothing used to enforce that
     # they agree — and `staleness.compute_stamp` re-resolves the manifest from `stack.name`, so a
@@ -2351,7 +2367,7 @@ def load_stack_with_recipes(
     `strict` → validate each recipe's top-level fields against `KNOWN_RECIPE_FIELDS` (the
     authoring guardrail; `harnessed build`/`test` pass it, `--no-strict` opts out).
     """
-    stack = load_stack(_resolve_dir(root, "stacks", stack_name))
+    stack = load_stack(_resolve_dir(root, "stacks", stack_name), root=root)
     recipes = [
         load_recipe(_resolve_dir(root, "recipes", ref), strict=strict, ref=ref)
         for ref in stack.recipes

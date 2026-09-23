@@ -190,3 +190,21 @@ class TestParentResolutionPrecedence:
         _stack(tmp_path, "base", "recipes: [fixture]\n")
         child = _stack(tmp_path, "kid", "extends: base\n")
         assert load_stack(child).recipes == ["fixture"]
+
+    def test_explicit_root_confines_the_parent_to_that_root(self, monkeypatch, tmp_path):
+        """A fixture tree passed as `root` must not inherit from the developer's overlay."""
+        overlay, _repo = self._two_roots(monkeypatch, tmp_path)
+        _stack(overlay, "base", "recipes: [override]\n")
+        fixture = tmp_path / "fixture"
+        _stack(fixture, "base", "recipes: [fixture]\n")
+        child = _stack(fixture, "kid", "extends: base\n")
+        assert load_stack(child, root=fixture).recipes == ["fixture"]
+
+    def test_explicit_root_without_the_parent_is_an_error(self, monkeypatch, tmp_path):
+        """No silent fallback to the catalog search path when a root was named."""
+        overlay, _repo = self._two_roots(monkeypatch, tmp_path)
+        _stack(overlay, "base", "recipes: [override]\n")
+        fixture = tmp_path / "fixture"
+        child = _stack(fixture, "kid", "extends: base\n")
+        with pytest.raises(SchemaError, match="no such stack under catalog root"):
+            load_stack(child, root=fixture)
