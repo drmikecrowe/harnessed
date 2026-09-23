@@ -665,6 +665,121 @@ def _ensure_harness_image(rt: str, harness: str) -> None:
         _build_agent_image(rt, harness)
 
 
+def _built_pairs_for(rt: str, harness: str) -> list[tuple[str, str]]:
+    """The previously-built `(stack, harness)` pairs whose derived image sits on `harness`.
+
+    The same labelled-image sweep `_stale_pairs` runs for reconciliation, narrowed to one
+    harness: a derived image is `FROM harnessed-<harness>:latest`, so these are exactly the
+    stacks an agent-image refresh has to carry the new install into. Raises when the runtime
+    cannot list images — a rebuild is not going to work either, and the caller wants ONE
+    warning, not a different failure per stack.
+    """
+    result = _bounded(
+        [rt, "images", "--filter", "label=harnessed=true", "--format", "{{.Repository}}"],
+        timeout=_PODMAN_QUERY_TIMEOUT,
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"{rt} images exited {result.returncode}: {(result.stderr or '').strip()}"
+        )
+    return [
+        pair for pair in parse_built_pairs(result.stdout.splitlines(), HARNESS_CONFIG_DIR)
+        if pair[1] == harness
+    ]
+
+
+def _refresh_unpinnable_harness(rt: str, harness: str) -> list[str]:
+    """Rebuild an unpinnable harness's images so its vendor install actually re-runs.
+
+    An unpinnable agent installs at BUILD time (claude: `RUN curl … | bash` resolves the
+    vendor's current stable), and a plain rebuild replays that layer from cache — so "tracks
+    upstream, moves on a rebuild" only holds if the rebuild bypasses the cache. Two builds
+    inside one bypass window:
+
+    * the standalone agent image: the install layer re-executes and the tag now holds the
+      vendor's latest;
+    * every previously-built derived stack image on this harness — ALSO bypassed, because the
+      layer cache does not notice a repointed local parent: measured on docker 29.7.2, a child
+      rebuilt after its `FROM` tag was rebuilt fresh answered CACHED for every layer. Without
+      the bypass the stack images would silently keep the old install while the report claimed
+      new.
+
+    The base image is deliberately NOT rebuilt: its Dockerfile is unchanged since its last
+    build, and a cache-backed no-op is exactly what a plain `harnessed build` gives it —
+    marking it built keeps the per-stack path from re-running every base layer under the
+    bypass window.
+
+    Returns the sorted stack names whose derived images were rebuilt.
+    """
+    prev = os.environ.get("HARNESSED_PODMAN_NO_CACHE")
+    os.environ["HARNESSED_PODMAN_NO_CACHE"] = "true"
+    try:
+        if not _image_exists(rt, _BASE_IMAGE):
+            # Fresh machine: the normal first-build path, which builds the base and the claude
+            # agent image together — under the bypass window that is a real build, which is
+            # what a machine with no images needs anyway.
+            _build_images_cmd(rt, force=False)
+        with _SHARED_IMAGES_LOCK:
+            _SHARED_IMAGES_BUILT.add(_BASE_IMAGE)
+        _build_agent_image(rt, harness)
+        pairs = _built_pairs_for(rt, harness)
+        for stack, pair_harness in pairs:
+            _build_stack(rt, stack, pair_harness, None, strict=True)
+        return sorted({stack for stack, _ in pairs})
+    finally:
+        if prev is None:
+            os.environ.pop("HARNESSED_PODMAN_NO_CACHE", None)
+        else:
+            os.environ["HARNESSED_PODMAN_NO_CACHE"] = prev
+
+
+def _offer_unpinnable_refresh(report, yes: bool) -> None:
+    """Offer the rebuild that is an unpinnable harness's ONLY path to its vendor's latest.
+
+    Apply mode has nothing to rewrite for these agents — no pin exists to bump — so without
+    this it would end having done nothing at all about the rows the report just showed.
+    `--yes` accepts, the same contract as the bump prompts. A runtime that cannot serve the
+    rebuild degrades to a warning: pin updates are this command's primary job and must
+    survive a dead container machine.
+    """
+    harnesses = sorted({
+        f.pin.recipe for f in report.unpinnable if f.pin.recipe in HARNESS_CONFIG_DIR
+    })
+    if not harnesses:
+        return
+    try:
+        rt = _runtime()
+        pairs_by_harness = {h: _built_pairs_for(rt, h) for h in harnesses}
+    except Exception as exc:  # noqa: BLE001 — a dead runtime must not kill the pin updates.
+        _err.print(
+            f"[yellow]warning:[/yellow] cannot reach the container runtime for the "
+            f"unpinnable-harness rebuild ({exc}) — run `harnessed build --force` later to "
+            f"pick up the vendor's latest"
+        )
+        return
+    for harness in harnesses:
+        pairs = pairs_by_harness[harness]
+        suffix = f" and {len(pairs)} built stack image(s)" if pairs else ""
+        if not yes and not typer.confirm(
+            f"Rebuild the {harness} image{suffix} to pull its vendor's latest now?",
+            default=True,
+        ):
+            continue
+        try:
+            stacks = _refresh_unpinnable_harness(rt, harness)
+        except Exception as exc:  # noqa: BLE001 — one bad build must not kill the others.
+            _err.print(
+                f"[yellow]warning:[/yellow] {harness} rebuild failed ({exc}) — run "
+                f"`harnessed build --force` later to pick up its vendor's latest"
+            )
+            continue
+        line = f"[green][SUCCESS][/green] {harness} image refreshed to its vendor's latest"
+        if stacks:
+            line += f"; rebuilt stacks: {', '.join(stacks)}"
+        _out.print(line)
+
+
 def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *, strict: bool = True) -> None:
     """Assemble a stack IN-PROCESS (host-native, emit-only — no tool container) + build hatago.
 
@@ -4654,6 +4769,7 @@ def _print_update_report(report) -> None:
             _out.print(f"  {f.pin.recipe}/{f.pin.key} ({f.pin.file.name})\n      [dim]{f.error}[/dim]")
 
 
+@app.command("upgrade", help="Alias for `harnessed update` — same command, same flags, either spelling.")
 @app.command("update")
 def update_pins(
     check: bool = typer.Option(
@@ -4692,6 +4808,11 @@ def update_pins(
     preference, not a gate: when every newer release is younger than that, the newest is offered
     anyway and the report names its age. An explicit `--minimum-release-age` overrides both
     windows, keeping the flag one knob for every pin.
+
+    Unpinnable harnesses (claude, antigravity) are apply mode's other action: they have no pin
+    to bump, so `update` offers to rebuild their images instead — the agent image and every
+    previously-built stack image on that harness, cache bypassed so the vendor install actually
+    re-runs (see `_refresh_unpinnable_harness`). `--yes` accepts; `--check` never rebuilds.
     """
     if fail_on not in ("any", "major"):
         raise typer.BadParameter("--fail-on must be 'any' or 'major'")
@@ -4741,6 +4862,13 @@ def update_pins(
                 "run `harnessed update` to bump them"
             )
         raise typer.Exit(report.check_exit_code(fail_on))
+
+    # An unpinnable harness has no pin to bump, so without this the apply mode would end
+    # having done nothing about the rows it just reported. Owner ask 2026-09-23: running
+    # update should UPGRADE claude (and every unpinnable harness), not merely report that it
+    # tracks upstream — and its upgrade is a cache-bypassed image rebuild, not a manifest edit.
+    if report.unpinnable:
+        _offer_unpinnable_refresh(report, yes)
 
     if not report.stale:
         _out.print("[green]All resolvable pins are up to date.[/green]")
