@@ -21,7 +21,7 @@ description: "Backlog management over GitHub Issues: find ready (unblocked) work
 # relationship and which nothing can query. install.sh enforces the floor at build time.
 # jq is required by ready.sh/claim.sh/prime.sh (blockedBy is a connection object, parsed with jq).
 tools:
-  - gh@2.100.0
+  - gh@2.101.0
   - jq@1.8.2
 
 # gh talks to the REST + GraphQL API; github.com covers the OAuth device flow if the user ever runs
