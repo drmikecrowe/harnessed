@@ -80,15 +80,15 @@ class TestOverlayShadowWarning:
         assert schema._err.warnings == 1
 
     def test_shadowed_default_does_not_warn(self, monkeypatch, tmp_path, capsys):
-        _install(monkeypatch, tmp_path, overlay=["default"], repo=["default"],
-                 stack_recipes=["default"])
+        _install(
+            monkeypatch, tmp_path, overlay=["default"], repo=["default"], stack_recipes=["default"]
+        )
         schema.load_stack_with_recipes(None, "s")
         assert capsys.readouterr().err == ""
         assert schema._err.warnings == 0
 
     def test_second_resolve_of_same_name_does_not_rewarn(self, monkeypatch, tmp_path, capsys):
-        _install(monkeypatch, tmp_path, overlay=["stale"], repo=["stale"],
-                 stack_recipes=["stale"])
+        _install(monkeypatch, tmp_path, overlay=["stale"], repo=["stale"], stack_recipes=["stale"])
         schema.load_stack_with_recipes(None, "s")
         schema.load_stack_with_recipes(None, "s")
         assert capsys.readouterr().err.count("warning: recipe 'stale'") == 1
@@ -124,3 +124,10 @@ class TestOverlayShadowedRepoPath:
     def test_repo_only_returns_none(self, monkeypatch, tmp_path):
         _install(monkeypatch, tmp_path, repo=["only-repo"])
         assert paths.overlay_shadowed_repo_path("recipes", "only-repo") is None
+
+    def test_hollow_overlay_dir_is_not_a_shadow(self, monkeypatch, tmp_path):
+        """An overlay dir without its recipe.yaml is debris, not an override: no shadow pair, so
+        the repo copy stays the effective one (see paths.find_in_catalog's marker rule)."""
+        xdg, _home = _install(monkeypatch, tmp_path, repo=["stale"], stack_recipes=["stale"])
+        (xdg / "harnessed" / "catalog" / "recipes" / "stale").mkdir(parents=True)
+        assert paths.overlay_shadowed_repo_path("recipes", "stale") is None

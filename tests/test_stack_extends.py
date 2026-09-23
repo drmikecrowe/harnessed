@@ -31,7 +31,9 @@ class TestExtendsMerge:
     def test_child_unions_recipes_and_services_with_parent(self, tmp_path):
         _stack(tmp_path, "base", "recipes: [ccstatusline, openbrain]\nservices: [gbrain]\n")
         child = _stack(
-            tmp_path, "kid", "extends: base\nrecipes: [beads-team, serena]\nservices: [beads-server]\n"
+            tmp_path,
+            "kid",
+            "extends: base\nrecipes: [beads-team, serena]\nservices: [beads-server]\n",
         )
         stk = load_stack(child)
         # Parent's entries first, then the child's additions.
@@ -143,3 +145,66 @@ class TestStrictStackFields:
         optout = _stack(tmp_path, "optout", "extends: client-base\nisolated_auth: false\n")
         assert load_stack(heir).isolated_auth is True
         assert load_stack(optout).isolated_auth is False
+
+
+class TestParentResolutionPrecedence:
+    """Which catalog root an `extends:` parent resolves from.
+
+    The user overlay wins first: an overlay `default` must override the shipped one for EVERY
+    child, repo-shipped or overlay-authored, matching find_in_catalog's precedence everywhere
+    else. The sibling (the child's own root) comes next, which is what keeps a fixture tree or a
+    self-contained overlay resolving within itself; the remaining roots follow.
+    """
+
+    def _two_roots(self, monkeypatch, tmp_path):
+        """Isolated overlay + repo CATALOG ROOTS (the _stack helper appends stacks/ itself)."""
+        monkeypatch.setenv("HARNESSED_DIR", str(tmp_path / "home"))
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        return (
+            tmp_path / "xdg" / "harnessed" / "catalog",
+            tmp_path / "home" / "catalog",
+        )
+
+    def test_repo_child_extends_the_overlay_default_not_the_shipped_one(
+        self, monkeypatch, tmp_path
+    ):
+        """THE regression: a shipped stack extending `default` silently got the SHIPPED default
+        because the sibling check ran first — the overlay override was never consulted."""
+        overlay, repo = self._two_roots(monkeypatch, tmp_path)
+        _stack(repo, "default", "recipes: [shipped]\n")
+        _stack(overlay, "default", "recipes: [override]\n")
+        child = _stack(repo, "kid", "extends: default\n")
+        assert load_stack(child).recipes == ["override"]
+
+    def test_overlay_child_still_extends_a_repo_shipped_parent(self, monkeypatch, tmp_path):
+        overlay, repo = self._two_roots(monkeypatch, tmp_path)
+        _stack(repo, "default", "recipes: [shipped]\n")
+        child = _stack(overlay, "kid", "extends: default\n")
+        assert load_stack(child).recipes == ["shipped"]
+
+    def test_sibling_wins_when_no_overlay_parent_exists(self, monkeypatch, tmp_path):
+        """A fixture tree (or self-contained overlay) resolves its parent within itself when no
+        overlay copy exists."""
+        self._two_roots(monkeypatch, tmp_path)
+        _stack(tmp_path, "base", "recipes: [fixture]\n")
+        child = _stack(tmp_path, "kid", "extends: base\n")
+        assert load_stack(child).recipes == ["fixture"]
+
+    def test_explicit_root_confines_the_parent_to_that_root(self, monkeypatch, tmp_path):
+        """A fixture tree passed as `root` must not inherit from the developer's overlay."""
+        overlay, _repo = self._two_roots(monkeypatch, tmp_path)
+        _stack(overlay, "base", "recipes: [override]\n")
+        fixture = tmp_path / "fixture"
+        _stack(fixture, "base", "recipes: [fixture]\n")
+        child = _stack(fixture, "kid", "extends: base\n")
+        assert load_stack(child, root=fixture).recipes == ["fixture"]
+
+    def test_explicit_root_without_the_parent_is_an_error(self, monkeypatch, tmp_path):
+        """No silent fallback to the catalog search path when a root was named."""
+        overlay, _repo = self._two_roots(monkeypatch, tmp_path)
+        _stack(overlay, "base", "recipes: [override]\n")
+        fixture = tmp_path / "fixture"
+        child = _stack(fixture, "kid", "extends: base\n")
+        with pytest.raises(SchemaError, match="no such stack under catalog root"):
+            load_stack(child, root=fixture)

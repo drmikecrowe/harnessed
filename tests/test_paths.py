@@ -10,12 +10,18 @@ from harnessed import paths
 class TestProfileDir:
     def test_uses_xdg_data_home(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        assert paths.profile_dir("my-stack", "claude") == tmp_path / "harnessed" / "profiles" / "my-stack" / "claude"
+        assert (
+            paths.profile_dir("my-stack", "claude")
+            == tmp_path / "harnessed" / "profiles" / "my-stack" / "claude"
+        )
 
     def test_falls_back_to_local_share(self, monkeypatch):
         monkeypatch.delenv("XDG_DATA_HOME", raising=False)
         home = Path.home()
-        assert paths.profile_dir("my-stack", "claude") == home / ".local" / "share" / "harnessed" / "profiles" / "my-stack" / "claude"
+        assert (
+            paths.profile_dir("my-stack", "claude")
+            == home / ".local" / "share" / "harnessed" / "profiles" / "my-stack" / "claude"
+        )
 
     def test_different_stacks_different_dirs(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
@@ -127,7 +133,10 @@ class TestProjectHash:
     def test_is_the_key_inside_instance_name(self):
         # Single source: instance_name must embed exactly project_hash (no independent digest).
         h = paths.project_hash("/home/user/project")
-        assert paths.instance_name("my-stack", "claude", "/home/user/project") == f"harnessed-claude-my-stack-{h}"
+        assert (
+            paths.instance_name("my-stack", "claude", "/home/user/project")
+            == f"harnessed-claude-my-stack-{h}"
+        )
 
     def test_different_projects_differ(self):
         assert paths.project_hash("/home/user/a") != paths.project_hash("/home/user/b")
@@ -170,6 +179,7 @@ class TestPersistDir:
 
     def test_git_common_dir_returns_path_for_real_git_repo(self, tmp_path):
         import subprocess
+
         subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
         gcd = paths.git_common_dir(tmp_path)
         assert gcd is not None
@@ -177,20 +187,29 @@ class TestPersistDir:
 
     def test_git_common_dir_same_across_worktrees(self, tmp_path):
         import subprocess
+
         # Init main repo
         main = tmp_path / "main"
         main.mkdir()
         subprocess.run(["git", "init", str(main)], check=True, capture_output=True)
-        subprocess.run(["git", "-C", str(main), "commit", "--allow-empty", "-m", "init"],
-                       check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(main), "commit", "--allow-empty", "-m", "init"],
+            check=True,
+            capture_output=True,
+        )
         # Add a worktree
         wt = tmp_path / "feature"
-        subprocess.run(["git", "-C", str(main), "worktree", "add", str(wt), "-b", "feature"],
-                       check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(main), "worktree", "add", str(wt), "-b", "feature"],
+            check=True,
+            capture_output=True,
+        )
         gcd_main = paths.git_common_dir(main)
         gcd_wt = paths.git_common_dir(wt)
         assert gcd_main is not None and gcd_wt is not None
-        assert gcd_main == gcd_wt, "git_common_dir must be identical across all worktrees of one checkout"
+        assert gcd_main == gcd_wt, (
+            "git_common_dir must be identical across all worktrees of one checkout"
+        )
 
     # --- persist_project_dir (scope: project — keyed by git-common-dir, fallback to path) ---
 
@@ -203,21 +222,29 @@ class TestPersistDir:
 
     def test_project_dir_same_across_worktrees(self, monkeypatch, tmp_path):
         import subprocess
+
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
         main = tmp_path / "main"
         main.mkdir()
         subprocess.run(["git", "init", str(main)], check=True, capture_output=True)
-        subprocess.run(["git", "-C", str(main), "commit", "--allow-empty", "-m", "init"],
-                       check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(main), "commit", "--allow-empty", "-m", "init"],
+            check=True,
+            capture_output=True,
+        )
         wt = tmp_path / "feature"
-        subprocess.run(["git", "-C", str(main), "worktree", "add", str(wt), "-b", "feature"],
-                       check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(main), "worktree", "add", str(wt), "-b", "feature"],
+            check=True,
+            capture_output=True,
+        )
         a = paths.persist_project_dir("beads", main, ".beads")
         b = paths.persist_project_dir("beads", wt, ".beads")
         assert a == b, "project-scope persist must be the same dir across all worktrees"
 
     def test_project_dir_differs_from_workspace_dir_when_in_git(self, monkeypatch, tmp_path):
         import subprocess
+
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
         repo = tmp_path / "repo"
         repo.mkdir()
@@ -242,9 +269,13 @@ class TestPrimaryWorktree:
 
     def test_normal_repo_returns_itself(self, tmp_path):
         import subprocess
+
         subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, capture_output=True)
-        subprocess.run(["git", "-C", str(tmp_path), "commit", "--allow-empty", "-m", "init"],
-                       check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(tmp_path), "commit", "--allow-empty", "-m", "init"],
+            check=True,
+            capture_output=True,
+        )
         assert paths.primary_worktree(tmp_path) == tmp_path
 
     def test_bare_layout_resolves_non_main_worktree_to_default_branch_worktree(self, tmp_path):
@@ -259,7 +290,9 @@ class TestPrimaryWorktree:
         git("commit", "--allow-empty", "-m", "init", cwd=seed)
         default = subprocess.run(
             ["git", "-C", str(seed), "symbolic-ref", "--short", "HEAD"],
-            check=True, capture_output=True, text=True,
+            check=True,
+            capture_output=True,
+            text=True,
         ).stdout.strip()
         bare = tmp_path / "b.git"
         git("clone", "-q", "--bare", str(seed), str(bare))
@@ -281,9 +314,13 @@ class TestBareWorktreeContainer:
 
     def test_normal_repo_returns_none(self, tmp_path):
         import subprocess
+
         subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, capture_output=True)
-        subprocess.run(["git", "-C", str(tmp_path), "commit", "--allow-empty", "-m", "init"],
-                       check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(tmp_path), "commit", "--allow-empty", "-m", "init"],
+            check=True,
+            capture_output=True,
+        )
         assert paths.bare_worktree_container(tmp_path) is None
 
     def test_bare_layout_returns_parent_of_bare_repo(self, tmp_path):
@@ -297,7 +334,9 @@ class TestBareWorktreeContainer:
         git("commit", "--allow-empty", "-m", "init", cwd=seed)
         default = subprocess.run(
             ["git", "-C", str(seed), "symbolic-ref", "--short", "HEAD"],
-            check=True, capture_output=True, text=True,
+            check=True,
+            capture_output=True,
+            text=True,
         ).stdout.strip()
         bare = tmp_path / "b.git"
         git("clone", "-q", "--bare", str(seed), str(bare))
@@ -356,7 +395,9 @@ class TestCatalogRelpath:
     def test_variety_ref_maps_to_family_dir(self):
         assert paths.catalog_relpath("beads/stealth") == Path("beads/stealth")
 
-    @pytest.mark.parametrize("bad", ["..", "beads/..", "../beads", "beads//stealth", "/beads", "beads/", ""])
+    @pytest.mark.parametrize(
+        "bad", ["..", "beads/..", "../beads", "beads//stealth", "/beads", "beads/", ""]
+    )
     def test_traversing_or_empty_component_rejected(self, bad):
         with pytest.raises(ValueError, match="invalid catalog ref"):
             paths.catalog_relpath(bad)
@@ -399,3 +440,52 @@ class TestListCatalogVarieties:
         recipes = self._catalog(monkeypatch, tmp_path)
         self._recipe(recipes / "a" / "b" / "c")
         assert paths.list_catalog("recipes") == []
+
+
+class TestFindInCatalog:
+    """Per-name resolution across the catalog roots: user overlay first, marker-defined entries.
+
+    A directory counts as an entry only when it carries the kind's marker manifest — a hollow
+    dir (a rename mid-flight, a half-authored recipe) must fall through to a real copy in a
+    lower root instead of shadowing it and dying on a missing manifest.
+    """
+
+    def _roots(self, monkeypatch, tmp_path):
+        """Isolated overlay (XDG_CONFIG_HOME) + repo catalog (HARNESSED_DIR); returns both roots."""
+        monkeypatch.setenv("HARNESSED_DIR", str(tmp_path / "home"))
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        return (
+            tmp_path / "xdg" / "harnessed" / "catalog",
+            tmp_path / "home" / "catalog",
+        )
+
+    def _recipe(self, d: Path) -> None:
+        d.mkdir(parents=True)
+        (d / "recipe.yaml").write_text("name: x\n")
+
+    def test_overlay_entry_wins_over_the_repo_copy(self, monkeypatch, tmp_path):
+        overlay, repo = self._roots(monkeypatch, tmp_path)
+        self._recipe(overlay / "recipes" / "mine")
+        self._recipe(repo / "recipes" / "mine")
+        assert paths.find_in_catalog("recipes", "mine") == overlay / "recipes" / "mine"
+
+    def test_hollow_overlay_dir_falls_through_to_the_repo_copy(self, monkeypatch, tmp_path):
+        """THE regression: a rename leaves the overlay dir behind without its recipe.yaml, and
+        the shipped copy must still resolve instead of the load dying on the hollow dir."""
+        overlay, repo = self._roots(monkeypatch, tmp_path)
+        (overlay / "recipes" / "mine").mkdir(parents=True)
+        self._recipe(repo / "recipes" / "mine")
+        assert paths.find_in_catalog("recipes", "mine") == repo / "recipes" / "mine"
+
+    def test_name_resolving_nowhere_returns_the_highest_precedence_candidate(
+        self, monkeypatch, tmp_path
+    ):
+        """The not-found contract: the returned path points at the overlay so the loader's error
+        names the highest-precedence root. The overlay kind dir must EXIST for the overlay to be
+        a root at all (catalog_roots skips a missing one)."""
+        overlay, _repo = self._roots(monkeypatch, tmp_path)
+        (overlay / "recipes").mkdir(parents=True)
+        resolved = paths.find_in_catalog("recipes", "ghost")
+        assert resolved == overlay / "recipes" / "ghost"
+        assert not resolved.exists()
