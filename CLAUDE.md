@@ -15,7 +15,6 @@ session, because the table is how you learn which bytes to open.
 | --- | --- |
 | What do *agent / recipe / service / stack / catalog* mean? How does build/launch work? | **[ARCHITECTURE.md](ARCHITECTURE.md) — first, always.** The vocabulary is precise. The words are not interchangeable. |
 | Where does code live? What calls what? | [docs/codebase/](docs/codebase/) — STRUCTURE, ARCHITECTURE, INTEGRATIONS |
-| Who wins when two config sources conflict? What is the launch order? What does a gate prove? | [openwiki/](openwiki/) — `concepts/precedence.md`, `workflows/{container-run,host-run}.md`, `testing/verification-ladder.md`. See [AGENTS.md](AGENTS.md) §Generated wiki for the full routing **and its one hard limit**. |
 | Who calls this symbol? What does a change reach? Show me one function. | `codebase-memory-mcp` — see [AGENTS.md](AGENTS.md) §Codebase graph for the tools **and their warnings**. Beats `rg` + `Read`. |
 | How is code written? What is tested or known-weak? | [docs/codebase/](docs/codebase/) — CONVENTIONS, TESTING, CONCERNS |
 | How do I author a recipe/service/stack? Set up a dev env? | [docs/guides/](docs/guides/), [CONTRIBUTING.md](CONTRIBUTING.md) |
@@ -24,10 +23,6 @@ session, because the table is how you learn which bytes to open.
 | What must I not do operationally? | [AGENTS.md](AGENTS.md) |
 | What work is open or decided? | GitHub Issues — never a markdown TODO |
 
-- **`openwiki/` is generated and drift-gated.** Each claim carries `repo://path#Lx-Ly` evidence and
-  the digest observed when written, so `mise run openwiki-drift` can tell you which pages now lie.
-  Run it before acting on a page. Never hand-edit a generated page; fix the source and regenerate.
-  Scoping unbuilt work is the one thing it is bad at — grep the source for that.
 - **`docs/codebase/` is generated** (`/map-codebase`) and reproduces stale claims across
   regenerations. Code wins on conflict — fix the map. Re-running does not fix it.
 - **`docs/` is the GitHub wiki** — separate repo (`harnessed.wiki.git`), gitignored, and present
@@ -44,20 +39,18 @@ Keep layout and vocabulary in ARCHITECTURE.md, not here.
 
 Renaming, moving, or altering something that already works is not a reading task, and the table
 above does not fire on it by itself — you arrive holding "rename this", not "who calls this". Run
-all three, in order, before the first edit:
+both, in order, before the first edit:
 
-1. **openwiki** — the constraints already decided, and the alternatives already rejected. The
-   source records what the code does; only the wiki records what was ruled out and why.
-2. **`trace_path(<symbol>, direction: "inbound", depth: 1)`** — the complete caller set. Then again
+1. **`trace_path(<symbol>, direction: "inbound", depth: 1)`** — the complete caller set. Then again
    with `include_tests: true` for the blast radius: it returns the covering tests BY NAME, which is
    how you find the ones that encode the very decision you are changing.
-3. **source** — now, and only for the callers step 2 named.
+2. **source** — now, and only for the callers step 1 named.
 
-Skipping 1 costs you a constraint you then rediscover. Skipping 2 costs you a caller. Both were
-paid while SCOPING the launcher-script rename (still unbuilt at the time of writing): reading
-source first found three of the four touch points, and `trace_path` on the name parser found the
-fourth, `aoe._is_ours` — whose omission would have made every pre-existing aoe row unrepairable and
-blocked registration outright, silently, on upgrade.
+Skipping the first costs you a caller, and both skips were paid while SCOPING the launcher-script
+rename (still unbuilt at the time of writing): reading source first found three of the four touch
+points, and `trace_path` on the name parser found the fourth, `aoe._is_ours` — whose omission
+would have made every pre-existing aoe row unrepairable and blocked registration outright,
+silently, on upgrade.
 
 ## Non-negotiable constraints
 
@@ -195,10 +188,3 @@ Source comments still cite `bd <id>` tokens. These are **not** a tracker and not
 treat one as an opaque marker on the comment it sits in, and never as a place to look something up.
 Do not add new ones.
 
-<!-- OPENWIKI:START -->
-
-## OpenWiki
-
-See [AGENTS.md](AGENTS.md) for OpenWiki agent instructions.
-
-<!-- OPENWIKI:END -->
