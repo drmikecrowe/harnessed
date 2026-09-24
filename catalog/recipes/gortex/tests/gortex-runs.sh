@@ -54,8 +54,10 @@ if [[ ! -f "${settings}" ]]; then
 fi
 # The grep matches the EMITTED command entry, not a bare substring: the assembler writes this
 # file fresh, so a loose grep could pass on the string appearing in some unrelated field while
-# the hooks block itself was dropped (the failure mode this check guards).
-if ! grep -q '"command": "gortex hook"' "${settings}"; then
+# the hooks block itself was dropped (the failure mode this check guards). Key-value adjacency
+# with spacing-tolerant separators, not a byte-exact literal — that stays true across
+# json.dumps separator changes while still refusing a mention anywhere else in the file.
+if ! grep -Eq '"command"[[:space:]]*:[[:space:]]*"gortex hook"' "${settings}"; then
     echo "gortex hook command missing from ${settings} — the agent will never be steered at the graph" >&2
     exit 1
 fi
