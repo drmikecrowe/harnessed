@@ -46,8 +46,11 @@ gortex version
 #                         wiring (hatago / native .mcp.json) owns the real server list anyway.
 #
 # HOME pinned to the shim so any write the adapter still resolves against $HOME lands in
-# harnessed-owned space, never the user's real home (the rtk `rtk init -g` lesson). Idempotent:
-# upstream skips byte-identical files, so the every-launch host re-run is cheap.
+# harnessed-owned space, never the user's real home (the rtk `rtk init -g` lesson). The pin is
+# PER-INVOCATION: only the `gortex install` below runs shimmed — `gortex version` above is
+# read-only at this pin and deliberately unshimmed. A future edit adding another gortex call
+# here must re-pin HOME on it or the containment contract silently stops holding.
+# Idempotent: upstream skips byte-identical files, so the every-launch host re-run is cheap.
 HOME="${HARNESSED_HOME_SHIM:?install.sh requires HARNESSED_HOME_SHIM}" gortex install \
     --agents=claude-code \
     --no-hooks \

@@ -92,12 +92,18 @@ init:
       gortex daemon status >/dev/null 2>&1 \
         || gortex daemon start --detach >/dev/null 2>&1 \
         || echo "gortex: daemon did not start (log: ~/.gortex/cache/daemon.log); graph tools will be down" >&2
-      # `${PROJECT_DIR:-}`, not `:?`: this block is SOURCED, and a `:?` failure kills the attach
-      # shell — the one launch-fatal path the "every path exits 0" contract above forbids. The
-      # contract guarantees PROJECT_DIR is exported, so this guard only trips if the contract
-      # itself is broken, and then track fails on the empty path into the warn below anyway.
-      gortex track "${PROJECT_DIR:-}" >/dev/null 2>&1 \
-        || echo "gortex: could not register ${PROJECT_DIR:-<unset>}; run 'gortex track \$PROJECT_DIR' once the daemon is up" >&2
+      # Not `${PROJECT_DIR:?}`: this block is SOURCED and a `:?` failure kills the attach shell —
+      # the one launch-fatal path the "every path exits 0" contract above forbids. But neither is
+      # the guard optional: `gortex track ""` EXITS 0 and silently registers the CALLER'S CWD
+      # (measured at this pin), so with an unset PROJECT_DIR and the redirects in place the daemon
+      # would quietly track the wrong tree while every tool call returns repo_not_tracked with no
+      # hint why. Guard explicitly; both arms warn and fall through.
+      if [ -n "${PROJECT_DIR:-}" ]; then
+        gortex track "${PROJECT_DIR}" >/dev/null 2>&1 \
+          || echo "gortex: could not register ${PROJECT_DIR}; run 'gortex track ${PROJECT_DIR}' once the daemon is up" >&2
+      else
+        echo "gortex: PROJECT_DIR unset; workspace not registered with the daemon" >&2
+      fi
     else
       echo "gortex: not on PATH; graph tools disabled this session" >&2
     fi
