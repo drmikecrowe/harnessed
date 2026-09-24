@@ -47,16 +47,21 @@ tools:
 #   - a crashed daemon mid-session: hatago respawns the child, and the wrapper self-heals.
 #
 # The status gate makes the wrapper idempotent with init.run's own ensure (whichever runs first
-# wins; the other sees rc=0 and skips), and both `>/dev/null` redirects matter: the wrapper's
-# stdout IS the MCP stdio channel, and `daemon start` prints a "[gortex daemon] detached…"
-# banner that would corrupt the protocol handshake.
+# wins; the other sees rc=0 and skips). Stream handling is asymmetric on purpose (measured: the
+# "[gortex daemon] detached…" banner goes to STDERR, stdout of start is empty): stdout is
+# silenced because it IS the MCP stdio channel (defensively — future builds could print there),
+# while stderr flows so a failed start leaves its reason in hatago's child log, the one place a
+# headless failure is ever visible. The bounded poll covers the readiness race the same review
+# flagged: `--detach` returns when the fork succeeds, not when the socket is bound, and
+# `gortex mcp` exits instead of retrying — five 1s attempts bound the wait without blocking the
+# healthy path (the first status of an already-running daemon breaks on iteration one).
 mcp:
   servers:
     - name: gortex
       command: bash
       args:
         - -c
-        - 'gortex daemon status >/dev/null 2>&1 || gortex daemon start --detach >/dev/null 2>&1; exec gortex mcp'
+        - 'gortex daemon status >/dev/null 2>&1 || gortex daemon start --detach >/dev/null; for i in 1 2 3 4 5; do gortex daemon status >/dev/null 2>&1 && break; sleep 1; done; exec gortex mcp'
       transport: stdio
 
 # --- Repo registration (init.run) --------------------------------------------------------------------

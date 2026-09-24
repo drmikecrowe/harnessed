@@ -27,11 +27,14 @@ Two status-gated ensures keep the daemon up, order-independent, and both reuse-f
 that is already serving (on a host launch, usually your own machine-wide one) is left completely
 alone; all clients speak to the same unix socket with isolated per-session state:
 
-1. **The MCP entry itself** (`bash -c 'gortex daemon status || gortex daemon start --detach;
-   exec gortex mcp'`). v0.64.5 has **no** MCP-side auto-start — a bare `gortex mcp` exits when
-   the daemon is down (upstream's onboarding doc claims otherwise; stale at this pin). The
-   wrapper is what makes headless pods (`harnessed test`, CI — which never run an attach shell)
-   and mid-session daemon crashes recover on their own.
+1. **The MCP entry itself** (`bash -c 'gortex daemon status || gortex daemon start --detach; poll
+   status up to 5s; exec gortex mcp'`). v0.64.5 has **no** MCP-side auto-start — a bare
+   `gortex mcp` exits when the daemon is down (upstream's onboarding doc claims otherwise; stale
+   at this pin). The wrapper is what makes headless pods (`harnessed test`, CI — which never run
+   an attach shell) and mid-session daemon crashes recover on their own; the bounded poll covers
+   the detach-returns-before-socket-bind race, and a failed start's stderr flows into hatago's
+   child log — the only diagnostic surface a headless failure has.
+
 2. **`init.run`**, in the attach shell on every launch: the same ensure, then
    `gortex track "$PROJECT_DIR"` — the step the MCP entry cannot do — so tool calls don't get
    `repo_not_tracked`. Indexing runs in the daemon's background; plain `track` does not block.

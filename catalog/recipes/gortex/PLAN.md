@@ -24,8 +24,12 @@ installed; telemetry opt-in and additionally opted out via `DO_NOT_TRACK=1`).
 - **A HEADLESS pod never runs `init.run`** — the launcher returns before `_attach` (the attach
   shell is the only init runner), while hatago spawns stdio children at pod start. A
   daemon-ensure that lives only in init.run leaves `harnessed test`/CI permanently red for this
-  recipe; the ensure therefore lives in the MCP entry itself (`bash -c 'status || start; exec
-  gortex mcp'`), with init.run keeping its own idempotent copy plus the track step.
+  recipe; the ensure therefore lives in the MCP entry itself (`bash -c 'status || start; poll
+  status ≤5s; exec gortex mcp'`), with init.run keeping its own idempotent copy plus the track
+  step. The poll and the stderr-kept start are review findings: `--detach` returns at fork, not
+  at socket bind, and `gortex mcp` exits rather than retries; and stderr is the only diagnostic
+  a headless failure leaves in hatago's child log (measured: the detach banner is stderr, so it
+  rides along harmlessly on success).
 
 - **`daemon status` exit code is the gate**: 1 when down (with stale socket files too), 0 when
   up. `daemon start --detach` exits 0 instantly and forks; a second start errors "already
