@@ -24,6 +24,13 @@ fi
 # host) exports HARNESSED_CONFIG_DIR; the live `harnessed test` exec does not, but the pod
 # exports CLAUDE_CONFIG_DIR and $HOME/.claude is the container default — so resolve in that
 # order. CONTAINER_HOME is never read (S-15/S-20).
+#
+# All three names resolve to the SAME tree, by construction rather than by assumption:
+# install.sh wrote into $HARNESSED_CONFIG_DIR, which emit.install_env derives from the same
+# per-harness config-dir variable the launcher exports as CLAUDE_CONFIG_DIR inside the pod, and
+# the container's $HOME/.claude is that same dir (the assembled profile mounts there). If those
+# ever diverge, checks 2 and 3 below read the wrong tree and fail loudly — a false PASS would
+# need a second settings.json that independently carries a `gortex hook` line.
 config="${HARNESSED_CONFIG_DIR:-${CLAUDE_CONFIG_DIR:-${HOME}/.claude}}"
 
 # 2. The wiring must be baked. The hook is the enforcement half of this recipe: without it

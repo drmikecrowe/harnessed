@@ -19,8 +19,13 @@ set -euo pipefail
 # `tools: [github:zzet/gortex@…]` owns it (rtk pattern, bd harnessed-1t4.3) — mise's github:
 # release install runs in both modes on harnessed's own config/data dirs. This guard fails the
 # install if `tools:` delivered nothing runnable, before the wiring below bakes a profile that
-# references a binary that does not exist. `gortex version` is a SUBCOMMAND at this pin — cobra
-# rejects `--version` (caught by a real build; the flag form dies with "unknown flag").
+# references a binary that does not exist — with a named cause, not bash's bare "command not
+# found". `gortex version` is a SUBCOMMAND at this pin — cobra rejects `--version` (caught by a
+# real build; the flag form dies with "unknown flag").
+if ! command -v gortex >/dev/null 2>&1; then
+    echo "install.sh: gortex not on PATH — the tools: (github:zzet/gortex@…) layer delivered nothing runnable" >&2
+    exit 1
+fi
 gortex version
 
 # --- 2. the wiring ----------------------------------------------------------------------------------

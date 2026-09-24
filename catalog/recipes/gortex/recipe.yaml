@@ -54,14 +54,16 @@ tools:
 # headless failure is ever visible. The bounded poll covers the readiness race the same review
 # flagged: `--detach` returns when the fork succeeds, not when the socket is bound, and
 # `gortex mcp` exits instead of retrying — five 1s attempts bound the wait without blocking the
-# healthy path (the first status of an already-running daemon breaks on iteration one).
+# healthy path (the first status of an already-running daemon breaks on iteration one). If the
+# poll still exhausts, one final status check echoes an attributable line to stderr before the
+# exec — without it hatago logs a bare "not connected" with no reason attached.
 mcp:
   servers:
     - name: gortex
       command: bash
       args:
         - -c
-        - 'gortex daemon status >/dev/null 2>&1 || gortex daemon start --detach >/dev/null; for i in 1 2 3 4 5; do gortex daemon status >/dev/null 2>&1 && break; sleep 1; done; exec gortex mcp'
+        - 'gortex daemon status >/dev/null 2>&1 || gortex daemon start --detach >/dev/null; for i in 1 2 3 4 5; do gortex daemon status >/dev/null 2>&1 && break; sleep 1; done; gortex daemon status >/dev/null 2>&1 || echo "gortex: daemon not ready after 5s (log: ~/.gortex/cache/daemon.log); gortex mcp will exit" >&2; exec gortex mcp'
       transport: stdio
 
 # --- Repo registration (init.run) --------------------------------------------------------------------
@@ -90,8 +92,12 @@ init:
       gortex daemon status >/dev/null 2>&1 \
         || gortex daemon start --detach >/dev/null 2>&1 \
         || echo "gortex: daemon did not start (log: ~/.gortex/cache/daemon.log); graph tools will be down" >&2
-      gortex track "${PROJECT_DIR:?}" >/dev/null 2>&1 \
-        || echo "gortex: could not register ${PROJECT_DIR}; run 'gortex track ${PROJECT_DIR}' once the daemon is up" >&2
+      # `${PROJECT_DIR:-}`, not `:?`: this block is SOURCED, and a `:?` failure kills the attach
+      # shell — the one launch-fatal path the "every path exits 0" contract above forbids. The
+      # contract guarantees PROJECT_DIR is exported, so this guard only trips if the contract
+      # itself is broken, and then track fails on the empty path into the warn below anyway.
+      gortex track "${PROJECT_DIR:-}" >/dev/null 2>&1 \
+        || echo "gortex: could not register ${PROJECT_DIR:-<unset>}; run 'gortex track \$PROJECT_DIR' once the daemon is up" >&2
     else
       echo "gortex: not on PATH; graph tools disabled this session" >&2
     fi
