@@ -1,0 +1,206 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
+# Recipe: gortex — graph code intelligence (stdio MCP server + per-launch daemon + upstream's
+# own agent wiring).
+#
+# gortex (Go, single static binary, Apache-2.0) indexes the mounted repo (257 languages via
+# tree-sitter + in-process resolvers) into a persistent SQLite symbol/call graph, then serves
+# graph queries over MCP: read/search/trace/explore/analyze plus blast radius and editing
+# context, so the agent reads the symbols it needs instead of whole files (upstream claims up
+# to 50x fewer tokens per response).
+#
+# The MCP server is a thin stdio<->unix-socket proxy; the GRAPH lives in a daemon that must be
+# up before the first tool call. v0.64.5 measured 2026-09-24: `gortex mcp` with no daemon EXITS
+# ("daemon is unavailable and embedded MCP mode is disabled by default") — upstream's
+# onboarding doc claims the client auto-starts the daemon, but at this pin it does not, so the
+# init.run below is load-bearing, not an optimization.
+name: gortex
+description: >-
+  Graph code intelligence via the gortex MCP server: read/search/trace/explore/analyze over a
+  257-language symbol and call graph (blast radius, editing context, call chains), replacing
+  whole-file reads with targeted symbol queries. A per-launch daemon holds the graph and reuses
+  an already-running one; upstream's installer bakes 21 skills, 19 slash commands and 2
+  graph-only subagents.
+
+# --- Binary (tools:) --------------------------------------------------------------------------------
+# mise's `github:` release install (arch-matched asset, GitHub artifact attestations + SLSA-3
+# provenance) — the same backend rtk uses, so the same spec installs in BOTH modes: container
+# builds pay a `mise use -g` layer, host launches install into the stack's own mise tree whose
+# bin-paths lead the launch PATH (bd harnessed-1t4.3 / #449). The v0.64.5 release publishes
+# gortex_linux_{amd64,arm64}.tar.gz with checksums.txt and cosign signatures (verified
+# 2026-09-24). Static binary, zero runtime deps, no post-install downloads — the only fetch is
+# this one, at install time.
+tools:
+  - github:zzet/gortex@v0.64.5
+
+# --- MCP layer --------------------------------------------------------------------------------------
+# hatago spawns this as a child exactly like the `time` tracer bullet; the child proxies to the
+# daemon's unix socket (~5 MB per client, session-isolated), and the compact tool surface
+# (read/search/trace/explore/...) is the default preset.
+#
+# The command is a one-line wrapper, not bare `gortex mcp`, because v0.64.5 has NO auto-start:
+# `gortex mcp` with no daemon EXITS ("embedded MCP mode is disabled by default"), hatago marks
+# the server not connected, and every tool is gone. Two launches prove a bare command wrong:
+#
+#   - a HEADLESS pod (`harnessed test`, CI): the launcher returns before `_attach`, so no attach
+#     shell ever runs and init.run's daemon start never happens — hatago spawns this child at
+#     pod start, so THIS is the only place left to ensure the daemon.
+#   - a crashed daemon mid-session: hatago respawns the child, and the wrapper self-heals.
+#
+# The status gate makes the wrapper idempotent with init.run's own ensure (whichever runs first
+# wins; the other sees rc=0 and skips). Stream handling is asymmetric on purpose (measured: the
+# "[gortex daemon] detached…" banner goes to STDERR, stdout of start is empty): stdout is
+# silenced because it IS the MCP stdio channel (defensively — future builds could print there),
+# while stderr flows so a failed start leaves its reason in hatago's child log, the one place a
+# headless failure is ever visible. The bounded poll covers the readiness race the same review
+# flagged: `--detach` returns when the fork succeeds, not when the socket is bound, and
+# `gortex mcp` exits instead of retrying — five 1s attempts bound the wait without blocking the
+# healthy path (the first status of an already-running daemon breaks on iteration one). If the
+# poll still exhausts, one final status check echoes an attributable line to stderr before the
+# exec — without it hatago logs a bare "not connected" with no reason attached.
+mcp:
+  servers:
+    - name: gortex
+      command: bash
+      args:
+        - -c
+        - 'gortex daemon status >/dev/null 2>&1 || gortex daemon start --detach >/dev/null; for i in 1 2 3 4 5; do gortex daemon status >/dev/null 2>&1 && break; sleep 1; done; gortex daemon status >/dev/null 2>&1 || echo "gortex: daemon not ready after 5s (log: ~/.gortex/cache/daemon.log); gortex mcp will exit" >&2; exec gortex mcp'
+      transport: stdio
+
+# --- Repo registration (init.run) --------------------------------------------------------------------
+# Sourced in the attach shell on EVERY launch (Model A — headroom's seam). The MCP wrapper above
+# already ensures a daemon wherever the server is spawned, so this half owns what only the attach
+# shell knows: the WORKSPACE path, via $PROJECT_DIR. Every path exits 0 — a failing init aborts
+# the launch, which an optional code-intelligence sidecar must not do.
+#   1. daemon ensure (same gate as the MCP wrapper, usually first to run because the attach
+#      shell precedes the first tool call): `daemon status` rc=0 → a daemon is ALREADY serving
+#      and is left alone (v0.64.5 measured: status exits 1 when down, 0 when up). On a host
+#      launch that is usually the user's own machine-wide daemon — reusing it is the intended
+#      behavior, not a collision: all clients speak to the same socket and get per-session
+#      state. On a second attach into a live pod it is the daemon the first attach started.
+#      Down → `daemon start --detach` forks to background (instant, measured) and returns 0;
+#      nothing here blocks, so no timeout wrapper.
+#   2. `track` registers the workspace with the (now running) daemon, which attaches its
+#      fsnotify watcher and indexes in the background — plain track does NOT block (`--wait` is
+#      the explicit blocking form). This is the step the MCP wrapper cannot do (it has no
+#      $PROJECT_DIR), and without it every tool call returns a structured `repo_not_tracked`
+#      error. Re-tracking an already-tracked path is a no-op; with the daemon still down the
+#      registration persists for the next daemon start (upstream fallback table), hence the
+#      ordering: ensure, then track.
+init:
+  run: |
+    if command -v gortex >/dev/null 2>&1; then
+      gortex daemon status >/dev/null 2>&1 \
+        || gortex daemon start --detach >/dev/null 2>&1 \
+        || echo "gortex: daemon did not start (log: ~/.gortex/cache/daemon.log); graph tools will be down" >&2
+      # Not `${PROJECT_DIR:?}`: this block is SOURCED and a `:?` failure kills the attach shell —
+      # the one launch-fatal path the "every path exits 0" contract above forbids. But neither is
+      # the guard optional: `gortex track ""` EXITS 0 and silently registers the CALLER'S CWD
+      # (measured at this pin), so with an unset PROJECT_DIR and the redirects in place the daemon
+      # would quietly track the wrong tree while every tool call returns repo_not_tracked with no
+      # hint why. Guard explicitly; both arms warn and fall through.
+      if [ -n "${PROJECT_DIR:-}" ]; then
+        gortex track "${PROJECT_DIR}" >/dev/null 2>&1 \
+          || echo "gortex: could not register ${PROJECT_DIR}; run 'gortex track ${PROJECT_DIR}' once the daemon is up" >&2
+      else
+        echo "gortex: PROJECT_DIR unset; workspace not registered with the daemon" >&2
+      fi
+    else
+      echo "gortex: not on PATH; graph tools disabled this session" >&2
+    fi
+
+# --- Persistence ------------------------------------------------------------------------------------
+# With no XDG_* vars set (harnessed exports none in the pod; measured) ALL daemon state lands
+# under one directory: ~/.gortex/store/store.sqlite (the graph), ~/.gortex/cache/{daemon.sock,
+# daemon.pid, daemon.log} and the sidecar ledgers. One entry captures all of it, so a --fresh
+# relaunch reopens the store and re-indexes only changed files (measured: restart picks the
+# store back up; first index of this repo ~4s, large repos minutes — exactly what persisting
+# avoids repaying). The workspace is mounted path-mirrored, so the store's absolute repo paths
+# are identical in both modes.
+#
+# scope: workspace, NOT project — a project-scope dir would be shared by concurrent worktree
+# pods, putting two daemons on one SQLite store with nothing coordinating them. Per-workspace
+# dirs keep daemon:store at 1:1. (Host launches mount nothing: they use the user's real
+# ~/.gortex and the daemon init.run found or started there.)
+persist:
+  - name: .gortex
+    scope: workspace
+    location: host
+
+# --- Agent environment ------------------------------------------------------------------------------
+# Telemetry is opt-in upstream and transmits nothing unless configured; DO_NOT_TRACK is its
+# documented global opt-out. Making it explicit keeps any future opt-in from stalling against
+# the container's default-DROP egress, and it reaches the daemon (init.run), the MCP child and
+# the hook runner alike, since env: flows into all of them.
+env:
+  DO_NOT_TRACK: "1"
+
+# --- Hooks ------------------------------------------------------------------------------------------
+# Upstream's claude-code install set at v0.64.5, verbatim except for two deviations the
+# assembler forces (see below): 8 events, all `gortex hook`, which speaks Claude Code's hook
+# protocol off stdin and degrades silently when the daemon is unreachable (measured: instant
+# "standing down" notice, never a hang). This is the enforcement half of the recipe —
+# PreToolUse redirects Read/Grep/Glob of indexed source at graph tools, Stop runs post-task
+# diagnostics — and it is why the tools actually get used rather than merely connected.
+#
+# Deviations from the installer-written settings.local.json (captured from a real
+# `gortex install` at v0.64.5):
+#   - bare `gortex hook` instead of the binary's absolute path: PATH is the stable contract
+#     here (tools: bin-paths lead the launch PATH, mise shims are on the container PATH — the
+#     same reasoning as rtk's hook).
+#   - no timeout/statusMessage: the hooks schema carries only {command, matcher}; Claude
+#     Code's default 60s timeout replaces upstream's 3s/5s caps. The hook exits in
+#     milliseconds either way.
+#
+# Declared HERE, not left to `gortex install` (which install.sh runs with --no-hooks), because
+# the assembler owns settings.json and regenerates it AFTER install.sh — an installer-written
+# hook is silently dropped (rtk measured that failure at a 0.06% delivery rate).
+#
+# The PostToolUse matcher is upstream's verbatim: it matches the NATIVE mcp__gortex__* names a
+# host launch presents. Through the hatago hub (container) tools surface as mcp__hatago__*, so
+# this ONE matcher does not fire there — localization enrichment is host-only. Widening it to
+# mcp__hatago__* would fire gortex's hook for every OTHER recipe's MCP tools too, which is not
+# gortex's call to make. The name-independent events (PreToolUse on *, SessionStart,
+# UserPromptSubmit, PreCompact, Stop, Subagent*) work in both modes.
+hooks:
+  PreToolUse:
+    - command: gortex hook
+      matcher: "*"
+  PostToolUse:
+    - command: gortex hook
+      matcher: "mcp__gortex__explore|mcp__gortex__search|mcp__gortex__read|mcp__gortex__relations|mcp__gortex__trace|mcp__gortex__analyze|mcp__plugin_gortex_gortex__explore|mcp__plugin_gortex_gortex__search|mcp__plugin_gortex_gortex__read|mcp__plugin_gortex_gortex__relations|mcp__plugin_gortex_gortex__trace|mcp__plugin_gortex_gortex__analyze"
+  SessionStart:
+    - command: gortex hook
+  UserPromptSubmit:
+    - command: gortex hook
+  PreCompact:
+    - command: gortex hook
+  Stop:
+    - command: gortex hook
+  SubagentStart:
+    - command: gortex hook
+  SubagentStop:
+    - command: gortex hook
+
+# --- Profile wiring (install.sh) --------------------------------------------------------------------
+# Runs upstream's own per-machine installer, constrained to the claude-code adapter (which
+# writes exactly the Claude-canonical profile every harnessed harness consumes) and pointed at
+# $HARNESSED_CONFIG_DIR — measured v0.64.5: `--claude-config-dir` lands skills/, commands/,
+# agents/ and settings INSIDE the given root, never $HOME. That bakes the 21 curated skills,
+# 19 slash commands and the 2 graph-only subagents as profile content (gstack pattern:
+# expect lists a stable handful; the full set ships with the pin).
+#
+# No `cache:` — nothing is fetched. The skill bodies are embedded in the binary, so the
+# installer is already content-addressed by the tools: pin; a cache dir would only re-copy
+# them. No `system:` — nothing needs root.
+install:
+  script: install.sh
+
+# --- Capability probes ------------------------------------------------------------------------------
+# mcp: hatago connects (which transitively proves the daemon path: the child exits without
+# one). skills/commands: a stable handful proves `gortex install` ran; the full 21/19 ship
+# with the pin (v0.64.5). No expect kind exists for agents/, so the 2 subagents are covered by
+# the recipe test script instead.
+expect:
+  mcp: [gortex]
+  skills: [gortex-debug, gortex-explore, gortex-guide, gortex-impact, gortex-refactor]
+  commands: [gortex-debug, gortex-explore, gortex-guide]
