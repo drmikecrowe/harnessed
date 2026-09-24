@@ -134,6 +134,44 @@ Warnings — all hit on this repo, not copied from the tool's docs:
   returns empty for every row.
 - Ignore the `fp`/`sp` blobs and the duplicated docstring in `get_code_snippet` output.
 
+## Spec-Evidence: Gate 1 runs here
+
+Set up 2026-09-20. This project is the first adopter of the Spec-Evidence Process
+from `drmikecrowe/spec-evidence-aisdlc`, which the `spec-evidence-aisdlc` recipe installs. old-coder
+already gave this project the discipline: a SPEC, a gauntlet per task, an evidence report, two
+review briefs. What Spec-Evidence adds is a gate BEFORE the SPEC exists.
+
+**What is wired, and only this.** Gate 1: an author writes a Story, a registered `story-readiness`
+judge grades it against a rubric, and a parser computes the verdict from the judge's record. The
+judge writes nothing and its own verdict field decides nothing; `tools/gate_story.py` upstream
+computes the verdict from the record's items, and its exit status IS the verdict, 0 ready and 1
+not-ready.
+
+**Where a Story lives.** `docs/spec-evidence/<YYYY-MM-DD>-<id>/STORY.md`, named by the `story_dir`
+default. NOT beside the `.old-coder/<timestamp>-<slug>/` task directories, because the date format
+inside that directory name is hard-coded upstream and cannot read this project's convention. That is
+upstream issue 31. When it lands the two roots can become one.
+
+**Why `spec-evidence.toml` exists at the root.** The parser never reads it. The `PreToolUse` handler
+that bounds the Gate 1 judge's reads resolves the artifact root from the nearest file of that name
+and denies every read when it finds none, so the file is required and holds one key.
+
+**How the parser is invoked.** From the upstream checkout by absolute path, not from here. Nothing
+is copied in, so nothing drifts. The recipe installs the six skills and the five agent briefs; the
+checkers are not installed, because four files run Gate 1 and the rest of that directory is that
+repository grading itself. Consequence: Gate 1 is host-only, since a container has no view of the
+checkout.
+
+**What is NOT wired.** `layout_check.py`, `gate_evidence.py` (Gate 2) and `gate_findings.py` all read
+the story directory pattern, so none can grade this project's artifact root until issue 31 lands.
+Nothing here is unattended and no tracker write-back is real; both are upstream object S6.
+
+**The runbook** is `docs/adopting.md` in the upstream repository, and every step in it was tested
+against a layout like this one. Report anything in it that did not work as written.
+
+**Reporting defects** is in the user-scope rule the recipe installs: one issue per defect, label
+`dogfood`, carrying the file, the command, the output and the expectation.
+
 <!-- gortex:communities:start -->
 ## Community Skills
 

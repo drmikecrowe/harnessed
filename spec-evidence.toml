@@ -1,0 +1,27 @@
+# Where the Spec-Evidence artifacts live in this repository.
+#
+# Written 2026-09-20 to run Gate 1 here. Gate 1 is the stage old-coder has no
+# equivalent of: an author writes a Story, a judge grades it against a rubric,
+# and a parser computes the verdict from the judge's record.
+#
+# ONE KEY, AND IT IS NOT OPTIONAL. Every other setting takes its default from
+# `tools/layout_check.py` in the spec-evidence-aisdlc checkout. This file looks
+# unnecessary because `gate_story.py` never reads it: the parser is given the
+# record, the Story and the rubric by path. The file is required anyway, because
+# the handler that bounds the Gate 1 judge's reads resolves the artifact root
+# from the nearest file of this name at or above the working directory, and
+# denies every read when it finds none. A judge with no path bound is the thing
+# that bound exists to prevent.
+#
+# THE STORY DIRECTORY NAME. The default is `{date}-{id}` with the date written
+# `YYYY-MM-DD`. That is not this project's `.old-coder/` convention, which is
+# `YYYYMMDD-HHMMSS-slug`, and the date format is hard-coded upstream rather than
+# read from here. So a second artifact root is used for Stories instead of
+# renaming thirteen existing task directories. Upstream issue 31 is that defect;
+# when it lands, the two roots can become one.
+#
+# WHAT THIS DOES NOT ENABLE YET. `layout_check.py`, `gate_evidence.py` and
+# `gate_findings.py` all read the story directory pattern, so none of them can
+# grade this root until issue 31 lands. Gate 1 is unaffected: neither the judge
+# nor its parser reads the pattern at all.
+artifact_root = "docs/spec-evidence"

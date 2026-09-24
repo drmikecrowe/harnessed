@@ -67,3 +67,11 @@ coverage.xml
 .hypothesis/
 mutants/
 
+# The Spec-Evidence scope pointer. One line holding one machine's absolute path
+# to the story directory a Gate 1 judge may read, resolved by the handler that
+# bounds the judge. Per machine and never shared, so it is ignored rather than
+# committed. `spec-evidence.toml` names the root it sits in.
+/docs/spec-evidence/scope
+
+
+.old-coder/**/logs/
