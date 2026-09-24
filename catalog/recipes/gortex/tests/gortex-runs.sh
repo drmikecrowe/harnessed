@@ -13,10 +13,19 @@ if ! command -v gortex >/dev/null 2>&1; then
     echo "gortex not found on PATH" >&2
     exit 1
 fi
-version_output="$(gortex version 2>&1)"
+# Capture explicitly: under `set -e` a failing substitution in an assignment aborts the script
+# with no message, and the capability report shows only this script's stderr as the one-line
+# failure detail — so the reason must be printed here, not left on the cutting room floor.
+if ! version_output="$(gortex version 2>&1)"; then
+    echo "gortex version failed to run: ${version_output}" >&2
+    exit 1
+fi
 echo "gortex version -> ${version_output}"
-if ! grep -qi 'gortex' <<<"${version_output}"; then
-    echo "gortex version did not identify as gortex: ${version_output}" >&2
+# Anchor to "gortex" ADJACENT TO A VERSION, not a bare substring: a bare grep would pass on any
+# line mentioning the name, including mise's "ERROR No version is set for shim: gortex" — the
+# exact broken-shim failure mode (#449) this check exists to catch.
+if ! grep -Eqi 'gortex[^0-9]*[0-9]+\.[0-9]+' <<<"${version_output}"; then
+    echo "gortex version did not identify as gortex with a version: ${version_output}" >&2
     exit 1
 fi
 
@@ -43,8 +52,11 @@ if [[ ! -f "${settings}" ]]; then
     echo "settings.json not found at ${settings}" >&2
     exit 1
 fi
-if ! grep -q 'gortex hook' "${settings}"; then
-    echo "gortex hooks missing from ${settings} — the agent will never be steered at the graph" >&2
+# The grep matches the EMITTED command entry, not a bare substring: the assembler writes this
+# file fresh, so a loose grep could pass on the string appearing in some unrelated field while
+# the hooks block itself was dropped (the failure mode this check guards).
+if ! grep -q '"command": "gortex hook"' "${settings}"; then
+    echo "gortex hook command missing from ${settings} — the agent will never be steered at the graph" >&2
     exit 1
 fi
 
