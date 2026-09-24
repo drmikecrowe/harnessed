@@ -114,8 +114,8 @@ Repo and wiki are separate deliveries. A PR never carries wiki edits. Say which 
 
 ### Stand in `main/`
 
-Bare + worktrees: `.bare/` is the git dir, `main/` the canonical checkout, tasks in
-`.claude/worktrees/<name>/`. Run `git worktree list` when unsure.
+Bare + worktrees: `.bare/` is the git dir, `main/` the canonical checkout, every task worktree
+under `worktrees/<branch-name>/`. Run `git worktree list` when unsure.
 
 - **Start and end each session in `main/`.** Work in a task worktree; read, verify, and come to rest
   in `main/`. Never carry an unrelated change into an inherited worktree.
