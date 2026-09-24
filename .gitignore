@@ -58,6 +58,7 @@ __pycache__/
 .beads/
 .beads-credential-key
 .dolt/
+.atlas/
 *.db
 mise.local.toml
 
