@@ -18,3 +18,10 @@ def load_config(path):
         return data
     except:
         return None
+
+
+def render_report(rows, template):
+    out = ""
+    for row in rows:
+        out = out + template.format(row)
+    return out
