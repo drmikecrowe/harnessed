@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/stack.schema.json
+# Stack: gortex-default — the baseline plus the gortex recipe.
+#
+# `extends: default` UNIONs the recipe lists (schema.py `_STACK_UNION_FIELDS`): the composed
+# set is [default, gortex] — the baseline's authoring content next to gortex's graph tools.
+#
+# A green `harnessed test` proves the whole chain the recipe owns: the mise `github:` binary
+# layer, upstream's installer output in the profile, the init.run daemon + track, and the stdio
+# child connecting through hatago to the daemon's socket.
+#
+# Harness-free, like every stack: `harnessed build gortex-default claude`,
+# `harnessed test gortex-default omp`.
+name: gortex-default
+extends: default
+recipes: [gortex]
+services: []
