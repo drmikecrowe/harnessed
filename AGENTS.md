@@ -73,8 +73,8 @@ Session Completion block below: push the **worktree branch** and open a PR — n
 ### Where to stand: start and finish in `main/`
 
 This checkout is **bare + worktrees**: `.bare/` is the git dir, `<repo>/main/` is the canonical `main`
-checkout, and task worktrees live under `.claude/worktrees/<name>/` (a few older ones sit directly at
-the repo root). Run `git worktree list` if you are unsure where you are.
+checkout, and every task worktree lives under `<repo>/worktrees/<branch-name>/`, named after its
+branch. Run `git worktree list` if you are unsure where you are.
 
 - **Begin each session in `main/`, and return to `main/` when a task is done.** Do the *work* in a
   task worktree per the rules above — but read, verify, and come to rest in `main/`. Never carry an
@@ -120,7 +120,7 @@ Warnings — all hit on this repo, not copied from the tool's docs:
   `total: 0` and a "check your spelling" hint; dropping `file_pattern` returned the 5 real rows. A
   confident empty set reads as "the symbol does not exist" — never conclude absence from a filtered
   search.
-- **One index per checkout, keyed on path.** `main/` and each `.claude/worktrees/<name>/` are
+- **One index per checkout, keyed on path.** `main/` and each `worktrees/<name>/` are
   separate entries in `list_projects`. Querying from a worktree under `main`'s project name answers
   about the wrong tree. Read the name from `list_projects` every time; `index_status` also reports
   `not_indexed`, which is by-design exclusion and not a failure.
