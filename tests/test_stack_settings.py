@@ -51,6 +51,13 @@ class TestTheDeclarationIsParsedAndValidated:
             _stack(tmp_path, f"settings:\n  k: {value}\n")
         assert "settings.k" in str(exc.value)
 
+    @pytest.mark.parametrize("value", [".inf", ".nan"])
+    def test_a_non_finite_number_is_refused(self, value, tmp_path):
+        """YAML parses `.inf`/`.nan` as floats, and json.dumps would write them as bare `Infinity`
+        / `NaN`, which is not JSON: Claude would reject the whole settings.json."""
+        with pytest.raises(SchemaError, match="finite"):
+            _stack(tmp_path, f"settings:\n  k: {value}\n")
+
     def test_a_non_mapping_is_refused(self, tmp_path):
         with pytest.raises(SchemaError, match="settings"):
             _stack(tmp_path, "settings: [a]\n")
