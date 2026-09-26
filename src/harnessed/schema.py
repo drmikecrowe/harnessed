@@ -2158,6 +2158,10 @@ def _parse_stack_settings(value, manifest: Path) -> dict:
                 f"'permissions:' field or a recipe's 'hooks:' instead"
             )
         if isinstance(item, (bool, int, float, str)):
+            if isinstance(item, float) and not math.isfinite(item):
+                raise SchemaError(
+                    f"{manifest}: settings.{key} must be a finite number (got {item!r})"
+                )
             continue
         raise SchemaError(
             f"{manifest}: settings.{key} must be a string, number, or boolean "
