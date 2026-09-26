@@ -15,14 +15,14 @@ segments included, and no rephrasing gets past it.
 | `find` | the harness glob tool; `fd` when you must shell out |
 | `rm -rf` | `rm -r` on one named path, or `git clean` |
 | `git push --force` | `git push --force-with-lease`, and only when asked |
-| `sudo`, `su`, `chmod 777`, `dd`, `mkfs`, `fdisk`, `ssh`, `scp`, `rsync` | ask Mike to run it |
+| `sudo`, `su`, `chmod 777`, `dd`, `mkfs`, `fdisk`, `ssh`, `scp`, `rsync` | ask the user to run it |
 
 - A denied binary inside a pipe or `&&` chain denies the chain. Filter inside `rg`; split
   destructive and benign steps into separate calls.
 - Commit, push, and PR-create are three calls. A denial on the push segment discards the commit.
 - Subagents inherit none of this. A brief that will search a tree says so; the `search-tools` skill
   has the wording.
-- Scanning the filesystem from `/` or `~` for something Mike can name is a question, not a search.
+- Scanning the filesystem from `/` or `~` for something the user can name is a question, not a search.
 
 ## Context is a non-renewable budget
 
