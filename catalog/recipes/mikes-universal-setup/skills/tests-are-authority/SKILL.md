@@ -34,4 +34,4 @@ exported. Code correct, expectation correct, fixture missing one monkeypatch.del
   test CI skips. Diagnose it. Never report it as "pre-existing failures" — that sentence tells the
   reader the mainline is broken.
 
-Writing new tests is [[coding-principles]] §Verification. This skill governs existing tests only.
+Writing new tests is the `tdd` skill's ground. This skill governs existing tests only.

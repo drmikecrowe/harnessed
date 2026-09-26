@@ -5,14 +5,14 @@ description: Bound a text search or file listing before it burns the context win
 
 # Search Tools
 
-The always-on floor is [[denied-commands]]: never run the `grep` or `find` binaries. This skill is
+The always-on floor is [[harness-mechanics]]: never run the `grep` or `find` binaries. This skill is
 the rest of it — which tool to reach for, and how to bound what comes back.
 
 ## Text Search: Search Tool First, Then rg
 
 Search with the harness's built-in search tool first — it respects ignore files and returns
 line-anchored matches. Shell out only when that cannot answer the question. Then use `rg`, never the
-`grep` binary (see [[denied-commands]]; that ban covers `git grep` and `| grep`, and `rg -v`
+`grep` binary (see [[harness-mechanics]]; that ban covers `git grep` and `| grep`, and `rg -v`
 inverts). The ban names the shell binary only: a built-in search tool is not shell `grep`.
 
 `rg` is the fallback, not the default. No search tool → `rg` by elimination, never by preference.
@@ -53,7 +53,7 @@ rg -i error /tmp/build.log
 ## File Discovery: Glob Tool First, Then fd
 
 Find paths with the harness's glob or file-discovery tool first. Shell out only when it cannot
-express the query, then use `fd`, never the `find` binary (see [[denied-commands]]). That ban names
+express the query, then use `fd`, never the `find` binary (see [[harness-mechanics]]). That ban names
 the shell binary only; built-in file tools are not shell `find`.
 
 ```bash

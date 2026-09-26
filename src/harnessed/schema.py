@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1253,6 +1254,17 @@ class Stack:
     # real wherever something attaches twice.
     hub_transport: str = HUB_TRANSPORT_HTTP
     state: dict = field(default_factory=dict)
+    # Top-level Claude Code settings.json keys the stack OWNS, written into every settings.json
+    # harnessed produces for it (the assemble-time floor and the post-build merge alike) as an
+    # OVERRIDE of whatever a recipe or base image baked. Scalar values only, and never the two keys
+    # harnessed already merges by its own rules (`permissions`, `hooks`); everything else in that
+    # file is a plain key Claude reads verbatim, and a stack author who sets one means it.
+    #
+    # Exists for the keys that decide what a SESSION does, which no recipe can decide: the first
+    # was `syncClaudeAiSkills: false`, because claude.ai syncs its uploaded skills into every Claude
+    # Code session on the same account, and a stack that already ships those skills through a
+    # recipe would otherwise load two copies. `includeCoAuthoredBy` is the same shape.
+    settings: dict = field(default_factory=dict)
     raw: dict = field(default_factory=dict)
 
 
@@ -1939,6 +1951,7 @@ KNOWN_STACK_FIELDS = frozenset(
         "hatago",
         "state",
         "hub_transport",
+        "settings",
     }
 )
 # `hatago` stays in the KNOWN set deliberately after its removal (bd harnessed-1t4.1): it must reach
@@ -2025,7 +2038,8 @@ def _resolve_stack_extends(
         child's, de-duped. A base stack therefore carries a baseline recipe set that children extend
         rather than restate.
       * every other field — the child's value wins if it declares the key, else the parent's is
-        inherited (`state` and `hatago` included: a declared value replaces, it does not deep-merge).
+        inherited (`state`, `settings` and `hatago` included: a declared value replaces, it does
+        not deep-merge).
       * `name` is always the child's own; `extends` is consumed and never appears in the result.
 
     Chains are allowed (a stack may extend a stack that extends another); a cycle is an error.
@@ -2113,8 +2127,48 @@ def load_stack(stack_dir: Path, root: Path | None = None) -> Stack:
         isolated_auth=bool(raw.get("isolated_auth", False)),
         hub_transport=_parse_hub_transport(raw.get("hub_transport", _UNSET), manifest),
         state=dict(raw.get("state", {}) or {}),
+        settings=_parse_stack_settings(raw.get("settings"), manifest),
         raw=raw,
     )
+
+
+# settings.json keys harnessed merges by its own rules (emit.required_settings / merge_settings), so
+# a stack must not also set them raw: the two paths would disagree about who wins, silently.
+_STACK_SETTINGS_RESERVED = frozenset({"permissions", "hooks"})
+
+
+def _parse_stack_settings(value, manifest: Path) -> dict:
+    """Validate a stack's `settings:` — a flat mapping of scalar Claude settings.json keys.
+
+    Strict on shape for the same reason `hub_transport` is: a nested object or a list here would be
+    written into settings.json verbatim and read by Claude, so a malformed value surfaces as harness
+    misbehaviour with nothing naming the stack field. Reserved keys are refused rather than merged,
+    because `permissions` and `hooks` have union semantics of their own and an override would
+    silently drop the hatago grant or a recipe's hooks.
+    """
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise SchemaError(f"{manifest}: 'settings' must be a mapping of settings.json keys")
+    for key, item in value.items():
+        if not isinstance(key, str) or not key:
+            raise SchemaError(f"{manifest}: settings keys must be non-empty strings (got {key!r})")
+        if key in _STACK_SETTINGS_RESERVED:
+            raise SchemaError(
+                f"{manifest}: settings.{key} is managed by harnessed — use the stack's "
+                f"'permissions:' field or a recipe's 'hooks:' instead"
+            )
+        if isinstance(item, (bool, int, float, str)):
+            if isinstance(item, float) and not math.isfinite(item):
+                raise SchemaError(
+                    f"{manifest}: settings.{key} must be a finite number (got {item!r})"
+                )
+            continue
+        raise SchemaError(
+            f"{manifest}: settings.{key} must be a string, number, or boolean "
+            f"(got {type(item).__name__})"
+        )
+    return dict(value)
 
 
 def _parse_hub_transport(value, manifest: Path) -> str:

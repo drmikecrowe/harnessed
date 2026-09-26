@@ -1,16 +1,24 @@
 # mikes-universal-setup
 
-A personal baseline: 9 always-on rules (coding stance, precedence, response style, confirmation
-gates, prompt defense, token economy, cwd stability, denied shell commands, anti-drift) plus 19
-skills — 13 vendored in-tree and 6 fetched at build time from pinned upstreams. Serves as the
-worked example of what a personal "how I want my agent to behave" recipe looks like.
+A personal baseline: 3 always-on rules (the judgment floor in NEVER / ASK / ALWAYS form, prompt
+defense, harness mechanics) plus 20 skills — 14 vendored in-tree and 6 fetched at build time from
+pinned upstreams. Serves as the worked example of what a personal "how I want my agent to behave"
+recipe looks like, and is the recipe a client stack composes: nothing in it is identity, so it is
+the same baseline on someone else's account.
 
-A rule here is injected on every turn; a skill loads when its description matches the work. Seven
-of the vendored skills (`blameless-debugging`, `commit-hygiene`, `load-bearing-comments`,
-`no-speculative-code`, `pre-publish-review`, `search-tools`, `tests-are-authority`) were always-on
-rules until the split described in `recipe.yaml`: a rule earns permanent context only when
-violating it is silent or irreversible, and everything with a trigger legible in advance became a
-skill. The rules that referenced them keep a one-line pointer.
+A rule here is injected on every turn; a skill loads when its description matches the work. A rule
+earns permanent context only when violating it is silent or irreversible; everything with a trigger
+legible in advance is a skill. The rule set has been cut twice on that test. Seven skills
+(`blameless-debugging`, `commit-hygiene`, `load-bearing-comments`, `no-speculative-code`,
+`pre-publish-review`, `search-tools`, `tests-are-authority`) were rules until 2026-08. Nine rules
+became three on 2026-09-26, after the AGENTS.md spec's finding that context files help only when
+minimal: the floor absorbed five of them, `harness-mechanics` absorbed three, and anything a hook,
+a tool, or a skill already enforced was deleted.
+
+`rules/floor/RULE.md` is tool-free on purpose. The identical text is the claude.ai profile
+instructions and the system prompt of any autonomous agent, so one file feeds every surface.
+`thinking-partner` and `diagnosis-discipline` are tool-free for the same reason and upload to
+claude.ai unchanged; `search-tools` names companion tools and never leaves harnessed.
 
 Ships as rules + skills + a guard hook + an `install.script`. No MCP server, no Dockerfile.
 
@@ -27,7 +35,7 @@ resolves to `/` or a home directory.
 Blocked examples: `find /`, `find / -name '*.log'`, `sudo find "$HOME" -type f`, `/usr/bin/find ~`,
 `find "$HOME/"`, `find /tmp /`. It is deliberately conservative: paths constructed in a variable,
 aliases, and `env find` get past it — a pre-execution hook cannot analyze arbitrary shell
-indirection. It backs the `denied-commands` rule (never run the `find` binary in shell), which
+indirection. It backs the `harness-mechanics` rule (never run the `find` binary in shell), which
 covers the general case; the hook covers the case where the rule is ignored.
 
 If the script is missing, the hook command exits 0 — a missing seatbelt fails open, because python
@@ -48,7 +56,7 @@ byte-identical to upstream despite being long believed original.
 | `map-codebase` | [open-gsd/gsd-core](https://github.com/open-gsd/gsd-core) | MIT | derived, then decoupled + modified — stays vendored |
 | `tdd` | **origin unresolved** (not mattpocock — matches no upstream commit) | — | treated as authored-here |
 | `defuddle` | [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills) | MIT | derived + locally modified (stronger trigger) — vendored **with LICENSE + PROVENANCE.md** |
-| `mikes-voice` | authored here (from Mike's captured drafting-guide note, 2026-08-21) | — | original; absorbed `humanizer` + `no-ai-slop` on 2026-09-09 |
+| `thinking-partner`, `diagnosis-discipline` | authored here, 2026-09-26 | — | original; tool-free |
 | `varlock`, `wrangler` | authored here | — | original |
 
 The oakoss five were verified byte-for-byte against their upstream (`0283bed3` — `SKILL.md` + every
@@ -60,7 +68,9 @@ directory-skill taken unmodified, only `skills/simple-english/` copied — the r
 ### Prose-quality upstreams: references, not dependencies
 
 `humanizer` was fetched here until 2026-09-09. It is gone, and `petergyang/no-ai-slop` was never
-kept: both are folded into `mikes-voice`, which now owns prose quality alone.
+kept: both were folded into `mikes-voice`, which owned prose quality alone until 2026-09-26, when it
+moved out of this recipe into the user overlay `mikes-personal` (it is identity, not stance, and its
+`examples.md` of verbatim samples cannot ship in the wheel). The notes below are kept for the record.
 
 Two reasons. They **conflicted**, not merely overlapped: humanizer rewrites in place, preserves
 paragraph count, and its own worked example injects opinions the source never had ("I genuinely
