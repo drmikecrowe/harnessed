@@ -689,6 +689,7 @@ def required_settings(
     recipes: list[Recipe] | None = None,
     permissions: str | None = None,
     harness: str | None = None,
+    settings: dict | None = None,
 ) -> dict:
     """harnessed's REQUIRED settings.json contribution — the *only* thing the harness must add on
     top of whatever a recipe/base installer baked.
@@ -705,6 +706,10 @@ def required_settings(
         hub-level grant is the static, assembler-knowable permission.
       - each recipe's declared `hooks:` (GAP 2), rendered by `_recipe_hooks_settings` — minus any
         recipe that names `harness` in its `hooks.skip_harnesses` (bd main-4fx).
+      - the stack's `settings:` keys, verbatim at top level. Schema-validated to scalars outside
+        `permissions`/`hooks`, so they can never collide with the two blocks above. These are
+        OVERRIDES in `merge_settings` (a stack author who set `syncClaudeAiSkills: false` meant
+        it), unlike defaultMode's floor.
     This is the single source of truth for "what the harness requires" — both the assemble-time
     floor (`write_settings_json`) and the post-build merge (`merge_settings`, via the launcher)
     use it. Both pass the harness, so the floor and the merge agree on which hooks exist; without
@@ -718,6 +723,8 @@ def required_settings(
     hooks = _recipe_hooks_settings(recipes or [], harness)
     if hooks:
         out["hooks"] = hooks
+    if settings:
+        out.update(settings)
     return out
 
 
@@ -727,6 +734,7 @@ def write_settings_json(
     recipes: list[Recipe] | None = None,
     permissions: str | None = None,
     harness: str | None = None,
+    settings: dict | None = None,
 ) -> Path:
     """Emit the assemble-time `settings.json` FLOOR — pre-approve the hatago hub's MCP tools and
     declare any recipe-contributed hooks (GAP 2).
@@ -740,7 +748,7 @@ def write_settings_json(
     if no recipe/base baked a `settings.json`, this floor stands unchanged.
     """
     out = profile_dir / "settings.json"
-    _write_json(out, required_settings(servers, recipes, permissions, harness))
+    _write_json(out, required_settings(servers, recipes, permissions, harness, settings))
     return out
 
 
@@ -769,6 +777,11 @@ def read_baked_settings(text: str | None, *, warn=None) -> dict | None:
     return data
 
 
+# The two settings.json blocks `merge_settings` unions by its own rules; every other key `required`
+# carries is a stack `settings:` scalar and overrides. Mirrors schema._STACK_SETTINGS_RESERVED.
+_MERGED_SETTINGS_KEYS = frozenset({"permissions", "hooks"})
+
+
 def merge_settings(baked: dict | None, required: dict, *, warn=None) -> dict:
     """Resolve the FINAL settings.json = the image's installer-written file with harnessed's
     required contributions surgically re-applied. This is NOT a generic deep-merge.
@@ -789,6 +802,9 @@ def merge_settings(baked: dict | None, required: dict, *, warn=None) -> dict:
           • for each event in required.hooks: APPEND its entries onto baked.hooks[event] (union,
             never overwrite — a recipe/base installer may have already contributed its own groups
             for the same event, e.g. bd's own `bd setup claude` writing SessionStart separately).
+          • every other top-level key in required (the stack's `settings:`) → written OVER the
+            baked value. The stack author set it on purpose; a recipe/base that baked the same
+            scalar loses. Schema keeps these disjoint from `permissions`/`hooks`.
         Every OTHER baked key is carried through VERBATIM. Only `permissions.allow` and `hooks[*]`
         are unioned — a generic nested merge would corrupt other array-valued keys such as
         `permissions.deny`.
@@ -839,6 +855,10 @@ def merge_settings(baked: dict | None, required: dict, *, warn=None) -> dict:
                 if entry not in merged:
                     merged.append(entry)
             hooks[event] = merged
+
+    for key, value in required.items():
+        if key not in _MERGED_SETTINGS_KEYS:
+            result[key] = value
 
     return result
 

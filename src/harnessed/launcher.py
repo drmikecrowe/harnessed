@@ -3090,7 +3090,7 @@ def _launch_host(
             profile_dir(stack, harness),
             emit.required_settings(
                 _resolve_service_servers(_merge_servers(host_recipes), None),
-                host_recipes, host_stk.permissions, harness,
+                host_recipes, host_stk.permissions, harness, host_stk.settings,
             ),
             harness,
         )
@@ -4192,7 +4192,9 @@ def container_run(
     if anchor_path != project_path:
         _out.print(f"[blue][INFO][/blue] Agent start folder: {project_path} (launched from {anchor_path})")
 
-    required = emit.required_settings(launch_servers, launch_recipes, stk.permissions, harness)
+    required = emit.required_settings(
+        launch_servers, launch_recipes, stk.permissions, harness, stk.settings
+    )
     if harness in ("claude", "omp", "opencode"):
         # Folds the host's live preferences into the assembled PROFILE — a backend-independent
         # artifact, and the last step of assembly rather than a backend operation, which is why

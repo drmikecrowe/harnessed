@@ -5,11 +5,11 @@ description: The blocklist behind "simplicity first". Load before adding an inte
 
 # No Speculative Code
 
-[[coding-principles]] §2 says simplicity first. This is the named blocklist, because a principle does
-not fire at the moment you are typing the interface.
+The [[floor]] says ask before adding a dependency, an abstraction, or a flag. This is the named
+blocklist, because a principle does not fire at the moment you are typing the interface.
 
-Each section bans code you would ADD. None licenses removing what exists — that is
-[[coding-principles]] §3 and the `load-bearing-comments` skill.
+Each section bans code you would ADD. None licenses removing what exists — that is the floor's
+"change a line the request did not name" and the `load-bearing-comments` skill.
 
 ## Abstractions
 

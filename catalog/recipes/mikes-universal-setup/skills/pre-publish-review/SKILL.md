@@ -36,4 +36,4 @@ A secret scanner catches key-shaped strings only. It cannot see the rest. That p
 State provenance and what you checked, in the PR and to the user. Did not read a file → say so.
 Never imply coverage you do not have.
 
-Pairs with [[stop-and-ask]]: that gates WHETHER you publish, this gates WHAT.
+Pairs with the [[floor]]'s confirmation gate: that gates WHETHER you publish, this gates WHAT.

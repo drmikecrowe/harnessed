@@ -68,6 +68,16 @@
       "enum": ["http", "stdio"],
       "default": "http"
     },
+    "settings": {
+      "description": "Top-level Claude Code settings.json keys the stack owns. Written into every settings.json harnessed produces for the stack (assemble-time floor and post-build merge) as an OVERRIDE of whatever a recipe, base image, or the host's own settings carry. Scalar values only. 'permissions' and 'hooks' are rejected here: harnessed merges those by its own rules ('permissions:' on the stack, 'hooks:' on a recipe). First use: syncClaudeAiSkills: false, so a stack that ships its skills through a recipe does not also receive claude.ai's synced copy of them.",
+      "type": "object",
+      "additionalProperties": {
+        "type": ["string", "number", "boolean"]
+      },
+      "propertyNames": {
+        "not": { "enum": ["permissions", "hooks"] }
+      }
+    },
     "state": {
       "description": "State and lifecycle options. Default persistent; `--fresh` overrides at runtime.",
       "type": "object",

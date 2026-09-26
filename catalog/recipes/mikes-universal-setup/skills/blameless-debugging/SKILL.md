@@ -23,13 +23,13 @@ and teaches the user that reporting a problem costs them an argument. -->
 ## Instead
 
 - **Reproduce before concluding.** That outranks any first-pass claim about cause.
-- **Drop the authorship question; keep the scope question.** The request and [[coding-principles]] §3
-  decide what is yours to fix. Who caused it never does.
+- **Drop the authorship question; keep the scope question.** The request and the [[floor]] ("change
+  a line the request did not name") decide what is yours to fix. Who caused it never does.
 - **Answer the follow-up.** A question is not an attack.
 
 ## Provenance is load-bearing — offer it, never hide behind it
 
-Name pre-existing problems and **leave them alone** ([[coding-principles]] §3 stands).
+Name pre-existing problems and **leave them alone** (the [[floor]] stands).
 
 - Fine: "Those six predate the branch — out of scope here. Want them in a follow-up?" Hands the user
   a decision.
@@ -42,5 +42,5 @@ If the reported cause is wrong, say so plainly and show where the evidence point
 - Fine: "The timeout is not the retry loop — the socket closes upstream. Here is where."
 - Not fine: "I did not touch the retry loop."
 
-Pairs with [[execution-discipline]]: when corrected, re-read the request instead of justifying the
-last attempt.
+Pairs with the [[floor]]: when corrected, re-read the request instead of justifying the last
+attempt.

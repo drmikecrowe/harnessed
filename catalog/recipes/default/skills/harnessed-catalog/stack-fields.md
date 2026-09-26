@@ -6,6 +6,7 @@ Stack manifests are **strict**: any key outside this set is rejected with a did-
 ```text
 name extends recipes services harnesses permissions instructions
 forward_git_credentials ssh_keys forward_aws_sso isolated_auth state hatago
+hub_transport settings
 ```
 
 Strictness is deliberate. Parsing used to be tolerant, and an `extends:` written before the feature
@@ -33,6 +34,9 @@ forward_git_credentials: false   # opt-in: gh token + opted-in private SSH keys
 ssh_keys: []                     # private key basenames under ~/.ssh — overlay stacks only
 forward_aws_sso: false           # opt-in: AWS creds via the aws-sso ECS server
 isolated_auth: false             # opt-in: this stack logs in as its OWN Claude account
+hub_transport: http              # http (default) | stdio — how the harness reaches the hub
+settings:                        # top-level settings.json scalars the stack owns; override baked
+  syncClaudeAiSkills: false      #   and host values. Never permissions/hooks — those have their own merge
 extends: base-stack
 ```
 

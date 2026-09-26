@@ -314,7 +314,9 @@ def assemble(
 
     emit.reset_profile(profile_dir)
     emit.write_mcp_json(profile_dir, stack.hub_transport, servers)
-    emit.write_settings_json(profile_dir, servers, recipes, stack.permissions, harness)
+    emit.write_settings_json(
+        profile_dir, servers, recipes, stack.permissions, harness, stack.settings
+    )
     emit.write_hatago_config(profile_dir, servers)
     # ASM-03 — derived Dockerfile. No scan layer: the scan moved to the credentialed post-build
     # pass (bd harnessed-8px.21.5), which is the only one that has tokens and the only one that can

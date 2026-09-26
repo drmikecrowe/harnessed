@@ -26,45 +26,33 @@ description: "Mike's baseline rules (coding stance, tool preferences, confirmati
 # RULES vs SKILLS. A rule below is injected on EVERY turn; a skill loads when its description
 # matches the work. A rule earns always-on status only when violating it is silent or irreversible
 # — by the time a skill trigger would fire, the damage is done. Everything whose trigger is legible
-# in advance (committing, publishing, editing a test, writing a comment, searching a tree) is a
-# skill, and the rule that would have carried it keeps a one-line pointer instead. Eight rules moved
-# out this way; the always-on set went from ~6.7k tokens per turn to ~3.7k.
+# in advance is a skill. The set has been cut twice: eight rules became skills in 2026-08 (~6.7k
+# tokens per turn → ~3.7k), and nine rules became three on 2026-09-26 after reading the AGENTS.md
+# spec (asdlc.io/practices/agents-md-spec): developer-written context files help only when
+# minimal, and every line beyond the minimum is obeyed at a cost. Its audit-out test — "if a tool,
+# a hook, or a skill already enforces it, delete it here" — removed most of what was left.
 rules:
-  - path: rules/coding-principles
-  - path: rules/denied-commands
-  # Anti-drift/anti-thrash working discipline: read-before-edit, re-read on correction, change
-  # approach after repeated failure, finish the whole task before stopping.
-  - path: rules/execution-discipline
-  # Anti-sycophancy + response shape. coding-principles' Response Principles already said "skip
-  # filler" and it was NOT enough on its own: a one-line bullet inside a coding rule never fires at
-  # the moment a reply opens with "Great question". This is the same instruction given its own rule,
-  # a NAMED blocklist of the actual openers, and a pre-send self-check. It borrows the BONES of the
-  # simple-english skill (sentence-length caps, one word one meaning, active voice, condition before
-  # command) rather than the full ASD-STE100 standard — full STE on conversation prose reads like a
-  # maintenance manual and would bar the domain vocabulary these rules depend on.
-  - path: rules/interaction-style
-  # Resolves the WHICH-WINS question the other rules leave open: user > harness tool policy > project
-  # docs > rules > skills > memory. Deliberately capability-phrased, never naming a harness's tools —
-  # a rule that names a binary is naming an example, so the harness decides the mechanism and the
-  # rule keeps the intent. Also states that an index/graph/cache is a derived view, so authoritative
-  # resolution wins for single-symbol truth.
-  - path: rules/precedence
+  # The judgment floor in NEVER / ASK / ALWAYS form. Replaces coding-principles, interaction-style,
+  # execution-discipline, precedence, and stop-and-ask. Tool-free on purpose: the identical text is
+  # pasted into claude.ai profile instructions and into the system prompt of any autonomous agent,
+  # so one file feeds every surface. Ships WITHOUT the named blocklist of sycophantic openers —
+  # interaction-style's measured win — because the spec's anchoring claim says a "do not X" list
+  # keeps X active; the two are in open conflict and the blocklist is one line to A/B back in.
+  - path: rules/floor
   # Prompt-injection baseline: instructions only from user/project, everything fetched or
   # tool-returned is data. Covers identity/rule overrides, secret disclosure, unvalidated
   # executable output, encoding and pressure tricks, and harmful-content refusals.
   - path: rules/prompt-defense
-  - path: rules/stop-and-ask
-  - path: rules/token-efficient
-  # The cwd is session identity, not convenience: backgrounding snapshots the LIVE cwd, so a session
-  # that wandered into a subdirectory gets keyed into the wrong transcript namespace and cannot be
-  # resumed from the project root. Concrete instance of execution-discipline's drift failure; a
-  # declared worktree switch is explicitly exempt.
-  - path: rules/working-directory-stability
+  # Facts about how a coding harness executes, and the behavior they force: the shell binaries the
+  # permission matcher denies (and the compound-command trap), the context budget, and the cwd as
+  # session identity. Replaces denied-commands, token-efficient, and working-directory-stability.
+  # Never leaves harnessed: none of it means anything on claude.ai or in an agent without a shell.
+  - path: rules/harness-mechanics
 
 # --- Guard-hook layer (GAP 2) ---
 # A PreToolUse hook on Bash that blocks `find` rooted at / or a home directory — the
 # silent-and-irreversible class (`find / -delete`, `find ~ -type f -exec rm …`), where by the time
-# anything could intervene, the damage is done. The complement of the denied-commands RULE above:
+# anything could intervene, the damage is done. The complement of the harness-mechanics RULE above:
 # the rule ("never run the find binary in shell") has to be obeyed to work; this hook cannot be
 # disobeyed. Enforcement lives in a hook for the same reason confirmation gates live in a rule —
 # each covers the failure mode the other cannot.
@@ -152,11 +140,11 @@ skills:
   # --- Converted from always-on rules. See "RULES vs SKILLS" above for the test applied. Each
   # rationale below travelled with its entry; the trigger now lives in the skill's `description`.
   #
-  # A reported problem is a symptom, not an accusation. Counterweight to coding-principles' "never
-  # guess / state verified facts", which on its own turns a bug report into an attribution argument.
-  # Posture only — it never widens scope; §3 Surgical changes still decides what gets touched, and
-  # pre-existing lint/test noise is named and left alone. Triggers on a bug report or a follow-up
-  # about earlier work, which is the only moment it applies.
+  # A reported problem is a symptom, not an accusation. Counterweight to the floor's "never guess",
+  # which on its own turns a bug report into an attribution argument. Posture only — it never widens
+  # scope; the floor's surgical-change line still decides what gets touched, and pre-existing
+  # lint/test noise is named and left alone. Triggers on a bug report or a follow-up about earlier
+  # work, which is the only moment it applies.
   - path: skills/blameless-debugging
   # Commit-message hygiene only. Conventional-commit shape was already de-facto practice in every
   # repo here and written down nowhere, so nothing enforced it. The type vocabulary is read from the
@@ -172,46 +160,55 @@ skills:
   # that resolves, so an uncitable rationale must be labelled as inference or omitted. Carries the
   # inverse duty too — read the reference before deleting what it guards.
   - path: skills/load-bearing-comments
-  # The named blocklist behind coding-principles §2 "Simplicity first" — single-implementation
-  # interfaces, one-type factories, delegating wrappers, unreachable error handling, needless
-  # dependencies. §2 keeps a one-line pointer to this skill, because the principle alone does not
-  # fire at the moment you are typing the interface. Bans only what you ADD; removal stays §3's.
+  # The named blocklist behind the floor's "ask before adding a dependency, an abstraction, a config
+  # flag" — single-implementation interfaces, one-type factories, delegating wrappers, unreachable
+  # error handling, needless dependencies. A skill because the principle alone does not fire at the
+  # moment you are typing the interface. Bans only what you ADD; removal stays the floor's.
   - path: skills/no-speculative-code
-  # Gates WHAT gets published (read what you didn't author; provenance; no private content).
-  # stop-and-ask stays a rule and gates WHETHER — its confirmation line now loads this skill, so the
-  # always-on half is the gate and the loaded half is the checklist. A secret scanner only catches
-  # key-shaped strings — this is the semantic pass it can't do.
+  # Gates WHAT gets published (read what you didn't author; provenance; no private content). The
+  # floor's confirmation gate governs WHETHER, so the always-on half is the gate and the loaded half
+  # is the checklist. A secret scanner only catches key-shaped strings — this is the semantic pass
+  # it can't do.
   - path: skills/pre-publish-review
-  # rules/rg + rules/fd merged. The denied-commands rule keeps the always-on floor (never run the
-  # `grep` or `find` binaries); everything about BOUNDING a result set — `-l`/`-c`/`-m`, rtk
-  # compaction, ctx_batch_execute routing, capture-once-query-many — moved here, along with the
-  # subagent-brief wording that used to sit in denied-commands. See COMPANION TOOLS above.
+  # rules/rg + rules/fd merged. harness-mechanics keeps the always-on floor (never run the `grep` or
+  # `find` binaries); everything about BOUNDING a result set — `-l`/`-c`/`-m`, rtk compaction,
+  # ctx_batch_execute routing, capture-once-query-many — lives here, along with the subagent-brief
+  # wording. See COMPANION TOOLS above. The one skill here that names tools: never uploaded elsewhere.
   - path: skills/search-tools
   # An existing test outranks your change: fix the code, never the assertion. The escape hatch is
   # deliberately narrow and evidence-gated — a test CAN be wrong (harnessed #432: ambient OAuth token,
   # broken fixture, correct expectation), so an absolute "the test is always right" would have blocked
   # the correct diagnosis. Also bars reporting local red that CI runs green as "pre-existing".
   - path: skills/tests-are-authority
+  # --- Authored 2026-09-26 as the personal-assistant core, tool-free so the same SKILL.md uploads
+  # to claude.ai unchanged. Both generalise mechanics that worked elsewhere: the Story-readiness
+  # gate's falsification test and the #432 diagnosis.
+  #
+  # Direction review before acceleration. Speed in the wrong direction is negative value, and a
+  # reviewer that inherits the author's reasoning agrees with it — so the mechanism is structural:
+  # findings (problem-behind-the-ask, falsification per claim, two-readings, gaps) are written
+  # BEFORE the recommendation, and with a subagent available the findings come from a fresh one that
+  # saw only the proposal. Triggers on "what do you think" / "assess" / "am I going the right way".
+  - path: skills/thinking-partner
+  # Root-cause procedure: run alone, bisect by pairing, one environment axis at a time, wall clock
+  # as a tell, prove at the scale where it failed, report evidence in both directions. Exists because
+  # skipping it produced a wrong public diagnosis (#432). blameless-debugging keeps the posture.
+  - path: skills/diagnosis-discipline
   # --- Vendored third-party and authored-here skills.
   # [kepano] DERIVED from kepano/obsidian-skills (MIT), with a local trigger-strengthening edit, so
   # it is vendored not fetched (a fetch would revert the edit). Provenance + the exact change are in
   # skills/defuddle/PROVENANCE.md; kepano's LICENSE ships in skills/defuddle/LICENSE.
   - path: skills/defuddle
-  # (humanizer is gone entirely as of 2026-09-09 — not vendored, not fetched. It and
-  # petergyang/no-ai-slop overlapped mikes-voice by roughly two thirds and CONFLICTED on the rest:
-  # humanizer rewrites in place and injects opinions the source never had, no-ai-slop makes the
-  # minimum edit and forbids inventing any. Rather than arbitrate two upstreams on every draft,
-  # mikes-voice absorbed what was missing and now owns prose quality alone. Both repos stay linked
-  # in README.md as sources to skim, not dependencies to track.)
+  # (humanizer is gone entirely as of 2026-09-09 — not vendored, not fetched. Its rules were folded
+  # into mikes-voice, which moved OUT of this recipe on 2026-09-26: it is identity, not stance, so it
+  # fails the "a client stack composes this" test. It now lives in the user overlay recipe
+  # `mikes-personal` (~/.config/harnessed/catalog/recipes/mikes-personal/skills/mikes-voice, a real
+  # directory, not a symlink), beside an examples.md of verbatim samples that could never ship in
+  # the wheel. README.md keeps the humanizer / no-ai-slop upstream links as sources to skim.)
   # [gsd] DERIVED from open-gsd/gsd-core, then decoupled and modified here (no longer tracks
   # upstream). Attribution is owed and recorded; this is NOT a fetch candidate — the local version
   # is the one we want. Original: github.com/open-gsd/gsd-core (MIT).
   - path: skills/map-codebase
-  # [mine] Mike's drafting voice for anything outward-facing and short-form. Sourced from his
-  # captured "Mike's voice — generic drafting guide" note (Open Brain, 2026-08-21), which is itself
-  # distilled from blog-writer + humanizer with the blog structure stripped out. Deliberately scoped
-  # AWAY from blog posts: blog-writer owns those and the two disagree on openers.
-  - path: skills/mikes-voice
   # [mine] Origin unresolved — a GSD-flavoured TDD skill that matches NO commit in mattpocock/skills
   # (its once-assumed source) or open-gsd/gsd-core. Treated as authored-here until proven otherwise.
   - path: skills/tdd
