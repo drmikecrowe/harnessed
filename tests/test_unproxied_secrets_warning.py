@@ -107,6 +107,26 @@ class TestClassification:
         monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules(RULES_OUTPUT, returncode=1))
         assert launchenv._varlock_proxy_modes(_schema(tmp_path)) is None
 
+    def test_coloured_output_is_refused_not_stripped(self, tmp_path, monkeypatch):
+        """#462: what the runner got. The parser stays closed on it; the fix is upstream of it."""
+        coloured = RULES_OUTPUT.replace("Rules (", "\x1b[1mRules (").replace(
+            "Secrets (4)", "\x1b[1mSecrets (4)\x1b[22m")
+        monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules(coloured))
+        assert launchenv._varlock_proxy_modes(_schema(tmp_path)) is None
+
+    def test_colour_is_forced_off_over_the_callers_setting(self, tmp_path, monkeypatch):
+        """#462: `CI` turns varlock's colour on through a pipe, and only FORCE_COLOR outranks it."""
+        seen: dict = {}
+
+        def run(cmd, **kw):
+            seen.update(kw)
+            return subprocess.CompletedProcess(cmd, 0, stdout=RULES_OUTPUT, stderr="")
+
+        monkeypatch.setenv("FORCE_COLOR", "3")
+        monkeypatch.setattr(launchenv.subprocess, "run", run)
+        launchenv._varlock_proxy_modes(_schema(tmp_path))
+        assert seen["env"]["FORCE_COLOR"] == "0"
+
     def test_a_hanging_varlock_degrades_instead_of_blocking_the_launch(self, tmp_path, monkeypatch):
         seen: dict = {}
 
