@@ -639,6 +639,15 @@ def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Pa
             # behaviour. Schema guarantees a script-less install carries a reason, so this is never
             # a silent skip.
             continue
+        # #532: a declared local folder that is absent fails the launch. Falling back to the pin
+        # would let a developer believe they were running their edits while running the SHA.
+        for key, ref in inst.refs.items():
+            if ref.local and not Path(ref.local).is_dir():
+                _err.print(
+                    f"[bold red]error:[/bold red] install ({recipe.name}): refs.{key}.local "
+                    f"{ref.local} is not a directory on this host"
+                )
+                raise typer.Exit(1)
         cache = paths.install_cache_dir(recipe.name, inst.cache) if inst.cache else None
         if cache is not None:
             # Create the PARENT only. The cache dir's own existence is the script's hit/miss test.

@@ -121,7 +121,7 @@ class TestRule3NamespaceReservation:
         recipe = load_recipe(_recipe(tmp_path, "name: r\ninstall:\n  script: install.sh\n"))
         env = install_env(recipe, mode="container", harness="claude", config_dir="/c",
                           cache_dir="/x", bin_dir="/b", home_shim="/h")
-        offenders = [k for k in env if _re.match(r"^HARNESSED_(REF|REPO)_", k)]
+        offenders = [k for k in env if _re.match(r"^HARNESSED_(REF|REPO|LOCAL)_", k)]
         assert not offenders, (
             f"{offenders} collide with the namespace `install.refs:` owns — a recipe ref of that "
             f"name would be silently shadowed"

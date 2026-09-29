@@ -163,7 +163,8 @@
             "properties": {
               "repo": { "description": "`owner/repo` — what `update` queries. NOT a URL: install.sh composes the URL, so switching from a git clone to a tarball fetch needs no manifest change.", "type": "string", "pattern": "^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$" },
               "ref": { "description": "A version tag or a FULL 40-character commit SHA. Floating refs are rejected exactly as they are for `tools:`; an abbreviated SHA is not a stable identifier.", "type": "string", "minLength": 1 },
-              "hold": { "description": "Non-empty reason string ⇒ THIS ref is manual-upgrade-only. Scope is the single ref, so a recipe with three refs may hold one and auto-bump two. A hold never licenses a floating ref.", "type": "string", "minLength": 1 }
+              "hold": { "description": "Non-empty reason string ⇒ THIS ref is manual-upgrade-only. Scope is the single ref, so a recipe with three refs may hold one and auto-bump two. A hold never licenses a floating ref.", "type": "string", "minLength": 1 },
+              "local": { "description": "An ABSOLUTE host folder (`~` expanded) that install.sh uses INSTEAD of fetching `ref`, on a host launch only. Exported as HARNESSED_LOCAL_<KEY>; the key is present and empty in a container build, which installs from `ref`. A missing folder fails the host launch rather than falling back to the pin. Host-local, so it belongs in the user overlay, never in the repo catalog.", "type": "string", "minLength": 1 }
             }
           }
         },

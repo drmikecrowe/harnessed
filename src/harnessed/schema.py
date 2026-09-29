@@ -782,6 +782,9 @@ class InstallRef:
     repo: str  # owner/repo
     ref: str  # a version tag or a FULL 40-hex SHA — floating is rejected, as for tools:
     hold: str | None = None  # rule 5: scope is THIS ref, not the recipe
+    # #532: an absolute host folder install.sh uses INSTEAD of fetching `ref`, on a host launch
+    # only. Exported as HARNESSED_LOCAL_<KEY>, empty in a container build. `ref` stays mandatory.
+    local: str | None = None
 
 
 def derived_cache_key(refs: "dict[str, InstallRef]") -> str | None:
@@ -848,7 +851,17 @@ def _parse_install_refs(raw_refs, manifest_label: str) -> dict[str, InstallRef]:
                 f"recipe '{manifest_label}.refs' {key!r} has a 'hold' with no reason — the reason "
                 f"is shown to whoever decides whether to lift it"
             )
-        out[key] = InstallRef(repo=repo, ref=ref, hold=hold)
+        local = spec.get("local")
+        if local is not None:
+            local_path = Path(local).expanduser() if isinstance(local, str) and local.strip() else None
+            if local_path is None or not local_path.is_absolute():
+                raise SchemaError(
+                    f"recipe '{manifest_label}.refs' {key!r} has local {local!r}, which is not an "
+                    f"absolute folder — install.sh runs from the project dir on a host launch, so "
+                    f"a relative path would name a different folder in every project"
+                )
+            local = str(local_path)
+        out[key] = InstallRef(repo=repo, ref=ref, hold=hold, local=local)
     return out
 
 
