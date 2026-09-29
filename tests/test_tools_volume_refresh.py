@@ -6,6 +6,7 @@ running the harness from its first launch: image 2.1.284, running claude 2.1.223
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -38,7 +39,8 @@ def _drive(monkeypatch, *, volume_exists: bool, fingerprint_moved: bool, cp_rc: 
     monkeypatch.setattr(volumes, "_volume_read",
                         lambda *a, **k: "stale" if fingerprint_moved else "fp")
 
-    volumes._ensure_stack_volumes("docker", "s", "claude", None, "img", [])
+    # `prof` only reaches `_ensure_config_volume`, which is stubbed above.
+    volumes._ensure_stack_volumes("docker", "s", "claude", Path("prof"), "img", [])
     refreshes = [e for e in events if isinstance(e, list) and "cp" in e]
     return events, refreshes, said
 
