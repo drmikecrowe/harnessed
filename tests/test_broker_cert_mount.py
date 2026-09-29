@@ -60,7 +60,7 @@ def boundary(monkeypatch, tmp_path):
         monkeypatch.setattr(launcher, "_broker_start_for", lambda *a, **k: brk)
         b = launcher.ContainerBackend.__new__(launcher.ContainerBackend)
         b.rt, b.inst, b.pod, b.recipes, b.servers = "podman", "inst", "pod", [], []
-        b.harness_image, b.mount_path = "img", "/workspace"
+        b.harness_image, b.mount_path = "img", Path("/workspace")
         b.member_mounts, b.secrets_env_files, b.secrets_temp_files = [], [], []
         b.stk = type("Stk", (), {"isolated_auth": False, "hub_transport": "stdio"})()
         spec = launcher.LaunchSpec(stack="s", harness="claude", project_path=tmp_path)
