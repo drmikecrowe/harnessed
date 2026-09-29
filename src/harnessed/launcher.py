@@ -1429,7 +1429,7 @@ def _secrets_disabled() -> bool:
     return os.environ.get("NO_SECRETS", "").strip().lower() in ("1", "true", "yes")
 
 
-def _broker_start_for(inst: str, pod: str, project_path: "Path | None"):
+def _broker_start_for(inst: str, pod: str, project_path: "Path | None", *, expose: bool = False):
     """Start this instance's secrets broker, or return None when the launch gets none.
 
     A broker is started ONLY when the composed schema carries a `@proxy` annotation and
@@ -1454,7 +1454,7 @@ def _broker_start_for(inst: str, pod: str, project_path: "Path | None"):
     if not dirs:
         return None
     try:
-        return broker.start(inst, pod, dirs)
+        return broker.start(inst, pod, dirs, expose=expose)
     except broker.BrokerError as exc:
         _err.print(
             f"[bold red]error:[/bold red] could not start the secrets broker for {inst}.\n"
@@ -1463,6 +1463,45 @@ def _broker_start_for(inst: str, pod: str, project_path: "Path | None"):
             f"[bold]--no-secrets[/bold] to skip it."
         )
         raise typer.Exit(1) from exc
+
+
+def _broker_door_args(rt: str, brk: "broker.Broker | None") -> list[str]:
+    """Let a pod-less agent resolve the broker's door (#468). Empty on podman, whose door is pasta.
+
+    `host-gateway` is docker's name for the host as seen from the bridge. The broker is exposed on
+    0.0.0.0 there, so it answers on that address; podman's stays on loopback, reached via pasta.
+    """
+    if brk is None or _rt_uses_pods(rt):
+        return []
+    return ["--add-host", f"{paths.BROKER_DOCKER_DOOR}:host-gateway"]
+
+
+# Seconds the probe's own dial may take. A firewall DROP never answers, so without this the connect
+# sits in SYN retries for about two minutes before the outer bound kills it.
+_BROKER_PROBE_DIAL = 5
+
+
+def _broker_gateway(rt: str, image: str, port: int) -> str | None:
+    """The address the broker's door resolves to in a container on `rt`, if the broker answers
+    there; None if it does not (#468).
+
+    A host firewall may drop bridge-to-host traffic (ufw's default INPUT policy does), and nothing
+    in harnessed can open that without root. Probing first turns a proxy that silently times out
+    inside the agent into a refused launch. The address is returned rather than a bool because the
+    egress firewall must ACCEPT it, and its runner cannot resolve the name: it shares the agent's
+    netns but not its /etc/hosts.
+    """
+    door = paths.BROKER_DOCKER_DOOR
+    dial = f"exec 3<>/dev/tcp/{door}/{port}"
+    res = _bounded(
+        [rt, "run", "--rm", *paths.userns_args(rt), "--add-host", f"{door}:host-gateway",
+         "--entrypoint", "bash", image,
+         "-c", f"getent ahosts {door} | awk 'NR==1 {{print $1}}' && "
+               f"timeout {_BROKER_PROBE_DIAL} bash -c '{dial}'"],
+        timeout=_PODMAN_EXEC_TIMEOUT, capture_output=True, text=True, warn=False,
+    )
+    address = res.stdout.strip()
+    return address if res.returncode == 0 and address else None
 
 
 def _broker_stop_for(instance: str) -> None:
@@ -3419,8 +3458,11 @@ class ContainerBackend(ExecutionBackend):
         #: `wire_mcp` and the settings merge cannot drift apart on what this stack's servers are.
         self.servers = servers
         #: This instance's host secrets broker, or None when the launch gets none (no `@proxy` in
-        #: the composed schema, `--no-secrets`, or a runtime with no pods). Set at BOUNDARY.
+        #: the composed schema, or `--no-secrets`). Set at BOUNDARY.
         self.broker = None
+        #: docker only: the address the broker's door resolved to in a container, which EGRESS must
+        #: allow (#468). None on podman, whose door is a fixed constant the script already ACCEPTs.
+        self.broker_gateway: str | None = None
         self.stk = stk
         self.stack_from_overlay = stack_from_overlay
         self.headless = headless
@@ -3670,6 +3712,9 @@ class ContainerBackend(ExecutionBackend):
             egress_domains = sorted(
                 {d for r in self.recipes for d in r.egress}
                 | set(api_endpoint_egress_hosts(_resolve_launch_env(spec.project_path)))
+                # docker's broker door (#468), as an address: the script resolves each entry with
+                # `getent ahosts`, which returns an IP literal unchanged.
+                | ({self.broker_gateway} if self.broker_gateway else set())
             )
             try:
                 _apply_firewall(
@@ -3699,15 +3744,23 @@ class ContainerBackend(ExecutionBackend):
         # Pod network.
         net = os.environ.get("HARNESSED_NET", "")
 
-        if not _rt_uses_pods(self.rt) and proxy_schema_dirs(spec.project_path):
-            # The broker door is a pasta option on `pod create`; a runtime with no pods has no way
-            # to deliver 169.254.1.1 into the container. Starting a broker here would produce
-            # exactly the half-wired state --no-secrets exists to avoid, so say so instead.
-            _err.print(
-                f"[yellow]note:[/yellow] {self.rt} does not use pods, so the varlock secrets broker "
-                "is not started for this launch — the pod would have no route to it. Secrets are "
-                "resolved into the container env as before."
-            )
+        if not _rt_uses_pods(self.rt):
+            # No pasta, so no loopback door (#468): the broker is exposed, token-gated, and the
+            # agent reaches it at the host gateway. A launch whose container cannot reach it is
+            # refused, because an agent holding placeholders behind a dead proxy is half-wired.
+            self.broker = _broker_start_for(self.inst, self.pod, spec.project_path, expose=True)
+            if self.broker is not None:
+                self.broker_gateway = _broker_gateway(self.rt, self.harness_image, self.broker.port)
+            if self.broker is not None and self.broker_gateway is None:
+                _broker_stop_for(self.inst)
+                _err.print(
+                    f"[bold red]error:[/bold red] a {self.rt} container cannot reach the secrets "
+                    f"broker at {paths.BROKER_DOCKER_DOOR}:{self.broker.port}.\n"
+                    "A host firewall is probably dropping bridge-to-host traffic (ufw does by "
+                    "default). Allow inbound on docker0, for example `sudo ufw allow in on "
+                    "docker0`, or launch with [bold]--no-secrets[/bold] to skip the broker."
+                )
+                raise typer.Exit(1)
 
         # Create pod.
         if _rt_uses_pods(self.rt):
@@ -3820,9 +3873,10 @@ class ContainerBackend(ExecutionBackend):
             "-e", f"HATAGO_TRANSPORT="
                   f"{self.stk.hub_transport if emit.hub_is_needed(self.servers) else 'none'}",
             *self.member_mounts,
-            # The broker's CA, where the CA-path vars point (#438). Empty without a broker, which
-            # includes every launch on a runtime without pods.
+            # The broker's CA, where the CA-path vars point (#438), and on docker the name its door
+            # answers to (#468). Both empty without a broker.
             *_broker_cert_mount_args(self.broker),
+            *_broker_door_args(self.rt, self.broker),
             # Use harnessed-start (baked into base since hatago-consolidation) when present; fall back
             # to plain `sleep infinity` on older images so the launch degrades gracefully rather than
             # hard-failing on a missing binary. Once the base image is rebuilt, the entrypoint runs
@@ -3832,6 +3886,12 @@ class ContainerBackend(ExecutionBackend):
         ]
         try:
             _run(harness_run, capture_output=True)
+        except BaseException:
+            # On docker the broker was started just above, for this container alone, and nothing
+            # else will reap it by name. podman's pod-create guard does the same for its broker.
+            if self.broker is not None and not _rt_uses_pods(self.rt):
+                _broker_stop_for(self.inst)
+            raise
         finally:
             # Unlink the temp env-files as soon as podman has ingested them into the container's env —
             # resolved secret values must not linger on disk (T-05-06). Always runs (success or failure).

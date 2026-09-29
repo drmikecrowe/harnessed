@@ -63,9 +63,10 @@ CONTAINER_ONLY: dict[str, str] = {
     # for the broker to sit on, and varlock resolves natively there already. The epic's backend
     # matrix records exactly this: "host: n/a (native varlock)".
     "_broker_start_for": "starts a host broker for a POD; a host launch resolves varlock natively",
-    "proxy_schema_dirs": "decides whether a POD needs a broker",
     "_broker_stop_for": "stops a pod's broker; a host launch never started one",
     "_broker_cert_mount_args": "mounts a pod broker's CA into the pod; a host launch has neither",
+    "_broker_door_args": "names the host gateway inside a docker container; a host launch is on it",
+    "_broker_gateway": "probes a docker container's route to the broker; a host launch needs none",
     "_rt_uses_pods": "asks the container runtime about pods",
     "_without_userns": "strips a pod-level --userns; a host-native launch has no user namespace",
     "_preflight_runtime": "refuses a container runtime whose id mapping cannot be named; a "

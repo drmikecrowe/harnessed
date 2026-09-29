@@ -285,6 +285,11 @@ HATAGO_PORT = 3535
 # why it lives here rather than in any one of them. Epic #388 Topology B; #436, #437.
 BROKER_HOST_DOOR = "169.254.1.1"
 
+# The same door on docker, which has no pasta (#468). The agent gets `--add-host
+# <this>:host-gateway`, the broker is started with `--expose`, and the egress firewall ACCEPTs
+# whatever this resolves to. varlock's own container sandbox dials the same name.
+BROKER_DOCKER_DOOR = "host.docker.internal"
+
 # Where the broker's `--cert-dir` is mounted read-only inside the pod, and so where the CA-path vars
 # of `varlock proxy env --full --cert-dir` must point. varlock's own container sandbox uses this
 # path (src/proxy/sandbox-docker.ts, GUEST_CA_DIR). #438.

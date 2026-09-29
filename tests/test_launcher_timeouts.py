@@ -639,7 +639,7 @@ class TestTheEgressFirewallFailsClosed:
 
         backend = launcher.ContainerBackend.__new__(launcher.ContainerBackend)
         backend.rt, backend.inst, backend.pod, backend.recipes = "podman", "inst", "pod", []
-        backend.harness_image = "img"
+        backend.harness_image, backend.broker_gateway = "img", None
 
         # project_path is never read on the EGRESS branch; it only has to satisfy the dataclass.
         spec = launcher.LaunchSpec(stack="s", harness="claude", project_path=Path("/nonexistent"))
@@ -665,7 +665,7 @@ class TestTheEgressFirewallFailsClosed:
 
         backend = launcher.ContainerBackend.__new__(launcher.ContainerBackend)
         backend.rt, backend.inst, backend.pod, backend.recipes = "podman", "inst", "pod", []
-        backend.harness_image = "img"
+        backend.harness_image, backend.broker_gateway = "img", None
         spec = launcher.LaunchSpec(stack="s", harness="claude", project_path=Path("/nonexistent"))
 
         with pytest.raises(type(boom)):

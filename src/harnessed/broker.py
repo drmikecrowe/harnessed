@@ -244,6 +244,7 @@ def start(
     schema_dirs: str | Path | Sequence[str | Path],
     *,
     cert_dir: str | Path | None = None,
+    expose: bool = False,
     spawn: Callable[[list[str]], int] = _spawn,
     status: Callable[[], list[dict]] = _status,
     kill: Callable[[int], None] = _kill,
@@ -272,6 +273,12 @@ def start(
     for d in dirs:
         argv += ["--path", str(d)]
     argv += ["--port", str(port), "--cert-dir", str(certs)]
+    if expose:
+        # For a guest with no route to host loopback (docker, #468). varlock then binds 0.0.0.0 and
+        # demands its data-plane token from every off-loopback client. Bare, not `--expose=<addr>`:
+        # in 1.16.1 a single-address bind hides the session from `proxy status`, which the loop
+        # below polls, so the start would always time out.
+        argv.append("--expose")
     pid = spawn(argv)
 
     # BaseException, not Exception: `spawn` uses start_new_session=True, so the broker does NOT
@@ -303,6 +310,25 @@ def start(
         f"the secrets broker for {inst} did not come up on port {port} within {timeout:g}s. "
         f"Launch with --no-secrets to skip it."
     )
+
+
+def token(
+    record: Broker, *, run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+) -> str:
+    """The data-plane token an exposed broker minted (#468), read back from varlock.
+
+    Deliberately not on the record: `Broker` is written to disk, and this is a credential to use
+    the broker. Asked for when it is needed instead. The error never carries varlock's output,
+    for the same value-free reason `_broker_start_for` gives.
+    """
+    proc = run(
+        ["varlock", "proxy", "token", "--session", record.session],
+        capture_output=True, text=True, timeout=_CONTROL_TIMEOUT, check=False,
+    )
+    value = proc.stdout.strip() if proc.returncode == 0 else ""
+    if not value:
+        raise BrokerError(f"could not read the data-plane token for session {record.session}.")
+    return value
 
 
 def _stop_session(
