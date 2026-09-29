@@ -120,14 +120,12 @@ class TestEnvContract:
 def test_no_repo_catalog_recipe_declares_a_local_folder():
     """`catalog/` ships inside the wheel, so nothing host-local may live there (CLAUDE.md). A
     `local:` names one developer's folder; it belongs in the user overlay only."""
-    import yaml
-
     catalog = Path(__file__).resolve().parents[1] / "catalog" / "recipes"
     offenders = []
     for manifest in sorted(catalog.glob("*/recipe.yaml")):
-        refs = ((yaml.safe_load(manifest.read_text()) or {}).get("install") or {}).get("refs") or {}
-        offenders += [f"{manifest.parent.name}.{k}" for k, v in refs.items()
-                      if isinstance(v, dict) and "local" in v]
+        r = load_recipe(manifest.parent)
+        refs = r.install.refs if r.install else {}
+        offenders += [f"{r.name}.{k}" for k, ref in refs.items() if ref.local is not None]
     assert not offenders, f"host-local `local:` in the repo catalog: {offenders}"
 
 
