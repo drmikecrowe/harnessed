@@ -316,6 +316,43 @@ def _volume_read(rt: str, volume: str, image: str, rel: str) -> str | None:
     return out.stdout if out.returncode == 0 else None
 
 
+# Where an EXISTING tools volume is mounted while the image's own ~/.local is copied into it
+# (`_refresh_tools_volume`). Not ~/.local itself: that would hide the very source being copied.
+_CTR_TOOLS_REFRESH_DIR = "/tmp/harnessed-tools"  # noqa: S108 — container-internal mount target
+
+
+def _refresh_tools_volume(rt: str, tools_vol: str, image: str) -> None:
+    """Copy the image's own ~/.local into an existing tools volume, newer or missing files only.
+
+    Copy-up seeds a volume ONCE, so without this a rebuilt image never reaches the agent: the
+    harness binary itself lives in ~/.local (claude's installer writes `bin/claude` and
+    `share/claude/versions/`), and the volume kept serving the one from its first launch. Measured
+    on the `isolated` stack: image 2.1.284, running agent 2.1.223, volume created fifteen days
+    earlier. The fingerprint already moves on an image change; it only re-ran recipe installs.
+
+    `-u` is what keeps this cheap. The base image carries ~1.6G of mise runtimes that did not
+    change, so only files from rebuilt layers are copied. Measured: 5.8s over the real volume.
+
+    What it can overwrite: a path BOTH the image and the volume hold, when the image's copy is
+    newer. A rebuilt layer is newer than anything installed before it, so there the image wins by
+    design. Paths only the volume holds are never touched, and recipe installs re-run right after
+    this in the same branch. The residue is a hand install inside the container that shares a file
+    with the image, e.g. pnpm's global manifest (PR #533 review). Superseded versions are left in
+    place, never deleted.
+    """
+    out = _run(
+        [rt, "run", "--rm", *paths.userns_args(rt), *paths.container_user_args(rt),
+         "-v", f"{tools_vol}:{_CTR_TOOLS_REFRESH_DIR}", "--entrypoint", "cp", image,
+         "-au", f"{_CONTAINER_HOME_STR}/.local/.", f"{_CTR_TOOLS_REFRESH_DIR}/"],
+        check=False, capture_output=True, text=True,
+    )
+    # Warn rather than stop: a failed refresh leaves the previous, working tools in place, and the
+    # one thing worth preventing is that happening silently — that is the bug this fixes.
+    if out.returncode != 0:
+        _say(f"[yellow]⚠ could not refresh {tools_vol} from {image}; the agent may run an older "
+             f"harness until the volume is removed:[/yellow] {(out.stderr or '').strip()}")
+
+
 def _run_container_installs(
     rt: str, stack: str, harness: str, image: str, recipes: list, cfg_vol: str, tools_vol: str,
 ) -> None:
@@ -529,6 +566,10 @@ def _ensure_stack_volumes(
         _say(f"[blue][INFO][/blue] Stack unchanged — reusing {cfg_vol} (installs skipped)")
         return cfg_vol, tools_vol
 
+    # A volume this call created was just seeded by copy-up, so only an existing one can be stale.
+    # Before the installs, so a recipe install runs against the image's current tools.
+    if not tools_was_new:
+        _refresh_tools_volume(rt, tools_vol, image)
     _run_container_installs(rt, stack, harness, image, recipes, cfg_vol, tools_vol)
     _run([rt, "run", "--rm", *paths.userns_args(rt), *paths.container_user_args(rt),
           "-v", f"{cfg_vol}:{_CONTAINER_HOME_STR}/.claude", "--entrypoint", "sh", image, "-c",
