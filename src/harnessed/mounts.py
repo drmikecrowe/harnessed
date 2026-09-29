@@ -38,6 +38,7 @@ from .credmounts import (
     _ssh_dir_mounts,
     _yubikey_device_args,
 )
+from .broker import Broker
 from .hosthome import _OAUTH_TOKEN_VAR
 from .launchenv import _plain_env_values, _varlock_resolve
 from .layout import _catalog_base
@@ -686,6 +687,19 @@ def _mcp_remote_pasta_net_args(
     if not opts:
         return []
     return ["--network", "pasta:" + ",".join(opts)]
+
+
+def _broker_cert_mount_args(brk: Broker | None) -> list[str]:
+    """Bind the broker's CA directory into the pod read-only, or nothing without a broker (#438).
+
+    The CA-path vars of `varlock proxy env --full` point at paths.BROKER_GUEST_CERT_DIR. `:ro` because
+    the pod is what is being contained: a writable mount would let it replace the CA it is told to
+    trust. The dir holds public certs only; `ca-key.pem` is written there only under `--persist-ca`,
+    which broker.start does not pass.
+    """
+    if brk is None:
+        return []
+    return ["-v", f"{brk.cert_dir}:{paths.BROKER_GUEST_CERT_DIR}:ro"]
 
 
 def _mcp_remote_pod_args(

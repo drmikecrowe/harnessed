@@ -113,6 +113,7 @@ from .mounts import (
     AWS_SSO_ECS_PORT,
     _aws_sso_ecs_forward_args,
     _aws_sso_server_reachable,
+    _broker_cert_mount_args,
     _build_mount_args,
     _ccstatusline_settings_mount,
     _claude_config_seed_mount,
@@ -3819,6 +3820,9 @@ class ContainerBackend(ExecutionBackend):
             "-e", f"HATAGO_TRANSPORT="
                   f"{self.stk.hub_transport if emit.hub_is_needed(self.servers) else 'none'}",
             *self.member_mounts,
+            # The broker's CA, where the CA-path vars point (#438). Empty without a broker, which
+            # includes every launch on a runtime without pods.
+            *_broker_cert_mount_args(self.broker),
             # Use harnessed-start (baked into base since hatago-consolidation) when present; fall back
             # to plain `sleep infinity` on older images so the launch degrades gracefully rather than
             # hard-failing on a missing binary. Once the base image is rebuilt, the entrypoint runs

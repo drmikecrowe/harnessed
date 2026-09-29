@@ -65,6 +65,7 @@ CONTAINER_ONLY: dict[str, str] = {
     "_broker_start_for": "starts a host broker for a POD; a host launch resolves varlock natively",
     "proxy_schema_dirs": "decides whether a POD needs a broker",
     "_broker_stop_for": "stops a pod's broker; a host launch never started one",
+    "_broker_cert_mount_args": "mounts a pod broker's CA into the pod; a host launch has neither",
     "_rt_uses_pods": "asks the container runtime about pods",
     "_without_userns": "strips a pod-level --userns; a host-native launch has no user namespace",
     "_preflight_runtime": "refuses a container runtime whose id mapping cannot be named; a "

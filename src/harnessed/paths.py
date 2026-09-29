@@ -285,6 +285,11 @@ HATAGO_PORT = 3535
 # why it lives here rather than in any one of them. Epic #388 Topology B; #436, #437.
 BROKER_HOST_DOOR = "169.254.1.1"
 
+# Where the broker's `--cert-dir` is mounted read-only inside the pod, and so where the CA-path vars
+# of `varlock proxy env --full --cert-dir` must point. varlock's own container sandbox uses this
+# path (src/proxy/sandbox-docker.ts, GUEST_CA_DIR). #438.
+BROKER_GUEST_CERT_DIR = "/etc/varlock/proxy-certs"
+
 
 def hatago_port() -> int:
     """The hatago hub port — honors the `HATAGO_PORT` env override, default `HATAGO_PORT`."""
