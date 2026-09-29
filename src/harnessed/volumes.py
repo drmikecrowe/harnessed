@@ -330,10 +330,15 @@ def _refresh_tools_volume(rt: str, tools_vol: str, image: str) -> None:
     on the `isolated` stack: image 2.1.284, running agent 2.1.223, volume created fifteen days
     earlier. The fingerprint already moves on an image change; it only re-ran recipe installs.
 
-    `-u` is what keeps this cheap and safe. The base image carries ~1.6G of mise runtimes that did
-    not change, and everything the agent installed at runtime is newer than any image file, so only
-    the rebuilt layers are copied and runtime installs are never overwritten. Measured: 5.8s over
-    the real volume. Superseded versions are left in place, never deleted.
+    `-u` is what keeps this cheap. The base image carries ~1.6G of mise runtimes that did not
+    change, so only files from rebuilt layers are copied. Measured: 5.8s over the real volume.
+
+    What it can overwrite: a path BOTH the image and the volume hold, when the image's copy is
+    newer. A rebuilt layer is newer than anything installed before it, so there the image wins by
+    design. Paths only the volume holds are never touched, and recipe installs re-run right after
+    this in the same branch. The residue is a hand install inside the container that shares a file
+    with the image, e.g. pnpm's global manifest (PR #533 review). Superseded versions are left in
+    place, never deleted.
     """
     out = _run(
         [rt, "run", "--rm", *paths.userns_args(rt), *paths.container_user_args(rt),
