@@ -583,6 +583,15 @@ class TestVarlockProxyRulesOutput:
         assert not _schema_declares_proxy(d)
         assert _varlock_proxy_modes(d) == {"A": "placeholder"}
 
+    def test_a_ci_environment_does_not_colour_the_output(self, tmp_path, monkeypatch):
+        """#462: `CI` plus a `GITHUB_*` variable makes varlock colour the text even through a pipe.
+        That is every GitHub runner, and it kept this class red there from its first run. This
+        recreates that environment on any machine, including a developer's box that has no `CI`."""
+        for var, value in (("CI", "true"), ("GITHUB_ACTIONS", "true"), ("FORCE_COLOR", "3")):
+            monkeypatch.setenv(var, value)
+        d = self._schema(tmp_path, '# @sensitive\nA=exec("printf %s x")\n')
+        assert _varlock_proxy_modes(d) == {"A": "placeholder"}
+
 
 # ---------------------------------------------------------------------------
 # A9 — Node's env-proxy opt-in inside the shipped image (#388 F7)

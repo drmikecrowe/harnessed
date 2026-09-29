@@ -314,9 +314,13 @@ def _varlock_proxy_modes(schema_dir: Path) -> dict[str, str] | None:
 
     result: dict[str, str] | None = None
     try:
+        # FORCE_COLOR=0 (#462): varlock's colour detection (ansis) never checks for a pipe first.
+        # `CI` or `COLORTERM` turns colour on, so headers arrive as `\e[1mRules (1)`, which the
+        # patterns reject. FORCE_COLOR outranks every other signal there, NO_COLOR included.
         proc = subprocess.run(
             ["varlock", "proxy", "rules"],
             cwd=schema_dir, capture_output=True, text=True, timeout=_VARLOCK_TIMEOUT,
+            env={**os.environ, "FORCE_COLOR": "0"},
         )
     except (subprocess.TimeoutExpired, OSError):
         proc = None
