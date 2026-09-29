@@ -169,6 +169,29 @@ because a build has no project):
 | `HARNESSED_INSTALL_CACHE` | cache dir, or empty when no `cache:`. Miss = the dir does not exist. |
 | `HARNESSED_BIN_DIR` | where an executable goes. Use this, never `$UV_TOOL_BIN_DIR`. |
 | `HARNESSED_HOME_SHIM` | a dir whose `.claude` **is** `$HARNESSED_CONFIG_DIR`, for installers that only know how to install globally: `HOME="$HARNESSED_HOME_SHIM" <installer>`. Never roll your own with `mktemp -d` — that shape is rejected. |
+| `HARNESSED_REF_<KEY>` / `HARNESSED_REPO_<KEY>` | one pair per `install.refs.<key>`: the pinned ref and `owner/repo` |
+| `HARNESSED_LOCAL_<KEY>` | `install.refs.<key>.local` on a host launch; empty in a container build and when undeclared |
+
+**Installing from a local folder (host only).** To develop skills in another repo without bumping
+the SHA per edit, add `local:` to the ref in your **overlay** copy of the recipe. `ref:` stays
+required, and a container build still installs from it. The folder must be absolute (`~` is
+expanded) and must exist, or the host launch fails. harnessed only passes the folder on;
+`install.sh` decides how to use it:
+
+```yaml
+install:
+  script: install.sh
+  refs:
+    old_coder:
+      repo: drmikecrowe/spec-evidence-aisdlc
+      ref: b930a7ed041abfea23f116062efc2603eefb130c
+      local: ~/Programming/AI/old-coder      # host launches install from here instead
+```
+
+```bash
+if [ -n "${HARNESSED_LOCAL_OLD_CODER}" ]; then src="${HARNESSED_LOCAL_OLD_CODER}"
+else src="$(fetch "${HARNESSED_REPO_OLD_CODER}" "${HARNESSED_REF_OLD_CODER}")"; fi
+```
 
 An `install.sh` that fetches a binary **must verify a checksum**. Nothing enforces this
 syntactically; it is an authoring obligation. If the install writes outside harnessed-owned dirs,

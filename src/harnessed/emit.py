@@ -1048,6 +1048,9 @@ def install_env(
     for key, ref in refs.items():
         ref_env[f"HARNESSED_REF_{key.upper()}"] = ref.ref
         ref_env[f"HARNESSED_REPO_{key.upper()}"] = ref.repo
+        # #532: the key is emitted for EVERY ref in BOTH modes (so the key set stays identical and
+        # `set -u` scripts can test it); only a host launch fills it. A build cannot see the host.
+        ref_env[f"HARNESSED_LOCAL_{key.upper()}"] = (ref.local or "") if mode == "host" else ""
 
     return {
         **ref_env,
