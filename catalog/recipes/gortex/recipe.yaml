@@ -83,9 +83,11 @@ mcp:
 #      fsnotify watcher and indexes in the background — plain track does NOT block (`--wait` is
 #      the explicit blocking form). This is the step the MCP wrapper cannot do (it has no
 #      $PROJECT_DIR), and without it every tool call returns a structured `repo_not_tracked`
-#      error. Re-tracking an already-tracked path is a no-op; with the daemon still down the
-#      registration persists for the next daemon start (upstream fallback table), hence the
-#      ordering: ensure, then track.
+#      error. With the daemon still down the registration persists for the next daemon start
+#      (upstream fallback table), hence the ordering: ensure, then track.
+#      Re-tracking is NOT a no-op: v0.64.5 measured 2026-09-30, `track` on an already-tracked
+#      path blocked 2m48s while the daemon re-indexed it. So track only a path that
+#      `gortex repos --json` (0.2s, reads config + store) does not already list.
 init:
   run: |
     if command -v gortex >/dev/null 2>&1; then
@@ -98,11 +100,13 @@ init:
       # (measured at this pin), so with an unset PROJECT_DIR and the redirects in place the daemon
       # would quietly track the wrong tree while every tool call returns repo_not_tracked with no
       # hint why. Guard explicitly; both arms warn and fall through.
-      if [ -n "${PROJECT_DIR:-}" ]; then
+      if [ -z "${PROJECT_DIR:-}" ]; then
+        echo "gortex: PROJECT_DIR unset; workspace not registered with the daemon" >&2
+      elif gortex repos --json 2>/dev/null | grep -qF "\"path\": \"${PROJECT_DIR}\""; then
+        :
+      else
         gortex track "${PROJECT_DIR}" >/dev/null 2>&1 \
           || echo "gortex: could not register ${PROJECT_DIR}; run 'gortex track ${PROJECT_DIR}' once the daemon is up" >&2
-      else
-        echo "gortex: PROJECT_DIR unset; workspace not registered with the daemon" >&2
       fi
     else
       echo "gortex: not on PATH; graph tools disabled this session" >&2
