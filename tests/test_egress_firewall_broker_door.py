@@ -4,9 +4,9 @@
 option does not exist on the pasta GitHub's runner ships, so #468 replaced the door on both
 runtimes: the broker is exposed and token-gated, the container reaches it at its runtime's
 host-gateway name, and the launcher's reachability probe returns the address that name resolved
-to. The launcher passes that address to this script as one more positional argument, and the
-script's ordinary `getent ahosts` resolution returns an IP literal unchanged. So the script carries
-no broker rule of its own any more.
+to. The launcher passes that address as `--broker=<ip>`, and the script installs it with
+`require`, as #436's fixed rule was: a door that did not open must fail the launch, not hang the
+agent later.
 
 These tests run the REAL script under `bash` with a stub `PATH`. Only the kernel-touching binaries
 at its boundary are replaced (`iptables`, `ip6tables`, `ip`, `getent`); every line of the script's
@@ -24,8 +24,7 @@ from pathlib import Path
 
 FIREWALL = Path(__file__).resolve().parents[1] / "catalog" / "base" / "egress-firewall.sh"
 
-# What the probe hands the launcher on docker's default bridge. The stub `getent` only knows the
-# names in its table, so the literal is mapped to itself, as the real `getent ahosts` returns it.
+# What the probe hands the launcher on docker's default bridge.
 GATEWAY = "172.17.0.1"
 RETIRED_DOOR = "169.254.1.1"
 
@@ -122,10 +121,22 @@ def _run_firewall(tmp_path, *args, getent_map=None, env=None):
 
 
 class TestTheProbedGateway:
-    """The address the launcher's probe found, passed the way recipe `egress:` hosts are."""
+    """The address the launcher's probe found, passed as `--broker=<ip>`."""
 
-    def _run(self, tmp_path):
-        return _run_firewall(tmp_path, GATEWAY, getent_map={GATEWAY: GATEWAY})
+    def _run(self, tmp_path, **kw):
+        return _run_firewall(tmp_path, f"--broker={GATEWAY}", **kw)
+
+    def test_a_failed_broker_rule_is_fatal(self, tmp_path):
+        # #429's property: an agent holding placeholders behind a blocked broker would hang at
+        # runtime, so the door is `require`d like the rules that make the firewall a firewall.
+        proc, _ipt, _ip6t = self._run(tmp_path, env={"IPT_FAIL_MATCH": GATEWAY})
+        assert proc.returncode != 0
+        assert "FATAL" in proc.stderr
+        assert "Egress active" not in proc.stdout
+
+    def test_the_flag_is_not_treated_as_a_domain(self, tmp_path):
+        proc, _ipt, _ip6t = self._run(tmp_path)
+        assert "--broker" not in proc.stdout + proc.stderr
 
     def test_it_is_accepted(self, tmp_path):
         # Without it the agent cannot open a socket to the broker under a DROP policy.

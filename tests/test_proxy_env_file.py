@@ -78,7 +78,7 @@ class TestTheProxyEnvFile:
 
         monkeypatch.setattr(launchenv.subprocess, "run", run)
         path = launchenv._varlock_proxy_env_file(
-            SESSION, "http://varlock:tok@door:1", paths.BROKER_GUEST_CERT_DIR,
+            SESSION, "http://door:1", paths.BROKER_GUEST_CERT_DIR,
         )
         return path, seen
 
@@ -95,7 +95,7 @@ class TestTheProxyEnvFile:
             assert argv[argv.index("--session") + 1] == SESSION
             assert "--full" in argv
             assert argv[argv.index("--format") + 1] == "json"
-            assert argv[argv.index("--proxy-url") + 1] == "http://varlock:tok@door:1"
+            assert argv[argv.index("--proxy-url") + 1] == "http://door:1"
             assert argv[argv.index("--cert-dir") + 1] == paths.BROKER_GUEST_CERT_DIR
             # #462: varlock colours output under CI; JSON is safe, but pin the same override.
             assert seen["kw"]["env"]["FORCE_COLOR"] == "0"
@@ -146,7 +146,6 @@ def boundary(monkeypatch, tmp_path):
     ):
         monkeypatch.setattr(launcher, name, lambda *a, _v=value, **k: _v)
     monkeypatch.setattr(launcher, "_broker_gateway", lambda *a, **k: "172.17.0.1")
-    monkeypatch.setattr(launcher.broker, "token", lambda brk: "tok-xyz")
     monkeypatch.setattr(
         launcher, "_pod_teardown", lambda rt, inst, pod: calls["teardown"].append(inst),
     )
@@ -190,10 +189,10 @@ def _member(calls) -> list[str]:
 class TestTheLaunchUsesTheBrokersEnv:
     @pytest.mark.parametrize("rt,door", [("podman", "host.containers.internal"),
                                          ("docker", "host.docker.internal")])
-    def test_the_proxy_url_carries_the_token_to_this_runtimes_door(self, boundary, rt, door):
+    def test_the_proxy_url_names_this_runtimes_door_and_no_credentials(self, boundary, rt, door):
         run, calls = boundary
         run(rt, _broker())
-        assert calls["proxy_env"] == [(SESSION, f"http://varlock:tok-xyz@{door}:{PORT}")]
+        assert calls["proxy_env"] == [(SESSION, f"http://{door}:{PORT}")]
 
     def test_the_file_reaches_the_member_and_is_unlinked_after(self, boundary):
         run, calls = boundary

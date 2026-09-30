@@ -77,7 +77,7 @@ def pod_with_broker(tmp_path, monkeypatch):
             def run(script: str) -> subprocess.CompletedProcess:
                 # The production path (#439): the same function and URL the launch uses.
                 env_file = launchenv._varlock_proxy_env_file(
-                    brk.session, f"http://varlock:{broker.token(brk)}@{door}",
+                    brk.session, f"http://{door}",
                     paths.BROKER_GUEST_CERT_DIR,
                 )
                 assert env_file is not None, "the broker did not hand back an env"
@@ -112,6 +112,8 @@ class TestTheBrokerFromAPod:
         env = run("env").stdout
         assert _REAL not in env
         assert f"DEMO_TOKEN={_PLACEHOLDER}" in env
+        # harnessed passes a credential-free --proxy-url; varlock embeds the token itself.
+        assert "HTTPS_PROXY=http://varlock:" in env
 
     def test_passthrough_and_non_secrets_arrive_real(self, pod_with_broker):
         _, _, run = pod_with_broker

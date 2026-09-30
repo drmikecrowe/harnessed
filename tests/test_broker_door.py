@@ -53,27 +53,14 @@ class TestTheBrokerIsAlwaysExposed:
         assert not any(a.startswith("--expose=") for a in self._argv(tmp_path, monkeypatch))
 
 
-class TestTheTokenIsReadBackNotStored:
-    def test_it_asks_varlock_for_this_sessions_token(self):
-        seen: dict = {}
-
-        def run(argv, **kw):
-            seen["argv"] = argv
-            return subprocess.CompletedProcess(argv, 0, stdout="tok-123\n", stderr="")
-
-        assert broker.token(_broker(), run=run) == "tok-123"
-        assert seen["argv"] == ["varlock", "proxy", "token", "--session", "s1"]
-
-    def test_a_failure_raises_without_echoing_output(self):
-        def run(argv, **kw):
-            return subprocess.CompletedProcess(argv, 1, stdout="leak-me", stderr="leak-me-too")
-
-        with pytest.raises(broker.BrokerError) as exc:
-            broker.token(_broker(), run=run)
-        assert "leak-me" not in str(exc.value)
+class TestTheTokenNeverPassesThroughHarnessed:
+    """varlock embeds it into the guest env itself (`proxy env --full`), so nothing here reads it."""
 
     def test_the_record_has_no_token_field(self):
         assert "token" not in broker.Broker.__dataclass_fields__
+
+    def test_there_is_no_token_reader(self):
+        assert not hasattr(broker, "token")
 
 
 class TestTheDoorName:
@@ -283,30 +270,43 @@ class TestAFailedAgentStartDoesNotStrandTheBroker:
 class TestTheFirewallAdmitsTheDoor:
     """The firewall runner joins the agent's netns but not its /etc/hosts, and docker refuses
     `--add-host` alongside `--network=container:`. So the script cannot resolve the door itself;
-    the probe's resolved address is handed to it as one more allowlist entry. `getent ahosts`
-    returns an IP literal unchanged, so the script needs no special case."""
+    the probe's resolved address is handed to it as `--broker=<ip>`, which it installs with
+    `require` (tests/test_egress_firewall_broker_door.py runs that half)."""
 
-    def _egress(self, monkeypatch, backend) -> list[str]:
+    def _egress(self, monkeypatch, backend) -> dict:
         seen: dict = {}
         monkeypatch.delenv("NO_FIREWALL", raising=False)
         monkeypatch.setattr(launcher, "_resolve_launch_env", lambda *a, **k: {})
         monkeypatch.setattr(launcher, "api_endpoint_egress_hosts", lambda *a, **k: [])
         monkeypatch.setattr(
-            launcher, "_apply_firewall", lambda rt, inst, domains, **kw: seen.update(d=domains),
+            launcher, "_apply_firewall",
+            lambda rt, inst, domains, **kw: seen.update(domains=domains, **kw),
         )
         spec = launcher.LaunchSpec(stack="s", harness="claude", project_path=Path("/nonexistent"))
         backend.apply_isolation(spec, launcher.EGRESS)
-        return seen["d"]
+        return seen
 
     @pytest.mark.parametrize("rt", ["docker", "podman"])
-    def test_the_probed_gateway_joins_the_allowlist(self, boundary, monkeypatch, rt):
+    def test_the_probed_gateway_reaches_the_firewall_as_the_broker(self, boundary, monkeypatch, rt):
         run, _ = boundary
         b = run(rt, _broker())
-        assert b.broker_gateway == GATEWAY
-        assert GATEWAY in self._egress(monkeypatch, b)
+        seen = self._egress(monkeypatch, b)
+        assert seen["broker_gateway"] == GATEWAY
+        assert GATEWAY not in seen["domains"], "the best-effort domain loop must not carry it"
 
-    def test_no_broker_adds_no_address(self, boundary, monkeypatch):
+    def test_no_broker_passes_no_gateway(self, boundary, monkeypatch):
         run, _ = boundary
         b = run("docker", None)
-        assert b.broker_gateway is None
-        assert GATEWAY not in self._egress(monkeypatch, b)
+        assert self._egress(monkeypatch, b)["broker_gateway"] is None
+
+    def test_apply_firewall_hands_the_script_a_broker_argument(self, monkeypatch):
+        seen: dict = {}
+        monkeypatch.delenv("NO_FIREWALL", raising=False)
+        monkeypatch.setattr(launcher, "_bounded", lambda cmd, **kw: seen.update(cmd=cmd) or
+                            subprocess.CompletedProcess(cmd, 1, b"", b""))
+        with pytest.raises(typer.Exit):  # rc 1 fails closed; only the argv matters here
+            launcher._apply_firewall("docker", "inst", ["a.example"], netns_anchor="inst",
+                                     image="img", broker_gateway=GATEWAY)
+        cmd = seen["cmd"]
+        script = cmd.index("/usr/local/sbin/egress-firewall")
+        assert cmd[script + 1:] == [f"--broker={GATEWAY}", "a.example"]

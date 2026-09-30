@@ -1701,16 +1701,19 @@ def _firewall_runner_argv(rt: str, netns_anchor: str, image: str) -> list[str]:
 
 
 def _apply_firewall(rt: str, instance: str, domains: list[str] | None = None,
-                    *, netns_anchor: str | None = None, image: str | None = None) -> None:
+                    *, netns_anchor: str | None = None, image: str | None = None,
+                    broker_gateway: str | None = None) -> None:
     if os.environ.get("NO_FIREWALL", "false").lower() == "true":
         return
     # Extra domains (recipe-declared `egress:`) are appended to the script's allowlist — it takes
-    # them as positional args and resolves each to its current IPs.
+    # them as positional args and resolves each to its current IPs. The broker's probed door rides
+    # as --broker=<ip>, which the script installs with `require` rather than best-effort (#468).
     anchor = netns_anchor or instance
     img = image or _agent_image("claude")
+    broker_arg = [f"--broker={broker_gateway}"] if broker_gateway else []
     res = _bounded(
         [*_firewall_runner_argv(rt, anchor, img),
-         "bash", "/usr/local/sbin/egress-firewall", *(domains or [])],
+         "bash", "/usr/local/sbin/egress-firewall", *broker_arg, *(domains or [])],
         timeout=_PODMAN_EXEC_TIMEOUT, capture_output=True,
     )
     # FAIL CLOSED. The script installs a default-DROP policy, so "it did not run" is not a degraded
@@ -3468,8 +3471,9 @@ class ContainerBackend(ExecutionBackend):
         #: This instance's host secrets broker, or None when the launch gets none (no `@proxy` in
         #: the composed schema, or `--no-secrets`). Set at BOUNDARY.
         self.broker = None
-        #: docker only: the address the broker's door resolved to in a container, which EGRESS must
-        #: allow (#468). None on podman, whose door is a fixed constant the script already ACCEPTs.
+        #: The address the broker's door resolved to where the agent runs, set at BOUNDARY on both
+        #: runtimes whenever a broker was probed (#468). EGRESS hands it to the firewall, which has
+        #: no broker rule of its own. None without a broker.
         self.broker_gateway: str | None = None
         self.stk = stk
         self.stack_from_overlay = stack_from_overlay
@@ -3655,16 +3659,15 @@ class ContainerBackend(ExecutionBackend):
 
         `seed_auth` skipped those dirs, so this is their only source: placeholders for `@proxy`
         items, real values for passthrough items and non-secrets, the proxy vars pointing at this
-        runtime's door with the data-plane token in them (as varlock's own guests carry it), and
-        the CA vars pointing at the #438 mount. A failure refuses the launch without echoing
-        anything varlock printed.
+        runtime's door, and the CA vars pointing at the #438 mount. A failure refuses the launch
+        without echoing anything varlock printed.
+
+        The URL carries NO credentials. For an exposed session `proxy env --full` embeds the
+        data-plane token into every proxy var itself (varlock 1.16.1, `buildGuestEnvWiring`;
+        measured on #537's live jobs). So the token never enters harnessed or any argv.
         """
-        try:
-            proxy_url = (f"http://varlock:{broker.token(brk)}@"
-                         f"{paths.broker_door(self.rt)}:{brk.port}")
-            env_file = _varlock_proxy_env_file(brk.session, proxy_url, paths.BROKER_GUEST_CERT_DIR)
-        except broker.BrokerError:
-            env_file = None
+        proxy_url = f"http://{paths.broker_door(self.rt)}:{brk.port}"
+        env_file = _varlock_proxy_env_file(brk.session, proxy_url, paths.BROKER_GUEST_CERT_DIR)
         if env_file is None:
             _pod_teardown(self.rt, self.inst, self.pod)
             _err.print(
@@ -3760,15 +3763,13 @@ class ContainerBackend(ExecutionBackend):
             egress_domains = sorted(
                 {d for r in self.recipes for d in r.egress}
                 | set(api_endpoint_egress_hosts(_resolve_launch_env(spec.project_path)))
-                # docker's broker door (#468), as an address: the script resolves each entry with
-                # `getent ahosts`, which returns an IP literal unchanged.
-                | ({self.broker_gateway} if self.broker_gateway else set())
             )
             try:
                 _apply_firewall(
                     self.rt, self.inst, egress_domains,
                     netns_anchor=_netns_anchor(self.rt, self.pod, self.inst),
                     image=self.harness_image,
+                    broker_gateway=self.broker_gateway,
                 )
             except BaseException:
                 # By this phase BOUNDARY has already started the pod, so simply propagating would

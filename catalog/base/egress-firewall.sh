@@ -2,8 +2,9 @@
 # Egress firewall: whitelist permitted outbound destinations, block everything else.
 # Closes the primary exfiltration vector identified in agentic AI security research.
 #
-# Usage: egress-firewall [extra-domain ...]
+# Usage: egress-firewall [--broker=<ip>] [extra-domain ...]
 # Extra domains (e.g. Z.AI endpoint host) are appended to the whitelist.
+# --broker=<ip> is the secrets broker's door, already probed by the launcher (#468).
 # Re-applied at each container session start (iptables rules are in-memory).
 
 set -uo pipefail
@@ -49,8 +50,12 @@ WHITELIST=(
 )
 
 # Append any extra domains passed as arguments (e.g. Z.AI API host)
+BROKER_GW=""
 for arg in "$@"; do
-    [ -n "$arg" ] && WHITELIST+=("$arg")
+    case "$arg" in
+        --broker=*) BROKER_GW="${arg#--broker=}" ;;
+        *) [ -n "$arg" ] && WHITELIST+=("$arg") ;;
+    esac
 done
 
 # Flush existing OUTPUT rules and set default DROP policy. These four are the firewall: if any
@@ -68,9 +73,10 @@ require iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 require iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
 require iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
 
-# No rule of its own for the varlock broker (#468). The launcher probes the broker's door from a
-# container and passes the address it resolved to as one more argument below, so it is opened the
-# way recipe egress hosts are.
+# The varlock broker's door (#468). The launcher probes it from where the agent runs and passes the
+# address it resolved to as --broker=<ip>. `require`d, not best-effort like the domain loop: an agent
+# holding placeholders behind a blocked broker would hang at runtime instead of failing here (#429).
+[ -n "$BROKER_GW" ] && require iptables -A OUTPUT -d "$BROKER_GW" -j ACCEPT
 
 # Allow access to the host gateway (for connecting to local services on the host). Rootless podman
 # has TWO relevant gateways: the default-route gateway (HOST_GW) and the podman host-gateway

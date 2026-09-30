@@ -10,8 +10,15 @@ HOW A CONTAINER REACHES IT (#468). #437 bound it to `127.0.0.1` only and gave th
 (podman 4.9.3: "unrecognized option"), and docker has no pasta at all. So the broker is started
 with `--expose`, varlock's own mechanism for a guest off host loopback: it binds 0.0.0.0 and every
 off-loopback client must present the session's data-plane token as proxy Basic auth. Each runtime
-reaches it at its host-gateway name (`paths.broker_door`). varlock mints the token; `token()` reads
-it back and nothing here stores it.
+reaches it at its host-gateway name (`paths.broker_door`). varlock mints the token and embeds it in
+the guest env it prints (`proxy env --full`), so harnessed never reads, passes or stores it.
+
+WHAT THE 0.0.0.0 BIND COSTS. #437's broker was unreachable off-host; this one is reachable from any
+interface the host firewall allows, including a LAN. The controls left are: the token (varlock
+1.16.1 mints `crypto.randomUUID()`, 122 random bits), a hard 407 for any off-loopback client
+without it (pinned live on both runtimes by `test_without_the_token_the_broker_refuses`), and the
+host's own firewall. Narrowing the bind is not available: `--expose=<bridge address>` hides the
+session from `proxy status` in 1.16.1, and `start` below finds its session there.
 
 Three measurements against varlock 1.16.1 shape everything here. They are not obvious from the
 `--help` text, and an implementation guessed from it would be wrong:
@@ -313,25 +320,6 @@ def start(
         f"the secrets broker for {inst} did not come up on port {port} within {timeout:g}s. "
         f"Launch with --no-secrets to skip it."
     )
-
-
-def token(
-    record: Broker, *, run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
-) -> str:
-    """The data-plane token an exposed broker minted (#468), read back from varlock.
-
-    Deliberately not on the record: `Broker` is written to disk, and this is a credential to use
-    the broker. Asked for when it is needed instead. The error never carries varlock's output,
-    for the same value-free reason `_broker_start_for` gives.
-    """
-    proc = run(
-        ["varlock", "proxy", "token", "--session", record.session],
-        capture_output=True, text=True, timeout=_CONTROL_TIMEOUT, check=False,
-    )
-    value = proc.stdout.strip() if proc.returncode == 0 else ""
-    if not value:
-        raise BrokerError(f"could not read the data-plane token for session {record.session}.")
-    return value
 
 
 def _stop_session(
