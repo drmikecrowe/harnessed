@@ -69,6 +69,8 @@ for arg in "$@"; do
             if [[ "$BROKER_GW" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
                 valid=1
                 for octet in "${BASH_REMATCH[@]:1}"; do
+                    # A leading zero reads as octal to inet_aton: 010.0.0.1 would open 8.0.0.1.
+                    [[ "$octet" =~ ^0[0-9] ]] && valid=0
                     [ "$((10#$octet))" -le 255 ] || valid=0
                 done
                 # Never a broker: the any-address (which can act as an any-destination match in

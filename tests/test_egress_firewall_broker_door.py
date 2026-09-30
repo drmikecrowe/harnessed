@@ -142,6 +142,8 @@ class TestTheProbedGateway:
         "cafe", "beef",
         # Shape, not alphabet: these fail later inside `require` with a vaguer message.
         "999.1.2.3", "1.2.3.4.5", "1.2.3",
+        # A leading zero reads as octal to inet_aton: 010.0.0.1 would open 8.0.0.1.
+        "010.0.0.1", "10.0.0.01",
         # The rule is installed with iptables, which is IPv4 only.
         "fd00::1",
         # The any-address and the broadcast address are never a broker, and the first can act
