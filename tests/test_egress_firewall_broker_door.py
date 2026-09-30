@@ -145,6 +145,14 @@ class TestTheProbedGateway:
         assert "--broker" in proc.stderr
         assert "-F OUTPUT" not in ipt, "refused before touching the ruleset"
 
+    def test_a_second_broker_is_refused(self, tmp_path):
+        # One launch has one broker; two values mean the launcher is confused, and silently
+        # keeping the last would open whichever address happened to come second.
+        proc, ipt, _ip6t = _run_firewall(tmp_path, "--broker=10.0.0.1", "--broker=10.0.0.2")
+        assert proc.returncode != 0
+        assert "--broker" in proc.stderr
+        assert "-F OUTPUT" not in ipt
+
     def test_an_ipv6_address_is_accepted(self, tmp_path):
         proc, ipt, _ip6t = _run_firewall(tmp_path, "--broker=fd00::1")
         assert proc.returncode == 0, proc.stderr

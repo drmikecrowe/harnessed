@@ -3664,7 +3664,8 @@ class ContainerBackend(ExecutionBackend):
 
         The URL carries NO credentials. For an exposed session `proxy env --full` embeds the
         data-plane token into every proxy var itself (varlock 1.16.1, `buildGuestEnvWiring`;
-        measured on #537's live jobs). So the token never enters harnessed or any argv.
+        measured on #537's live jobs). So the token is in no argv. It does pass through this
+        process into the env-file, like every other value there: 0600, unlinked when BOUNDARY ends.
         """
         proxy_url = f"http://{paths.broker_door(self.rt)}:{brk.port}"
         env_file = _varlock_proxy_env_file(brk.session, proxy_url, paths.BROKER_GUEST_CERT_DIR)
@@ -3792,6 +3793,14 @@ class ContainerBackend(ExecutionBackend):
 
         try:
             self._apply_boundary(spec)
+        except BaseException:
+            # A broker whose launch did not finish is a host process holding live secrets, exposed
+            # on 0.0.0.0, that nothing will reap by name. BOUNDARY assembles the env and may prompt
+            # between starting it and starting the agent, so any exit there must stop it (#537
+            # review). Idempotent: the refusal paths have already stopped it via _pod_teardown.
+            if self.broker is not None:
+                _broker_stop_for(self.inst)
+            raise
         finally:
             # Unlink the temp env-files on EVERY exit from BOUNDARY — resolved secret values must not
             # linger on disk (T-05-06). This used to wrap only the agent's `run`, so a refusal before
@@ -3951,14 +3960,8 @@ class ContainerBackend(ExecutionBackend):
             self.harness_image, "bash", "-c",
             "exec /usr/local/bin/harnessed-start 2>/dev/null || exec sleep infinity",
         ]
-        try:
-            _run(harness_run, capture_output=True)
-        except BaseException:
-            # On docker the broker was started just above, for this container alone, and nothing
-            # else will reap it by name. podman's pod-create guard does the same for its broker.
-            if self.broker is not None and not _rt_uses_pods(self.rt):
-                _broker_stop_for(self.inst)
-            raise
+        # A failure here stops the broker via apply_isolation's guard around this whole phase.
+        _run(harness_run, capture_output=True)
 
 
 def _prune_unlaunchable_omp_blocks(harness: str) -> None:

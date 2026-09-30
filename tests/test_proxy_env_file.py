@@ -288,6 +288,35 @@ class TestNoEnvFileOutlivesAnAbortedLaunch:
         assert not (tmp_path / "proxy.env").exists()
 
 
+class TestNoBrokerOutlivesAnAbortedLaunch:
+    """#537 review. Between the broker start and the agent's `run`, BOUNDARY assembles the env and a
+    setup item may prompt. An exception or Ctrl-C there left the broker running: a host process,
+    exposed on 0.0.0.0, holding live secrets, that nothing would reap by name."""
+
+    @pytest.mark.parametrize("rt", ["docker", "podman"])
+    def test_an_interrupt_before_the_agent_starts_stops_the_broker(
+        self, boundary, monkeypatch, rt,
+    ):
+        run, _ = boundary
+        stopped: list[str] = []
+        monkeypatch.setattr(launcher, "_broker_stop_for", lambda inst: stopped.append(inst))
+
+        def interrupted(*a, **k):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(launcher, "_container_setup_env", interrupted)
+        with pytest.raises(KeyboardInterrupt):
+            run(rt, _broker())
+        assert "inst" in stopped
+
+    def test_a_successful_launch_leaves_the_broker_running(self, boundary, monkeypatch):
+        run, _ = boundary
+        stopped: list[str] = []
+        monkeypatch.setattr(launcher, "_broker_stop_for", lambda inst: stopped.append(inst))
+        run("podman", _broker())
+        assert stopped == []
+
+
 class TestSeedAuthSkipsTheProxiedDirs:
     def _seed(self, monkeypatch, tmp_path, *, no_secrets: bool):
         seen: dict = {}

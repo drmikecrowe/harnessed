@@ -11,7 +11,8 @@ HOW A CONTAINER REACHES IT (#468). #437 bound it to `127.0.0.1` only and gave th
 with `--expose`, varlock's own mechanism for a guest off host loopback: it binds 0.0.0.0 and every
 off-loopback client must present the session's data-plane token as proxy Basic auth. Each runtime
 reaches it at its host-gateway name (`paths.broker_door`). varlock mints the token and embeds it in
-the guest env it prints (`proxy env --full`), so harnessed never reads, passes or stores it.
+the guest env it prints (`proxy env --full`). harnessed never puts it in an argv or in the `Broker`
+record; it passes only through the launch's 0600 temp env-file, which is unlinked at BOUNDARY's end.
 
 WHAT THE 0.0.0.0 BIND COSTS. #437's broker was unreachable off-host; this one is reachable from any
 interface the host firewall allows, including a LAN. The controls left are: the token (varlock

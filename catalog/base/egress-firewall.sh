@@ -54,6 +54,12 @@ BROKER_GW=""
 for arg in "$@"; do
     case "$arg" in
         --broker=*)
+            # One launch has one broker. A second value is a launcher bug, and keeping the last
+            # would open whichever address happened to come second.
+            if [ -n "$BROKER_GW" ]; then
+                echo "[firewall] FATAL: --broker given more than once" >&2
+                exit 1
+            fi
             BROKER_GW="${arg#--broker=}"
             # An address and nothing else: a hostname, CIDR or `!` would change what the rule
             # allows, and an empty value would install none. Either is a launcher bug.
