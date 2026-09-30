@@ -71,6 +71,9 @@ for arg in "$@"; do
                 for octet in "${BASH_REMATCH[@]:1}"; do
                     [ "$((10#$octet))" -le 255 ] || valid=0
                 done
+                # Never a broker: the any-address (which can act as an any-destination match in
+                # this rule, opening egress wide) and the broadcast address.
+                case "$BROKER_GW" in 0.0.0.0 | 255.255.255.255) valid=0 ;; esac
             fi
             if [ "$valid" -ne 1 ]; then
                 echo "[firewall] FATAL: --broker must be an IPv4 address, got '$BROKER_GW'" >&2
