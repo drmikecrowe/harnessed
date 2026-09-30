@@ -58,11 +58,11 @@ def exposed_broker(tmp_path, monkeypatch):
     try:
         door = f"{paths.broker_door('docker')}:{brk.port}"
 
-        def run(script: str, *, with_token: bool = True) -> subprocess.CompletedProcess:
-            # The production path (#439): the same function the launch uses builds the file.
-            cred = f"varlock:{broker.token(brk)}@" if with_token else ""
+        def run(script: str) -> subprocess.CompletedProcess:
+            # The production path (#439): the same function and URL the launch uses.
             env_file = launchenv._varlock_proxy_env_file(
-                brk.session, f"http://{cred}{door}", paths.BROKER_GUEST_CERT_DIR,
+                brk.session, f"http://varlock:{broker.token(brk)}@{door}",
+                paths.BROKER_GUEST_CERT_DIR,
             )
             assert env_file is not None, "the broker did not hand back an env"
             try:
@@ -122,11 +122,15 @@ class TestAnExposedBrokerFromDocker:
         assert proc.stdout.startswith(("2", "3")), proc.stdout
 
     def test_without_the_token_the_broker_refuses(self, exposed_broker):
-        """The 0.0.0.0 bind is safe only because of this."""
-        _, run = exposed_broker
-        proc = run(
-            'curl -sS -o /dev/null -w "%{http_code}" --max-time 30 https://example.com/',
-            with_token=False,
-        )
+        """The 0.0.0.0 bind is safe only because of this.
+
+        The proxy is named explicitly with no credentials: `proxy env --full` embeds the token in
+        every proxy var for an exposed session, so an env built without one still carries it. That
+        is what the first CI run of this test measured (curl exit 0).
+        """
+        brk, run = exposed_broker
+        bare = f"http://{paths.broker_door('docker')}:{brk.port}"
+        proc = run(f'curl -sS -o /dev/null -w "%{{http_code}}" --max-time 30 -x {bare} '
+                   "https://example.com/")
         assert proc.returncode != 0
         assert "407" in proc.stderr + proc.stdout, (proc.stdout, proc.stderr)
