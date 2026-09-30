@@ -3790,6 +3790,23 @@ class ContainerBackend(ExecutionBackend):
                 raise
             return
 
+        try:
+            self._apply_boundary(spec)
+        finally:
+            # Unlink the temp env-files on EVERY exit from BOUNDARY — resolved secret values must not
+            # linger on disk (T-05-06). This used to wrap only the agent's `run`, so a refusal before
+            # it (an unreachable broker, a broker env that did not come back) or a Ctrl-C at a setup
+            # prompt left them behind (#537 review). Every env-file is a generated temp (the user's
+            # own .env is copied, never handed to podman).
+            for f in self.secrets_temp_files:
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
+            self.secrets_temp_files = []
+
+    def _apply_boundary(self, spec: LaunchSpec) -> None:
+        """BOUNDARY: stand the pod up and start the agent in it. See `apply_isolation`."""
         # Pod network.
         net = os.environ.get("HARNESSED_NET", "")
 
@@ -3942,16 +3959,6 @@ class ContainerBackend(ExecutionBackend):
             if self.broker is not None and not _rt_uses_pods(self.rt):
                 _broker_stop_for(self.inst)
             raise
-        finally:
-            # Unlink the temp env-files as soon as podman has ingested them into the container's env —
-            # resolved secret values must not linger on disk (T-05-06). Always runs (success or failure).
-            # Every env-file is a generated temp (the user's own .env is copied, never handed to podman).
-            for f in self.secrets_temp_files:
-                try:
-                    f.unlink()
-                except OSError:
-                    pass
-            self.secrets_temp_files = []
 
 
 def _prune_unlaunchable_omp_blocks(harness: str) -> None:

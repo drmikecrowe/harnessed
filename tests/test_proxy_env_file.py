@@ -151,8 +151,11 @@ def boundary(monkeypatch, tmp_path):
     )
     monkeypatch.delenv("HARNESSED_NET", raising=False)
 
-    def run(rt, brk, *, env_file_ok=True, existing=(), isolated=False, project_proxied=True):
+    def run(rt, brk, *, env_file_ok=True, existing=(), isolated=False, project_proxied=True,
+            reachable=True):
         monkeypatch.setattr(launcher, "_broker_start_for", lambda *a, **k: brk)
+        if not reachable:
+            monkeypatch.setattr(launcher, "_broker_gateway", lambda *a, **k: None)
         monkeypatch.setattr(
             launcher, "proxy_schema_dirs", lambda p: [p] if project_proxied else [Path("/global")],
         )
@@ -245,6 +248,44 @@ class TestTheLaunchUsesTheBrokersEnv:
         assert calls["teardown"] == ["inst"]
         assert not [c for c in calls["runs"] if c[1:3] == ["run", "-d"]]
         assert "--no-secrets" in capsys.readouterr().err
+
+
+class TestNoEnvFileOutlivesAnAbortedLaunch:
+    """#537 review. The unlink used to sit in the `finally` around the agent's `run`, so any exit
+    before that — both broker refusals included — left seed_auth's files of real values on disk."""
+
+    def _seeded(self, tmp_path) -> Path:
+        f = tmp_path / "seeded.env"
+        f.write_text("G=real\n")
+        return f
+
+    def test_a_failed_proxy_env(self, boundary, tmp_path):
+        run, _ = boundary
+        seeded = self._seeded(tmp_path)
+        with pytest.raises(typer.Exit):
+            run("podman", _broker(), env_file_ok=False, existing=[seeded])
+        assert not seeded.exists()
+
+    def test_an_unreachable_broker(self, boundary, tmp_path, monkeypatch):
+        run, _ = boundary
+        seeded = self._seeded(tmp_path)
+        with pytest.raises(typer.Exit):
+            run("docker", _broker(), existing=[seeded], reachable=False)
+        assert not seeded.exists()
+
+    def test_an_interrupt_after_the_broker_env_is_built(self, boundary, tmp_path, monkeypatch):
+        """The broker's own file too: it holds real passthrough values and the token."""
+        run, _ = boundary
+
+        def interrupted(*a, **k):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(launcher, "_container_setup_env", interrupted)
+        seeded = self._seeded(tmp_path)
+        with pytest.raises(KeyboardInterrupt):
+            run("podman", _broker(), existing=[seeded])
+        assert not seeded.exists()
+        assert not (tmp_path / "proxy.env").exists()
 
 
 class TestSeedAuthSkipsTheProxiedDirs:
