@@ -53,7 +53,15 @@ WHITELIST=(
 BROKER_GW=""
 for arg in "$@"; do
     case "$arg" in
-        --broker=*) BROKER_GW="${arg#--broker=}" ;;
+        --broker=*)
+            BROKER_GW="${arg#--broker=}"
+            # An address and nothing else: a hostname, CIDR or `!` would change what the rule
+            # allows, and an empty value would install none. Either is a launcher bug.
+            case "$BROKER_GW" in
+                "" | *[!0-9a-fA-F.:]*)
+                    echo "[firewall] FATAL: --broker must be an IP address, got '$BROKER_GW'" >&2
+                    exit 1 ;;
+            esac ;;
         *) [ -n "$arg" ] && WHITELIST+=("$arg") ;;
     esac
 done
