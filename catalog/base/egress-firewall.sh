@@ -61,13 +61,21 @@ for arg in "$@"; do
                 exit 1
             fi
             BROKER_GW="${arg#--broker=}"
-            # An address and nothing else: a hostname, CIDR or `!` would change what the rule
-            # allows, and an empty value would install none. Either is a launcher bug.
-            case "$BROKER_GW" in
-                "" | *[!0-9a-fA-F.:]*)
-                    echo "[firewall] FATAL: --broker must be an IP address, got '$BROKER_GW'" >&2
-                    exit 1 ;;
-            esac ;;
+            # A dotted-quad IPv4 address and nothing else. A hostname (even a hex-only one like
+            # `cafe`, which iptables -d would resolve), a CIDR or `!` would change what the rule
+            # allows; an empty value would install none; IPv6 cannot go into this iptables rule.
+            # The launcher's probe asks for IPv4 only (`getent ahostsv4`).
+            valid=0
+            if [[ "$BROKER_GW" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
+                valid=1
+                for octet in "${BASH_REMATCH[@]:1}"; do
+                    [ "$((10#$octet))" -le 255 ] || valid=0
+                done
+            fi
+            if [ "$valid" -ne 1 ]; then
+                echo "[firewall] FATAL: --broker must be an IPv4 address, got '$BROKER_GW'" >&2
+                exit 1
+            fi ;;
         *) [ -n "$arg" ] && WHITELIST+=("$arg") ;;
     esac
 done

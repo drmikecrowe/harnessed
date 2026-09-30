@@ -1504,7 +1504,7 @@ def _broker_gateway(rt: str, image: str, port: int, pod: str) -> str | None:
     res = _bounded(
         [rt, "run", "--rm", *placement,
          "--entrypoint", "bash", image,
-         "-c", f"getent ahosts {door} | awk 'NR==1 {{print $1}}' && "
+         "-c", f"getent ahostsv4 {door} | awk 'NR==1 {{print $1}}' && "
                f"timeout {_BROKER_PROBE_DIAL} bash -c '{dial}'"],
         timeout=_PODMAN_EXEC_TIMEOUT, capture_output=True, text=True, warn=False,
     )

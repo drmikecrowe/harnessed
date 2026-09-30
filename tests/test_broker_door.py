@@ -105,6 +105,8 @@ class TestTheReachabilityProbe:
         assert cmd[cmd.index("--entrypoint") + 1] == "bash"
         assert f"/dev/tcp/host.docker.internal/{PORT}" in cmd[-1]
         assert seen["kw"].get("timeout"), "a dropped route hangs; the probe must be bounded"
+        # IPv4 only: the address goes to an iptables rule, and ahosts may list AAAA first.
+        assert "getent ahostsv4 host.docker.internal" in cmd[-1]
 
     def test_podman_dials_from_inside_the_pod(self, monkeypatch):
         """Same netns and /etc/hosts as the agent. podman rejects --userns on a pod member."""

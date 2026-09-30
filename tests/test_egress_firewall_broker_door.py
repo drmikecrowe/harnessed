@@ -136,7 +136,15 @@ class TestTheProbedGateway:
         assert "FATAL" in proc.stderr
         assert "Egress active" not in proc.stdout
 
-    @pytest.mark.parametrize("value", ["", "host.docker.internal", "10.0.0.0/8", "!10.0.0.1"])
+    @pytest.mark.parametrize("value", [
+        "", "host.docker.internal", "10.0.0.0/8", "!10.0.0.1",
+        # Hex-only strings pass a charset test, and iptables -d resolves hostnames.
+        "cafe", "beef",
+        # Shape, not alphabet: these fail later inside `require` with a vaguer message.
+        "999.1.2.3", "1.2.3.4.5", "1.2.3",
+        # The rule is installed with iptables, which is IPv4 only.
+        "fd00::1",
+    ])
     def test_a_value_that_is_not_an_address_is_refused(self, tmp_path, value):
         # A hostname, a CIDR or a `!` would change what the rule allows; an empty value would
         # silently install none. All are launcher bugs, and each should stop the script here.
@@ -153,10 +161,11 @@ class TestTheProbedGateway:
         assert "--broker" in proc.stderr
         assert "-F OUTPUT" not in ipt
 
-    def test_an_ipv6_address_is_accepted(self, tmp_path):
-        proc, ipt, _ip6t = _run_firewall(tmp_path, "--broker=fd00::1")
+    @pytest.mark.parametrize("value", ["172.17.0.1", "10.0.2.2", "255.255.255.255", "0.0.0.0"])
+    def test_a_dotted_quad_is_accepted(self, tmp_path, value):
+        proc, ipt, _ip6t = _run_firewall(tmp_path, f"--broker={value}")
         assert proc.returncode == 0, proc.stderr
-        assert "-A OUTPUT -d fd00::1 -j ACCEPT" in ipt
+        assert f"-A OUTPUT -d {value} -j ACCEPT" in ipt
 
     def test_the_flag_is_not_treated_as_a_domain(self, tmp_path):
         proc, _ipt, _ip6t = self._run(tmp_path)
