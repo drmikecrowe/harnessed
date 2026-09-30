@@ -57,9 +57,9 @@ def exposed_broker(tmp_path, monkeypatch):
     (schema / ".env.schema").write_text(_SCHEMA)
     monkeypatch.chdir(schema)
     inst = f"hn-468-{uuid.uuid4().hex[:8]}"
-    brk = broker.start(inst, f"{inst}-pod", [schema], cert_dir=tmp_path / "certs", expose=True)
+    brk = broker.start(inst, f"{inst}-pod", [schema], cert_dir=tmp_path / "certs")
     try:
-        door = f"{paths.BROKER_DOCKER_DOOR}:{brk.port}"
+        door = f"{paths.broker_door('docker')}:{brk.port}"
 
         def run(script: str, *, with_token: bool = True) -> subprocess.CompletedProcess:
             cred = f"varlock:{broker.token(brk)}@" if with_token else ""
@@ -81,7 +81,7 @@ def exposed_broker(tmp_path, monkeypatch):
 class TestAnExposedBrokerFromDocker:
     def test_the_probe_finds_the_door(self, exposed_broker):
         brk, _ = exposed_broker
-        assert launcher._broker_gateway("docker", _IMAGE, brk.port), (
+        assert launcher._broker_gateway("docker", _IMAGE, brk.port, brk.pod), (
             "a docker container could not reach the exposed broker; a launch would refuse here"
         )
 

@@ -1,17 +1,18 @@
-"""A real pod, a real broker, the broker's CA mounted read-only — issue #438, live.
+"""A real pod, a real broker, the broker's CA mounted read-only — issues #438 and #468, live.
 
-tests/test_broker_cert_mount.py pins the argv. This is the half an argv cannot show: that the seven
-CA-path variables `varlock proxy env --full` emits resolve to readable files inside a pod, that the
-pod cannot write to them, and that a proxy-aware client completes a TLS handshake against the
-broker's CA.
+tests/test_broker_cert_mount.py and tests/test_broker_door.py pin the argv. This is the half an
+argv cannot show: that a pod reaches the exposed broker at `host.containers.internal`, that the
+seven CA-path variables `varlock proxy env --full` emits resolve to readable files inside it, that
+the pod cannot write to them, that a proxy-aware client completes TLS against the broker's CA with
+the data-plane token, and that the broker refuses it without one.
 
 The handshake only proves the CA if the broker intercepts it. varlock tunnels an unmatched host
 untouched, and then the client sees the upstream's real certificate. So the fixture schema routes
 `example.com` with `@proxy`, and the value it injects comes from `printf`: no secrets backend, no
 unlock prompt.
 
-podman only. The broker door is a pasta option on `pod create` (#437); docker has no pods, and what
-docker gets is #468.
+The first run of this file, against #437's pasta door, failed on GitHub's runner with
+"pasta: unrecognized option '--map-host-loopback'". That is why the door changed (#468).
 """
 
 import json
@@ -21,7 +22,7 @@ import uuid
 
 import pytest
 
-from harnessed import broker, mounts, paths
+from harnessed import broker, launcher, mounts, paths
 from support import podman
 
 _BASE_IMAGE = "localhost/harnessed-base:latest"
@@ -38,6 +39,8 @@ _SCHEMA = "\n".join([
     "",
 ])
 
+_CURL = 'curl -sS -o /dev/null -w "%{http_code}" --max-time 30 https://example.com/'
+
 
 def _image_present(image: str) -> bool:
     return subprocess.run(
@@ -45,12 +48,11 @@ def _image_present(image: str) -> bool:
     ).returncode == 0
 
 
-def _guest_env(session: str, port: int) -> dict[str, str]:
+def _guest_env(session: str, proxy_url: str) -> dict[str, str]:
     """What #439 will hand the pod: the broker's env, repointed at the door and the mount."""
     proc = subprocess.run(
         ["varlock", "proxy", "env", "--session", session, "--full", "--format", "json",
-         "--proxy-url", f"http://{paths.BROKER_HOST_DOOR}:{port}",
-         "--cert-dir", paths.BROKER_GUEST_CERT_DIR],
+         "--proxy-url", proxy_url, "--cert-dir", paths.BROKER_GUEST_CERT_DIR],
         capture_output=True, text=True, timeout=30, check=True,
         env={**os.environ, "FORCE_COLOR": "0"},
     )
@@ -72,15 +74,15 @@ def pod_with_broker(tmp_path, monkeypatch):
     brk = broker.start(inst, pod, [schema], cert_dir=tmp_path / "certs")
     try:
         subprocess.run(
-            ["podman", "pod", "create", "--name", pod,
-             *mounts._mcp_remote_pod_args([], "", broker=True)],
-            check=True, capture_output=True, timeout=60,
+            ["podman", "pod", "create", "--name", pod], check=True, capture_output=True, timeout=60,
         )
         try:
-            env = _guest_env(brk.session, brk.port)
-            env_args = [a for k, v in env.items() if "\n" not in v for a in ("-e", f"{k}={v}")]
+            door = f"{paths.broker_door('podman')}:{brk.port}"
 
-            def run(script: str) -> subprocess.CompletedProcess:
+            def run(script: str, *, with_token: bool = True) -> subprocess.CompletedProcess:
+                cred = f"varlock:{broker.token(brk)}@" if with_token else ""
+                env = _guest_env(brk.session, f"http://{cred}{door}")
+                env_args = [a for k, v in env.items() if "\n" not in v for a in ("-e", f"{k}={v}")]
                 return subprocess.run(
                     ["podman", "run", "--rm", "--pod", pod,
                      *mounts._broker_cert_mount_args(brk), *env_args,
@@ -88,7 +90,7 @@ def pod_with_broker(tmp_path, monkeypatch):
                     capture_output=True, text=True, timeout=120,
                 )
 
-            yield run
+            yield brk, pod, run
         finally:
             subprocess.run(["podman", "pod", "rm", "-f", pod], capture_output=True, timeout=60)
     finally:
@@ -96,23 +98,37 @@ def pod_with_broker(tmp_path, monkeypatch):
 
 
 @podman
-class TestTheBrokersCaInsideAPod:
+class TestTheBrokerFromAPod:
+    def test_the_probe_finds_the_door(self, pod_with_broker):
+        brk, pod, _ = pod_with_broker
+        assert launcher._broker_gateway("podman", _BASE_IMAGE, brk.port, pod), (
+            "a pod could not reach the exposed broker; a launch would refuse here"
+        )
+
     def test_every_ca_path_var_resolves_to_a_readable_file(self, pod_with_broker):
+        _, _, run = pod_with_broker
         script = "; ".join(
             f'[ -r "${v}" ] && echo "ok {v}" || echo "MISSING {v}=${v}"' for v in _CA_VARS
         )
-        out = pod_with_broker(script).stdout
+        out = run(script).stdout
         assert all(f"ok {v}" in out for v in _CA_VARS), out
 
     def test_the_pod_cannot_write_into_the_cert_dir(self, pod_with_broker):
-        proc = pod_with_broker(f"touch {paths.BROKER_GUEST_CERT_DIR}/planted && echo WROTE")
+        _, _, run = pod_with_broker
+        proc = run(f"touch {paths.BROKER_GUEST_CERT_DIR}/planted && echo WROTE")
         assert "WROTE" not in proc.stdout
         assert "Read-only file system" in proc.stderr, proc.stderr
 
-    def test_a_proxy_aware_client_completes_tls_against_the_broker(self, pod_with_broker):
+    def test_a_proxy_aware_client_completes_tls_with_the_token(self, pod_with_broker):
         """curl honours HTTPS_PROXY and CURL_CA_BUNDLE. A CA it did not trust fails with exit 60."""
-        proc = pod_with_broker(
-            'curl -sS -o /dev/null -w "%{http_code}" --max-time 30 https://example.com/'
-        )
+        _, _, run = pod_with_broker
+        proc = run(_CURL)
         assert proc.returncode == 0, proc.stderr
         assert proc.stdout.startswith(("2", "3")), proc.stdout
+
+    def test_without_the_token_the_broker_refuses(self, pod_with_broker):
+        """The 0.0.0.0 bind is safe only because of this."""
+        _, _, run = pod_with_broker
+        proc = run(_CURL, with_token=False)
+        assert proc.returncode != 0
+        assert "407" in proc.stderr + proc.stdout, (proc.stdout, proc.stderr)

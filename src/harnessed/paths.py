@@ -278,17 +278,16 @@ def pod_host_uid() -> int | None:
 # Default port the hatago hub listens on (design D-04).
 HATAGO_PORT = 3535
 
-# The address at which a pod reaches a `varlock proxy` broker bound to the HOST's 127.0.0.1.
-# Not routable by itself: it works only because the pod is created with pasta's
-# `--map-host-loopback,169.254.1.1` (mounts._mcp_remote_pasta_net_args) AND the egress firewall
-# ACCEPTs it (catalog/base/egress-firewall.sh). Three places must agree on this literal, which is
-# why it lives here rather than in any one of them. Epic #388 Topology B; #436, #437.
-BROKER_HOST_DOOR = "169.254.1.1"
+def broker_door(rt: str) -> str:
+    """The name a container on `rt` reaches the host's secrets broker by (#468).
 
-# The same door on docker, which has no pasta (#468). The agent gets `--add-host
-# <this>:host-gateway`, the broker is started with `--expose`, and the egress firewall ACCEPTs
-# whatever this resolves to. varlock's own container sandbox dials the same name.
-BROKER_DOCKER_DOOR = "host.docker.internal"
+    The broker is started with `--expose`, so it answers on the host's addresses and demands its
+    data-plane token from every off-loopback client. podman writes `host.containers.internal` into
+    every container's /etc/hosts itself; docker needs `--add-host <name>:host-gateway`, which the
+    launcher adds. varlock's own container sandbox dials the docker name. This replaced #437's pasta
+    `--map-host-loopback` door, which the pasta on GitHub's runner does not have.
+    """
+    return "host.containers.internal" if rt == "podman" else "host.docker.internal"
 
 # Where the broker's `--cert-dir` is mounted read-only inside the pod, and so where the CA-path vars
 # of `varlock proxy env --full --cert-dir` must point. varlock's own container sandbox uses this

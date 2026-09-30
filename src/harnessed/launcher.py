@@ -1429,7 +1429,7 @@ def _secrets_disabled() -> bool:
     return os.environ.get("NO_SECRETS", "").strip().lower() in ("1", "true", "yes")
 
 
-def _broker_start_for(inst: str, pod: str, project_path: "Path | None", *, expose: bool = False):
+def _broker_start_for(inst: str, pod: str, project_path: "Path | None"):
     """Start this instance's secrets broker, or return None when the launch gets none.
 
     A broker is started ONLY when the composed schema carries a `@proxy` annotation and
@@ -1454,7 +1454,7 @@ def _broker_start_for(inst: str, pod: str, project_path: "Path | None", *, expos
     if not dirs:
         return None
     try:
-        return broker.start(inst, pod, dirs, expose=expose)
+        return broker.start(inst, pod, dirs)
     except broker.BrokerError as exc:
         _err.print(
             f"[bold red]error:[/bold red] could not start the secrets broker for {inst}.\n"
@@ -1466,14 +1466,15 @@ def _broker_start_for(inst: str, pod: str, project_path: "Path | None", *, expos
 
 
 def _broker_door_args(rt: str, brk: "broker.Broker | None") -> list[str]:
-    """Let a pod-less agent resolve the broker's door (#468). Empty on podman, whose door is pasta.
+    """Let a docker agent resolve the broker's door (#468). Empty on podman, which writes
+    `host.containers.internal` into every container's /etc/hosts itself.
 
     `host-gateway` is docker's name for the host as seen from the bridge. The broker is exposed on
-    0.0.0.0 there, so it answers on that address; podman's stays on loopback, reached via pasta.
+    0.0.0.0, so it answers on that address.
     """
     if brk is None or _rt_uses_pods(rt):
         return []
-    return ["--add-host", f"{paths.BROKER_DOCKER_DOOR}:host-gateway"]
+    return ["--add-host", f"{paths.broker_door(rt)}:host-gateway"]
 
 
 # Seconds the probe's own dial may take. A firewall DROP never answers, so without this the connect
@@ -1481,20 +1482,26 @@ def _broker_door_args(rt: str, brk: "broker.Broker | None") -> list[str]:
 _BROKER_PROBE_DIAL = 5
 
 
-def _broker_gateway(rt: str, image: str, port: int) -> str | None:
-    """The address the broker's door resolves to in a container on `rt`, if the broker answers
+def _broker_gateway(rt: str, image: str, port: int, pod: str) -> str | None:
+    """The address the broker's door resolves to where the agent will run, if the broker answers
     there; None if it does not (#468).
 
-    A host firewall may drop bridge-to-host traffic (ufw's default INPUT policy does), and nothing
-    in harnessed can open that without root. Probing first turns a proxy that silently times out
-    inside the agent into a refused launch. The address is returned rather than a bool because the
-    egress firewall must ACCEPT it, and its runner cannot resolve the name: it shares the agent's
-    netns but not its /etc/hosts.
+    A host firewall may drop container-to-host traffic (ufw's default INPUT policy does for
+    docker0), and nothing in harnessed can open that without root. Probing first turns a proxy that
+    silently times out inside the agent into a refused launch. The address is returned rather than a
+    bool because the egress firewall must ACCEPT it, and its runner cannot resolve the name: it
+    shares the agent's netns but not its /etc/hosts.
+
+    podman probes INSIDE the pod, which must already exist: same netns, same /etc/hosts, and the
+    pod's user namespace, which podman rejects `--userns` alongside. docker has no pod to join, so
+    the probe states its own mapping and door on the same default bridge the agent gets.
     """
-    door = paths.BROKER_DOCKER_DOOR
+    door = paths.broker_door(rt)
     dial = f"exec 3<>/dev/tcp/{door}/{port}"
+    placement = (["--pod", pod] if _rt_uses_pods(rt)
+                 else [*paths.userns_args(rt), "--add-host", f"{door}:host-gateway"])
     res = _bounded(
-        [rt, "run", "--rm", *paths.userns_args(rt), "--add-host", f"{door}:host-gateway",
+        [rt, "run", "--rm", *placement,
          "--entrypoint", "bash", image,
          "-c", f"getent ahosts {door} | awk 'NR==1 {{print $1}}' && "
                f"timeout {_BROKER_PROBE_DIAL} bash -c '{dial}'"],
@@ -3744,23 +3751,9 @@ class ContainerBackend(ExecutionBackend):
         # Pod network.
         net = os.environ.get("HARNESSED_NET", "")
 
-        if not _rt_uses_pods(self.rt):
-            # No pasta, so no loopback door (#468): the broker is exposed, token-gated, and the
-            # agent reaches it at the host gateway. A launch whose container cannot reach it is
-            # refused, because an agent holding placeholders behind a dead proxy is half-wired.
-            self.broker = _broker_start_for(self.inst, self.pod, spec.project_path, expose=True)
-            if self.broker is not None:
-                self.broker_gateway = _broker_gateway(self.rt, self.harness_image, self.broker.port)
-            if self.broker is not None and self.broker_gateway is None:
-                _broker_stop_for(self.inst)
-                _err.print(
-                    f"[bold red]error:[/bold red] a {self.rt} container cannot reach the secrets "
-                    f"broker at {paths.BROKER_DOCKER_DOOR}:{self.broker.port}.\n"
-                    "A host firewall is probably dropping bridge-to-host traffic (ufw does by "
-                    "default). Allow inbound on docker0, for example `sudo ufw allow in on "
-                    "docker0`, or launch with [bold]--no-secrets[/bold] to skip the broker."
-                )
-                raise typer.Exit(1)
+        # The secrets broker (#437), exposed and token-gated, reached at the runtime's host-gateway
+        # name (#468). Started before anything is created, so a failed start leaves nothing behind.
+        self.broker = _broker_start_for(self.inst, self.pod, spec.project_path)
 
         # Create pod.
         if _rt_uses_pods(self.rt):
@@ -3782,11 +3775,7 @@ class ContainerBackend(ExecutionBackend):
             # default. Measured both ways on real podman — see the helper. Composed there as one
             # list so the two cannot be wired apart, and so it also owns the plain `--network`
             # passthrough (which cannot be passed twice). Empty unless a recipe pins a port.
-            # The secrets broker is started BEFORE `pod create`, because the pod's network args
-            # depend on whether there is one: without a broker the pod must not be handed a route
-            # to the host's loopback it has no use for.
-            self.broker = _broker_start_for(self.inst, self.pod, spec.project_path)
-            pod_cmd += _mcp_remote_pod_args(self.servers, net, broker=self.broker is not None)
+            pod_cmd += _mcp_remote_pod_args(self.servers, net)
             try:
                 _run(pod_cmd, capture_output=True)
             except BaseException:
@@ -3796,6 +3785,24 @@ class ContainerBackend(ExecutionBackend):
                 if self.broker is not None:
                     _broker_stop_for(self.inst)
                 raise
+
+        if self.broker is not None:
+            # Probe where the agent will run (inside the pod on podman). A launch whose container
+            # cannot reach the broker is refused: an agent holding placeholders behind a dead proxy
+            # is the half-wired state #388 exists to remove.
+            self.broker_gateway = _broker_gateway(
+                self.rt, self.harness_image, self.broker.port, self.pod,
+            )
+            if self.broker_gateway is None:
+                _pod_teardown(self.rt, self.inst, self.pod)
+                _err.print(
+                    f"[bold red]error:[/bold red] a {self.rt} container cannot reach the secrets "
+                    f"broker at {paths.broker_door(self.rt)}:{self.broker.port}.\n"
+                    "A host firewall is probably dropping container-to-host traffic (ufw does for "
+                    "docker0 by default; `sudo ufw allow in on docker0` opens it), or launch with "
+                    "[bold]--no-secrets[/bold] to skip the broker."
+                )
+                raise typer.Exit(1)
 
         # Socket-backed project services (beads-server) as REAL container env, not only an attach-shell
         # export: `_init_shell_prologue` reaches the interactive shell and nothing else, so a `podman
