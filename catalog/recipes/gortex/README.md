@@ -37,7 +37,8 @@ alone; all clients speak to the same unix socket with isolated per-session state
 
 2. **`init.run`**, in the attach shell on every launch: the same ensure, then
    `gortex track "$PROJECT_DIR"` — the step the MCP entry cannot do — so tool calls don't get
-   `repo_not_tracked`. Indexing runs in the daemon's background; plain `track` does not block.
+   `repo_not_tracked`. It skips `track` when `gortex repos --json` already lists the path:
+   re-tracking a tracked repo blocks until the daemon re-indexes it (2m48s measured).
 
 Every `init.run` path exits 0: a daemon that will not start degrades to "gortex not connected"
 in the capability report, never blocks the attach.
