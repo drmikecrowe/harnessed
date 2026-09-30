@@ -163,6 +163,8 @@ def boundary(monkeypatch, tmp_path):
     monkeypatch.setattr(
         launcher, "_pod_teardown", lambda rt, inst, pod: calls["teardown"].append((rt, inst, pod)),
     )
+    # The broker-built env (#439) is tests/test_proxy_env_file.py's subject, not this file's.
+    monkeypatch.setattr(launcher.ContainerBackend, "_add_broker_env", lambda self, spec, brk: None)
     monkeypatch.delenv("HARNESSED_NET", raising=False)
 
     def run(rt, brk, *, reachable=True, run_fails=False):

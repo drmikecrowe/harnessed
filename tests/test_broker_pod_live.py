@@ -15,14 +15,12 @@ The first run of this file, against #437's pasta door, failed on GitHub's runner
 "pasta: unrecognized option '--map-host-loopback'". That is why the door changed (#468).
 """
 
-import json
-import os
 import subprocess
 import uuid
 
 import pytest
 
-from harnessed import broker, launcher, mounts, paths
+from harnessed import broker, launchenv, launcher, mounts, paths
 from support import podman
 
 _BASE_IMAGE = "localhost/harnessed-base:latest"
@@ -33,9 +31,17 @@ _CA_VARS = (
     "NODE_EXTRA_CA_CERTS", "REQUESTS_CA_BUNDLE", "SSL_CERT_FILE",
 )
 
+_REAL = "not-a-real-secret"
+_PLACEHOLDER = "ph_00000000000000000000000000000000"
 _SCHEMA = "\n".join([
-    '# @sensitive @proxy(domain="example.com") @placeholder="ph_00000000000000000000000000000000"',
-    'DEMO_TOKEN=exec("printf %s not-a-real-secret")',
+    f'# @sensitive @proxy(domain="example.com") @placeholder="{_PLACEHOLDER}"',
+    f'DEMO_TOKEN=exec("printf %s {_REAL}")',
+    "",
+    "# @sensitive @proxy=passthrough",
+    'PASSTHRU=exec("printf %s passthru-real")',
+    "",
+    "# @sensitive=false",
+    'PLAIN=exec("printf %s plain-real")',
     "",
 ])
 
@@ -46,17 +52,6 @@ def _image_present(image: str) -> bool:
     return subprocess.run(
         ["podman", "image", "exists", image], capture_output=True
     ).returncode == 0
-
-
-def _guest_env(session: str, proxy_url: str) -> dict[str, str]:
-    """What #439 will hand the pod: the broker's env, repointed at the door and the mount."""
-    proc = subprocess.run(
-        ["varlock", "proxy", "env", "--session", session, "--full", "--format", "json",
-         "--proxy-url", proxy_url, "--cert-dir", paths.BROKER_GUEST_CERT_DIR],
-        capture_output=True, text=True, timeout=30, check=True,
-        env={**os.environ, "FORCE_COLOR": "0"},
-    )
-    return json.loads(proc.stdout)
 
 
 @pytest.fixture
@@ -80,15 +75,21 @@ def pod_with_broker(tmp_path, monkeypatch):
             door = f"{paths.broker_door('podman')}:{brk.port}"
 
             def run(script: str, *, with_token: bool = True) -> subprocess.CompletedProcess:
+                # The production path (#439): the same function the launch uses builds the file.
                 cred = f"varlock:{broker.token(brk)}@" if with_token else ""
-                env = _guest_env(brk.session, f"http://{cred}{door}")
-                env_args = [a for k, v in env.items() if "\n" not in v for a in ("-e", f"{k}={v}")]
-                return subprocess.run(
-                    ["podman", "run", "--rm", "--pod", pod,
-                     *mounts._broker_cert_mount_args(brk), *env_args,
-                     "--entrypoint", "bash", _BASE_IMAGE, "-c", script],
-                    capture_output=True, text=True, timeout=120,
+                env_file = launchenv._varlock_proxy_env_file(
+                    brk.session, f"http://{cred}{door}", paths.BROKER_GUEST_CERT_DIR,
                 )
+                assert env_file is not None, "the broker did not hand back an env"
+                try:
+                    return subprocess.run(
+                        ["podman", "run", "--rm", "--pod", pod,
+                         *mounts._broker_cert_mount_args(brk), "--env-file", str(env_file),
+                         "--entrypoint", "bash", _BASE_IMAGE, "-c", script],
+                        capture_output=True, text=True, timeout=120,
+                    )
+                finally:
+                    env_file.unlink()
 
             yield brk, pod, run
         finally:
@@ -104,6 +105,19 @@ class TestTheBrokerFromAPod:
         assert launcher._broker_gateway("podman", _BASE_IMAGE, brk.port, pod), (
             "a pod could not reach the exposed broker; a launch would refuse here"
         )
+
+    def test_the_pod_env_holds_the_placeholder_never_the_value(self, pod_with_broker):
+        """#439's headline: the @proxy item's real value is absent from the pod env."""
+        _, _, run = pod_with_broker
+        env = run("env").stdout
+        assert _REAL not in env
+        assert f"DEMO_TOKEN={_PLACEHOLDER}" in env
+
+    def test_passthrough_and_non_secrets_arrive_real(self, pod_with_broker):
+        _, _, run = pod_with_broker
+        env = run("env").stdout
+        assert "PASSTHRU=passthru-real" in env
+        assert "PLAIN=plain-real" in env
 
     def test_every_ca_path_var_resolves_to_a_readable_file(self, pod_with_broker):
         _, _, run = pod_with_broker

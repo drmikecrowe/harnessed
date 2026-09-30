@@ -643,7 +643,7 @@ class TestIsolatedAuthIsGatedOnTheHarness:
         monkeypatch.setattr(
             launcher,
             "_resolve_launch_secrets",
-            lambda p: ([env_file], [env_file]),
+            lambda p, **_kw: ([env_file], [env_file]),
         )
         b = self._backend(tmp_path, isolated=True)
 
@@ -661,7 +661,7 @@ class TestIsolatedAuthIsGatedOnTheHarness:
         monkeypatch.setattr(
             launcher,
             "_resolve_launch_secrets",
-            lambda p: ([env_file], [env_file]),
+            lambda p, **_kw: ([env_file], [env_file]),
         )
         b = self._backend(tmp_path, isolated=True)
 

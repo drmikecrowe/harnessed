@@ -66,7 +66,11 @@ CONTAINER_ONLY: dict[str, str] = {
     "_broker_stop_for": "stops a pod's broker; a host launch never started one",
     "_broker_cert_mount_args": "mounts a pod broker's CA into the pod; a host launch has neither",
     "_broker_door_args": "names the host gateway inside a docker container; a host launch is on it",
-    "_broker_gateway": "probes a docker container's route to the broker; a host launch needs none",
+    "_broker_gateway": "probes a container's route to the broker; a host launch needs none",
+    "proxy_schema_dirs": "decides which schema dirs a POD's broker serves",
+    "_secrets_disabled": "--no-secrets skips a pod's broker; a host launch never starts one",
+    "_varlock_proxy_env_file": "builds a pod's placeholder env from its broker; a host launch "
+                               "resolves real values natively",
     "_rt_uses_pods": "asks the container runtime about pods",
     "_without_userns": "strips a pod-level --userns; a host-native launch has no user namespace",
     "_preflight_runtime": "refuses a container runtime whose id mapping cannot be named; a "

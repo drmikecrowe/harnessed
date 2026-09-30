@@ -225,6 +225,7 @@ from .launchenv import (
     _strip_var_from_env_files,
     api_endpoint_egress_hosts,
     _varlock_cache_clear,
+    _varlock_proxy_env_file,
     _varlock_resolve,
 )
 from .paths import CONTAINER_HOME, instance_name, is_built, profile_dir, project_relpath
@@ -3612,7 +3613,13 @@ class ContainerBackend(ExecutionBackend):
         """
         # Layered global → project (project wins on conflict). Stays AFTER the aborting checks in
         # materialize_config so an early exit can't strand resolved secrets on disk.
-        secrets_env_files, secrets_temp_files = _resolve_launch_secrets(spec.project_path)
+        # The dirs a broker will serve are skipped (#439): their env comes from the broker at
+        # BOUNDARY, so no real value of theirs is resolved here. A broker that then fails to start
+        # or to answer refuses the launch, so skipping them cannot fall back to nothing.
+        skip = [] if _secrets_disabled() else proxy_schema_dirs(spec.project_path)
+        secrets_env_files, secrets_temp_files = _resolve_launch_secrets(
+            spec.project_path, skip=skip,
+        )
         if self.stk.isolated_auth and spec.harness == "claude":
             # This stack has its OWN identity: neither the host's token nor the host's credential
             # file may reach it, or it would come up as the WRONG ACCOUNT — the one failure this
@@ -3642,6 +3649,40 @@ class ContainerBackend(ExecutionBackend):
             )
         self.secrets_env_files = secrets_env_files
         self.secrets_temp_files = secrets_temp_files
+
+    def _add_broker_env(self, spec: LaunchSpec, brk: "broker.Broker") -> None:
+        """Add the env for the schema dirs the broker serves, built by the broker (#439).
+
+        `seed_auth` skipped those dirs, so this is their only source: placeholders for `@proxy`
+        items, real values for passthrough items and non-secrets, the proxy vars pointing at this
+        runtime's door with the data-plane token in them (as varlock's own guests carry it), and
+        the CA vars pointing at the #438 mount. A failure refuses the launch without echoing
+        anything varlock printed.
+        """
+        try:
+            proxy_url = (f"http://varlock:{broker.token(brk)}@"
+                         f"{paths.broker_door(self.rt)}:{brk.port}")
+            env_file = _varlock_proxy_env_file(brk.session, proxy_url, paths.BROKER_GUEST_CERT_DIR)
+        except broker.BrokerError:
+            env_file = None
+        if env_file is None:
+            _pod_teardown(self.rt, self.inst, self.pod)
+            _err.print(
+                f"[bold red]error:[/bold red] the secrets broker for {self.inst} did not hand back "
+                "the pod's environment. Check `varlock proxy status`, or launch with "
+                "[bold]--no-secrets[/bold] to skip the broker."
+            )
+            raise typer.Exit(1)
+        # Same suppression seed_auth applies to every env-file it built, for the same reason.
+        if self.stk.isolated_auth and spec.harness == "claude":
+            _strip_var_from_env_files(_OAUTH_TOKEN_VAR, [env_file])
+        # --env-file is last-wins and seed_auth layered global before project. The broker composes
+        # whichever of the two opted in, so its file takes the project's slot when the project is
+        # one of them, and the global slot otherwise.
+        at = (len(self.secrets_env_files)
+              if spec.project_path in proxy_schema_dirs(spec.project_path) else 0)
+        self.secrets_env_files.insert(at, env_file)
+        self.secrets_temp_files.append(env_file)
 
     def wire_mcp(self, spec: LaunchSpec) -> None:
         """Regenerate this instance's hatago config and mount it (ro) into the harness container.
@@ -3803,6 +3844,7 @@ class ContainerBackend(ExecutionBackend):
                     "[bold]--no-secrets[/bold] to skip the broker."
                 )
                 raise typer.Exit(1)
+            self._add_broker_env(spec, self.broker)
 
         # Socket-backed project services (beads-server) as REAL container env, not only an attach-shell
         # export: `_init_shell_prologue` reaches the interactive shell and nothing else, so a `podman

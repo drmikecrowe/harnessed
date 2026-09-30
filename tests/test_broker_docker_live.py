@@ -11,14 +11,13 @@ A host whose firewall drops bridge-to-host traffic fails the first test with the
 which is the same refusal a launch would give.
 """
 
-import json
 import os
 import subprocess
 import uuid
 
 import pytest
 
-from harnessed import broker, launcher, mounts, paths
+from harnessed import broker, launchenv, launcher, mounts, paths
 
 _IMAGE = "harnessed-base:latest"
 
@@ -27,9 +26,17 @@ _CA_VARS = (
     "NODE_EXTRA_CA_CERTS", "REQUESTS_CA_BUNDLE", "SSL_CERT_FILE",
 )
 
+_REAL = "not-a-real-secret"
+_PLACEHOLDER = "ph_00000000000000000000000000000000"
 _SCHEMA = "\n".join([
-    '# @sensitive @proxy(domain="example.com") @placeholder="ph_00000000000000000000000000000000"',
-    'DEMO_TOKEN=exec("printf %s not-a-real-secret")',
+    f'# @sensitive @proxy(domain="example.com") @placeholder="{_PLACEHOLDER}"',
+    f'DEMO_TOKEN=exec("printf %s {_REAL}")',
+    "",
+    "# @sensitive @proxy=passthrough",
+    'PASSTHRU=exec("printf %s passthru-real")',
+    "",
+    "# @sensitive=false",
+    'PLAIN=exec("printf %s plain-real")',
     "",
 ])
 
@@ -37,16 +44,6 @@ DOCKER = pytest.mark.skipif(
     not os.environ.get("HARNESSED_DOCKER"),
     reason="set HARNESSED_DOCKER=1 for live docker tests",
 )
-
-
-def _guest_env(session: str, proxy_url: str) -> dict[str, str]:
-    proc = subprocess.run(
-        ["varlock", "proxy", "env", "--session", session, "--full", "--format", "json",
-         "--proxy-url", proxy_url, "--cert-dir", paths.BROKER_GUEST_CERT_DIR],
-        capture_output=True, text=True, timeout=30, check=True,
-        env={**os.environ, "FORCE_COLOR": "0"},
-    )
-    return json.loads(proc.stdout)
 
 
 @pytest.fixture
@@ -62,15 +59,21 @@ def exposed_broker(tmp_path, monkeypatch):
         door = f"{paths.broker_door('docker')}:{brk.port}"
 
         def run(script: str, *, with_token: bool = True) -> subprocess.CompletedProcess:
+            # The production path (#439): the same function the launch uses builds the file.
             cred = f"varlock:{broker.token(brk)}@" if with_token else ""
-            env = _guest_env(brk.session, f"http://{cred}{door}")
-            env_args = [a for k, v in env.items() if "\n" not in v for a in ("-e", f"{k}={v}")]
-            return subprocess.run(
-                ["docker", "run", "--rm", *launcher._broker_door_args("docker", brk),
-                 *mounts._broker_cert_mount_args(brk), *env_args,
-                 "--entrypoint", "bash", _IMAGE, "-c", script],
-                capture_output=True, text=True, timeout=120,
+            env_file = launchenv._varlock_proxy_env_file(
+                brk.session, f"http://{cred}{door}", paths.BROKER_GUEST_CERT_DIR,
             )
+            assert env_file is not None, "the broker did not hand back an env"
+            try:
+                return subprocess.run(
+                    ["docker", "run", "--rm", *launcher._broker_door_args("docker", brk),
+                     *mounts._broker_cert_mount_args(brk), "--env-file", str(env_file),
+                     "--entrypoint", "bash", _IMAGE, "-c", script],
+                    capture_output=True, text=True, timeout=120,
+                )
+            finally:
+                env_file.unlink()
 
         yield brk, run
     finally:
@@ -84,6 +87,19 @@ class TestAnExposedBrokerFromDocker:
         assert launcher._broker_gateway("docker", _IMAGE, brk.port, brk.pod), (
             "a docker container could not reach the exposed broker; a launch would refuse here"
         )
+
+    def test_the_container_env_holds_the_placeholder_never_the_value(self, exposed_broker):
+        """#439's headline: the @proxy item's real value is absent from the container env."""
+        _, run = exposed_broker
+        env = run("env").stdout
+        assert _REAL not in env
+        assert f"DEMO_TOKEN={_PLACEHOLDER}" in env
+
+    def test_passthrough_and_non_secrets_arrive_real(self, exposed_broker):
+        _, run = exposed_broker
+        env = run("env").stdout
+        assert "PASSTHRU=passthru-real" in env
+        assert "PLAIN=plain-real" in env
 
     def test_every_ca_path_var_resolves_to_a_readable_file(self, exposed_broker):
         _, run = exposed_broker

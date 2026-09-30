@@ -56,6 +56,7 @@ def boundary(monkeypatch, tmp_path):
     monkeypatch.setattr(launcher, "proxy_schema_dirs", lambda *a, **k: [])
     # The reachability probe (#468) is not what this file tests; tests/test_broker_door.py is.
     monkeypatch.setattr(launcher, "_broker_gateway", lambda *a, **k: "172.17.0.1")
+    monkeypatch.setattr(launcher.ContainerBackend, "_add_broker_env", lambda self, spec, brk: None)
     monkeypatch.delenv("HARNESSED_NET", raising=False)
 
     def run(brk: broker.Broker | None) -> list[str]:
