@@ -1,11 +1,25 @@
-"""The host secrets broker: one `varlock proxy` per instance, on loopback, torn down with the pod.
+"""The host secrets broker: one `varlock proxy` per instance, exposed and token-gated, torn down
+with the pod.
 
 Epic #388 Phase 1, Topology B. `varlock proxy` runs on the HOST — where 1Password, the keychain,
-gpg-agent and a YubiKey can actually authenticate — binds `127.0.0.1` only, and injects real values
-into outbound requests on the wire. The pod holds placeholders and reaches the broker through
-pasta's `--map-host-loopback,169.254.1.1` (`mounts._mcp_remote_pasta_net_args`), which the egress
-firewall permits (#436). Nothing off-host can reach it, so there is no `--expose` and no data-plane
-token — Topology B deleted both, along with the WebSocket tunnel. Do not reintroduce them.
+gpg-agent and a YubiKey can actually authenticate — and injects real values into outbound requests
+on the wire. The pod holds placeholders.
+
+HOW A CONTAINER REACHES IT (#468). #437 bound it to `127.0.0.1` only and gave the pod pasta's
+`--map-host-loopback,169.254.1.1`. That option does not exist on the pasta GitHub's runner ships
+(podman 4.9.3: "unrecognized option"), and docker has no pasta at all. So the broker is started
+with `--expose`, varlock's own mechanism for a guest off host loopback: it binds 0.0.0.0 and every
+off-loopback client must present the session's data-plane token as proxy Basic auth. Each runtime
+reaches it at its host-gateway name (`paths.broker_door`). varlock mints the token and embeds it in
+the guest env it prints (`proxy env --full`). harnessed never puts it in an argv or in the `Broker`
+record; it passes only through the launch's 0600 temp env-file, which is unlinked at BOUNDARY's end.
+
+WHAT THE 0.0.0.0 BIND COSTS. #437's broker was unreachable off-host; this one is reachable from any
+interface the host firewall allows, including a LAN. The controls left are: the token (varlock
+1.16.1 mints `crypto.randomUUID()`, 122 random bits), a hard 407 for any off-loopback client
+without it (pinned live on both runtimes by `test_without_the_token_the_broker_refuses`), and the
+host's own firewall. Narrowing the bind is not available: `--expose=<bridge address>` hides the
+session from `proxy status` in 1.16.1, and `start` below finds its session there.
 
 Three measurements against varlock 1.16.1 shape everything here. They are not obvious from the
 `--help` text, and an implementation guessed from it would be wrong:
@@ -271,7 +285,11 @@ def start(
     argv = ["varlock", "proxy", "start"]
     for d in dirs:
         argv += ["--path", str(d)]
-    argv += ["--port", str(port), "--cert-dir", str(certs)]
+    # `--expose` (#468): containers reach the broker off host loopback, so varlock binds 0.0.0.0 and
+    # demands its data-plane token from every off-loopback client. Bare, not `--expose=<addr>`: in
+    # 1.16.1 a single-address bind hides the session from `proxy status`, which the loop below
+    # polls, so the start would always time out.
+    argv += ["--port", str(port), "--cert-dir", str(certs), "--expose"]
     pid = spawn(argv)
 
     # BaseException, not Exception: `spawn` uses start_new_session=True, so the broker does NOT

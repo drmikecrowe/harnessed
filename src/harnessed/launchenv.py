@@ -14,7 +14,7 @@ Pure resolution only — nothing here knows about podman, containers, or the Typ
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from urllib.parse import urlsplit
 
 import json
@@ -185,10 +185,18 @@ def _varlock_resolve_env_file(schema_dir: Path) -> Path | None:
     resolved = _varlock_resolve(schema_dir)
     if resolved is None:
         return None
+    return _write_env_file(resolved)
 
+
+def _write_env_file(values: Mapping[str, str]) -> Path:
+    """Write `values` to a mode-0600 temp env-file and return its path; the caller unlinks it.
+
+    Shared by the `varlock load` path above and the broker's `proxy env` path (#439), so both skip a
+    multi-line value the same way: see `_varlock_resolve_env_file` for why it is skipped.
+    """
     # podman env-file is KEY=VALUE with the value literal to end-of-line — no quoting needed.
     writable = {}
-    for k, v in resolved.items():
+    for k, v in values.items():
         if "\n" in v or "\r" in v:
             _err.print(
                 f"[yellow]warning:[/yellow] secret '{k}' spans multiple lines and cannot be passed "
@@ -211,6 +219,36 @@ def _varlock_resolve_env_file(schema_dir: Path) -> Path | None:
             pass
         raise
     return Path(tmp)
+
+
+def _varlock_proxy_env_file(session: str, proxy_url: str, cert_dir: str) -> Path | None:
+    """The env a proxied guest runs with, from the broker, as a 0600 temp env-file (#439).
+
+    `varlock proxy env --full` prints placeholders for `@proxy` items, real values for passthrough
+    items and non-secrets, the proxy vars, and the seven CA-path vars. `--proxy-url` repoints the
+    proxy vars at the guest's door (with the data-plane token in it) and `--cert-dir` repoints the
+    CA vars at where the guest reads them. Returns None when varlock fails or prints something that
+    is not a JSON object; the caller refuses the launch, and nothing varlock printed is echoed.
+    """
+    try:
+        proc = subprocess.run(
+            ["varlock", "proxy", "env", "--session", session, "--full", "--format", "json",
+             "--proxy-url", proxy_url, "--cert-dir", cert_dir],
+            capture_output=True, text=True, timeout=_VARLOCK_TIMEOUT,
+            # JSON is not coloured today, but the same detection coloured `proxy rules` (#462).
+            env={**os.environ, "FORCE_COLOR": "0"},
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        values = json.loads(proc.stdout)
+    except ValueError:
+        return None
+    if not isinstance(values, dict):
+        return None
+    return _write_env_file({str(k): str(v) for k, v in values.items()})
 
 
 def _parse_plain_env_line(raw: str) -> tuple[str, str] | None:
@@ -456,7 +494,9 @@ def proxy_schema_dirs(project_path: Path | None = None) -> list[Path]:
     return dirs
 
 
-def _resolve_launch_secrets(project_path: Path | None = None) -> tuple[list[Path], list[Path]]:
+def _resolve_launch_secrets(
+    project_path: Path | None = None, *, skip: Sequence[Path] = (),
+) -> tuple[list[Path], list[Path]]:
     """Resolve launch-time env-files, layered global → project (podman --env-file is last-wins,
     so project values override the global schema).
 
@@ -474,6 +514,10 @@ def _resolve_launch_secrets(project_path: Path | None = None) -> tuple[list[Path
     temp_files is the subset the caller MUST unlink after launch (resolved secrets must not
     linger on disk). Every env-file here is a generated temp — the user's own `.env` is copied,
     never handed to podman directly, so it is never modified or unlinked.
+
+    `skip` names schema dirs the secrets broker serves instead (#439): they are not `varlock
+    load`ed at all, so no real value of theirs touches disk. The container backend builds their
+    env from the broker once it runs (`_varlock_proxy_env_file`).
     """
     env_files: list[Path] = []
     temp_files: list[Path] = []
@@ -484,7 +528,7 @@ def _resolve_launch_secrets(project_path: Path | None = None) -> tuple[list[Path
     global_env = global_dir / ".env"
     if global_schema.is_file() and have_varlock:
         _warn_unproxied_secrets(global_dir)
-        p = _varlock_resolve_env_file(global_dir)
+        p = None if global_dir in skip else _varlock_resolve_env_file(global_dir)
         if p:
             env_files.append(p)
             temp_files.append(p)
@@ -500,7 +544,7 @@ def _resolve_launch_secrets(project_path: Path | None = None) -> tuple[list[Path
         proj_env = project_path / ".env"
         if proj_schema.is_file() and have_varlock:
             _warn_unproxied_secrets(project_path)
-            p = _varlock_resolve_env_file(project_path)
+            p = None if project_path in skip else _varlock_resolve_env_file(project_path)
             if p:
                 env_files.append(p)
                 temp_files.append(p)

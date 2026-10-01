@@ -113,6 +113,7 @@ from .mounts import (
     AWS_SSO_ECS_PORT,
     _aws_sso_ecs_forward_args,
     _aws_sso_server_reachable,
+    _broker_cert_mount_args,
     _build_mount_args,
     _ccstatusline_settings_mount,
     _claude_config_seed_mount,
@@ -224,6 +225,7 @@ from .launchenv import (
     _strip_var_from_env_files,
     api_endpoint_egress_hosts,
     _varlock_cache_clear,
+    _varlock_proxy_env_file,
     _varlock_resolve,
 )
 from .paths import CONTAINER_HOME, instance_name, is_built, profile_dir, project_relpath
@@ -1464,6 +1466,52 @@ def _broker_start_for(inst: str, pod: str, project_path: "Path | None"):
         raise typer.Exit(1) from exc
 
 
+def _broker_door_args(rt: str, brk: "broker.Broker | None") -> list[str]:
+    """Let a docker agent resolve the broker's door (#468). Empty on podman, which writes
+    `host.containers.internal` into every container's /etc/hosts itself.
+
+    `host-gateway` is docker's name for the host as seen from the bridge. The broker is exposed on
+    0.0.0.0, so it answers on that address.
+    """
+    if brk is None or _rt_uses_pods(rt):
+        return []
+    return ["--add-host", f"{paths.broker_door(rt)}:host-gateway"]
+
+
+# Seconds the probe's own dial may take. A firewall DROP never answers, so without this the connect
+# sits in SYN retries for about two minutes before the outer bound kills it.
+_BROKER_PROBE_DIAL = 5
+
+
+def _broker_gateway(rt: str, image: str, port: int, pod: str) -> str | None:
+    """The address the broker's door resolves to where the agent will run, if the broker answers
+    there; None if it does not (#468).
+
+    A host firewall may drop container-to-host traffic (ufw's default INPUT policy does for
+    docker0), and nothing in harnessed can open that without root. Probing first turns a proxy that
+    silently times out inside the agent into a refused launch. The address is returned rather than a
+    bool because the egress firewall must ACCEPT it, and its runner cannot resolve the name: it
+    shares the agent's netns but not its /etc/hosts.
+
+    podman probes INSIDE the pod, which must already exist: same netns, same /etc/hosts, and the
+    pod's user namespace, which podman rejects `--userns` alongside. docker has no pod to join, so
+    the probe states its own mapping and door on the same default bridge the agent gets.
+    """
+    door = paths.broker_door(rt)
+    dial = f"exec 3<>/dev/tcp/{door}/{port}"
+    placement = (["--pod", pod] if _rt_uses_pods(rt)
+                 else [*paths.userns_args(rt), "--add-host", f"{door}:host-gateway"])
+    res = _bounded(
+        [rt, "run", "--rm", *placement,
+         "--entrypoint", "bash", image,
+         "-c", f"getent ahostsv4 {door} | awk 'NR==1 {{print $1}}' && "
+               f"timeout {_BROKER_PROBE_DIAL} bash -c '{dial}'"],
+        timeout=_PODMAN_EXEC_TIMEOUT, capture_output=True, text=True, warn=False,
+    )
+    address = res.stdout.strip()
+    return address if res.returncode == 0 and address else None
+
+
 def _broker_stop_for(instance: str) -> None:
     """Stop `instance`'s secrets broker, never fatally.
 
@@ -1653,16 +1701,19 @@ def _firewall_runner_argv(rt: str, netns_anchor: str, image: str) -> list[str]:
 
 
 def _apply_firewall(rt: str, instance: str, domains: list[str] | None = None,
-                    *, netns_anchor: str | None = None, image: str | None = None) -> None:
+                    *, netns_anchor: str | None = None, image: str | None = None,
+                    broker_gateway: str | None = None) -> None:
     if os.environ.get("NO_FIREWALL", "false").lower() == "true":
         return
     # Extra domains (recipe-declared `egress:`) are appended to the script's allowlist — it takes
-    # them as positional args and resolves each to its current IPs.
+    # them as positional args and resolves each to its current IPs. The broker's probed door rides
+    # as --broker=<ip>, which the script installs with `require` rather than best-effort (#468).
     anchor = netns_anchor or instance
     img = image or _agent_image("claude")
+    broker_arg = [f"--broker={broker_gateway}"] if broker_gateway else []
     res = _bounded(
         [*_firewall_runner_argv(rt, anchor, img),
-         "bash", "/usr/local/sbin/egress-firewall", *(domains or [])],
+         "bash", "/usr/local/sbin/egress-firewall", *broker_arg, *(domains or [])],
         timeout=_PODMAN_EXEC_TIMEOUT, capture_output=True,
     )
     # FAIL CLOSED. The script installs a default-DROP policy, so "it did not run" is not a degraded
@@ -3418,8 +3469,12 @@ class ContainerBackend(ExecutionBackend):
         #: `wire_mcp` and the settings merge cannot drift apart on what this stack's servers are.
         self.servers = servers
         #: This instance's host secrets broker, or None when the launch gets none (no `@proxy` in
-        #: the composed schema, `--no-secrets`, or a runtime with no pods). Set at BOUNDARY.
+        #: the composed schema, or `--no-secrets`). Set at BOUNDARY.
         self.broker = None
+        #: The address the broker's door resolved to where the agent runs, set at BOUNDARY on both
+        #: runtimes whenever a broker was probed (#468). EGRESS hands it to the firewall, which has
+        #: no broker rule of its own. None without a broker.
+        self.broker_gateway: str | None = None
         self.stk = stk
         self.stack_from_overlay = stack_from_overlay
         self.headless = headless
@@ -3562,7 +3617,13 @@ class ContainerBackend(ExecutionBackend):
         """
         # Layered global → project (project wins on conflict). Stays AFTER the aborting checks in
         # materialize_config so an early exit can't strand resolved secrets on disk.
-        secrets_env_files, secrets_temp_files = _resolve_launch_secrets(spec.project_path)
+        # The dirs a broker will serve are skipped (#439): their env comes from the broker at
+        # BOUNDARY, so no real value of theirs is resolved here. A broker that then fails to start
+        # or to answer refuses the launch, so skipping them cannot fall back to nothing.
+        skip = [] if _secrets_disabled() else proxy_schema_dirs(spec.project_path)
+        secrets_env_files, secrets_temp_files = _resolve_launch_secrets(
+            spec.project_path, skip=skip,
+        )
         if self.stk.isolated_auth and spec.harness == "claude":
             # This stack has its OWN identity: neither the host's token nor the host's credential
             # file may reach it, or it would come up as the WRONG ACCOUNT — the one failure this
@@ -3592,6 +3653,40 @@ class ContainerBackend(ExecutionBackend):
             )
         self.secrets_env_files = secrets_env_files
         self.secrets_temp_files = secrets_temp_files
+
+    def _add_broker_env(self, spec: LaunchSpec, brk: "broker.Broker") -> None:
+        """Add the env for the schema dirs the broker serves, built by the broker (#439).
+
+        `seed_auth` skipped those dirs, so this is their only source: placeholders for `@proxy`
+        items, real values for passthrough items and non-secrets, the proxy vars pointing at this
+        runtime's door, and the CA vars pointing at the #438 mount. A failure refuses the launch
+        without echoing anything varlock printed.
+
+        The URL carries NO credentials. For an exposed session `proxy env --full` embeds the
+        data-plane token into every proxy var itself (varlock 1.16.1, `buildGuestEnvWiring`;
+        measured on #537's live jobs). So the token is in no argv. It does pass through this
+        process into the env-file, like every other value there: 0600, unlinked when BOUNDARY ends.
+        """
+        proxy_url = f"http://{paths.broker_door(self.rt)}:{brk.port}"
+        env_file = _varlock_proxy_env_file(brk.session, proxy_url, paths.BROKER_GUEST_CERT_DIR)
+        if env_file is None:
+            _pod_teardown(self.rt, self.inst, self.pod)
+            _err.print(
+                f"[bold red]error:[/bold red] the secrets broker for {self.inst} did not hand back "
+                "the pod's environment. Check `varlock proxy status`, or launch with "
+                "[bold]--no-secrets[/bold] to skip the broker."
+            )
+            raise typer.Exit(1)
+        # Same suppression seed_auth applies to every env-file it built, for the same reason.
+        if self.stk.isolated_auth and spec.harness == "claude":
+            _strip_var_from_env_files(_OAUTH_TOKEN_VAR, [env_file])
+        # --env-file is last-wins and seed_auth layered global before project. The broker composes
+        # whichever of the two opted in, so its file takes the project's slot when the project is
+        # one of them, and the global slot otherwise.
+        at = (len(self.secrets_env_files)
+              if spec.project_path in proxy_schema_dirs(spec.project_path) else 0)
+        self.secrets_env_files.insert(at, env_file)
+        self.secrets_temp_files.append(env_file)
 
     def wire_mcp(self, spec: LaunchSpec) -> None:
         """Regenerate this instance's hatago config and mount it (ro) into the harness container.
@@ -3675,6 +3770,7 @@ class ContainerBackend(ExecutionBackend):
                     self.rt, self.inst, egress_domains,
                     netns_anchor=_netns_anchor(self.rt, self.pod, self.inst),
                     image=self.harness_image,
+                    broker_gateway=self.broker_gateway,
                 )
             except BaseException:
                 # By this phase BOUNDARY has already started the pod, so simply propagating would
@@ -3695,18 +3791,37 @@ class ContainerBackend(ExecutionBackend):
                 raise
             return
 
+        try:
+            self._apply_boundary(spec)
+        except BaseException:
+            # A broker whose launch did not finish is a host process holding live secrets, exposed
+            # on 0.0.0.0, that nothing will reap by name. BOUNDARY assembles the env and may prompt
+            # between starting it and starting the agent, so any exit there must stop it (#537
+            # review). Idempotent: the refusal paths have already stopped it via _pod_teardown.
+            if self.broker is not None:
+                _broker_stop_for(self.inst)
+            raise
+        finally:
+            # Unlink the temp env-files on EVERY exit from BOUNDARY — resolved secret values must not
+            # linger on disk (T-05-06). This used to wrap only the agent's `run`, so a refusal before
+            # it (an unreachable broker, a broker env that did not come back) or a Ctrl-C at a setup
+            # prompt left them behind (#537 review). Every env-file is a generated temp (the user's
+            # own .env is copied, never handed to podman).
+            for f in self.secrets_temp_files:
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
+            self.secrets_temp_files = []
+
+    def _apply_boundary(self, spec: LaunchSpec) -> None:
+        """BOUNDARY: stand the pod up and start the agent in it. See `apply_isolation`."""
         # Pod network.
         net = os.environ.get("HARNESSED_NET", "")
 
-        if not _rt_uses_pods(self.rt) and proxy_schema_dirs(spec.project_path):
-            # The broker door is a pasta option on `pod create`; a runtime with no pods has no way
-            # to deliver 169.254.1.1 into the container. Starting a broker here would produce
-            # exactly the half-wired state --no-secrets exists to avoid, so say so instead.
-            _err.print(
-                f"[yellow]note:[/yellow] {self.rt} does not use pods, so the varlock secrets broker "
-                "is not started for this launch — the pod would have no route to it. Secrets are "
-                "resolved into the container env as before."
-            )
+        # The secrets broker (#437), exposed and token-gated, reached at the runtime's host-gateway
+        # name (#468). Started before anything is created, so a failed start leaves nothing behind.
+        self.broker = _broker_start_for(self.inst, self.pod, spec.project_path)
 
         # Create pod.
         if _rt_uses_pods(self.rt):
@@ -3728,11 +3843,7 @@ class ContainerBackend(ExecutionBackend):
             # default. Measured both ways on real podman — see the helper. Composed there as one
             # list so the two cannot be wired apart, and so it also owns the plain `--network`
             # passthrough (which cannot be passed twice). Empty unless a recipe pins a port.
-            # The secrets broker is started BEFORE `pod create`, because the pod's network args
-            # depend on whether there is one: without a broker the pod must not be handed a route
-            # to the host's loopback it has no use for.
-            self.broker = _broker_start_for(self.inst, self.pod, spec.project_path)
-            pod_cmd += _mcp_remote_pod_args(self.servers, net, broker=self.broker is not None)
+            pod_cmd += _mcp_remote_pod_args(self.servers, net)
             try:
                 _run(pod_cmd, capture_output=True)
             except BaseException:
@@ -3742,6 +3853,25 @@ class ContainerBackend(ExecutionBackend):
                 if self.broker is not None:
                     _broker_stop_for(self.inst)
                 raise
+
+        if self.broker is not None:
+            # Probe where the agent will run (inside the pod on podman). A launch whose container
+            # cannot reach the broker is refused: an agent holding placeholders behind a dead proxy
+            # is the half-wired state #388 exists to remove.
+            self.broker_gateway = _broker_gateway(
+                self.rt, self.harness_image, self.broker.port, self.pod,
+            )
+            if self.broker_gateway is None:
+                _pod_teardown(self.rt, self.inst, self.pod)
+                _err.print(
+                    f"[bold red]error:[/bold red] a {self.rt} container cannot reach the secrets "
+                    f"broker at {paths.broker_door(self.rt)}:{self.broker.port}.\n"
+                    "A host firewall is probably dropping container-to-host traffic (ufw does for "
+                    "docker0 by default; `sudo ufw allow in on docker0` opens it), or launch with "
+                    "[bold]--no-secrets[/bold] to skip the broker."
+                )
+                raise typer.Exit(1)
+            self._add_broker_env(spec, self.broker)
 
         # Socket-backed project services (beads-server) as REAL container env, not only an attach-shell
         # export: `_init_shell_prologue` reaches the interactive shell and nothing else, so a `podman
@@ -3819,6 +3949,10 @@ class ContainerBackend(ExecutionBackend):
             "-e", f"HATAGO_TRANSPORT="
                   f"{self.stk.hub_transport if emit.hub_is_needed(self.servers) else 'none'}",
             *self.member_mounts,
+            # The broker's CA, where the CA-path vars point (#438), and on docker the name its door
+            # answers to (#468). Both empty without a broker.
+            *_broker_cert_mount_args(self.broker),
+            *_broker_door_args(self.rt, self.broker),
             # Use harnessed-start (baked into base since hatago-consolidation) when present; fall back
             # to plain `sleep infinity` on older images so the launch degrades gracefully rather than
             # hard-failing on a missing binary. Once the base image is rebuilt, the entrypoint runs
@@ -3826,18 +3960,8 @@ class ContainerBackend(ExecutionBackend):
             self.harness_image, "bash", "-c",
             "exec /usr/local/bin/harnessed-start 2>/dev/null || exec sleep infinity",
         ]
-        try:
-            _run(harness_run, capture_output=True)
-        finally:
-            # Unlink the temp env-files as soon as podman has ingested them into the container's env —
-            # resolved secret values must not linger on disk (T-05-06). Always runs (success or failure).
-            # Every env-file is a generated temp (the user's own .env is copied, never handed to podman).
-            for f in self.secrets_temp_files:
-                try:
-                    f.unlink()
-                except OSError:
-                    pass
-            self.secrets_temp_files = []
+        # A failure here stops the broker via apply_isolation's guard around this whole phase.
+        _run(harness_run, capture_output=True)
 
 
 def _prune_unlaunchable_omp_blocks(harness: str) -> None:

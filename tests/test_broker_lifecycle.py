@@ -161,14 +161,17 @@ class TestStartRecordsJustEnoughToFindItAgain:
         assert argv[argv.index("--port") + 1] == str(PORT)
         assert "--cert-dir" in argv
 
-    def test_start_never_exposes_the_broker(self):
-        # N3. Topology B deleted --expose and the data-plane token. Reintroducing either would
-        # publish a secret-injecting proxy to the LAN and the tailnet.
+    def test_start_exposes_the_broker_behind_its_token(self):
+        # N3, reversed by #468. #437's loopback-only broker relied on pasta's --map-host-loopback,
+        # which the runner's pasta lacks, and docker has no pasta at all. So the broker binds
+        # 0.0.0.0, and varlock refuses every off-loopback client without the data-plane token
+        # (the 407 tests in test_broker_pod_live.py and test_broker_docker_live.py pin that). Still
+        # never --persist-ca: the CA private key stays in memory.
         runner = _Runner()
         _start(runner)
         argv = runner.spawned[0]
-        assert "--expose" not in argv
-        assert not any(a.startswith("--expose") for a in argv)
+        assert "--expose" in argv
+        assert not any(a.startswith("--expose=") for a in argv)
         assert "--persist-ca" not in argv
 
 

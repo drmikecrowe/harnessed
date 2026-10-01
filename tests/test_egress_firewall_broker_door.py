@@ -1,21 +1,20 @@
-"""`catalog/base/egress-firewall.sh` must open the loopback broker door — issue #436.
+"""`catalog/base/egress-firewall.sh` must open the broker's door, and only that — #436, #468.
 
-Epic #388 Phase 1 ruled Topology B: `varlock proxy start` binds `127.0.0.1` on the HOST only, and
-the pod is to reach it at `169.254.1.1` through the `pasta --map-host-loopback` mapping #437 adds. The
-firewall sets `OUTPUT` policy to DROP and whitelists from there, so without an ACCEPT for that one
-address the pod cannot reach the broker at all.
-
-The rule is not port-scoped, on purpose: the broker port is chosen at launch and never reaches this
-script. See the comment at the rule, and #437.
+#436 opened a fixed `169.254.1.1` for the pasta `--map-host-loopback` door #437 added. That pasta
+option does not exist on the pasta GitHub's runner ships, so #468 replaced the door on both
+runtimes: the broker is exposed and token-gated, the container reaches it at its runtime's
+host-gateway name, and the launcher's reachability probe returns the address that name resolved
+to. The launcher passes that address as `--broker=<ip>`, and the script installs it with
+`require`, as #436's fixed rule was: a door that did not open must fail the launch, not hang the
+agent later.
 
 These tests run the REAL script under `bash` with a stub `PATH`. Only the kernel-touching binaries
 at its boundary are replaced (`iptables`, `ip6tables`, `ip`, `getent`); every line of the script's
 own logic executes. The stubs record their argv, so the assertions are about the rules the script
 actually installs, not about the text it is written in.
 
-What this file CANNOT prove: no test in this repo runs `podman build` or `harnessed container-run`,
-so nothing here shows a pod reaching the host broker. The routability half of #436's acceptance
-belongs to #437, which adds the pasta flag.
+What this file CANNOT prove: that a container reaches the broker. tests/test_broker_pod_live.py and
+tests/test_broker_docker_live.py do, per runtime.
 """
 
 import os
@@ -23,9 +22,13 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
+
 FIREWALL = Path(__file__).resolve().parents[1] / "catalog" / "base" / "egress-firewall.sh"
 
-BROKER_DOOR = "169.254.1.1"
+# What the probe hands the launcher on docker's default bridge.
+GATEWAY = "172.17.0.1"
+RETIRED_DOOR = "169.254.1.1"
 
 # The stub `getent` resolves from this table, so every expected IP in an assertion is one the test
 # chose. Unlisted names fall back to a single documentation-range address.
@@ -119,60 +122,103 @@ def _run_firewall(tmp_path, *args, getent_map=None, env=None):
     return proc, ipt_log.read_text().splitlines(), ip6t_log.read_text().splitlines()
 
 
-class TestBrokerDoor:
-    """S1, S2, S5 — the one address the pod needs, installed the one way it works."""
+class TestTheProbedGateway:
+    """The address the launcher's probe found, passed as `--broker=<ip>`."""
 
-    def test_broker_door_is_accepted(self, tmp_path):
-        # S1. Without this rule the pod cannot open a socket to the broker under a DROP policy.
-        _proc, ipt, _ip6t = _run_firewall(tmp_path)
-        assert f"-A OUTPUT -d {BROKER_DOOR} -j ACCEPT" in ipt
+    def _run(self, tmp_path, **kw):
+        return _run_firewall(tmp_path, f"--broker={GATEWAY}", **kw)
 
-    def test_door_is_opened_after_the_flush(self, tmp_path):
-        # S2. What this proves: the script ISSUES `-F OUTPUT` before it issues the door rule.
-        # Why that ordering is the one worth pinning: in a real netns `-F OUTPUT` would discard a
-        # rule issued before it. The stubs are append-only argv recorders and hold no ruleset, so
-        # the consequence is the motivation for the assertion, not something asserted here.
-        # `-P OUTPUT DROP` sets the default verdict and flushes nothing, which is why the flush is
-        # the anchor. Mutant M5 is what makes the assertion non-vacuous.
-        _proc, ipt, _ip6t = _run_firewall(tmp_path)
-        door = ipt.index(f"-A OUTPUT -d {BROKER_DOOR} -j ACCEPT")
+    def test_a_failed_broker_rule_is_fatal(self, tmp_path):
+        # #429's property: an agent holding placeholders behind a blocked broker would hang at
+        # runtime, so the door is `require`d like the rules that make the firewall a firewall.
+        proc, _ipt, _ip6t = self._run(tmp_path, env={"IPT_FAIL_MATCH": GATEWAY})
+        assert proc.returncode != 0
+        assert "FATAL" in proc.stderr
+        assert "Egress active" not in proc.stdout
+
+    @pytest.mark.parametrize("value", [
+        "", "host.docker.internal", "10.0.0.0/8", "!10.0.0.1",
+        # Hex-only strings pass a charset test, and iptables -d resolves hostnames.
+        "cafe", "beef",
+        # Shape, not alphabet: these fail later inside `require` with a vaguer message.
+        "999.1.2.3", "1.2.3.4.5", "1.2.3",
+        # A leading zero reads as octal to inet_aton: 010.0.0.1 would open 8.0.0.1.
+        "010.0.0.1", "10.0.0.01",
+        # The rule is installed with iptables, which is IPv4 only.
+        "fd00::1",
+        # The any-address and the broadcast address are never a broker, and the first can act
+        # as an any-destination match in the rule.
+        "0.0.0.0",  # noqa: S104 - a value the script must refuse, not a bind
+        "255.255.255.255",
+    ])
+    def test_a_value_that_is_not_an_address_is_refused(self, tmp_path, value):
+        # A hostname, a CIDR or a `!` would change what the rule allows; an empty value would
+        # silently install none. All are launcher bugs, and each should stop the script here.
+        proc, ipt, _ip6t = _run_firewall(tmp_path, f"--broker={value}")
+        assert proc.returncode != 0
+        assert "--broker" in proc.stderr
+        assert "-F OUTPUT" not in ipt, "refused before touching the ruleset"
+
+    def test_a_second_broker_is_refused(self, tmp_path):
+        # One launch has one broker; two values mean the launcher is confused, and silently
+        # keeping the last would open whichever address happened to come second.
+        proc, ipt, _ip6t = _run_firewall(tmp_path, "--broker=10.0.0.1", "--broker=10.0.0.2")
+        assert proc.returncode != 0
+        assert "--broker" in proc.stderr
+        assert "-F OUTPUT" not in ipt
+
+    @pytest.mark.parametrize("value", ["172.17.0.1", "10.0.2.2", "192.168.1.254"])
+    def test_a_dotted_quad_is_accepted(self, tmp_path, value):
+        proc, ipt, _ip6t = _run_firewall(tmp_path, f"--broker={value}")
+        assert proc.returncode == 0, proc.stderr
+        assert f"-A OUTPUT -d {value} -j ACCEPT" in ipt
+
+    def test_the_flag_is_not_treated_as_a_domain(self, tmp_path):
+        proc, _ipt, _ip6t = self._run(tmp_path)
+        assert "--broker" not in proc.stdout + proc.stderr
+
+    def test_it_is_accepted(self, tmp_path):
+        # Without it the agent cannot open a socket to the broker under a DROP policy.
+        _proc, ipt, _ip6t = self._run(tmp_path)
+        assert f"-A OUTPUT -d {GATEWAY} -j ACCEPT" in ipt
+
+    def test_it_is_opened_after_the_flush(self, tmp_path):
+        # In a real netns `-F OUTPUT` discards a rule issued before it; the stubs hold no ruleset,
+        # so the ordering is what is asserted.
+        _proc, ipt, _ip6t = self._run(tmp_path)
+        door = ipt.index(f"-A OUTPUT -d {GATEWAY} -j ACCEPT")
         assert ipt.index("-F OUTPUT") < door
         assert ipt.index("-P OUTPUT DROP") < door
 
-    def test_no_ipv6_rule_for_the_broker(self, tmp_path):
-        # S5. 169.254.1.1 is IPv4 link-local. An ip6tables counterpart would be meaningless.
-        _proc, _ipt, ip6t = _run_firewall(tmp_path)
-        assert not [line for line in ip6t if BROKER_DOOR in line]
+    def test_no_ipv6_rule_for_it(self, tmp_path):
+        _proc, _ipt, ip6t = self._run(tmp_path)
+        assert not [line for line in ip6t if GATEWAY in line]
 
 
 class TestNoWidening:
-    """S4 — the point of Topology B is that nothing but the pod can reach the broker."""
+    """Nothing is opened for the broker that the launcher did not pass."""
 
-    def test_only_the_two_known_link_local_addresses_are_accepted(self, tmp_path):
-        # The broker door plus podman's own host-gateway. Nothing else in 169.254.0.0/16.
+    def test_the_retired_pasta_door_is_gone(self, tmp_path):
+        # #468: the fixed 169.254.1.1 rule served a pasta option the runner's pasta lacks.
+        _proc, ipt, _ip6t = _run_firewall(tmp_path)
+        assert not [line for line in ipt if RETIRED_DOOR in line]
+
+    def test_only_podmans_own_link_local_gateway_is_accepted(self, tmp_path):
         _proc, ipt, _ip6t = _run_firewall(tmp_path)
         seen = set()
         for line in ipt:
             seen.update(re.findall(r"169\.254\.[0-9]+\.[0-9]+", line))
-        assert seen == {BROKER_DOOR, "169.254.1.2"}
+        assert seen == {"169.254.1.2"}
 
     def test_no_link_local_cidr_is_ever_accepted(self, tmp_path):
-        # A /16 here would hand the pod the whole link-local range, which is the opposite of
-        # what #436 asks for. Asserted on argv, so it also catches a CIDR arriving via a lookup.
+        # A /16 here would hand the pod the whole link-local range. Asserted on argv, so it also
+        # catches a CIDR arriving via a lookup.
         _proc, ipt, _ip6t = _run_firewall(tmp_path)
         assert not [line for line in ipt if re.search(r"169\.254\.[0-9.]+/[0-9]+", line)]
 
 
 class TestFailsLoudly:
-    """S3 and N1 — the #429 property: a rule that did not install must not report success."""
-
-    def test_a_failed_broker_rule_is_fatal(self, tmp_path):
-        # #429: for most of this project's life every iptables call failed and the script still
-        # printed "Egress active" and exited 0. The broker door must not reintroduce that silence.
-        proc, _ipt, _ip6t = _run_firewall(tmp_path, env={"IPT_FAIL_MATCH": BROKER_DOOR})
-        assert proc.returncode != 0
-        assert "FATAL" in proc.stderr
-        assert "Egress active" not in proc.stdout
+    """N1 — the #429 property: a firewall that did not take must not report success."""
 
     def test_a_policy_that_is_not_drop_is_still_fatal(self, tmp_path):
         # N1 regression guard: the end-state verification still gates the success message.

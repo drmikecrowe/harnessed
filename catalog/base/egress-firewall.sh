@@ -2,8 +2,9 @@
 # Egress firewall: whitelist permitted outbound destinations, block everything else.
 # Closes the primary exfiltration vector identified in agentic AI security research.
 #
-# Usage: egress-firewall [extra-domain ...]
+# Usage: egress-firewall [--broker=<ip>] [extra-domain ...]
 # Extra domains (e.g. Z.AI endpoint host) are appended to the whitelist.
+# --broker=<ip> is the secrets broker's door, already probed by the launcher (#468).
 # Re-applied at each container session start (iptables rules are in-memory).
 
 set -uo pipefail
@@ -49,8 +50,39 @@ WHITELIST=(
 )
 
 # Append any extra domains passed as arguments (e.g. Z.AI API host)
+BROKER_GW=""
 for arg in "$@"; do
-    [ -n "$arg" ] && WHITELIST+=("$arg")
+    case "$arg" in
+        --broker=*)
+            # One launch has one broker. A second value is a launcher bug, and keeping the last
+            # would open whichever address happened to come second.
+            if [ -n "$BROKER_GW" ]; then
+                echo "[firewall] FATAL: --broker given more than once" >&2
+                exit 1
+            fi
+            BROKER_GW="${arg#--broker=}"
+            # A dotted-quad IPv4 address and nothing else. A hostname (even a hex-only one like
+            # `cafe`, which iptables -d would resolve), a CIDR or `!` would change what the rule
+            # allows; an empty value would install none; IPv6 cannot go into this iptables rule.
+            # The launcher's probe asks for IPv4 only (`getent ahostsv4`).
+            valid=0
+            if [[ "$BROKER_GW" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
+                valid=1
+                for octet in "${BASH_REMATCH[@]:1}"; do
+                    # A leading zero reads as octal to inet_aton: 010.0.0.1 would open 8.0.0.1.
+                    [[ "$octet" =~ ^0[0-9] ]] && valid=0
+                    [ "$((10#$octet))" -le 255 ] || valid=0
+                done
+                # Never a broker: the any-address (which can act as an any-destination match in
+                # this rule, opening egress wide) and the broadcast address.
+                case "$BROKER_GW" in 0.0.0.0 | 255.255.255.255) valid=0 ;; esac
+            fi
+            if [ "$valid" -ne 1 ]; then
+                echo "[firewall] FATAL: --broker must be an IPv4 address, got '$BROKER_GW'" >&2
+                exit 1
+            fi ;;
+        *) [ -n "$arg" ] && WHITELIST+=("$arg") ;;
+    esac
 done
 
 # Flush existing OUTPUT rules and set default DROP policy. These four are the firewall: if any
@@ -68,14 +100,10 @@ require iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 require iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
 require iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
 
-# The varlock broker's door — #436, epic #388 Topology B. The broker binds 127.0.0.1 on the host;
-# the pod reaches it only through the pasta host-loopback mapping the launcher sets up (#437).
-# `require`d rather than best-effort like the two gateway rules below, because this address is a
-# constant: a failed call here is a broken firewall, not a missing lookup (#429).
-# Deliberately NOT port-scoped: the broker port is chosen at launch and is never passed to this
-# script, so `-p tcp --dport <port>` cannot be written here. Narrowing it needs that plumbing and
-# belongs with #437. Do not widen the ADDRESS to a link-local CIDR — see #436.
-require iptables -A OUTPUT -d 169.254.1.1 -j ACCEPT
+# The varlock broker's door (#468). The launcher probes it from where the agent runs and passes the
+# address it resolved to as --broker=<ip>. `require`d, not best-effort like the domain loop: an agent
+# holding placeholders behind a blocked broker would hang at runtime instead of failing here (#429).
+[ -n "$BROKER_GW" ] && require iptables -A OUTPUT -d "$BROKER_GW" -j ACCEPT
 
 # Allow access to the host gateway (for connecting to local services on the host). Rootless podman
 # has TWO relevant gateways: the default-route gateway (HOST_GW) and the podman host-gateway
