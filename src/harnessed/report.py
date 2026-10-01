@@ -16,7 +16,7 @@ import json
 from rich.console import Console
 from rich.markdown import Markdown
 
-from .capability import MCP, TEST, CapabilityReport, CapabilityResult
+from .capability import MCP, TEST, CapabilityReport, CapabilityResult, SecretsSection
 
 
 def _status_cell(result: CapabilityResult) -> str:
@@ -28,6 +28,32 @@ def _status_cell(result: CapabilityResult) -> str:
         return "✓ connected" if result.kind == MCP else "✓ present"
     reason = result.detail or "missing"
     return f"✗ missing ({reason})"
+
+
+def _render_secrets(sec: SecretsSection) -> str:
+    """Render the secrets proxy section — names and modes only, never values (T-02-07)."""
+    lines = ["", "### Secrets", ""]
+    if not sec.has_schema:
+        lines.append("no proxy schema found")
+        return "\n".join(lines)
+    if sec.parse_failed:
+        lines.append(
+            "**WARNING:** `varlock proxy rules` output could not be parsed — "
+            "the proxy mode of each secret is unknown. "
+            "Run `varlock proxy rules` by hand to diagnose."
+        )
+        lines.append(f"broker: {sec.broker_status}")
+        return "\n".join(lines)
+    items = sec.items or {}
+    if items:
+        lines.append("| secret | mode |")
+        lines.append("|--------|------|")
+        for name, mode in sorted(items.items()):
+            lines.append(f"| {name} | {mode} |")
+    else:
+        lines.append("_(no secrets declared in schema)_")
+    lines.append(f"\nbroker: {sec.broker_status}")
+    return "\n".join(lines)
 
 
 def render_markdown(report: CapabilityReport) -> str:
@@ -46,6 +72,8 @@ def render_markdown(report: CapabilityReport) -> str:
     # (`capability.MCP_MISS_REMEDIATION`); quoting the log itself would put child-process output —
     # which for MCP servers means credentials from the environment — into a report that `--json`
     # feeds to a public CI log. T-02-07; see the note on `capability._HATAGO_LOG_PATH`.
+    if report.secrets is not None:
+        lines.append(_render_secrets(report.secrets))
     return "\n".join(lines)
 
 

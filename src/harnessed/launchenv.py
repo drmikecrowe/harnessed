@@ -89,6 +89,22 @@ _SECRET_LINE_RE = re.compile(r"^\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s{2,}(?P<mod
 #                              already being made, more loudly, by the resolution path.
 _PROXY_ANNOTATION_RE = re.compile(r"@proxy(?:Config)?\s*[(=]")
 
+# Allowed top-level field names from `varlock proxy status --format json`.
+# `endpointToken` and any key that carries an env-var mapping are EXCLUDED — T-02-07.
+_BROKER_STATUS_ALLOWLIST: frozenset[str] = frozenset({
+    "id",
+    "alias",
+    "session",
+    "status",
+    "endpoint",
+    "port",
+    "schemaCount",
+    "connected",
+    "created",
+    "uptime",
+    "pid",
+})
+
 
 def _varlock_cache_clear() -> None:
     """Drop the `_varlock_resolve` memo. For tests that resolve the same dir across differing state."""
@@ -492,6 +508,62 @@ def proxy_schema_dirs(project_path: Path | None = None) -> list[Path]:
         if (project_path / ".env.schema").is_file() and _schema_declares_proxy(project_path):
             dirs.append(project_path)
     return dirs
+
+
+def _varlock_broker_health() -> str:
+    """One-line broker health from `varlock proxy status --format json`, allowlisted fields only.
+
+    Never emits `endpointToken` or session-env values — T-02-07. Built from `_BROKER_STATUS_ALLOWLIST`;
+    any key not in the list is dropped before the summary is formed.
+
+    Returns "no broker running" on non-zero exit, empty output, or no sessions in the JSON.
+    Returns "varlock not on PATH" when the binary is absent. Never raises.
+
+    FORCE_COLOR=0 (#462): varlock's colour detection (ansis) never checks for a pipe first.
+    """
+    if not shutil.which("varlock"):
+        return "varlock not on PATH"
+    try:
+        proc = subprocess.run(
+            ["varlock", "proxy", "status", "--format", "json"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env={**os.environ, "FORCE_COLOR": "0"},
+        )
+    except (subprocess.SubprocessError, OSError):
+        return "varlock proxy status failed"
+
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return "no broker running"
+
+    try:
+        raw = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return "no broker running"
+
+    sessions = raw if isinstance(raw, list) else [raw]
+    # Filter to the allowlist ONLY — endpointToken and env never reach the caller.
+    safe_sessions = [
+        {k: v for k, v in s.items() if k in _BROKER_STATUS_ALLOWLIST}
+        for s in sessions
+        if isinstance(s, dict)
+    ]
+    if not safe_sessions:
+        return "no broker running"
+
+    parts = []
+    for s in safe_sessions:
+        name = s.get("alias") or s.get("session") or s.get("id") or "unknown"
+        status = s.get("status", "")
+        endpoint = s.get("endpoint", "")
+        info = str(name)
+        if status:
+            info += f"  status={status}"
+        if endpoint:
+            info += f"  endpoint={endpoint}"
+        parts.append(info)
+    return "; ".join(parts)
 
 
 def _resolve_launch_secrets(

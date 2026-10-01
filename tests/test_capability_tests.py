@@ -8,7 +8,9 @@ manual acceptance — not here.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from unittest.mock import patch
 
 from harnessed import report
 from harnessed.capability import (
@@ -16,6 +18,8 @@ from harnessed.capability import (
     CapabilityReport,
     CapabilityResult,
     RecipeTest,
+    SecretsSection,
+    build_secrets_section,
     discover_recipe_tests,
     fold_test_result,
 )
@@ -142,3 +146,172 @@ def test_render_shows_test_pass_and_fail_rows():
     md = report.render_markdown(rep)
     assert "| demo/t.sh | test | ✓ passed |" in md
     assert "✗ failed (exit 1: boom)" in md
+
+
+# --- SecretsSection — pure unit tests ------------------------------------------------------------
+
+
+class TestSecretsSection:
+    """Unit tests for SecretsSection, build_secrets_section, and _render_secrets (no podman)."""
+
+    def test_no_schema_returns_empty_section(self, tmp_path):
+        """When proxy_schema_dirs finds nothing, the section says so and items is empty."""
+        with patch("harnessed.capability.proxy_schema_dirs", return_value=[]):
+            sec = build_secrets_section(tmp_path)
+        assert sec.has_schema is False
+        assert sec.items == {}
+        assert sec.broker_status == "no proxy schema found"
+        assert sec.parse_failed is False
+
+    def test_parse_failed_when_modes_returns_none(self, tmp_path):
+        """When _varlock_proxy_modes returns None, parse_failed is True and items is None."""
+        fake_dir = tmp_path / "schema"
+        fake_dir.mkdir()
+        with (
+            patch("harnessed.capability.proxy_schema_dirs", return_value=[fake_dir]),
+            patch("harnessed.capability._varlock_proxy_modes", return_value=None),
+            patch("harnessed.capability._varlock_broker_health", return_value="no broker running"),
+        ):
+            sec = build_secrets_section(tmp_path)
+        assert sec.parse_failed is True
+        assert sec.items is None
+        assert sec.has_schema is True
+
+    def test_items_aggregated_from_modes(self, tmp_path):
+        """Items from _varlock_proxy_modes are collected correctly."""
+        fake_dir = tmp_path / "schema"
+        fake_dir.mkdir()
+        modes = {"FOO": "proxied", "BAR": "placeholder"}
+        with (
+            patch("harnessed.capability.proxy_schema_dirs", return_value=[fake_dir]),
+            patch("harnessed.capability._varlock_proxy_modes", return_value=modes),
+            patch("harnessed.capability._varlock_broker_health", return_value="no broker running"),
+        ):
+            sec = build_secrets_section(tmp_path)
+        assert sec.items == modes
+        assert sec.parse_failed is False
+
+    def test_none_from_modes_stops_aggregation(self, tmp_path):
+        """First None from _varlock_proxy_modes marks parse_failed; second dir is never read."""
+        dir_a = tmp_path / "a"
+        dir_b = tmp_path / "b"
+        dir_a.mkdir()
+        dir_b.mkdir()
+        call_count = 0
+
+        def modes_side_effect(d):
+            nonlocal call_count
+            call_count += 1
+            if d == dir_a:
+                return None
+            return {"BAR": "proxied"}
+
+        with (
+            patch("harnessed.capability.proxy_schema_dirs", return_value=[dir_a, dir_b]),
+            patch("harnessed.capability._varlock_proxy_modes", side_effect=modes_side_effect),
+            patch("harnessed.capability._varlock_broker_health", return_value="no broker running"),
+        ):
+            sec = build_secrets_section(tmp_path)
+        assert sec.parse_failed is True
+        assert call_count == 1  # stopped after first None
+
+    def test_broker_failure_does_not_affect_parse(self, tmp_path):
+        """Broker not running is reported in broker_status; the items table is unaffected."""
+        fake_dir = tmp_path / "schema"
+        fake_dir.mkdir()
+        modes = {"KEY": "proxied"}
+        with (
+            patch("harnessed.capability.proxy_schema_dirs", return_value=[fake_dir]),
+            patch("harnessed.capability._varlock_proxy_modes", return_value=modes),
+            patch("harnessed.capability._varlock_broker_health", return_value="no broker running"),
+        ):
+            sec = build_secrets_section(tmp_path)
+        assert sec.items == modes
+        assert "no broker running" in sec.broker_status
+
+    def test_to_dict_never_contains_values(self, tmp_path):
+        """SecretsSection.to_dict only carries names + modes; no secret values."""
+        sec = SecretsSection(
+            schema_dirs=[tmp_path],
+            items={"MY_SECRET": "proxied", "OTHER": "passthrough"},
+            broker_status="no broker running",
+        )
+        d = sec.to_dict()
+        assert set(d.keys()) == {"schema_dirs", "items", "broker_status", "parse_failed"}
+        # items maps names to modes only
+        assert d["items"] == {"MY_SECRET": "proxied", "OTHER": "passthrough"}
+        assert d["parse_failed"] is False
+
+    def test_capability_report_to_dict_includes_secrets(self):
+        """CapabilityReport.to_dict includes secrets when present."""
+        sec = SecretsSection(schema_dirs=[], items={}, broker_status="no proxy schema found")
+        rep = CapabilityReport(stack="mystack", results=[], secrets=sec)
+        d = rep.to_dict()
+        assert "secrets" in d
+        assert d["secrets"]["broker_status"] == "no proxy schema found"
+
+    def test_capability_report_to_dict_omits_secrets_when_none(self):
+        """CapabilityReport.to_dict omits the secrets key when secrets is None."""
+        rep = CapabilityReport(stack="mystack", results=[])
+        d = rep.to_dict()
+        assert "secrets" not in d
+
+    def test_render_no_schema(self):
+        """No proxy schema → section says so, no error."""
+        sec = SecretsSection(schema_dirs=[], items={}, broker_status="no proxy schema found")
+        rep = CapabilityReport(stack="s", results=[], secrets=sec)
+        md = report.render_markdown(rep)
+        assert "### Secrets" in md
+        assert "no proxy schema found" in md
+
+    def test_render_parse_failed(self, tmp_path):
+        """Parse failure → bold warning in the secrets section."""
+        sec = SecretsSection(schema_dirs=[tmp_path], items=None, broker_status="no broker running")
+        rep = CapabilityReport(stack="s", results=[], secrets=sec)
+        md = report.render_markdown(rep)
+        assert "### Secrets" in md
+        assert "WARNING" in md
+        # Must NOT appear as "no items"
+        assert "no items" not in md
+
+    def test_render_items_listed(self, tmp_path):
+        """Items appear as NAME | mode table rows."""
+        sec = SecretsSection(
+            schema_dirs=[tmp_path],
+            items={"FOO": "proxied", "BAR": "placeholder"},
+            broker_status="no broker running",
+        )
+        rep = CapabilityReport(stack="s", results=[], secrets=sec)
+        md = report.render_markdown(rep)
+        assert "| FOO | proxied |" in md
+        assert "| BAR | placeholder |" in md
+        # No secret values
+        assert "proxied-value" not in md
+
+    def test_render_no_secrets_section_when_none(self):
+        """When secrets is None, no '### Secrets' section is rendered."""
+        rep = CapabilityReport(stack="s", results=[])
+        md = report.render_markdown(rep)
+        assert "### Secrets" not in md
+
+    def test_broker_status_never_exposes_token(self):
+        """AC-7: a status JSON with endpointToken and env values never reaches the output."""
+        # Simulate what varlock proxy status --format json might return
+        raw_status = json.dumps([{
+            "id": "sess-1",
+            "alias": "my-session",
+            "status": "running",
+            "endpoint": "127.0.0.1:4001",
+            "endpointToken": "supersecret-token-abc123",
+            "env": {"REAL_API_KEY": "sk-real-value"},
+            "schemaCount": 1,
+        }])
+        proc_mock = type("P", (), {"returncode": 0, "stdout": raw_status})()
+        with patch("harnessed.launchenv.subprocess.run", return_value=proc_mock):
+            from harnessed.launchenv import _varlock_broker_health
+            result = _varlock_broker_health()
+        assert "supersecret-token-abc123" not in result
+        assert "sk-real-value" not in result
+        assert "REAL_API_KEY" not in result
+        # Does include safe fields
+        assert "my-session" in result or "running" in result or "127.0.0.1" in result

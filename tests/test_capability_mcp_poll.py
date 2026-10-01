@@ -348,7 +348,7 @@ class TestTheTestVerbPublishesNothingFromTheContainer:
         assert report.ok is False
         detail = report.results[0].detail
         assert "hatago.log" in detail and "--keep" in detail
-        assert set(report.to_dict()) == {"stack", "ok", "results"}
+        assert set(report.to_dict()) == {"stack", "ok", "results", "secrets"}
 
     def test_a_green_run_says_nothing_about_the_log(self, monkeypatch):
         report = self._report(monkeypatch, declared={"time"}, connected={"time"})
