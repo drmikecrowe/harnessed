@@ -337,6 +337,8 @@ class TestTheTestVerbPublishesNothingFromTheContainer:
             lambda *a, **k: capability.LiveCapabilities(mcp={n: "connected" for n in connected}),
         )
         monkeypatch.setattr(capability, "teardown", lambda *a, **k: None)
+        # Keep the host's ~/.config/harnessed/.env.schema and varlock out of a unit test (#440).
+        monkeypatch.setattr(capability, "proxy_schema_dirs", lambda *a, **k: [])
         # If anything tried to shell into the container for output, this would fire.
         monkeypatch.setattr(capability, "_exec", lambda *a, **k: pytest.fail(
             "run_capability_test read from the container after introspection — T-02-07"
