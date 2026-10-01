@@ -93,16 +93,10 @@ _PROXY_ANNOTATION_RE = re.compile(r"@proxy(?:Config)?\s*[(=]")
 # `endpointToken` and any key that carries an env-var mapping are EXCLUDED — T-02-07.
 _BROKER_STATUS_ALLOWLIST: frozenset[str] = frozenset({
     "id",
-    "alias",
-    "session",
-    "status",
-    "endpoint",
-    "port",
-    "schemaCount",
-    "connected",
-    "created",
-    "uptime",
-    "pid",
+    "ownerPid",
+    "startedAt",
+    "schemaFingerprint",
+    "entryPaths",
 })
 
 
@@ -554,14 +548,17 @@ def _varlock_broker_health() -> str:
 
     parts = []
     for s in safe_sessions:
-        name = s.get("alias") or s.get("session") or s.get("id") or "unknown"
-        status = s.get("status", "")
-        endpoint = s.get("endpoint", "")
-        info = str(name)
-        if status:
-            info += f"  status={status}"
-        if endpoint:
-            info += f"  endpoint={endpoint}"
+        session_id = s.get("id") or "unknown"
+        info = f"id={session_id}"
+        owner_pid = s.get("ownerPid")
+        if owner_pid is not None:
+            info += f"  ownerPid={owner_pid}"
+        started_at = s.get("startedAt", "")
+        if started_at:
+            info += f"  startedAt={started_at}"
+        fingerprint = s.get("schemaFingerprint", "")
+        if fingerprint:
+            info += f"  schemaFingerprint={fingerprint}"
         parts.append(info)
     return "; ".join(parts)
 

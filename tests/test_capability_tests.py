@@ -295,23 +295,42 @@ class TestSecretsSection:
         assert "### Secrets" not in md
 
     def test_broker_status_never_exposes_token(self):
-        """AC-7: a status JSON with endpointToken and env values never reaches the output."""
-        # Simulate what varlock proxy status --format json might return
+        """AC-7: endpointToken, placeholderOverrides, and env values never reach the output.
+
+        Status JSON is shaped like the real `varlock proxy status --format json` row
+        (mirrors _status_entry in test_broker_lifecycle.py).
+        """
+        _TOKEN_SENTINEL = "4f2a9e45-f135-4d47-8284-4f39dcf94551"  # noqa: S105
+        _SECRET_SENTINEL = "sk-ant-oat01-THIS-IS-A-RESOLVED-SECRET-VALUE"  # noqa: S105
+        _PLACEHOLDER = "vlk_placeholder_PROBE_TOKEN_7db6e07f"
         raw_status = json.dumps([{
-            "id": "sess-1",
-            "alias": "my-session",
-            "status": "running",
-            "endpoint": "127.0.0.1:4001",
-            "endpointToken": "supersecret-token-abc123",
-            "env": {"REAL_API_KEY": "sk-real-value"},
-            "schemaCount": 1,
+            "id": "i0oku",
+            "uuid": "8d91df1e-d139-45e4-b751-965f038d0da2",
+            "ownerPid": 4242,
+            "startedAt": "2026-08-29T10:57:21.059Z",
+            "endpointToken": _TOKEN_SENTINEL,
+            "schemaFingerprint": "ba1a7bdb",
+            "placeholderOverrides": {"PROBE_TOKEN": _PLACEHOLDER},
+            "env": {
+                "HTTPS_PROXY": "http://127.0.0.1:39443",
+                "HTTP_PROXY": "http://127.0.0.1:39443",
+                "SSL_CERT_FILE": "/run/harnessed/certs/inst/combined-ca.pem",
+                "RESOLVED": _SECRET_SENTINEL,
+            },
+            "entryPaths": ["/proj"],
         }])
         proc_mock = type("P", (), {"returncode": 0, "stdout": raw_status})()
         with patch("harnessed.launchenv.subprocess.run", return_value=proc_mock):
             from harnessed.launchenv import _varlock_broker_health
             result = _varlock_broker_health()
-        assert "supersecret-token-abc123" not in result
-        assert "sk-real-value" not in result
-        assert "REAL_API_KEY" not in result
-        # Does include safe fields
-        assert "my-session" in result or "running" in result or "127.0.0.1" in result
+        # Sentinels must never reach output — T-02-07
+        assert _TOKEN_SENTINEL not in result
+        assert _SECRET_SENTINEL not in result
+        assert _PLACEHOLDER not in result
+        assert "HTTPS_PROXY" not in result
+        assert "HTTP_PROXY" not in result
+        assert "SSL_CERT_FILE" not in result
+        assert "RESOLVED" not in result
+        # Safe fields DO appear
+        assert "i0oku" in result
+        assert "ba1a7bdb" in result
