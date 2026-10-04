@@ -1024,6 +1024,34 @@ def sync_session(
         return False
 
 
+def row_title(
+    verb: str, stack: str, harness: str, project_path: Path,
+    *, group: str | None = None, title: str | None = None, no_strict_mcp: bool = False,
+) -> str | None:
+    """The title this launch's aoe row has NOW, for naming the agent session (#546). Never raises.
+
+    The row's stored title wins over `title`: the wrapper bakes `--aoe-title` in, and an aoe rename
+    does not update it (#544), so the stored title is the only current one. With no row yet, the
+    title `sync_session` registers. None when aoe is not in use, so a launch without a row is not
+    named, as before.
+    """
+    try:
+        if stack in _SKIP_STACKS and group is None and title is None:
+            return None
+        exe = _bin()
+        if exe is None:
+            return None
+        project_path = Path(project_path).resolve()
+        command = replay_command(verb, stack, harness, project_path)
+        row = _find_row(_sessions(exe), command, project_path, group=group, title=title)
+        stored = row.get("title") if row is not None else None
+        if isinstance(stored, str) and stored.strip():
+            return stored
+        return title_for(verb, stack, harness, project_path, title=title, no_strict_mcp=no_strict_mcp)
+    except Exception:  # noqa: BLE001 — an optional dashboard must never break a launch.
+        return None
+
+
 def _settle(
     row: dict, command: str, project_path: Path, info: dict | None,
     on_drift: Callable[[str, bool], None] | None,
