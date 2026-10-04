@@ -9,6 +9,7 @@ it cannot be escaped by a hostile flag value, it cannot clobber a file we did no
 kill a launch by failing, and it cannot grow the shared `info/exclude` without bound.
 """
 
+import errno
 import os
 import shlex
 import stat
@@ -332,7 +333,13 @@ def test_a_stack_name_never_escapes_the_project(tmp_path_factory, stack):
     proj = tmp_path_factory.mktemp("p")
     first = stack.split("/")[0]
     if first:
-        (proj / f"claude-{first}").mkdir(exist_ok=True)
+        try:
+            (proj / f"claude-{first}").mkdir(exist_ok=True)
+        except OSError as exc:
+            # Over the 255-byte filename limit: no directory can exist there, so no escape can go
+            # through it, and `write` must still refuse. Hypothesis found this one.
+            if exc.errno != errno.ENAMETOOLONG:
+                raise
 
     written = launchscript.write("host-run", stack, "claude", proj)
     if written is not None:
