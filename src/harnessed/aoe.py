@@ -1055,7 +1055,9 @@ def _settle(
 
     failed = _rewrite_row(str(sid), update) if sid else "aoe reported the row without an id"
     if repair:
-        _report(on_drift, _repair_message(row, command, failed), repairing=failed is None)
+        _report(
+            on_drift, _repair_message(row, command, failed, marking=mark), repairing=failed is None
+        )
     elif failed is not None:
         _report(
             on_drift,
@@ -1065,8 +1067,12 @@ def _settle(
     return failed is None
 
 
-def _repair_message(row: dict, ours: str, failed: str | None) -> str:
-    """One report for an in-place command repair, whichever way it went. Never silent."""
+def _repair_message(row: dict, ours: str, failed: str | None, *, marking: bool = False) -> str:
+    """One report for an in-place command repair, whichever way it went. Never silent.
+
+    `marking` names the managed mark written in the same edit. It is the bigger change of the two,
+    since `aoe remove --delete-worktree` can then delete the folder, so it is never left unsaid.
+    """
     sid = row.get("id") or "?"
     lines = [
         f"aoe row {row.get('title') or '?'} ({sid}) runs this launch's script from a stale location:",
@@ -1075,11 +1081,17 @@ def _repair_message(row: dict, ours: str, failed: str | None) -> str:
     ]
     if failed is None:
         lines.append("  rewrote its command in place; its id, title and resume target are unchanged.")
+        if marking:
+            lines.append(
+                "  marked its worktree AOE-managed: `aoe remove --delete-worktree` now deletes it."
+            )
     else:
         lines += [
             f"  NOT repaired: {failed}",
             "  The row cannot start until its command is fixed. aoe has no command to set it.",
         ]
+        if marking:
+            lines.append("  Its worktree was also NOT marked AOE-managed.")
     return "\n".join(lines)
 
 

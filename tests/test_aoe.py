@@ -1420,6 +1420,22 @@ class TestCommandDrift:
         assert rec.added() == []
         assert len(seen) == 1 and seen[0][1] is False and "aoe held the lock" in seen[0][0]
 
+    @pytest.mark.parametrize("failed", [None, "aoe held the lock"])
+    def test_a_repair_that_also_marks_says_both(self, monkeypatch, proj, failed):
+        # #545 review: one write can repair the command AND mark the worktree managed. The mark is
+        # the bigger change (`aoe remove --delete-worktree` can now delete the folder), so the
+        # report must name it whichever way the write went.
+        self._rec(monkeypatch, proj, "/gone/claude-serena-host --")
+        monkeypatch.setattr(aoe, "_worktree_info", lambda p: {"managed_by_aoe": True})
+        monkeypatch.setattr(aoe, "_rewrite_row", lambda sid, update: failed)
+        seen: list[str] = []
+        self._sync(proj, managed_worktree=True, on_drift=lambda m, r: seen.append(m))
+        assert len(seen) == 1
+        if failed is None:
+            assert "marked its worktree AOE-managed" in seen[0]
+        else:
+            assert "NOT marked AOE-managed" in seen[0] and failed in seen[0]
+
     def test_a_renamed_row_is_found_by_script_and_folder(self, monkeypatch, proj):
         # #544 D2. The wrapper still passes the title the row had before an aoe rename.
         rec = self._rec(monkeypatch, proj, "./claude-serena-host --", title="4-GH-97-jira-split")
