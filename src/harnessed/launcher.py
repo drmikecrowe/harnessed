@@ -2668,6 +2668,7 @@ def _persist_this_launch(
 def _aoe_register(
     verb: str, stack: str, harness: str, project_path: Path, *, only: bool,
     group: Optional[str] = None, title: Optional[str] = None, no_strict_mcp: bool = False,
+    managed_worktree: bool = False,
 ) -> None:
     """Mirror this launch into Agent of Empires, and stop here under `--create-aoe-only`.
 
@@ -2692,6 +2693,7 @@ def _aoe_register(
     registered = aoe.sync_session(
         verb, stack, harness, project_path, background=not only,
         group=group, title=title, no_strict_mcp=no_strict_mcp, on_drift=_on_drift,
+        managed_worktree=managed_worktree,
     )
     if not only:
         return
@@ -2957,7 +2959,7 @@ def _launch_host(
     extra: Optional[list[str]] = None, create_aoe_only: bool = False,
     no_strict_mcp: bool = False,
     aoe_group: Optional[str] = None, aoe_title: Optional[str] = None,
-    exec_mode: bool = False, fresh: bool = False,
+    exec_mode: bool = False, fresh: bool = False, aoe_managed_worktree: bool = False,
 ) -> None:
     """Host-native launch: no podman. Materialize the assembled profile into a host CLAUDE_CONFIG_DIR,
     start any host daemons (beads-server, hatago MCP hub), and exec the harness on the host so it sees
@@ -3042,6 +3044,7 @@ def _launch_host(
         _aoe_register(
             "host-run", stack, harness, project_path, only=create_aoe_only,
             group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
+            managed_worktree=aoe_managed_worktree,
         )
 
     # Launch-time secrets — the host half of the container path's `--env-file` (see
@@ -3342,6 +3345,12 @@ _AOE_TITLE_OPT = typer.Option(
          "'<folder> [<harness>/<backend>] <stack>'. With --aoe-group, also identifies the row to "
          "reuse — the pair is how an existing or hand-written row is adopted rather than duplicated.",
 )
+_AOE_MANAGED_WORKTREE_OPT = typer.Option(
+    False, "--aoe-managed-worktree",
+    help="Mark this linked worktree's Agent of Empires row as AOE-managed, as `aoe add -w` does: "
+         "an aoe rename then moves the folder, and `aoe remove --delete-worktree` deletes it. "
+         "Waits for the row to be written.",
+)
 
 
 @app.command("host-run")
@@ -3365,6 +3374,7 @@ def host_run(
     no_strict_mcp_config: bool = _NO_STRICT_MCP_OPT,
     aoe_group: Optional[str] = _AOE_GROUP_OPT,
     aoe_title: Optional[str] = _AOE_TITLE_OPT,
+    aoe_managed_worktree: bool = _AOE_MANAGED_WORKTREE_OPT,
     create_aoe_only: bool = typer.Option(
         False, "--create-aoe-only",
         help="Register the Agent of Empires session for this stack and exit without launching. "
@@ -3412,7 +3422,7 @@ def host_run(
         _launch_host(
             stack_name, harness, path, rm=rm, extra=_passthrough,
             create_aoe_only=create_aoe_only, no_strict_mcp=no_strict_mcp_config,
-            aoe_group=aoe_group, aoe_title=aoe_title,
+            aoe_group=aoe_group, aoe_title=aoe_title, aoe_managed_worktree=aoe_managed_worktree,
             exec_mode=ctx.info_name == "host-exec", fresh=fresh,
         )
     except typer.Exit as exc:
@@ -4046,6 +4056,7 @@ def container_run(
     no_strict_mcp_config: bool = _NO_STRICT_MCP_OPT,
     aoe_group: Optional[str] = _AOE_GROUP_OPT,
     aoe_title: Optional[str] = _AOE_TITLE_OPT,
+    aoe_managed_worktree: bool = _AOE_MANAGED_WORKTREE_OPT,
     create_aoe_only: bool = typer.Option(
         False, "--create-aoe-only",
         help="Register the Agent of Empires session for this stack and exit without launching. "
@@ -4183,6 +4194,7 @@ def container_run(
         _aoe_register(
             "container-run", stack, harness, project_path, only=create_aoe_only,
             group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp_config,
+            managed_worktree=aoe_managed_worktree,
         )
 
     try:

@@ -38,6 +38,10 @@ SENTINEL = "# harnessed:launcher v1"
 _SHEBANG = "#!/bin/sh"
 _TYPED = "# as typed: "
 
+# The script finds its own folder, so a moved folder still launches itself (#544). `CDPATH=` keeps
+# a user's CDPATH from redirecting a relative `$0`.
+_CD_HERE = 'CDPATH= cd -- "$(dirname -- "$0")" || exit 1'
+
 # The provenance comment is the one place user argv reaches a file, and argv is bounded only by
 # ARG_MAX (~2MB on Linux). A megabyte-long comment line is not a security problem — it is display
 # only and never executed — but it is an unbounded write into somebody's repo, so it is capped and
@@ -228,11 +232,14 @@ def _sanitize(text: str) -> str:
 
 
 def _body(
-    verb: str, stack: str, harness: str, project_path: Path,
+    verb: str, stack: str, harness: str,
     *, group: Optional[str], title: Optional[str], no_strict_mcp: bool, argv: Optional[list[str]],
 ) -> str:
+    # `.`, not the absolute project path, after a `cd` to the script's own folder (#544). aoe moves
+    # a managed worktree when its row is renamed, and a baked-in path then names a folder that no
+    # longer exists. The `cd` line is a constant, so quoting stays `command_for`'s alone.
     command = aoe.command_for(
-        verb, stack, harness, project_path,
+        verb, stack, harness, Path("."),
         group=group, title=title, no_strict_mcp=no_strict_mcp,
     )
     args = shlex.split(command)
@@ -248,6 +255,7 @@ def _body(
         if len(typed) > _TYPED_LIMIT:
             typed = typed[:_TYPED_LIMIT - len(_TRUNCATED)] + _TRUNCATED
         lines.append(_TYPED + typed)
+    lines.append(_CD_HERE)
     lines.append(f"exec {shlex.join(args)} \"$@\"")
     return "\n".join(lines) + "\n"
 
@@ -309,7 +317,7 @@ def write(
 
         target.write_text(
             _body(
-                verb, stack, harness, project_path,
+                verb, stack, harness,
                 group=group, title=title, no_strict_mcp=no_strict_mcp, argv=argv,
             ),
             encoding="utf-8",

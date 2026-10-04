@@ -22,7 +22,7 @@ is `--tool`, whose VALUE aoe validates and may reject; it is issued with a plain
 rejection costs the label rather than the row. See `sync_session`.
 
 Session identity is (project path, verb, harness, stack) — all four, and each earned its place by
-a bug. The recorded command is the project's own launcher script, `<project>/<harness>-<stack>-<verb>`
+a bug. The recorded command is the project's own launcher script, `./<harness>-<stack>-<verb>`
 (see `replay_command`), so every field reaches the key through the FILENAME rather than through a
 flag. That distinction is what keeps adding a launch flag free: a flag in the command would re-key
 every existing row whenever the flag set changed.
@@ -40,8 +40,9 @@ retired when the launcher script replaced them; the text outlived them, which is
 docstring stating identity can least afford.)
 
 UNLESS THE USER NAMES THE ROW. `--aoe-group` and `--aoe-title` (see `sync_session`) override the
-derived group and title, and supplying BOTH also replaces the identity key: the row is matched on
-(group, title) instead of the recorded command. That is the only way to adopt a row harnessed did
+derived group and title, and supplying BOTH adds a second identity key: a row not found by its
+script and folder is matched on (group, title). Script and folder go first, because an aoe rename
+changes the title but not those (#544). (group, title) is the only way to adopt a row harnessed did
 not write — a hand-placed or hand-edited one whose command carries flags `command_for` does not
 emit, which under command matching is invisible and gets a duplicate added beside it. Both are
 required because either alone is far too coarse to be an identity: every session in a group shares
@@ -74,6 +75,7 @@ registering IS the command the user ran and they are entitled to its exit status
 """
 from __future__ import annotations
 
+import fcntl
 import itertools
 import json
 import os
@@ -81,8 +83,11 @@ import re
 import shlex
 import shutil
 import subprocess
+import tempfile
+import time
 
 from collections.abc import Callable
+from datetime import datetime, timezone
 from pathlib import Path
 
 from ruamel.yaml import YAML
@@ -110,6 +115,9 @@ _READ_TIMEOUT = 10
 # Writes are ~12s when aoe has to start its daemon. Only ever used on the blocking
 # `--create-aoe-only` path, where the user is explicitly waiting for the write.
 _WRITE_TIMEOUT = 120
+
+# How long `_rewrite_row` waits for aoe's storage lock. aoe holds it for one file write.
+_LOCK_TIMEOUT = 5
 
 # `• name (3 sessions)` — aoe renders groups as a bullet list with no --json equivalent.
 _GROUP_LINE = re.compile(r"^\s*[•*-]\s+(\S+)\s+\(")
@@ -260,9 +268,11 @@ def replay_command(verb: str, stack: str, harness: str, project_path: Path) -> s
     command was unchanged, the existing row matched on (command, path) and was left alone, and the
     row then replayed the newcomer under the older stack's label.
 
-    ABSOLUTE, not `./claude-host`. Whether aoe runs a row's command with the working directory set
-    to the row's path is aoe's business and not ours to depend on; an absolute path is correct under
-    either behavior and is equally stable as an identity key.
+    RELATIVE, `./claude-serena-host`, and it used to be absolute (#544). aoe moves a managed
+    worktree when its row is renamed with `session.tie_workdir_to_name` on, and updates the row's
+    path but never its command, so an absolute script path died with the move. aoe starts a row's
+    command with the working directory at the row's path, so a relative one follows the move.
+    Verified against aoe 1.16.1; `test_aoe_real` pins it.
 
     TERMINATED WITH `--`, and that separator belongs HERE rather than inside the script. aoe appends
     the recorded tool's resume flags on restart and they must sail past harnessed's own option
@@ -278,8 +288,7 @@ def replay_command(verb: str, stack: str, harness: str, project_path: Path) -> s
     # that.
     from . import launchscript
 
-    script = Path(project_path) / launchscript.script_name(verb, stack, harness)
-    return shlex.join([str(script), "--"])
+    return shlex.join([f"./{launchscript.script_name(verb, stack, harness)}", "--"])
 
 
 def command_for(
@@ -509,38 +518,64 @@ def _trashed_ids(exe: str) -> frozenset[str]:
     return frozenset(_TRASH_ID.findall(result.stdout))
 
 
-def _registered(
+def _find_row(
     sessions: list[dict], command: str, project_path: Path,
     *, group: str | None = None, title: str | None = None,
-) -> bool:
-    """Whether this (path, harness) already has a row.
+) -> dict | None:
+    """The row this (path, verb, harness, stack) already has, or None.
 
     Takes the session list rather than reading it, because the caller also hands it to
     `_drifted_rows` and a launch should pay for one `list --json`, not two.
 
-    With BOTH `group` and `title` supplied the user has named the row, and (group, title) becomes
-    the key instead — the only match that can find a row harnessed did not write, whose command
-    therefore need not be one `command_for` could produce. Either flag alone is ignored here: a
-    group holds many sessions and a title is unique only inside one, so neither identifies a row.
+    FIRST BY SCRIPT AND PATH: a row at this folder whose command runs our launcher script, wherever
+    that command says the script lives (`_runs_script`). The folder is the anchor because aoe keeps
+    it current through a rename that moves the worktree, and the title is not: the wrapper bakes
+    `--aoe-title` in, so after an aoe rename (group, title) matched nothing and a duplicate was
+    added (#544). The script's own directory is ignored so that an absolute pre-#544 command still
+    matches, and is then repaired by the caller rather than duplicated.
+
+    THEN, with BOTH `group` and `title` supplied, by (group, title) — the only match that can find
+    a row harnessed did not write, whose command therefore need not be one we produce. Either flag
+    alone is ignored here: a group holds many sessions and a title is unique only inside one.
+
+    `AOE_INSTANCE_ID`, which aoe exports into a row's pane, would name the row exactly but only on a
+    launch from the dashboard. The folder match covers that launch and a terminal one alike.
 
     Matched against `group`, which is what `aoe list --json` calls the field it stores on disk as
     `group_path`; both names are accepted so a rename upstream degrades to the command match (a
     duplicate row) rather than to an exception.
     """
-    if group is not None and title is not None:
-        return any(
-            (s.get("group") or s.get("group_path")) == group and _same_title(s.get("title"), title)
-            for s in sessions
-        )
     for session in sessions:
-        if session.get("command") != command:
-            continue
+        if _runs_script(session, command, project_path):
+            return session
+    if group is not None and title is not None:
+        for session in sessions:
+            if (session.get("group") or session.get("group_path")) == group and _same_title(
+                session.get("title"), title
+            ):
+                return session
+    return None
+
+
+def _runs_script(session: dict, command: str, project_path: Path) -> bool:
+    """Whether a row sits at `project_path` and runs the same launcher script as `command`.
+
+    Compared on the script's NAME, never its directory: the row's folder is the location that aoe
+    keeps current, and a stale directory in the command is exactly what a repair rewrites.
+    """
+    try:
+        ours, theirs = shlex.split(command), shlex.split(session.get("command") or "")
         recorded = session.get("path")
         # Compare resolved paths, not strings: aoe stores whatever it was given, and a session
         # added through a symlinked route would otherwise register a second time.
-        if recorded and Path(recorded).resolve() == project_path:
-            return True
-    return False
+        if not recorded or Path(recorded).resolve() != project_path:
+            return False
+    except (OSError, TypeError, ValueError):
+        return False
+    return (
+        _is_launcher_script(ours) and _is_launcher_script(theirs)
+        and Path(ours[0]).name == Path(theirs[0]).name
+    )
 
 
 def _same_title(a: str | None, b: str | None) -> bool:
@@ -725,15 +760,111 @@ def _report(on_drift: Callable[[str, bool], None] | None, message: str, *, repai
         return
 
 
+def _rewrite_row(sid: str, update: Callable[[dict], None]) -> str | None:
+    """Apply `update` to one row of the profile's `sessions.json`. None on success, else why not.
+
+    AOE'S OWN FILE, EDITED UNDER AOE'S OWN LOCK, because no aoe 1.16.1 command sets a row's command
+    or its `worktree_info` (#544). `.storage.lock` is the flock aoe takes around its own writes, so
+    holding it keeps a concurrent aoe write from interleaving with ours. The file is replaced
+    atomically and every field we do not name is carried through untouched. Verified against
+    aoe 1.16.1, with and without `aoe serve` running: the edit survives aoe's next write.
+
+    The lock wait is BOUNDED: this runs on the launch path, and a lock held by a wedged aoe must
+    cost the repair, never the launch.
+    """
+    profile_dir = paths.xdg_config_home() / _CONFIG_DIRNAME / "profiles" / PROFILE
+    store, lock = profile_dir / "sessions.json", profile_dir / ".storage.lock"
+    try:
+        with lock.open("a") as held:
+            deadline = time.monotonic() + _LOCK_TIMEOUT
+            while True:
+                try:
+                    fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() > deadline:
+                        return f"aoe held {lock} for over {_LOCK_TIMEOUT}s"
+                    time.sleep(0.05)
+            rows = json.loads(store.read_text(encoding="utf-8"))
+            if not isinstance(rows, list):
+                return f"{store} is not a list of sessions; aoe may have changed its format"
+            row = next((r for r in rows if isinstance(r, dict) and r.get("id") == sid), None)
+            if row is None:
+                return f"no session {sid} in {store}"
+            update(row)
+            fd, tmp = tempfile.mkstemp(dir=profile_dir, prefix=".sessions.", suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as out:
+                    json.dump(rows, out, indent=2)
+                os.replace(tmp, store)
+            except BaseException:
+                Path(tmp).unlink(missing_ok=True)
+                raise
+    except (OSError, ValueError) as exc:
+        return f"could not edit {store}: {exc}"
+    return None
+
+
+def _worktree_info(project_path: Path) -> dict | str:
+    """The `worktree_info` aoe records for a worktree it created, or why this folder cannot have one.
+
+    Same fields and values `aoe add -w` stores, observed against aoe 1.16.1. `main_repo_path` is the
+    parent of the git COMMON dir, which is the repo root in the bare-plus-worktrees layout.
+
+    ONLY A LINKED WORKTREE. Marking a row managed lets `aoe remove --delete-worktree` delete its
+    folder, so the main checkout, a plain repo, or a detached HEAD is refused.
+    """
+    def git(*args: str) -> str | None:
+        try:
+            done = subprocess.run(
+                ["git", "-C", str(project_path), *args],
+                capture_output=True, text=True, timeout=_READ_TIMEOUT, check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return done.stdout.strip() if done.returncode == 0 else None
+
+    dirs = git("rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir")
+    if dirs is None or len(dirs.split("\n")) != 2:
+        return f"{project_path} is not in a git repository"
+    git_dir, common = (Path(d).resolve() for d in dirs.split("\n"))
+    if git_dir == common:
+        return f"{project_path} is not a linked worktree, so aoe must not manage (or delete) it"
+    branch = git("symbolic-ref", "--short", "-q", "HEAD")
+    if not branch:
+        return f"{project_path} has a detached HEAD; aoe records a worktree by its branch"
+    return {
+        "branch": branch,
+        "main_repo_path": str(common.parent),
+        "managed_by_aoe": True,
+        "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+    }
+
+
+def _mark_managed(row: dict, info: dict) -> None:
+    """Set `managed_by_aoe`, keeping any `worktree_info` aoe already recorded for the row."""
+    existing = row.get("worktree_info")
+    if isinstance(existing, dict):
+        existing["managed_by_aoe"] = True
+    else:
+        row["worktree_info"] = info
+
+
 def sync_session(
     verb: str, stack: str, harness: str, project_path: Path, *, background: bool = True,
     group: str | None = None, title: str | None = None, no_strict_mcp: bool = False,
-    on_drift: Callable[[str, bool], None] | None = None,
+    on_drift: Callable[[str, bool], None] | None = None, managed_worktree: bool = False,
 ) -> bool:
     """Register this launch with aoe, creating the profile and repo group on the way.
 
-    Idempotent by (path, command): relaunching the same stack+harness in the same folder finds the
-    existing row instead of stacking duplicates. Never raises.
+    Idempotent by (path, script): relaunching the same stack+harness in the same folder finds the
+    existing row instead of stacking duplicates, including after an aoe rename moved the folder.
+    A found row whose command points at a stale location is repaired in place (`_settle`). Never
+    raises.
+
+    `managed_worktree` (--aoe-managed-worktree) marks the row's linked worktree AOE-managed, as
+    `aoe add -w` would have, so an aoe rename moves it and `aoe remove --delete-worktree` deletes it.
+    It makes the registration blocking, because the mark is written into the row after the `add`.
 
     `group` (--aoe-group) and `title` (--aoe-title) override the derived placement and label. Given
     BOTH, the row is instead matched on (group, title) — how an existing, possibly hand-written row
@@ -758,8 +889,8 @@ def sync_session(
     touch blocks the whole registration, so nothing is renamed in that case either. `on_drift` is
     called once per drifted row and may raise; the launch does not care.
 
-    Not on the adopt path: with BOTH `group` and `title`, a matched row returns True above and its
-    command is never examined, which is the point of adopting one.
+    On the adopt path, with BOTH `group` and `title`, a row matched by them keeps its command unless
+    it already runs our script at this folder; anything else is the point of adopting one.
 
     Returns True when the row exists or its creation was dispatched, False when aoe is unavailable,
     a blocking write failed, or unrepairable drift blocked the write. Callers on the passive mirror
@@ -776,9 +907,19 @@ def sync_session(
         # so two routes to the same directory cannot register two rows.
         project_path = Path(project_path).resolve()
         command = replay_command(verb, stack, harness, project_path)
+        info: dict | None = None
+        if managed_worktree:
+            found = _worktree_info(project_path)
+            if isinstance(found, str):
+                _report(on_drift, f"aoe: not registering an AOE-managed row: {found}", repairing=False)
+                return False
+            info = found
+            # The mark is written into the row, so the row must exist first: wait for the `add`.
+            background = False
         sessions = _sessions(exe)
-        if _registered(sessions, command, project_path, group=group, title=title):
-            return True
+        row = _find_row(sessions, command, project_path, group=group, title=title)
+        if row is not None:
+            return _settle(row, command, project_path, info, on_drift)
 
         row_title = title_for(
             verb, stack, harness, project_path, title=title, no_strict_mcp=no_strict_mcp
@@ -875,14 +1016,71 @@ def sync_session(
         # Re-reading settles it against any aoe: the row is there or it is not. Only on the blocking
         # path, where the writes have finished; a detached batch has not necessarily run yet, so
         # there `applied` remains the only answer available.
-        return _registered(
-            _sessions(exe), command, project_path, group=group, title=title
-        ) or applied
+        row = _find_row(_sessions(exe), command, project_path, group=group, title=title)
+        if row is None:
+            return applied
+        return _settle(row, command, project_path, info, on_drift)
     except Exception:  # noqa: BLE001 — an optional dashboard must never break a launch.
         return False
 
 
-def _replays_stack(tokens: list[str], verb: str, stack: str) -> bool:
+def _settle(
+    row: dict, command: str, project_path: Path, info: dict | None,
+    on_drift: Callable[[str, bool], None] | None,
+) -> bool:
+    """Bring an existing row up to date in place: its command (#544 D3) and its managed mark (D4).
+
+    THE COMMAND IS REWRITTEN ONLY WHEN THE ROW ALREADY RUNS OUR SCRIPT at this folder, from a stale
+    location — an absolute pre-#544 path, or one an aoe rename moved out from under it. A row adopted
+    by (group, title) whose command is anything else keeps it; that is what adopting means.
+
+    In place, not renamed aside and re-added: a re-added row loses its id, resume target and
+    `worktree_info`, and nothing in aoe's CLI can set the last two back.
+    """
+    repair = row.get("command") != command and _runs_script(row, command, project_path)
+    current = row.get("worktree")
+    mark = info is not None and not (isinstance(current, dict) and current.get("managed_by_aoe") is True)
+    if not (repair or mark):
+        return True
+    sid = row.get("id")
+
+    def update(stored: dict) -> None:
+        if repair:
+            stored["command"] = command
+        if mark and info is not None:
+            _mark_managed(stored, info)
+
+    failed = _rewrite_row(str(sid), update) if sid else "aoe reported the row without an id"
+    if repair:
+        _report(on_drift, _repair_message(row, command, failed), repairing=failed is None)
+    elif failed is not None:
+        _report(
+            on_drift,
+            f"aoe row {row.get('title') or '?'} ({sid or '?'}) was NOT marked AOE-managed: {failed}",
+            repairing=False,
+        )
+    return failed is None
+
+
+def _repair_message(row: dict, ours: str, failed: str | None) -> str:
+    """One report for an in-place command repair, whichever way it went. Never silent."""
+    sid = row.get("id") or "?"
+    lines = [
+        f"aoe row {row.get('title') or '?'} ({sid}) runs this launch's script from a stale location:",
+        f"  stored: {row.get('command') or ''}",
+        f"  ours:   {ours}",
+    ]
+    if failed is None:
+        lines.append("  rewrote its command in place; its id, title and resume target are unchanged.")
+    else:
+        lines += [
+            f"  NOT repaired: {failed}",
+            "  The row cannot start until its command is fixed. aoe has no command to set it.",
+        ]
+    return "\n".join(lines)
+
+
+def _replays_stack(tokens: list[str], verb: str, stack: str, row_path: str | None = None) -> bool:
     """Whether a launcher-script row would start `stack`, read from the script rather than its name.
 
     For both launcher-script shapes — `<path>/<harness>-<stack>-<verb> --` and the retired
@@ -916,6 +1114,12 @@ def _replays_stack(tokens: list[str], verb: str, stack: str) -> bool:
     if launchscript.script_backend(Path(tokens[0]).name) != launchscript._VERB_SUFFIX[verb]:
         return False
     script = Path(tokens[0])
+    # A relative script (`replay_command` since #544) lives in the row's folder, which is where
+    # aoe runs it. Without a folder there is nothing to read, so the row is left alone.
+    if not script.is_absolute():
+        if not row_path:
+            return False
+        script = Path(row_path) / script
     try:
         # `is_file()` BEFORE the read, the same guard `launchscript._ensure_excluded` applies to the
         # exclude file. A row's path comes out of aoe's JSON and can point at anything: a FIFO passes
@@ -1003,7 +1207,7 @@ def forget_stack(verb: str, stack: str, *, background: bool = True) -> None:
                 continue
             if not (
                 any(a == _STACK_FLAG[0] and b == stack for a, b in itertools.pairwise(tokens))
-                or _replays_stack(tokens, verb, stack)
+                or _replays_stack(tokens, verb, stack, session.get("path"))
             ):
                 continue
             sid = session.get("id")
