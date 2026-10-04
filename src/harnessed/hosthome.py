@@ -28,6 +28,7 @@ from . import paths
 from .__init__ import __version__
 from .assemble import compute_recipe_hash
 from .console import _err
+from .jsonmerge import carry_live_permissions
 from .setupenv import _stack_tools_dirs
 
 
@@ -729,9 +730,12 @@ def _propagate_host_settings(profile_settings: Path, live: Path) -> None:
     after a stack change and vanished on every restart after it.
 
     Profile keys always WIN — that is 8px.18's whole point (the host's live ~/.claude preferences
-    and harnessed's required grants are recomputed each launch). ONLY keys the profile does not
-    define at all are carried over. This is the host-side analogue of `emit.merge_settings` carrying
+    and harnessed's required grants are recomputed each launch). Keys the profile does not define
+    at all are carried over. This is the host-side analogue of `emit.merge_settings` carrying
     every non-required baked key through verbatim container-side.
+
+    The one exception is the `permissions` lists, which are unioned (#538): Claude Code writes a
+    "Don't ask again" rule into the live file, and replacing the block discarded it every launch.
     """
     try:
         fresh = json.loads(profile_settings.read_text() or "{}")
@@ -741,12 +745,12 @@ def _propagate_host_settings(profile_settings: Path, live: Path) -> None:
         # user hand-edited into invalid JSON must not take the whole launch down with it.
         shutil.copy2(profile_settings, live)
         return
-    carried = (
-        {k: v for k, v in prior.items() if k not in fresh}
-        if isinstance(fresh, dict) and isinstance(prior, dict)
-        else {}
-    )
-    if not carried:
+    if not (isinstance(fresh, dict) and isinstance(prior, dict)):
+        shutil.copy2(profile_settings, live)
+        return
+    carried = {k: v for k, v in prior.items() if k not in fresh}
+    merged = carry_live_permissions({**fresh, **carried}, prior)
+    if merged == fresh:
         shutil.copy2(profile_settings, live)  # nothing to preserve → byte-identical propagation
         return
-    live.write_text(json.dumps({**fresh, **carried}, indent=2) + "\n")
+    live.write_text(json.dumps(merged, indent=2) + "\n")

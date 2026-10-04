@@ -55,8 +55,9 @@ def _merged_settings_text(
     ("ccstatusline statusLine gone on every restart") arriving by a new route.
 
     Merging keeps today's semantics where the profile wins on every key it DEFINES; it just no
-    longer deletes keys the profile has no opinion about. `fresh=True` has just discarded the
-    volume, so there is nothing to preserve and the plain copy stands.
+    longer deletes keys the profile has no opinion about. The `permissions` lists are the exception:
+    they are unioned, so a rule the agent wrote into the volume survives (#538). `fresh=True` has
+    just discarded the volume, so there is nothing to preserve and the plain copy stands.
 
     Returns None whenever there is nothing to merge — no profile file, or no readable volume file.
     A failed read is "absent", NOT "empty" (see `_volume_read`): conflating them is how
@@ -81,6 +82,8 @@ def _merged_settings_text(
     if not isinstance(profile_obj, dict):
         return None
     merged = jsonmerge._deep_merge_json(installed, profile_obj)
+    if isinstance(merged, dict):
+        merged = jsonmerge.carry_live_permissions(merged, installed)
     return json.dumps(merged, indent=2) + "\n"
 
 
