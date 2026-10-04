@@ -229,10 +229,13 @@ load_procs() {
 
 # The ids and names of every process whose working directory is inside $1, this script excepted.
 procs_in() {
-  local p=$1 pid c out=()
+  local p=$1 line pid c out=()
   [ -n "$p" ] && [ -d "$p" ] || return 0
   load_procs
-  while read -r pid c; do
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    # Split at the first space only: everything after it is the path, spaces included.
+    pid=${line%% *} c=${line#* }
     case $c in "$p"|"$p"/*) ;; *) continue ;; esac
     case $pid in "$$"|"$BASHPID") continue ;; esac
     [ -d "/proc/$pid" ] || continue
@@ -244,13 +247,18 @@ procs_in() {
 # Fills BLOCK with the reasons removing the worktree at $1, on branch $2, loses work. Empty is safe.
 BLOCK=()
 safety() {
-  local p=$1 b=${2:-} n live
+  local p=$1 b=${2:-} n out live
   BLOCK=()
+  # A git call that fails becomes a BLOCKED reason. Under set -e it would end the run instead,
+  # leaving the remaining targets unchecked and unreported.
   if [ -z "$p" ] || [ ! -d "$p" ]; then
     # No folder to inspect, but the branch still holds the commits: check it from main/.
     if [ -n "$b" ] && G show-ref --verify --quiet "refs/heads/$b"; then
-      n=$(G rev-list --count "refs/heads/$b" --not --remotes)
-      [ "$n" -eq 0 ] || BLOCK+=("worktree missing; branch $b has $n commit(s) on no remote")
+      if ! n=$(G rev-list --count "refs/heads/$b" --not --remotes 2>/dev/null); then
+        BLOCK+=("worktree missing; git cannot count the commits on branch $b")
+      elif [ "$n" -ne 0 ]; then
+        BLOCK+=("worktree missing; branch $b has $n commit(s) on no remote")
+      fi
     fi
     return 0
   fi
@@ -258,10 +266,16 @@ safety() {
     BLOCK+=("$p is not a git worktree; its state cannot be checked")
     return 0
   fi
-  n=$(git -C "$p" status --porcelain | wc -l)
-  [ "$n" -eq 0 ] || BLOCK+=("$n uncommitted change(s)")
-  n=$(git -C "$p" rev-list --count HEAD --not --remotes)
-  [ "$n" -eq 0 ] || BLOCK+=("$n commit(s) on no remote")
+  if ! out=$(git -C "$p" status --porcelain 2>/dev/null); then
+    BLOCK+=("git status failed; uncommitted changes cannot be checked")
+  elif [ -n "$out" ]; then
+    BLOCK+=("$(printf '%s\n' "$out" | wc -l) uncommitted change(s)")
+  fi
+  if ! n=$(git -C "$p" rev-list --count HEAD --not --remotes 2>/dev/null); then
+    BLOCK+=("git rev-list failed; commits on no remote cannot be counted")
+  elif [ "$n" -ne 0 ]; then
+    BLOCK+=("$n commit(s) on no remote")
+  fi
   git -C "$p" rev-parse --abbrev-ref '@{u}' >/dev/null 2>&1 || BLOCK+=("branch has no upstream")
   live=$(procs_in "$p")
   [ -z "$live" ] || BLOCK+=("live process(es) in the worktree: $live")
@@ -276,19 +290,24 @@ is_worktree() {
 }
 
 git_summary() {
-  local p=$1 sum n behind ahead
+  local p=$1 sum n out behind='' ahead=''
   [ -n "$p" ] && [ -d "$p" ] || { echo missing; return; }
   is_worktree "$p" || { echo "not a worktree"; return; }
   if git -C "$p" rev-parse --abbrev-ref '@{u}' >/dev/null 2>&1; then
-    read -r behind ahead < <(git -C "$p" rev-list --left-right --count '@{u}...HEAD')
-    if [ "$ahead" -gt 0 ]; then sum="ahead $ahead"; else sum=pushed; fi
-    [ "$behind" -eq 0 ] || sum="$sum, behind $behind"
+    read -r behind ahead < <(git -C "$p" rev-list --left-right --count '@{u}...HEAD' 2>/dev/null) || true
+    if [ -z "$ahead" ]; then sum="upstream unreadable"
+    elif [ "$ahead" -gt 0 ]; then sum="ahead $ahead"
+    else sum=pushed; fi
+    [ -z "$behind" ] || [ "$behind" -eq 0 ] || sum="$sum, behind $behind"
   else
-    n=$(git -C "$p" rev-list --count HEAD --not --remotes)
+    n=$(git -C "$p" rev-list --count HEAD --not --remotes 2>/dev/null) || n='?'
     sum="no upstream, $n unpushed"
   fi
-  n=$(git -C "$p" status --porcelain | wc -l)
-  [ "$n" -eq 0 ] || sum="$sum, dirty $n"
+  if ! out=$(git -C "$p" status --porcelain 2>/dev/null); then
+    sum="$sum, status unreadable"
+  elif [ -n "$out" ]; then
+    sum="$sum, dirty $(printf '%s\n' "$out" | wc -l)"
+  fi
   echo "$sum"
 }
 
