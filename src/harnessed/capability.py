@@ -995,10 +995,12 @@ def run_capability_test(
         finally:
             if not keep:
                 teardown(instance, harnessed_bin=harnessed_bin)
+        # Before the scratch project is removed below: the schema search reads it.
+        secrets = build_secrets_section(project_path)
     finally:
         if own_project and not keep:
             shutil.rmtree(project_path, ignore_errors=True)
     report = build_report(stack_name, expected, live)
     report.results.extend(test_results)
-    report.secrets = build_secrets_section(project_path)
+    report.secrets = secrets
     return report

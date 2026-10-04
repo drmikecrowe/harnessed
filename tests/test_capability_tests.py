@@ -320,7 +320,12 @@ class TestSecretsSection:
             "entryPaths": ["/proj"],
         }])
         proc_mock = type("P", (), {"returncode": 0, "stdout": raw_status})()
-        with patch("harnessed.launchenv.subprocess.run", return_value=proc_mock):
+        # `which` too: without it a runner with no varlock returns "varlock not on PATH" before the
+        # status is parsed, and every negative assertion below passes without testing anything.
+        with (
+            patch("harnessed.launchenv.shutil.which", return_value="/usr/bin/varlock"),
+            patch("harnessed.launchenv.subprocess.run", return_value=proc_mock),
+        ):
             from harnessed.launchenv import _varlock_broker_health
             result = _varlock_broker_health()
         # Sentinels must never reach output — T-02-07
