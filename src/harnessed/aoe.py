@@ -1038,6 +1038,9 @@ def _settle(
     `worktree_info`, and nothing in aoe's CLI can set the last two back.
     """
     repair = row.get("command") != command and _runs_script(row, command, project_path)
+    # `worktree`, NOT `worktree_info`: `row` comes from `aoe list --json`, which renames the field.
+    # Only `sessions.json` (what `_mark_managed` edits) calls it `worktree_info`. Verified against
+    # aoe 1.16.1; reading `worktree_info` here would rewrite an already-managed row on every launch.
     current = row.get("worktree")
     mark = info is not None and not (isinstance(current, dict) and current.get("managed_by_aoe") is True)
     if not (repair or mark):
