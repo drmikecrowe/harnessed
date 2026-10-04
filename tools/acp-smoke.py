@@ -88,6 +88,8 @@ def main() -> int:
     argv = [*shlex.split(args.harnessed), "container-acp", args.harness, str(project), "--stack", args.stack]
     print(f"run: {shlex.join(argv)}", file=sys.stderr)
     proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
+    if proc.stdin is None or proc.stdout is None:  # unreachable with PIPE; narrows the types
+        raise SystemExit("FAIL: could not open pipes to harnessed")
     lines: queue.Queue = queue.Queue()
     threading.Thread(target=_reader, args=(proc.stdout, lines), daemon=True).start()
     try:
