@@ -1,0 +1,894 @@
+#!/usr/bin/env bash
+# aoe-sessions: Agent of Empires sessions, one git worktree each, in a bare-plus-worktrees repo.
+#
+# Sessions:
+#   aoe-sessions config                         what was discovered
+#   aoe-sessions list [<group>|wave-<n>]        group, title, branch, state, status, git, worktree
+#   aoe-sessions new <branch> [<title>]         a worktree plus a session (idempotent)
+#   aoe-sessions rename <target> <title>        retitle; AOE also moves a managed worktree
+#   aoe-sessions move <target> <group>          to another group; the folder stays
+#   aoe-sessions archive <target>...            stop the panes, keep worktree, branch and row
+#   aoe-sessions unarchive <target>...
+#   aoe-sessions check <target>...              the removal safety check, nothing else
+#   aoe-sessions remove <target>...             to the AOE trash, after the safety check
+#   aoe-sessions trash                          this repository's trashed sessions
+#   aoe-sessions restore <id|title>             back from the trash
+#   aoe-sessions recover <branch> [<title>]     rebuild a lost worktree and session from its branch
+#   aoe-sessions repair <target>...             point a moved harnessed row at its moved wrapper
+# Waves, an optional layout: group <group>/wave-<n>, title <wave>.<slot>-<ISSUE>-<slug>, branch <ISSUE>.
+#   aoe-sessions wave create <n> <ISSUE[:slug]>...
+#   aoe-sessions wave move <target> <n> [<slot>]
+#   aoe-sessions wave renumber <n>
+#
+# A <target> is a session id, a title, a branch, or wave-<n>.
+#
+# Discovery, each overridable by a flag:
+#   --stack, --harness  from the one `exec harnessed host-run` wrapper in main/; none means plain rows
+#   --cmd               a plain row's command (default claude); giving it forces plain rows
+#   --profile           harnessed with a stack, else $AGENT_OF_EMPIRES_PROFILE, else default
+#   --group             the group of main/'s session, else the root folder's name
+#   --root              the bare root, found from the current directory
+# remove and archive take --allow <title> (repeatable). remove takes --purge and --delete-branch,
+# which need --confirm-irreversible. Set HARNESSED to run a different harnessed binary.
+set -euo pipefail
+
+me=aoe-sessions
+die() { echo "$me: $*" >&2; exit 1; }
+note() { echo "$me: $*" >&2; }
+for bin in jq flock column git aoe; do
+  command -v "$bin" >/dev/null 2>&1 || die "required command not found: $bin"
+done
+
+# ---------------------------------------------------------------- arguments
+root='' profile='' group='' stack='' harness='' cmd=''
+purge=0 delete_branch=0 confirmed=0
+allow=()
+args=()
+while [ $# -gt 0 ]; do
+  case $1 in
+    --root|--profile|--group|--stack|--harness|--cmd|--allow)
+      [ $# -ge 2 ] || die "$1 needs a value"
+      case $1 in
+        --root) root=$2 ;; --profile) profile=$2 ;; --group) group=$2 ;;
+        --stack) stack=$2 ;; --harness) harness=$2 ;; --cmd) cmd=$2 ;;
+        --allow) allow+=("$2") ;;
+      esac
+      shift 2 ;;
+    --purge) purge=1; shift ;;
+    --delete-branch) delete_branch=1; shift ;;
+    --confirm-irreversible) confirmed=1; shift ;;
+    -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
+    --*) die "unknown flag: $1" ;;
+    *) args+=("$1"); shift ;;
+  esac
+done
+[ ${#args[@]} -ge 1 ] || die "usage: $me <command> ... ($me --help)"
+op=${args[0]}
+args=("${args[@]:1}")
+if [ "$op" = wave ]; then
+  [ ${#args[@]} -ge 1 ] || die "usage: $me wave <create|move|renumber> ..."
+  op="wave-${args[0]}"
+  args=("${args[@]:1}")
+fi
+
+# ---------------------------------------------------------------- discovery
+if [ -z "$root" ]; then
+  common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) \
+    || die "not inside a git repository; pass --root"
+  root=$(dirname "$common")
+fi
+root=$(cd "$root" && pwd -P)
+main_wt=$root/main
+[ -d "$main_wt" ] || die "$root has no main/ worktree; this skill expects a bare root with sibling worktrees"
+
+# The harness and stack of each harnessed launch wrapper in main/, one "harness stack" pair a line.
+# A wrapper's exec line is an ordinary `harnessed host-run <harness> <path> --stack <s> ...` call.
+wrappers() {
+  local f line h s i
+  local -a tok
+  for f in "$main_wt"/*; do
+    [ -f "$f" ] && [ -x "$f" ] || continue
+    line=$(awk '/^exec harnessed host-run /{ print; exit }' "$f" 2>/dev/null)
+    [ -n "$line" ] || continue
+    read -ra tok <<< "$line"
+    h=${tok[3]:-} s=''
+    for i in "${!tok[@]}"; do [ "${tok[$i]}" = --stack ] && s=${tok[$((i + 1))]:-}; done
+    [ -n "$s" ] || continue
+    if [[ $h =~ ^[A-Za-z0-9._-]+$ && $s =~ ^[A-Za-z0-9._-]+$ ]]; then
+      printf '%s %s\n' "$h" "$s"
+    else
+      note "$f: cannot read a harness and stack from its exec line; skipped"
+    fi
+  done | sort -u
+}
+
+found=()
+if [ -z "$cmd" ] && [ -z "$stack" ]; then
+  mapfile -t found < <(wrappers)
+  if [ ${#found[@]} -eq 1 ]; then
+    stack=${found[0]#* }
+    harness=${harness:-${found[0]%% *}}
+  elif [ ${#found[@]} -gt 1 ]; then
+    die "main/ holds wrappers for several stacks (${found[*]}); pass --stack, or --cmd for plain rows"
+  fi
+elif [ -n "$stack" ] && [ -z "$harness" ]; then
+  mapfile -t found < <(wrappers)
+  for p in "${found[@]}"; do [ "${p#* }" != "$stack" ] || harness=${p%% *}; done
+  [ -n "$harness" ] || note "no wrapper in main/ runs stack $stack; using harness claude (pass --harness to change it)"
+fi
+[ -z "$cmd" ] || [ -z "$stack" ] || die "--cmd makes plain rows; it cannot be combined with --stack"
+harness=${harness:-claude}
+cmd=${cmd:-claude}
+if [ -n "$stack" ]; then
+  # harnessed registers every row in the profile it hard-codes.
+  profile=${profile:-harnessed}
+  [ "$profile" = harnessed ] || die "a harnessed stack always registers in profile harnessed, not $profile"
+fi
+profile=${profile:-${AGENT_OF_EMPIRES_PROFILE:-default}}
+HARNESSED=${HARNESSED:-harnessed}
+
+pdir=${XDG_CONFIG_HOME:-$HOME/.config}/agent-of-empires/profiles/$profile
+sessions=$pdir/sessions.json
+lock=$pdir/.storage.lock
+
+if [ -z "$group" ] && [ -f "$sessions" ]; then
+  group=$(jq -r --arg p "$main_wt" \
+    '[.[] | select(.project_path == $p and (.trashed_at | not))][0].group_path // ""' "$sessions")
+fi
+group=${group:-$(basename "$root")}
+
+A() { aoe -p "$profile" "$@"; }
+G() { git -C "$main_wt" "$@"; }
+
+# ---------------------------------------------------------------- rows
+# Every session of this repository: its folder sits under the root, or AOE records the root as
+# its main repo. Read from sessions.json, because `aoe list --json` omits worktree_info.
+# Fields are \x1f-separated, because `read` collapses runs of a whitespace IFS.
+R_ID=() R_TITLE=() R_GROUP=() R_PATH=() R_BRANCH=() R_STATE=() R_CMD=() R_MANAGED=()
+R_WAVE=() R_SLOT=() R_REST=()
+load_rows() {
+  R_ID=() R_TITLE=() R_GROUP=() R_PATH=() R_BRANCH=() R_STATE=() R_CMD=() R_MANAGED=()
+  R_WAVE=() R_SLOT=() R_REST=()
+  [ -f "$sessions" ] || return 0
+  local id title gp path branch state command managed wave slot rest
+  # shellcheck disable=SC2016  # $p and $r are jq variables
+  while IFS=$'\x1f' read -r id title gp path branch state command managed; do
+    if [ -z "$branch" ] && [ "$state" != trashed ] && [ -d "$path" ]; then
+      branch=$(git -C "$path" branch --show-current 2>/dev/null || true)
+    fi
+    wave='' slot='' rest=$title
+    if [[ $gp =~ ^"$group"/wave-([0-9]+)$ ]]; then
+      wave=${BASH_REMATCH[1]}
+      if [[ $title =~ ^([0-9]+)\.([0-9]+)-(.*)$ ]]; then slot=${BASH_REMATCH[2]} rest=${BASH_REMATCH[3]}; fi
+    fi
+    R_ID+=("$id") R_TITLE+=("$title") R_GROUP+=("$gp") R_PATH+=("$path") R_BRANCH+=("$branch")
+    R_STATE+=("$state") R_CMD+=("$command") R_MANAGED+=("$managed")
+    R_WAVE+=("$wave") R_SLOT+=("$slot") R_REST+=("$rest")
+  done < <(flock -s "$lock" jq -r --arg r "$root" '.[]
+    | (.project_path // .pre_trash_project_path // "") as $p
+    | select(($p | startswith($r + "/")) or (.worktree_info.main_repo_path // "") == $r)
+    | [ .id, .title, (.group_path // ""), $p,
+        (.worktree_info.branch // ""),
+        (if .trashed_at then "trashed" elif .archived_at then "archived" else "live" end),
+        (.command // ""), ((.worktree_info.managed_by_aoe // false) | tostring)
+      ] | join("\u001f")' "$sessions")
+}
+
+# Sets IDX to the rows a target names: an id, a title, a branch, or wave-<n>. A trashed row
+# matches only by id or title, so a branch or a wave never reaches into the trash.
+IDX=()
+resolve() {
+  local t=$1 i found=()
+  for i in "${!R_ID[@]}"; do
+    if [[ $t == wave-* ]]; then
+      [ "${R_STATE[$i]}" != trashed ] && [ "wave-${R_WAVE[$i]}" = "$t" ] && found+=("$i")
+    elif [ "${R_ID[$i]}" = "$t" ] || [ "${R_TITLE[$i]}" = "$t" ]; then
+      found+=("$i")
+    elif [ "${R_STATE[$i]}" != trashed ] && [ "${R_BRANCH[$i]}" = "$t" ]; then
+      found+=("$i")
+    fi
+  done
+  [ ${#found[@]} -gt 0 ] || die "no session of $root matches $t"
+  IDX=("${found[@]}")
+}
+
+one() {
+  resolve "$1"
+  [ ${#IDX[@]} -eq 1 ] || die "$1 names ${#IDX[@]} sessions; name one by title or id"
+  echo "${IDX[0]}"
+}
+
+# The index of the row on branch $1: live or archived first, else trashed. Empty when none.
+row_of_branch() {
+  local i hit=''
+  for i in "${!R_ID[@]}"; do
+    [ "${R_BRANCH[$i]}" = "$1" ] || continue
+    [ "${R_STATE[$i]}" = trashed ] || { echo "$i"; return 0; }
+    hit=$i
+  done
+  echo "$hit"
+}
+
+row_by_path() {
+  jq -r --arg p "$1" '[.[] | select(.project_path == $p and (.trashed_at | not))][0].id // ""' "$sessions"
+}
+
+# ---------------------------------------------------------------- helpers
+slugify() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]\{1,\}/-/g; s/^-//; s/-$//'; }
+
+# "pid cwd" for every process this user can see, read once: one `ls` instead of a fork per process.
+PROCS=''
+procs_loaded=0
+load_procs() {
+  [ $procs_loaded -eq 0 ] || return 0
+  # ls exits non-zero on another user's process or one that just exited; the rest still prints.
+  # shellcheck disable=SC2012  # /proc entry names are numeric
+  PROCS=$( { ls -l /proc/[0-9]*/cwd 2>/dev/null || true; } | sed -n 's#^.* /proc/\([0-9]*\)/cwd -> \(.*\)$#\1 \2#p')
+  procs_loaded=1
+}
+
+# The ids and names of every process whose working directory is inside $1, this script excepted.
+procs_in() {
+  local p=$1 line pid c out=()
+  [ -n "$p" ] && [ -d "$p" ] || return 0
+  load_procs
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    # Split at the first space only: everything after it is the path, spaces included.
+    pid=${line%% *} c=${line#* }
+    case $c in "$p"|"$p"/*) ;; *) continue ;; esac
+    case $pid in "$$"|"$BASHPID") continue ;; esac
+    [ -d "/proc/$pid" ] || continue
+    out+=("$pid:$(cat "/proc/$pid/comm" 2>/dev/null)")
+  done <<< "$PROCS"
+  echo "${out[*]}"
+}
+
+# Fills BLOCK with the reasons removing the worktree at $1, on branch $2, loses work. Empty is safe.
+BLOCK=()
+safety() {
+  local p=$1 b=${2:-} n out live
+  BLOCK=()
+  # A git call that fails becomes a BLOCKED reason. Under set -e it would end the run instead,
+  # leaving the remaining targets unchecked and unreported.
+  if [ -z "$p" ] || [ ! -d "$p" ]; then
+    # No folder to inspect, but the branch still holds the commits: check it from main/.
+    if [ -n "$b" ] && G show-ref --verify --quiet "refs/heads/$b"; then
+      if ! n=$(G rev-list --count "refs/heads/$b" --not --remotes 2>/dev/null); then
+        BLOCK+=("worktree missing; git cannot count the commits on branch $b")
+      elif [ "$n" -ne 0 ]; then
+        BLOCK+=("worktree missing; branch $b has $n commit(s) on no remote")
+      fi
+    fi
+    return 0
+  fi
+  if ! is_worktree "$p"; then
+    BLOCK+=("$p is not a git worktree; its state cannot be checked")
+    return 0
+  fi
+  if ! out=$(git -C "$p" status --porcelain 2>/dev/null); then
+    BLOCK+=("git status failed; uncommitted changes cannot be checked")
+  elif [ -n "$out" ]; then
+    BLOCK+=("$(printf '%s\n' "$out" | wc -l) uncommitted change(s)")
+  fi
+  if ! n=$(git -C "$p" rev-list --count HEAD --not --remotes 2>/dev/null); then
+    BLOCK+=("git rev-list failed; commits on no remote cannot be counted")
+  elif [ "$n" -ne 0 ]; then
+    BLOCK+=("$n commit(s) on no remote")
+  fi
+  git -C "$p" rev-parse --abbrev-ref '@{u}' >/dev/null 2>&1 || BLOCK+=("branch has no upstream")
+  live=$(procs_in "$p")
+  [ -z "$live" ] || BLOCK+=("live process(es) in the worktree: $live")
+}
+
+# Whether folder $1 is itself a worktree root. A folder inside the bare root that lost its .git
+# file still resolves to the bare repo, which `rev-parse --is-inside-work-tree` does not catch.
+is_worktree() {
+  local top
+  top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || return 1
+  [ "$top" = "$(cd "$1" && pwd -P)" ]
+}
+
+git_summary() {
+  local p=$1 sum n out behind='' ahead=''
+  [ -n "$p" ] && [ -d "$p" ] || { echo missing; return; }
+  is_worktree "$p" || { echo "not a worktree"; return; }
+  if git -C "$p" rev-parse --abbrev-ref '@{u}' >/dev/null 2>&1; then
+    read -r behind ahead < <(git -C "$p" rev-list --left-right --count '@{u}...HEAD' 2>/dev/null) || true
+    if [ -z "$ahead" ]; then sum="upstream unreadable"
+    elif [ "$ahead" -gt 0 ]; then sum="ahead $ahead"
+    else sum=pushed; fi
+    [ -z "$behind" ] || [ "$behind" -eq 0 ] || sum="$sum, behind $behind"
+  else
+    n=$(git -C "$p" rev-list --count HEAD --not --remotes 2>/dev/null) || n='?'
+    sum="no upstream, $n unpushed"
+  fi
+  if ! out=$(git -C "$p" status --porcelain 2>/dev/null); then
+    sum="$sum, status unreadable"
+  elif [ -n "$out" ]; then
+    sum="$sum, dirty $(printf '%s\n' "$out" | wc -l)"
+  fi
+  echo "$sum"
+}
+
+is_allowed() { local a; for a in "${allow[@]}"; do [ "$a" = "$1" ] && return 0; done; return 1; }
+
+backed_up=0
+backup() {
+  [ $backed_up -eq 0 ] && [ -f "$sessions" ] || return 0
+  local to
+  to=$sessions.bak-$me-$(date -u +%Y%m%dT%H%M%SZ)-$$
+  flock "$lock" cp -p "$sessions" "$to"
+  echo "backup: $to"
+  backed_up=1
+}
+
+# aoe prints groups as an indented tree. Rebuild the full paths from the indentation.
+group_paths() {
+  A group list | awk '
+    match($0, /^ *[•*-] +[^ ]+ \(/) {
+      line = substr($0, RSTART, RLENGTH); ind = match(line, /[^ ]/) - 1
+      name = line; sub(/^ *[•*-] +/, "", name); sub(/ \($/, "", name)
+      d = int(ind / 2); path[d] = name; p = path[0]
+      for (i = 1; i <= d; i++) p = p "/" path[i]
+      print p
+    }'
+}
+
+# Creates group $1 and each missing parent.
+ensure_group() {
+  local have parent='' path='' seg
+  local -a segs
+  have=$(group_paths)
+  IFS=/ read -ra segs <<< "$1"
+  for seg in "${segs[@]}"; do
+    path=${path:+$path/}$seg
+    if ! printf '%s\n' "$have" | GP=$path awk '$0 == ENVIRON["GP"] { f = 1 } END { exit !f }'; then
+      if [ -z "$parent" ]; then A group create "$seg"; else A group create "$seg" --parent "$parent"; fi
+    fi
+    parent=$path
+  done
+}
+
+harnessed_has_part_a() {
+  case $(COLUMNS=300 "$HARNESSED" host-run --help 2>&1) in
+    *--aoe-managed-worktree*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+need_part_a() {
+  harnessed_has_part_a || die "$HARNESSED lacks --aoe-managed-worktree (harnessed #544); update harnessed first"
+}
+
+# The worktree path registered for branch $1, if any. A registered folder that is gone is pruned
+# first, unlocking it if aoe locked it, so git lets the branch be checked out again.
+worktree_of() {
+  local b=$1 w
+  w=$(G worktree list --porcelain | awk -v b="refs/heads/$b" '
+    $1 == "worktree" { w = substr($0, 10) } $1 == "branch" && $2 == b { print w }')
+  if [ -n "$w" ] && [ ! -d "$w" ]; then
+    G worktree unlock "$w" 2>/dev/null || true
+    G worktree prune
+    w=''
+  fi
+  echo "$w"
+}
+
+branch_exists() {
+  G show-ref --verify --quiet "refs/heads/$1" || G ls-remote --exit-code --heads origin "$1" >/dev/null 2>&1
+}
+
+ensure_branch() {
+  local b=$1
+  git check-ref-format --branch "$b" >/dev/null || die "not a valid branch name: $b"
+  G show-ref --verify --quiet "refs/heads/$b" && return 0
+  if G ls-remote --exit-code --heads origin "$b" >/dev/null 2>&1; then
+    G fetch --quiet origin "$b"
+    G branch --track "$b" "origin/$b"
+    echo "branch: $b tracking origin/$b"
+  elif G remote get-url origin >/dev/null 2>&1; then
+    G fetch --quiet origin main
+    G branch --no-track "$b" origin/main
+    echo "branch: $b new from origin/main, no upstream until the first push"
+  else
+    G branch --no-track "$b" main
+    echo "branch: $b new from local main; there is no origin remote"
+  fi
+}
+
+# The gitignored local files a new worktree gets from main/. main/.worktree-include lists them,
+# one path relative to main/ a line; `link <path>` symlinks instead of copying. Without the file,
+# only .claude/settings.local.json is copied. Parsed before any change, so a bad line stops the
+# run before AOE or git is touched.
+INC_MODE=() INC_PATH=()
+load_include() {
+  local list=$main_wt/.worktree-include line mode rel
+  INC_MODE=() INC_PATH=()
+  if [ ! -f "$list" ]; then
+    INC_MODE=(copy) INC_PATH=(.claude/settings.local.json)
+    return 0
+  fi
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%%#*}
+    line=${line#"${line%%[![:space:]]*}"}
+    line=${line%"${line##*[![:space:]]}"}
+    [ -n "$line" ] || continue
+    mode="copy" rel=$line
+    if [[ $line == "link "* ]]; then
+      mode="link"
+      rel=${line#link }
+      rel=${rel#"${rel%%[![:space:]]*}"}
+    fi
+    case /$rel/ in
+      //*|*/../*) die "$list: $rel must be a path inside main/" ;;
+    esac
+    INC_MODE+=("$mode") INC_PATH+=("${rel%/}")
+  done < "$list"
+}
+
+# Applies the include list to new worktree $1. Never overwrites what the worktree already has.
+copy_local() {
+  local p=$1 i mode rel
+  for i in "${!INC_PATH[@]}"; do
+    mode=${INC_MODE[$i]} rel=${INC_PATH[$i]}
+    [ -e "$main_wt/$rel" ] || [ -L "$main_wt/$rel" ] || { note "local: main/$rel is missing; skipped"; continue; }
+    [ ! -e "$p/$rel" ] && [ ! -L "$p/$rel" ] || continue
+    mkdir -p "$(dirname "$p/$rel")"
+    if [ "$mode" = link ]; then
+      ln -s "$main_wt/$rel" "$p/$rel"
+      echo "local: linked $rel to main/"
+    else
+      cp -a "$main_wt/$rel" "$p/$rel"
+      echo "local: copied $rel from main/"
+    fi
+  done
+}
+
+# Registers a harnessed row for worktree $1 with title $2 in group $3. harnessed cannot see a
+# nested group in `aoe group list`, so it gets the top-level group and the row is moved after.
+harnessed_register() {
+  local p=$1 t=$2 g=$3 id
+  "$HARNESSED" host-run "$harness" "$p" --stack "$stack" \
+    --aoe-group "${g%%/*}" --aoe-title "$t" --create-aoe-only --aoe-managed-worktree
+  id=$(row_by_path "$p")
+  [ -n "$id" ] || die "harnessed registered no row for $p"
+  [ "$(jq -r --arg i "$id" '.[] | select(.id == $i) | .group_path' "$sessions")" = "$g" ] \
+    || A group move "$id" "$g"
+}
+
+# One worktree on branch $1 and one session titled $2 in group $3.
+create_one() {
+  local b=$1 t=$2 g=$3 p wt
+  ensure_branch "$b"
+  ensure_group "$g"
+  wt=$(worktree_of "$b")
+  if [ -n "$stack" ]; then
+    if [ -n "$wt" ]; then
+      p=$wt
+      echo "worktree: $p exists on $b"
+    else
+      p=$root/$(slugify "$t")
+      [ ! -e "$p" ] || die "$p exists but holds no worktree of branch $b"
+      G worktree add --quiet "$p" "$b"
+      echo "worktree: $p on $b"
+    fi
+    copy_local "$p"
+    harnessed_register "$p" "$t" "$g"
+  else
+    if [ -n "$wt" ]; then
+      note "$b already has worktree $wt; its row is not AOE-managed, so remove keeps the folder"
+      A add "$wt" -t "$t" -g "$g" --cmd-override "$cmd"
+    else
+      A add "$main_wt" -w "$b" -t "$t" -g "$g" --cmd-override "$cmd"
+    fi
+    p=$(jq -r --arg t "$t" --arg g "$g" \
+      '[.[] | select(.title == $t and .group_path == $g and (.trashed_at | not))][0].project_path // ""' "$sessions")
+    [ -n "$p" ] || die "aoe registered no row titled $t"
+    copy_local "$p"
+  fi
+  echo "session: $t in $g (start it with: aoe -p $profile session start $t)"
+}
+
+# Reports what an existing row $1 means for creating title $2 in group $3. Returns 1 for no row.
+existing_for_create() {
+  local i=$1 t=$2 g=$3
+  [ -n "$i" ] || return 1
+  if [ "${R_STATE[$i]}" = trashed ]; then
+    echo "skip: ${R_BRANCH[$i]} is in the trash as ${R_TITLE[$i]}; restore it with: $me restore ${R_ID[$i]}"
+  elif [ "${R_TITLE[$i]}" != "$t" ] || [ "${R_GROUP[$i]}" != "$g" ]; then
+    echo "skip: ${R_BRANCH[$i]} already has session ${R_TITLE[$i]} in ${R_GROUP[$i]}; rename or move that one"
+  elif [ -d "${R_PATH[$i]}" ]; then
+    echo "reuse: ${R_TITLE[$i]} at ${R_PATH[$i]}"
+  else
+    echo "reuse: ${R_TITLE[$i]}, but ${R_PATH[$i]} is missing; use: $me recover ${R_BRANCH[$i]}"
+  fi
+  return 0
+}
+
+# A harnessed row runs a wrapper script by path. An absolute path from before harnessed #544
+# goes stale when aoe moves the worktree; harnessed rewrites it when it re-registers the row.
+is_harnessed_row() { [[ ${R_CMD[$1]%% *} == */* ]]; }
+row_is_stale() {
+  local i=$1 bin=${R_CMD[$1]%% *}
+  case $bin in
+    ./*) [ ! -e "${R_PATH[$i]}/${bin#./}" ] ;;
+    /*) [ "$(dirname "$bin")" != "${R_PATH[$i]}" ] || [ ! -e "$bin" ] ;;
+    *) return 1 ;;
+  esac
+}
+
+repair_row() {
+  local i=$1 bin
+  is_harnessed_row "$i" || { echo "repair: ${R_TITLE[$i]} is a plain row; nothing to repair"; return 0; }
+  row_is_stale "$i" || { echo "repair: ${R_TITLE[$i]} runs ${R_CMD[$i]%% *}; already current"; return 0; }
+  [ -n "$stack" ] || die "repair: ${R_TITLE[$i]} is a harnessed row; pass --stack"
+  need_part_a
+  bin=$(basename "${R_CMD[$i]%% *}")
+  [ "$bin" = "$harness-$stack-host" ] \
+    || die "repair: ${R_TITLE[$i]} runs $bin, not $harness-$stack-host; pass the stack it was made with"
+  [ -d "${R_PATH[$i]}" ] || die "repair: ${R_PATH[$i]} is missing; use recover"
+  harnessed_register "${R_PATH[$i]}" "${R_TITLE[$i]}" "${R_GROUP[$i]}"
+  local id=${R_ID[$i]}
+  load_rows
+  i=$(one "$id")
+  if row_is_stale "$i"; then die "repair: ${R_TITLE[$i]} still runs ${R_CMD[$i]%% *}"; fi
+  echo "repair: ${R_TITLE[$i]} now runs ${R_CMD[$i]%% *}"
+}
+
+# Retitles row $1 to $2 and moves it to group $3. AOE moves a managed worktree on a retitle.
+retitle_row() {
+  local i=$1 t=$2 g=$3 old live
+  old=${R_PATH[$i]}
+  [ "${R_STATE[$i]}" != trashed ] || die "${R_TITLE[$i]} is in the trash; restore it first"
+  if [ "$t" = "${R_TITLE[$i]}" ] && [ "$g" = "${R_GROUP[$i]}" ]; then
+    echo "${R_TITLE[$i]} is already titled and placed so"
+    return 0
+  fi
+  if [ "$t" != "${R_TITLE[$i]}" ]; then
+    live=$(procs_in "$old")
+    [ -z "$live" ] || die "${R_TITLE[$i]} is running ($live); stop it first: aoe -p $profile session stop ${R_ID[$i]}"
+  fi
+  backup
+  [ "$g" = "${R_GROUP[$i]}" ] || ensure_group "$g"
+  [ "$t" = "${R_TITLE[$i]}" ] || A session rename "${R_ID[$i]}" -t "$t"
+  [ "$g" = "${R_GROUP[$i]}" ] || A group move "${R_ID[$i]}" "$g"
+  local id=${R_ID[$i]}
+  load_rows
+  i=$(one "$id")
+  if [ "${R_PATH[$i]}" != "$old" ]; then
+    echo "moved: the worktree moved from $old to ${R_PATH[$i]}"
+    echo "moved: Claude history stays filed under $old; /resume in the new folder will not list it"
+  fi
+  if is_harnessed_row "$i" && row_is_stale "$i"; then repair_row "$i"; fi
+}
+
+# ---------------------------------------------------------------- session operations
+op_config() {
+  local mode part_a=n/a
+  if [ -n "$stack" ]; then
+    mode="harnessed (stack $stack, harness $harness)"
+    if harnessed_has_part_a; then part_a=yes; else part_a=no; fi
+  else
+    mode="plain (command $cmd)"
+  fi
+  printf 'root      %s\nprofile   %s\ngroup     %s\nmode      %s\nharnessed #544: %s\nsessions  %s\n' \
+    "$root" "$profile" "$group" "$mode" "$part_a" "$sessions"
+}
+
+op_list() {
+  load_rows
+  local only=${args[0]:-} i st status gitc
+  {
+    printf 'GROUP\tTITLE\tBRANCH\tSTATE\tSTATUS\tGIT\tWORKTREE\n'
+    for i in "${!R_ID[@]}"; do
+      if [[ $only == wave-* ]]; then
+        [ "wave-${R_WAVE[$i]}" = "$only" ] || continue
+      elif [ -n "$only" ]; then
+        [[ ${R_GROUP[$i]} == "$only" || ${R_GROUP[$i]} == "$only"/* ]] || continue
+      fi
+      status=$(jq -r --arg i "${R_ID[$i]}" '.[] | select(.id == $i) | .status // "?"' "$sessions")
+      [ -z "$(procs_in "${R_PATH[$i]}")" ] || status="$status, running"
+      if [ "${R_STATE[$i]}" = trashed ]; then gitc='-'; else gitc=$(git_summary "${R_PATH[$i]}"); fi
+      if is_harnessed_row "$i" && row_is_stale "$i"; then st="$status, STALE COMMAND"; else st=$status; fi
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${R_GROUP[$i]}" "${R_TITLE[$i]}" "${R_BRANCH[$i]:--}" \
+        "${R_STATE[$i]}" "$st" "$gitc" "${R_PATH[$i]#"$root"/}"
+    done | sort -t $'\t' -k1,1 -k2,2V
+  } | column -t -s $'\t'
+}
+
+op_new() {
+  [ ${#args[@]} -ge 1 ] && [ ${#args[@]} -le 2 ] || die "usage: new <branch> [<title>]"
+  local b=${args[0]} t=${args[1]:-${args[0]}}
+  [ -z "$stack" ] || need_part_a
+  load_include
+  load_rows
+  if existing_for_create "$(row_of_branch "$b")" "$t" "$group"; then return 0; fi
+  backup
+  create_one "$b" "$t" "$group"
+}
+
+op_rename() {
+  [ ${#args[@]} -eq 2 ] || die "usage: rename <target> <title>"
+  local i
+  load_rows
+  i=$(one "${args[0]}")
+  retitle_row "$i" "${args[1]}" "${R_GROUP[$i]}"
+}
+
+op_move() {
+  [ ${#args[@]} -eq 2 ] || die "usage: move <target> <group>"
+  local i
+  load_rows
+  i=$(one "${args[0]}")
+  retitle_row "$i" "${R_TITLE[$i]}" "${args[1]}"
+}
+
+op_archive() {
+  local verb=$1 t i live bad=0
+  [ ${#args[@]} -ge 1 ] || die "usage: $verb <target>..."
+  load_rows
+  for t in "${args[@]}"; do
+    resolve "$t"
+    for i in "${IDX[@]}"; do
+      if [ "$verb" = unarchive ]; then
+        if [ "${R_STATE[$i]}" = archived ]; then A session unarchive "${R_ID[$i]}"
+        else echo "${R_TITLE[$i]} is ${R_STATE[$i]}"; fi
+        continue
+      fi
+      [ "${R_STATE[$i]}" = live ] || { echo "${R_TITLE[$i]} is already ${R_STATE[$i]}"; continue; }
+      live=$(procs_in "${R_PATH[$i]}")
+      if [ -n "$live" ] && ! is_allowed "${R_TITLE[$i]}"; then
+        echo "archive: SKIPPED ${R_TITLE[$i]}: running ($live); pass --allow ${R_TITLE[$i]} to stop it"
+        bad=1
+        continue
+      fi
+      backup
+      A session archive "${R_ID[$i]}"
+    done
+  done
+  return $bad
+}
+
+op_check() {
+  [ ${#args[@]} -ge 1 ] || die "usage: check <target>..."
+  load_rows
+  local t i bad=0
+  for t in "${args[@]}"; do
+    resolve "$t"
+    for i in "${IDX[@]}"; do
+      safety "${R_PATH[$i]}" "${R_BRANCH[$i]}"
+      if [ ${#BLOCK[@]} -eq 0 ]; then
+        echo "ok: ${R_TITLE[$i]}"
+      else
+        bad=1
+        echo "BLOCKED: ${R_TITLE[$i]} (${R_PATH[$i]})"
+        printf '  - %s\n' "${BLOCK[@]}"
+      fi
+    done
+  done
+  return $bad
+}
+
+op_remove() {
+  [ ${#args[@]} -ge 1 ] || die "usage: remove <target>..."
+  local t i flags bad=0 trash todo=()
+  if [ $purge -eq 1 ] || [ $delete_branch -eq 1 ]; then
+    [ $confirmed -eq 1 ] || die "--purge and --delete-branch are irreversible; add --confirm-irreversible only after an explicit yes"
+  fi
+  # Whole output, then the first line: `| head -1` closes the pipe and aoe exits 101 on it.
+  trash=$(A settings explain session.delete_to_trash 2>/dev/null) || trash=''
+  trash=${trash%%$'\n'*}
+  if ! [[ $trash =~ ^session\.delete_to_trash[[:space:]]*=[[:space:]]*true[[:space:]]*$ ]] \
+    && [ $confirmed -eq 0 ]; then
+    die "session.delete_to_trash is not true here, so a removal is permanent; add --confirm-irreversible only after an explicit yes"
+  fi
+  load_rows
+  for t in "${args[@]}"; do
+    resolve "$t"
+    todo+=("${IDX[@]}")
+  done
+  for i in "${todo[@]}"; do
+    [ "${R_STATE[$i]}" != trashed ] || { echo "remove: ${R_TITLE[$i]} is already in the trash"; continue; }
+    if [ "${R_PATH[$i]}" = "$main_wt" ]; then
+      echo "remove: SKIPPED ${R_TITLE[$i]}: it is the main checkout"
+      bad=1
+      continue
+    fi
+    safety "${R_PATH[$i]}" "${R_BRANCH[$i]}"
+    if [ ${#BLOCK[@]} -gt 0 ] && ! is_allowed "${R_TITLE[$i]}"; then
+      bad=1
+      echo "remove: SKIPPED ${R_TITLE[$i]} (${R_PATH[$i]})"
+      printf '  - %s\n' "${BLOCK[@]}"
+      echo "  Remove it only after an explicit yes for this session, with: --allow ${R_TITLE[$i]}"
+      continue
+    fi
+    flags=(--delete-worktree)
+    [ ${#BLOCK[@]} -eq 0 ] || flags+=(--force)
+    [ $purge -eq 0 ] || flags+=(--purge)
+    [ $delete_branch -eq 0 ] || flags+=(--delete-branch)
+    backup
+    A remove "${R_ID[$i]}" "${flags[@]}"
+    [ "${R_MANAGED[$i]}" = true ] || echo "remove: ${R_PATH[$i]} is not AOE-managed; the folder stays"
+  done
+  return $bad
+}
+
+op_trash() {
+  load_rows
+  local i
+  {
+    printf 'ID\tTITLE\tGROUP\tWORKTREE\n'
+    for i in "${!R_ID[@]}"; do
+      [ "${R_STATE[$i]}" = trashed ] || continue
+      printf '%s\t%s\t%s\t%s\n' "${R_ID[$i]}" "${R_TITLE[$i]}" "${R_GROUP[$i]}" "${R_PATH[$i]}"
+    done
+  } | column -t -s $'\t'
+}
+
+op_restore() {
+  [ ${#args[@]} -eq 1 ] || die "usage: restore <id|title>"
+  local i
+  load_rows
+  i=$(one "${args[0]}")
+  [ "${R_STATE[$i]}" = trashed ] || die "restore: ${R_TITLE[$i]} is not in the trash"
+  A session restore "${R_ID[$i]}"
+  local id=${R_ID[$i]}
+  load_rows
+  i=$(one "$id")
+  echo "restore: ${R_TITLE[$i]} at ${R_PATH[$i]} on ${R_BRANCH[$i]:-?}: $(git_summary "${R_PATH[$i]}")"
+}
+
+op_recover() {
+  [ ${#args[@]} -ge 1 ] && [ ${#args[@]} -le 2 ] || die "usage: recover <branch> [<title>]"
+  local b=${args[0]} t=${args[1]:-${args[0]}} g=$group i p
+  [ -z "$stack" ] || need_part_a
+  load_include
+  load_rows
+  i=$(row_of_branch "$b")
+  if [ -n "$i" ] && [ "${R_STATE[$i]}" = trashed ]; then
+    die "recover: $b is in the trash as ${R_TITLE[$i]}; use: $me restore ${R_ID[$i]}"
+  fi
+  if [ -n "$i" ] && [ -d "${R_PATH[$i]}" ]; then
+    echo "recover: ${R_TITLE[$i]} is intact at ${R_PATH[$i]}; nothing to do"
+    return 0
+  fi
+  branch_exists "$b" || die "recover: branch $b exists neither here nor on origin; nothing to rebuild from"
+  backup
+  if [ -n "$i" ]; then
+    # The row survived but its folder did not: rebuild the folder where the row expects it.
+    p=${R_PATH[$i]}
+    g=${R_GROUP[$i]}
+    [ -z "$(worktree_of "$b")" ] || die "recover: branch $b is checked out elsewhere: $(worktree_of "$b")"
+    G worktree add --quiet "$p" "$b"
+    echo "worktree: $p rebuilt on $b"
+    copy_local "$p"
+    if is_harnessed_row "$i"; then repair_row "$i"; fi
+  else
+    create_one "$b" "$t" "$g"
+    p=$(worktree_of "$b")
+  fi
+  echo "recover: Claude conversations recorded under $p:"
+  A session import "$p" --dry-run || true
+  echo "recover: to bring them back as sessions, run: aoe -p $profile session import $p --group $g"
+}
+
+op_repair() {
+  [ ${#args[@]} -ge 1 ] || die "usage: repair <target>..."
+  local t i
+  load_rows
+  for t in "${args[@]}"; do
+    resolve "$t"
+    for i in "${IDX[@]}"; do repair_row "$i"; done
+  done
+}
+
+# ---------------------------------------------------------------- waves
+wave_num() { local w=${1#wave-}; [[ $w =~ ^[0-9]+$ ]] || die "not a wave number: $1"; echo "$w"; }
+
+next_slot() {
+  local w=$1 max=0 i
+  for i in "${!R_ID[@]}"; do
+    [ "${R_WAVE[$i]}" = "$w" ] && [ -n "${R_SLOT[$i]}" ] && [ "${R_SLOT[$i]}" -gt "$max" ] \
+      && max=${R_SLOT[$i]}
+  done
+  echo $((max + 1))
+}
+
+op_wave_create() {
+  [ ${#args[@]} -ge 2 ] || die "usage: wave create <n> <ISSUE[:slug]>..."
+  local w item issue slug i t g
+  w=$(wave_num "${args[0]}")
+  g="$group/wave-$w"
+  [ -z "$stack" ] || need_part_a
+  load_include
+  load_rows
+  for item in "${args[@]:1}"; do
+    issue=${item%%:*}
+    slug=''
+    [[ $item != *:* ]] || slug=$(slugify "${item#*:}")
+    [[ $issue =~ ^[A-Za-z]+-[0-9]+$ ]] || die "not an issue key like GH-83: $issue"
+    i=$(row_of_branch "$issue")
+    if [ -n "$i" ]; then
+      # Any title inside this wave is this issue's session; anywhere else is a skip.
+      if [ "${R_STATE[$i]}" != trashed ] && [ "${R_GROUP[$i]}" = "$g" ]; then t=${R_TITLE[$i]}; else t=''; fi
+      existing_for_create "$i" "$t" "$g"
+      continue
+    fi
+    t="$w.$(next_slot "$w")-$issue${slug:+-$slug}"
+    backup
+    create_one "$issue" "$t" "$g"
+    load_rows
+  done
+}
+
+op_wave_move() {
+  [ ${#args[@]} -ge 2 ] && [ ${#args[@]} -le 3 ] || die "usage: wave move <target> <n> [<slot>]"
+  local w s=${args[2]:-} i
+  w=$(wave_num "${args[1]}")
+  load_rows
+  i=$(one "${args[0]}")
+  if [ -z "$s" ]; then
+    if [ "${R_WAVE[$i]}" = "$w" ] && [ -n "${R_SLOT[$i]}" ]; then s=${R_SLOT[$i]}; else s=$(next_slot "$w"); fi
+  fi
+  [[ $s =~ ^[0-9]+$ ]] || die "not a slot number: $s"
+  local j
+  for j in "${!R_ID[@]}"; do
+    [ "$j" != "$i" ] && [ "${R_WAVE[$j]}" = "$w" ] && [ "${R_SLOT[$j]}" = "$s" ] \
+      && die "slot $w.$s is held by ${R_TITLE[$j]} (${R_STATE[$j]}); pick another slot"
+  done
+  retitle_row "$i" "$w.$s-${R_REST[$i]}" "$group/wave-$w"
+}
+
+op_wave_renumber() {
+  [ ${#args[@]} -eq 1 ] || die "usage: wave renumber <n>"
+  local w i n=0 id live
+  local -a order ids held=()
+  w=$(wave_num "${args[0]}")
+  load_rows
+  mapfile -t order < <(for i in "${!R_ID[@]}"; do
+    [ "${R_STATE[$i]}" = trashed ] || [ "${R_WAVE[$i]}" != "$w" ] || [ -z "${R_SLOT[$i]}" ] \
+      || echo "${R_SLOT[$i]} $i"
+  done | sort -n | cut -d' ' -f2)
+  for i in "${order[@]}"; do
+    live=$(procs_in "${R_PATH[$i]}")
+    [ -z "$live" ] || die "renumber: ${R_TITLE[$i]} is running ($live); stop it first"
+  done
+  ids=()
+  for i in "${order[@]}"; do ids+=("${R_ID[$i]}"); done
+  for i in "${!R_ID[@]}"; do
+    [ "${R_STATE[$i]}" = trashed ] && [ "${R_WAVE[$i]}" = "$w" ] && [ -n "${R_SLOT[$i]}" ] \
+      && held+=("${R_SLOT[$i]}")
+  done
+  for id in "${ids[@]}"; do
+    n=$((n + 1))
+    while [[ " ${held[*]} " == *" $n "* ]]; do n=$((n + 1)); done
+    load_rows
+    i=$(one "$id")
+    [ "${R_SLOT[$i]}" = "$n" ] || retitle_row "$i" "$w.$n-${R_REST[$i]}" "${R_GROUP[$i]}"
+  done
+  echo "renumber: wave $w has slots 1..$n"
+}
+
+# Read once here. A first read inside $(...) would fill only that subshell's copy.
+load_procs
+
+case $op in
+  config) op_config ;;
+  list) op_list ;;
+  new) op_new ;;
+  rename) op_rename ;;
+  move) op_move ;;
+  archive) op_archive archive ;;
+  unarchive) op_archive unarchive ;;
+  check) op_check ;;
+  remove) op_remove ;;
+  trash) op_trash ;;
+  restore) op_restore ;;
+  recover) op_recover ;;
+  repair) op_repair ;;
+  wave-create) op_wave_create ;;
+  wave-move) op_wave_move ;;
+  wave-renumber) op_wave_renumber ;;
+  *) die "unknown command: $op ($me --help)" ;;
+esac

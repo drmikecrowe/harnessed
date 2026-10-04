@@ -1,0 +1,6 @@
+# Gitignored files a new worktree needs from main/, one path (relative to main/) a line.
+# Copied by default; `link <path>` symlinks instead. Never overwrites a worktree's own copy.
+# Read by the agent-of-empires skill: aoe-sessions new, wave create, and recover.
+.claude/settings.local.json
+# A local build input: without it, a build from the worktree produces a different image.
+catalog/base/extra-tools.txt

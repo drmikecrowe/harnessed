@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
+# Recipe: agent-of-empires — Agent of Empires sessions that each own a git worktree.
+#
+# The skill drives the host's `aoe` and, for harnessed rows, `harnessed host-run --create-aoe-only`.
+# It depends on nothing else from harnessed, so it can be copied to ~/.claude/skills unchanged.
+name: agent-of-empires
+description: "Agent of Empires sessions with one git worktree each: create, list, rename, move, archive, remove, restore, recover, and optional waves, with a safety check before any removal."
+
+# jq reads aoe's sessions.json; `aoe list --json` omits worktree_info.
+tools:
+  - jq@1.8.2
+
+setup:
+  summary: >-
+    The agent-of-empires skill drives the Agent of Empires CLI on the host. Install aoe 1.16.1 or later
+    there; a container has no view of the host's sessions.
+  reference: https://github.com/agent-of-empires/agent-of-empires
+  condition: "! command -v aoe >/dev/null 2>&1"
+
+skills:
+  - path: skills/agent-of-empires
+
+expect:
+  skills: [agent-of-empires]

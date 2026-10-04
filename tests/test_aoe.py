@@ -167,6 +167,22 @@ class TestSyncSession:
         aoe.sync_session("container-run", "serena", "claude", tmp_path)
         assert ("group", "create") not in rec.verbs()
 
+    # aoe 1.16.1 prints a nested group as an indented tree, naming only its last segment.
+    NESTED = "Groups:\n\n• proj (0 sessions)\n  • wave-1 (2 sessions)\n\nTotal: 2 groups\n"
+
+    def test_existing_nested_group_is_not_recreated(self, monkeypatch, tmp_path):
+        # `group create proj/wave-1` on an existing group exits 1, and the blocking write path
+        # stops at the first failure, so the `add` behind it never ran.
+        rec = Recorder(groups=self.NESTED).install(monkeypatch)
+        aoe.sync_session("host-run", "s", "claude", tmp_path, group="proj/wave-1", background=False)
+        assert ("group", "create") not in rec.verbs()
+        assert rec.registrations()
+
+    def test_a_leaf_name_under_another_parent_is_not_the_group(self, monkeypatch, tmp_path):
+        rec = Recorder(groups=self.NESTED).install(monkeypatch)
+        aoe.sync_session("host-run", "s", "claude", tmp_path, group="other/wave-1")
+        assert ["group", "create", "other/wave-1", "-p", aoe.PROFILE] in rec.calls
+
     def test_add_passes_only_flags_aoe_accepts(self, rec, tmp_path):
         # `aoe add` is a clap CLI: an unknown flag exits 2 before adding anything, and on the
         # detached write path that is invisible — the dashboard just stays empty. Regression cover
