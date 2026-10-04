@@ -56,6 +56,23 @@ def _omp_attach_cmd(start_dir: Path) -> str:
     return f"omp --session-dir '{_CONTAINER_HOME_STR}/.omp/agent/sessions/{key}'"
 
 
+# Harnesses with a built-in ACP agent (#529). Every other one would need an adapter, which is not built.
+_ACP_HARNESSES = ("omp",)
+
+
+def _acp_attach_cmd(harness: str, start_dir: Path) -> str:
+    """The command that starts `harness` as an ACP agent on stdio. `container_run` rejects a harness
+    outside `_ACP_HARNESSES` before launching, so reaching the raise is a caller bug.
+
+    omp speaks ACP natively (`omp acp`). It keeps the attach command's `--session-dir`, which omp
+    accepts before the subcommand, so an ACP session lands in the same per-folder history as an
+    interactive one.
+    """
+    if harness not in _ACP_HARNESSES:
+        raise ValueError(f"{harness} has no ACP mode")
+    return _omp_attach_cmd(start_dir) + " acp"
+
+
 def _opencode_attach_cmd(prof: Path, stack_name: str) -> str:
     """opencode attach command, stack-conditional on a baked persona (bd main-rlw).
 

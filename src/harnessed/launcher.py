@@ -53,7 +53,17 @@ from .backend import (
     ProvisionPhase,
     register,
 )
-from .console import _can_prompt, _err, _out, in_exec_mode, set_exec_mode
+from .console import (
+    _can_prompt,
+    _err,
+    _out,
+    acp_stdout,
+    in_acp_mode,
+    in_exec_mode,
+    restore_acp_stdout,
+    set_acp_mode,
+    set_exec_mode,
+)
 from .ctrquery import (
     _container_exists,
     _container_running,
@@ -86,7 +96,9 @@ from .hosthome import (
     _stamp_host_home,
 )
 from .attachcmd import (
+    _ACP_HARNESSES,
     _HARNESS_ATTACH_CMD,
+    _acp_attach_cmd,
     _omp_attach_cmd,
     _opencode_attach_cmd,
     _resolve_mount_path,
@@ -4103,10 +4115,14 @@ def container_run(
     collapses proliferation rather than relocating it.
 
     Also registered as `container-exec` — the same launch with nobody at the keyboard. See
-    `_can_prompt`.
+    `_can_prompt`. And as `container-acp` (#529): an `-exec` launch whose stdout is an ACP client's
+    JSON-RPC channel. See `set_acp_mode`.
     """
-    exec_mode = ctx.info_name == "container-exec"
+    acp_mode = ctx.info_name == "container-acp"
+    exec_mode = acp_mode or ctx.info_name == "container-exec"
     set_exec_mode(exec_mode)
+    # BEFORE anything below can print or spawn a child that writes to stdout.
+    set_acp_mode(acp_mode)
     if exec_mode and shell:
         # --shell starts no harness and drops into an interactive bash. There is nothing for a
         # non-interactive caller to do with that, and `-i` with no pty would hand it a shell it
@@ -4114,6 +4130,12 @@ def container_run(
         _err.print("[bold red]error:[/bold red] --shell is interactive; use `container-run --shell`")
         raise typer.Exit(2)
     _require_supported_harness(harness)
+    if acp_mode and harness not in _ACP_HARNESSES:
+        _err.print(
+            f"[bold red]error:[/bold red] {harness} has no ACP mode; container-acp supports: "
+            f"{', '.join(_ACP_HARNESSES)}"
+        )
+        raise typer.Exit(2)
     stack, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
 
     if recipe:
@@ -4473,6 +4495,8 @@ def _attach(
 
     if shell:
         tail = "exec bash -l"
+    elif in_acp_mode():
+        tail = _acp_attach_cmd(harness, start_dir or project_path)
     elif harness == "opencode":
         # Stack-conditional (bd main-rlw): `opencode --agent <name>` when a persona was baked,
         # else the fixed `opencode` command.
@@ -4495,6 +4519,10 @@ def _attach(
     parts = [mise_init, init_prologue]
     if keyring_init:
         parts.append(keyring_init)
+    if in_acp_mode():
+        # stdout is the client's JSON-RPC channel, so only the harness may write to it. A brace
+        # group, not a subshell: the prologue's exports must still reach the harness.
+        parts = ["{ " + " && ".join(parts) + "; } >&2"]
     parts.append(tail)
     shell_cmd = " && ".join(parts)
 
@@ -4515,6 +4543,7 @@ def _attach(
     if not ephemeral:
         # Last chance to be read: past the exec, the agent owns the screen.
         _acknowledge_warnings()
+        restore_acp_stdout()  # no-op outside container-acp
         # os.execvp replaces this process — hands the TTY to the container natively.
         os.execvp(rt, exec_argv)  # noqa: S606 — no shell is the POINT: exec_argv is passed as a vector, so nothing is word-split or glob-expanded
 
@@ -4522,7 +4551,9 @@ def _attach(
     try:
         # unbounded: the interactive container session — same reasoning as `_launch_host`. The
         # teardown in the `finally` below is the part that must not hang, and it is bounded.
-        subprocess.run(exec_argv)
+        # Under container-acp the child gets the client's channel and this process keeps stderr,
+        # so the teardown line below cannot land in the JSON-RPC stream.
+        subprocess.run(exec_argv, stdout=acp_stdout())
     finally:
         _out.print(f"[blue][INFO][/blue] --rm: tearing down pod {pod or inst}")
         _pod_teardown(rt, inst, pod or inst)
@@ -4564,6 +4595,19 @@ app.command(
             " No pty is allocated for the agent, so its output is plain text rather than a "
             "fullscreen redraw. `--shell` is rejected: it starts no harness."
         ),
+    ),
+)(container_run)
+
+app.command(
+    "container-acp",
+    help=(
+        "Run a stack as an ACP agent on stdio, for an ACP client such as an editor (container "
+        "backend).\n\n"
+        "    harnessed container-acp omp <path> --stack <name>\n\n"
+        "Same flags and grammar as `container-exec`, and the same non-interactive launch. Stdout "
+        "carries only the harness's JSON-RPC: every launch message, and every line the attach "
+        "shell prints before the harness starts, goes to stderr. Supported harnesses: "
+        f"{', '.join(_ACP_HARNESSES)}."
     ),
 )(container_run)
 
@@ -5945,7 +5989,7 @@ _passthrough: list[str] = []
 _invocation: Optional[list[str]] = None
 
 # Each run verb and the `-exec` name the SAME function is also registered under (#450).
-_EXEC_ALIAS = {"host-run": "host-exec", "container-run": "container-exec"}
+_EXEC_ALIAS = {"host-run": ("host-exec",), "container-run": ("container-exec", "container-acp")}
 
 
 def _typed_invocation(verb: str) -> Optional[list[str]]:
@@ -5971,7 +6015,7 @@ def _typed_invocation(verb: str) -> Optional[list[str]]:
     launch while none of the two hazards above is present. The alias is named explicitly rather than
     matched by prefix, so a `container-exec` invocation still cannot caption a `host-run` script.
     """
-    accepted = (verb, _EXEC_ALIAS.get(verb))
+    accepted = (verb, *_EXEC_ALIAS.get(verb, ()))
     if not _invocation or _invocation[0] not in accepted:
         return None
     return ["harnessed", *_invocation]
