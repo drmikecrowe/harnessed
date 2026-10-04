@@ -1836,3 +1836,46 @@ class TestARefusedDuplicateIsNotAFailure:
         rec = Recorder().install(monkeypatch)
         assert aoe.sync_session("host-run", "serena", "claude", proj) is True
         assert ("list", "--json") in rec.verbs()
+
+
+class TestSessionName:
+    """#546. The agent session is named after its aoe row, for harnesses that can be named."""
+
+    def _rows(self, proj: Path, title: str) -> str:
+        return json.dumps([{"id": "s1", "title": title, "path": str(proj),
+                            "command": "./claude-serena-host --"}])
+
+    def test_the_stored_title_wins_over_the_baked_one(self, monkeypatch, tmp_path):
+        # After an aoe rename the wrapper still passes the old title (#544).
+        Recorder(sessions=self._rows(tmp_path, "4-GH-97-jira-split")).install(monkeypatch)
+        assert aoe.row_title(
+            "host-run", "serena", "claude", tmp_path, group="g", title="se-1-GH-97-split"
+        ) == "4-GH-97-jira-split"
+
+    def test_with_no_row_it_is_the_title_being_registered(self, rec, tmp_path):
+        assert aoe.row_title("host-run", "serena", "claude", tmp_path, title="t") == "t"
+        assert aoe.row_title("host-run", "serena", "claude", tmp_path) == aoe.title_for(
+            "host-run", "serena", "claude", tmp_path.resolve()
+        )
+
+    def test_without_aoe_there_is_no_name(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(aoe, "_bin", lambda: None)
+        assert aoe.row_title("host-run", "serena", "claude", tmp_path, title="t") is None
+
+    def _args(self, monkeypatch, harness: str, extra: list[str]) -> list[str]:
+        monkeypatch.setattr(launcher.aoe, "row_title", lambda *a, **k: "my row")
+        return launcher._session_name_args(
+            "host-run", "serena", harness, Path("/p"), extra,
+            group=None, title=None, no_strict_mcp=False,
+        )
+
+    def test_claude_gets_the_name_flag(self, monkeypatch):
+        assert self._args(monkeypatch, "claude", ["--resume", "x"]) == ["--name", "my row"]
+
+    @pytest.mark.parametrize("harness", ["codex", "omp", "opencode", "antigravity"])
+    def test_a_harness_without_the_flag_gets_nothing(self, monkeypatch, harness):
+        assert self._args(monkeypatch, harness, []) == []
+
+    @pytest.mark.parametrize("extra", [["-n", "mine"], ["--name", "mine"], ["--name=mine"]])
+    def test_a_name_the_user_passed_wins(self, monkeypatch, extra):
+        assert self._args(monkeypatch, "claude", extra) == []

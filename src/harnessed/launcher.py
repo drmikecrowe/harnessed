@@ -241,6 +241,7 @@ from .synclinks import CollisionError
 from .schema import (
     HARNESS_CONFIG_DIR,
     HUB_TRANSPORT_STDIO,
+    SESSION_NAME_FLAG,
     PinValidationError,
     Recipe,
     SchemaError,
@@ -2665,6 +2666,24 @@ def _persist_this_launch(
     return not dynstack.is_adhoc(stack)
 
 
+def _session_name_args(
+    verb: str, stack: str, harness: str, project_path: Path, extra: list[str],
+    *, group: Optional[str], title: Optional[str], no_strict_mcp: bool,
+) -> list[str]:
+    """`--name <aoe row title>` for a harness with a session-name flag, else nothing (#546).
+
+    Prepended to the passthrough args, so both backends deliver it the way they deliver those. A
+    name the user passed after `--` wins, and then none is added.
+    """
+    flags = SESSION_NAME_FLAG.get(harness)
+    if not flags or any(a in flags or a.startswith(f"{flags[0]}=") for a in extra):
+        return []
+    name = aoe.row_title(
+        verb, stack, harness, project_path, group=group, title=title, no_strict_mcp=no_strict_mcp
+    )
+    return [flags[0], name] if name else []
+
+
 def _aoe_register(
     verb: str, stack: str, harness: str, project_path: Path, *, only: bool,
     group: Optional[str] = None, title: Optional[str] = None, no_strict_mcp: bool = False,
@@ -3046,6 +3065,13 @@ def _launch_host(
             group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
             managed_worktree=aoe_managed_worktree,
         )
+        extra = [
+            *_session_name_args(
+                "host-run", stack, harness, project_path, list(extra or []),
+                group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
+            ),
+            *(extra or []),
+        ]
 
     # Launch-time secrets — the host half of the container path's `--env-file` (see
     # _resolve_launch_secrets). Set on THIS process for the same reason as the recipe env below:
@@ -4182,6 +4208,7 @@ def container_run(
     # this script, `_aoe_register` EXITS under `--create-aoe-only`, and a row written afterwards
     # would point at a file that does not exist.
     # Both or neither, and not at all for an ad-hoc stack — see `_persist_this_launch`.
+    extra = list(_passthrough)
     if _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):
         launchscript.write(
             "container-run", stack, harness, project_path,
@@ -4196,6 +4223,13 @@ def container_run(
             group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp_config,
             managed_worktree=aoe_managed_worktree,
         )
+        extra = [
+            *_session_name_args(
+                "container-run", stack, harness, project_path, extra,
+                group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp_config,
+            ),
+            *extra,
+        ]
 
     try:
         stk = load_stack(stack_dir)
@@ -4254,7 +4288,7 @@ def container_run(
     )
     spec = LaunchSpec(
         stack=stack, harness=harness, project_path=project_path,
-        extra=tuple(_passthrough), no_strict_mcp=no_strict_mcp_config, ephemeral=rm,
+        extra=tuple(extra), no_strict_mcp=no_strict_mcp_config, ephemeral=rm,
     )
 
     # --fresh: tear down existing pod.
@@ -4305,11 +4339,11 @@ def container_run(
                     "[yellow]note:[/yellow] attaching to the existing (older-build) instance — "
                     "run with --fresh to update."
                 )
-                _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=_passthrough, no_strict_mcp=no_strict_mcp_config)
+                _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=extra, no_strict_mcp=no_strict_mcp_config)
                 return
         else:
             _out.print(f"[blue][INFO][/blue] Attaching to running instance: {inst}")
-            _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=_passthrough, no_strict_mcp=no_strict_mcp_config)
+            _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=extra, no_strict_mcp=no_strict_mcp_config)
             return
     # Stopped leftover: a previous non-ephemeral session exited without tearing down its pod (only
     # --rm cleans up). A same-name `pod create` would fail "name already in use", so remove the
@@ -4401,7 +4435,7 @@ def container_run(
         _out.print(f"[green][SUCCESS][/green] Isolated pod running headless: {inst} ({hub_where})")
         return
 
-    _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=_passthrough, no_strict_mcp=no_strict_mcp_config)
+    _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=extra, no_strict_mcp=no_strict_mcp_config)
 
 
 def _attach(

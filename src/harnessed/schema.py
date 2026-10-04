@@ -65,6 +65,14 @@ HARNESS_CONFIG_DIR = {
     "codex": ".claude",
 }
 
+# The launch flag that names a harness's session, as `(emitted, *aliases)`; the aliases only detect
+# a name the user already passed (#546). A harness without one is simply absent. Checked 2026-10-04:
+# claude 2.1.286 has `-n/--name`; codex 0.157.1, omp and opencode have none yet. When one gains it,
+# add its entry here and the aoe row title reaches it on both backends.
+SESSION_NAME_FLAG: dict[str, tuple[str, ...]] = {
+    "claude": ("--name", "-n"),
+}
+
 
 class SchemaError(Exception):
     """A recipe/stack manifest is missing a required field or is malformed."""
