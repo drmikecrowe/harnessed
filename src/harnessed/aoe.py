@@ -119,8 +119,9 @@ _WRITE_TIMEOUT = 120
 # How long `_rewrite_row` waits for aoe's storage lock. aoe holds it for one file write.
 _LOCK_TIMEOUT = 5
 
-# `• name (3 sessions)` — aoe renders groups as a bullet list with no --json equivalent.
-_GROUP_LINE = re.compile(r"^\s*[•*-]\s+(\S+)\s+\(")
+# `• name (3 sessions)` — aoe renders groups as a bullet list with no --json equivalent. A nested
+# group is indented two spaces per level and names only its last segment.
+_GROUP_LINE = re.compile(r"^( *)[•*-]\s+(\S+)\s+\(")
 
 # How the recorded command names its stack. Both run verbs take `--stack`, never a positional, so
 # the stack sits at a keyword rather than a fixed index — `command_for` writes it and
@@ -468,7 +469,25 @@ def _has_group(exe: str, group: str) -> bool:
     result = _run(exe, ["group", "list", "-p", PROFILE])
     if result is None:
         return False
-    return group in {m.group(1) for m in (_GROUP_LINE.match(ln) for ln in result.stdout.splitlines()) if m}
+    return group in _group_paths(result.stdout)
+
+
+def _group_paths(listing: str) -> set[str]:
+    """Every group's full path, rebuilt from `aoe group list`'s indented tree.
+
+    The leaf name alone is not the group. Matching `proj/wave-1` against `wave-1` missed an existing
+    group, so the next `group create` exited 1 and the blocking write path stopped before its `add`.
+    """
+    paths: set[str] = set()
+    trail: list[str] = []
+    for line in listing.splitlines():
+        m = _GROUP_LINE.match(line)
+        if not m:
+            continue
+        depth = len(m.group(1)) // 2
+        trail = [*trail[:depth], m.group(2)]
+        paths.add("/".join(trail))
+    return paths
 
 
 def _sessions(exe: str) -> list[dict]:
