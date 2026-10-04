@@ -113,7 +113,11 @@ def main() -> int:
             proc.wait(timeout=30)
         except subprocess.TimeoutExpired:
             proc.terminate()
-            proc.wait(timeout=10)
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
     # After the `finally`, so a failure raised in the exchange is never masked by this one.
     if proc.returncode < 0:
         raise SystemExit("FAIL: the agent did not exit within 30s of stdin closing")
