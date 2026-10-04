@@ -14,13 +14,15 @@ touched.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
 
-from harnessed import aoe
+from harnessed import aoe, launchscript
 
 
 STALE_COMMAND = "harnessed host-run claude /some/old/path --"
@@ -164,3 +166,98 @@ def test_a_deleted_row_can_be_registered_again(drifted):
 
     assert _sync(project, []) is True, "a relaunch must register it again"
     assert len([r for r in _rows(profile) if r["command"] == ours]) == 1
+
+
+def _git(*args: str) -> None:
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", *args],
+        capture_output=True, text=True, check=True,
+    )
+
+
+@pytest.fixture
+def renamable(tmp_path, monkeypatch):
+    """An ISOLATED aoe home with `tie_workdir_to_name` on, and a bare repo with one linked worktree.
+
+    Isolated rather than a throwaway profile in the user's home, because the setting under test is
+    global config: a run must not depend on, or change, how the developer has aoe configured.
+    """
+    cfg = tmp_path / "cfg"
+    (cfg / "agent-of-empires").mkdir(parents=True)
+    (cfg / "agent-of-empires" / "config.toml").write_text("[session]\ntie_workdir_to_name = true\n")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(cfg))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("HARNESSED_NO_AOE", raising=False)
+    profile = f"harnessed-544-realexec-{uuid4().hex[:8]}"
+    monkeypatch.setattr(aoe, "PROFILE", profile)
+    assert _aoe("profile", "create", profile).returncode == 0
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git("init", "-q", "--bare", str(repo / ".bare"))
+    (repo / ".git").write_text("gitdir: ./.bare\n")
+    _git("-C", str(repo), "worktree", "add", "-q", "--orphan", "-b", "main", str(repo / "main"))
+    _git("-C", str(repo / "main"), "commit", "-q", "--allow-empty", "-m", "init")
+    worktree = repo / "1-GH-97-split"
+    _git("-C", str(repo / "main"), "worktree", "add", "-q", "-b", "1-GH-97-split", str(worktree))
+    return repo, worktree.resolve(), profile
+
+
+def _launch(project, *, title: str) -> bool:
+    """What the wrapper does on every launch: rewrite itself, then re-register under its baked title."""
+    launchscript.write("host-run", "serena", "claude", project, group="spec-evidence", title=title)
+    return aoe.sync_session(
+        "host-run", "serena", "claude", project, background=False,
+        group="spec-evidence", title=title, managed_worktree=True,
+    )
+
+
+def test_an_aoe_rename_leaves_the_row_launchable_and_unduplicated(renamable, tmp_path):
+    """#544. A rename with `tie_workdir_to_name` moves the worktree; the row must survive it."""
+    repo, worktree, profile = renamable
+    assert _launch(worktree, title="se-1-GH-97-split") is True
+    [row] = _rows(profile)
+    assert row["worktree"]["managed_by_aoe"] is True, "D4: marked AOE-managed with no script"
+
+    renamed = _aoe("session", "rename", row["id"], "-t", "4-GH-97-jira-split", "-p", profile)
+    assert renamed.returncode == 0, renamed.stderr
+    moved = repo / "4-gh-97-jira-split"
+    assert moved.is_dir() and not worktree.exists(), "precondition: aoe moved the worktree"
+    [row] = _rows(profile)
+    assert Path(row["path"]).resolve() == moved.resolve()
+
+    # D1: start the row the way aoe does, cwd at the row's path, with a stand-in harnessed.
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    record = tmp_path / "argv.txt"
+    (fake / "harnessed").write_text(f'#!/bin/sh\npwd -P > {record}\nprintf "%s\\n" "$@" >> {record}\n')
+    (fake / "harnessed").chmod(0o755)
+    env = {**os.environ, "PATH": f"{fake}:{os.environ['PATH']}"}
+    subprocess.run(["sh", "-c", row["command"]], cwd=row["path"], env=env, check=True)
+    recorded = record.read_text().split("\n")
+    assert recorded[0] == str(moved.resolve()), "the wrapper ran from the moved folder"
+    assert recorded[1:4] == ["host-run", "claude", "."], "and named that folder, not the old one"
+
+    # D2: the wrapper still bakes the OLD title; the relaunch must find the renamed row anyway.
+    assert _launch(moved, title="se-1-GH-97-split") is True
+    assert len(_rows(profile)) == 1, "no duplicate row"
+
+
+def test_a_stale_absolute_command_is_repaired_in_place(renamable):
+    """D3. A row from before #544 records an absolute script path, which dies with a move."""
+    _repo, worktree, profile = renamable
+    _launch(worktree, title="se-x")
+    [row] = _rows(profile)
+    stale = f"{worktree.parent / 'gone'}/claude-serena-host --"
+    assert aoe._rewrite_row(row["id"], lambda r: r.update(command=stale)) is None
+    assert _rows(profile)[0]["command"] == stale, "precondition"
+
+    reports: list[tuple[str, bool]] = []
+    assert aoe.sync_session(
+        "host-run", "serena", "claude", worktree, background=False,
+        group="spec-evidence", title="se-x",
+        on_drift=lambda message, repairing: reports.append((message, repairing)),
+    ) is True
+    [row] = _rows(profile)
+    assert row["id"] and row["command"] == "./claude-serena-host --"
+    assert len(reports) == 1 and reports[0][1] is True, "the repair is reported, never silent"

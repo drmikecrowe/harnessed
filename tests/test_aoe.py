@@ -143,7 +143,7 @@ class TestSyncSession:
         [add] = rec.registrations()
         assert add[1] == str(tmp_path)
         assert _flag(add, "-p") == aoe.PROFILE
-        assert _flag(add, "--cmd-override") == f"{tmp_path}/claude-serena-container --"
+        assert _flag(add, "--cmd-override") == "./claude-serena-container --"
 
     def test_uses_cmd_override_not_cmd(self, rec, tmp_path):
         # `--cmd` is validated against aoe's tool list and silently substitutes its configured
@@ -473,7 +473,7 @@ class TestIdentity:
     """
 
     def _existing(self, tmp_path: Path, command: str | None = None) -> str:
-        command = command if command is not None else f"{tmp_path}/claude-serena-container --"
+        command = command if command is not None else "./claude-serena-container --"
         return f'[{{"id": "s1", "path": "{tmp_path}", "command": "{command}"}}]'
 
     def test_relaunch_does_not_duplicate(self, monkeypatch, tmp_path):
@@ -503,7 +503,7 @@ class TestIdentity:
         aoe.sync_session("container-run", "other-stack", "claude", tmp_path)
         assert len(rec.registrations()) == 1
         [add] = rec.registrations()
-        assert _flag(add, "--cmd-override") == f"{tmp_path}/claude-other-stack-container --"
+        assert _flag(add, "--cmd-override") == "./claude-other-stack-container --"
 
     def test_each_verb_gets_its_own_row(self, monkeypatch, tmp_path):
         """The deliberate SPLIT (bd harnessed-7mt), and the one identity change of that switch.
@@ -519,7 +519,7 @@ class TestIdentity:
         aoe.sync_session("host-run", "serena", "claude", tmp_path)
         assert len(rec.registrations()) == 1
         [add] = rec.registrations()
-        assert _flag(add, "--cmd-override") == f"{tmp_path}/claude-serena-host --"
+        assert _flag(add, "--cmd-override") == "./claude-serena-host --"
 
     def test_an_open_mcp_relaunch_does_not_duplicate(self, monkeypatch, tmp_path):
         rec = Recorder(sessions=self._existing(tmp_path))
@@ -698,6 +698,21 @@ class TestForgetStackReadsTheLauncherScript:
 
     def _rec(self, monkeypatch, sessions: str) -> Recorder:
         return Recorder(sessions=sessions).install(monkeypatch)
+
+    def test_a_relative_script_is_read_from_the_rows_folder(self, monkeypatch, tmp_path):
+        # #544: rows record `./<script> --`, which aoe runs from the row's folder.
+        script = launchscript.write("container-run", "serena", "claude", tmp_path)
+        assert script is not None
+        other = tmp_path / "elsewhere"
+        other.mkdir()
+        rows = json.dumps([
+            {"id": "s1", "path": str(tmp_path), "command": f"./{script.name} --"},
+            {"id": "s2", "path": str(other), "command": f"./{script.name} --"},
+            {"id": "s3", "command": f"./{script.name} --"},
+        ])
+        rec = Recorder(sessions=rows).install(monkeypatch)
+        aoe.forget_stack("container-run", "serena")
+        assert rec.removed() == ["s1"], "a row whose folder has no such script is left alone"
 
     def test_a_row_whose_command_will_not_parse_is_skipped(self, monkeypatch, tmp_path):
         # aoe's JSON is not our schema to trust, and `harnessed rm` is destructive and unattended:
@@ -954,7 +969,7 @@ class TestWriteDispatch:
     def test_already_registered_is_success_without_writing(self, monkeypatch, tmp_path):
         rec = Recorder(
             sessions=f'[{{"id": "s1", "path": "{tmp_path}", '
-                     f'"command": "{tmp_path}/claude-serena-container --"}}]'
+                     '"command": "./claude-serena-container --"}]'
         ).install(monkeypatch)
         assert aoe.sync_session("container-run", "serena", "claude", tmp_path) is True
         assert rec.spawned == []
@@ -1011,7 +1026,7 @@ class TestCreateAoeOnly:
 
         def fake_sync(
             verb, stack, harness, project_path, *, background=True, group=None, title=None,
-            no_strict_mcp=False, on_drift=None,
+            no_strict_mcp=False, on_drift=None, managed_worktree=False,
         ):
             seen.update(verb=verb, stack=stack, harness=harness, background=background)
             if drift is not None and on_drift is not None:
@@ -1253,7 +1268,7 @@ class TestCommandDrift:
     # Path-dependent since the row invokes the project's own launcher script, so it is derived per
     # test rather than a module constant.
     def _ours(self, proj: Path) -> str:
-        return f"{proj}/claude-serena-host --"
+        return "./claude-serena-host --"
 
     STALE_TITLE = "claude/host proj serena (stale abc123)"
 
@@ -1299,7 +1314,7 @@ class TestCommandDrift:
         assert self._sync(proj) is not False, "registration must not be blocked by a legacy row"
         assert len(self._renames(rec)) == 1, "the legacy row is renamed aside, never deleted"
         [add] = rec.registrations()
-        assert _flag(add, "--cmd-override") == f"{proj}/claude-serena-host --"
+        assert _flag(add, "--cmd-override") == "./claude-serena-host --"
 
     def test_a_legacy_row_for_a_deleted_script_is_still_repaired(self, monkeypatch, proj):
         """S20a — ours is decided by the command's SHAPE, never by the file existing."""
@@ -1378,12 +1393,58 @@ class TestCommandDrift:
         self._sync(proj)
         assert len(self._renames(rec)) == 1
 
-    def test_a_launcher_script_row_for_another_project_is_still_ours(self, monkeypatch, proj):
-        # Ours is decided by the command's SHAPE, never by the file being present: a row whose
-        # script was deleted is exactly the row that needs repairing.
+    def test_our_script_at_a_stale_location_is_repaired_in_place(self, monkeypatch, proj):
+        # #544 D3. Until #544 this row was renamed aside and a second row added. It runs THIS
+        # launch's script from a folder that is gone, so it is the same row: its command is
+        # rewritten and it keeps its id, resume target and worktree_info.
         rec = self._rec(monkeypatch, proj, "/gone/claude-serena-host --")
-        self._sync(proj)
-        assert len(self._renames(rec)) == 1
+        written: list[tuple[str, dict]] = []
+
+        def rewrite(sid, update):
+            row: dict = {}
+            update(row)
+            written.append((sid, row))
+
+        monkeypatch.setattr(aoe, "_rewrite_row", rewrite)
+        seen: list[tuple[str, bool]] = []
+        assert self._sync(proj, on_drift=lambda m, r: seen.append((m, r))) is True
+        assert self._renames(rec) == [] and rec.added() == []
+        assert written == [("abc123", {"command": "./claude-serena-host --"})]
+        assert len(seen) == 1 and seen[0][1] is True and "/gone/claude-serena-host" in seen[0][0]
+
+    def test_a_failed_in_place_repair_says_why(self, monkeypatch, proj):
+        rec = self._rec(monkeypatch, proj, "/gone/claude-serena-host --")
+        monkeypatch.setattr(aoe, "_rewrite_row", lambda sid, update: "aoe held the lock")
+        seen: list[tuple[str, bool]] = []
+        assert self._sync(proj, on_drift=lambda m, r: seen.append((m, r))) is False
+        assert rec.added() == []
+        assert len(seen) == 1 and seen[0][1] is False and "aoe held the lock" in seen[0][0]
+
+    def test_a_renamed_row_is_found_by_script_and_folder(self, monkeypatch, proj):
+        # #544 D2. The wrapper still passes the title the row had before an aoe rename.
+        rec = self._rec(monkeypatch, proj, "./claude-serena-host --", title="4-GH-97-jira-split")
+        assert self._sync(proj, group="spec-evidence", title="se-1-GH-97-split") is True
+        assert rec.added() == [] and self._renames(rec) == []
+
+    def test_an_already_managed_row_is_not_rewritten(self, monkeypatch, proj):
+        # `aoe list --json` calls the field `worktree`; only sessions.json calls it `worktree_info`.
+        row = {"id": "abc123", "title": self.TITLE, "path": str(proj),
+               "command": "./claude-serena-host --", "worktree": {"managed_by_aoe": True}}
+        Recorder(sessions=json.dumps([row])).install(monkeypatch)
+        monkeypatch.setattr(aoe, "_worktree_info", lambda p: {"managed_by_aoe": True})
+        monkeypatch.setattr(aoe, "_rewrite_row", lambda sid, update: pytest.fail("rewrote"))
+        assert self._sync(proj, managed_worktree=True) is True
+
+    def test_managed_worktree_refuses_a_folder_that_is_not_a_linked_worktree(
+        self, monkeypatch, proj
+    ):
+        # #544 D4. A managed row's folder is deleted by `aoe remove --delete-worktree`.
+        rec = self._rec(monkeypatch, proj, "./claude-serena-host --")
+        seen: list[str] = []
+        assert self._sync(
+            proj, managed_worktree=True, on_drift=lambda m, r: seen.append(m)
+        ) is False
+        assert rec.added() == [] and "not in a git repository" in seen[0]
 
     def test_a_foreign_single_token_row_is_not_a_launcher_script(self, monkeypatch, proj):
         # The narrowness that makes the shape safe: the basename must name a real harness and one
@@ -1654,7 +1715,7 @@ class TestTrashedRowsDoNotBlockRegistration:
             "id": sid,
             "title": "claude/host proj serena",
             "path": str(proj),
-            "command": f"{proj}/claude-serena-host --",
+            "command": "./claude-serena-host --",
         }])
 
     def _trash_line(self, sid: str = "abc123abc123abc1") -> str:
@@ -1723,7 +1784,7 @@ class TestARefusedDuplicateIsNotAFailure:
                 rec._sessions = json.dumps([{
                     "id": "abc123abc123abc1", "title": aoe.title_for(
                         "host-run", "serena", "claude", proj),
-                    "path": str(proj), "command": f"{proj}/claude-serena-host --",
+                    "path": str(proj), "command": "./claude-serena-host --",
                 }])
                 return _ok()
             return real(exe, args, timeout=timeout)

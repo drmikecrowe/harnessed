@@ -33,6 +33,7 @@ _TYPED_PREFIX = "# as typed: "
 # indistinguishable from the delimiter, and that ambiguity reads as a code failure.
 _STUB = """#!/bin/sh
 : > "$ARGV_OUT"
+pwd -P > "$ARGV_OUT.cwd"
 for a in "$@"; do printf '%s\\0' "$a" >> "$ARGV_OUT"; done
 """
 
@@ -361,7 +362,10 @@ class TestParityWithCommandFor:
         written = launchscript.write("host-run", "serena", "claude", proj, **kwargs)
         assert written is not None
         # The authority, read at test time rather than copied into this file.
-        authority = shlex.split(aoe.command_for("host-run", "serena", "claude", proj, **kwargs))
+        # `.`: the script cds to its own folder rather than baking the path in (#544).
+        authority = shlex.split(
+            aoe.command_for("host-run", "serena", "claude", Path("."), **kwargs)
+        )
         assert authority[-1] == "--", "guard: command_for is expected to end with the separator"
 
         # `_read_as_the_shell_does` + `split("\n")`, never `read_text().splitlines()`. This test
@@ -464,7 +468,9 @@ class TestHostileInput:
         proj = tmp_path / "we ird's proj"
         proj.mkdir()
         script = launchscript.write("host-run", "serena", "claude", proj)
-        assert str(proj.resolve()) in run_script(script)
+        # The path reaches the script through `$0` and the `cd` line now, not argv (#544).
+        assert run_script(script)[2] == "."
+        assert (tmp_path / "argv.txt.cwd").read_text().strip() == str(proj.resolve())
 
 
 class TestClobberRefusal:
@@ -608,10 +614,10 @@ def test_the_comment_is_always_exactly_one_line(tmp_path_factory, argv):
     # is the last place that should disagree with the shell about where a line ends.
     lines = launchscript._read_as_the_shell_does(written).split("\n")
     assert sum(ln.startswith(_TYPED_PREFIX) for ln in lines) == 1
-    # 5, not 4: `split("\n")` keeps the trailing empty element that `splitlines()` drops. The file
+    # 6, not 5: `split("\n")` keeps the trailing empty element that `splitlines()` drops. The file
     # ends with a newline, as a shell script should.
-    assert len(lines) == 5, "shebang, sentinel, comment, exec, trailing empty — never more"
-    assert lines[3].startswith("exec ") and lines[4] == ""
+    assert len(lines) == 6, "shebang, sentinel, comment, cd, exec, trailing empty — never more"
+    assert lines[4].startswith("exec ") and lines[5] == ""
 
 @given(st.integers(min_value=1, max_value=12))
 @settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
@@ -663,7 +669,7 @@ class TestCarriageReturnRegression:
         assert written is not None
         content = launchscript._read_as_the_shell_does(written)
         assert sum(ln.startswith("exec ") for ln in content.split("\n")) == 1
-        assert len(content.split("\n")) == 4, "shebang, sentinel, exec, trailing empty"
+        assert len(content.split("\n")) == 5, "shebang, sentinel, cd, exec, trailing empty"
 
     def test_the_default_python_read_would_have_split_it(self, proj):
         # The negative control for the fix: proves the guarded read is doing something, rather than
