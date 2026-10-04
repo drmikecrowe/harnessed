@@ -80,14 +80,47 @@ mcp:
 #      Down → `daemon start --detach` forks to background (instant, measured) and returns 0;
 #      nothing here blocks, so no timeout wrapper.
 #   2. `track` registers the workspace with the (now running) daemon, which attaches its
-#      fsnotify watcher and indexes in the background — plain track does NOT block (`--wait` is
-#      the explicit blocking form). This is the step the MCP wrapper cannot do (it has no
+#      fsnotify watcher and indexes it. Plain track DOES block until that index finishes
+#      (measured v0.64.5 2026-10-04, despite `--wait` being documented as the blocking form),
+#      and the daemon indexes one repo at a time, so a launch waited behind every index in
+#      flight: ~90s for an EMPTY dir queued behind two worktrees. Hence the background
+#      subshell: the attach never waits, tools answer once the index lands, and stderr goes to
+#      ~/.gortex/track.log rather than into the agent's screen mid-session.
+#      This is the step the MCP wrapper cannot do (it has no
 #      $PROJECT_DIR), and without it every tool call returns a structured `repo_not_tracked`
 #      error. With the daemon still down the registration persists for the next daemon start
 #      (upstream fallback table), hence the ordering: ensure, then track.
 #      Re-tracking is NOT a no-op: v0.64.5 measured 2026-09-30, `track` on an already-tracked
 #      path blocked 2m48s while the daemon re-indexed it. So track only a path that
-#      `gortex repos --json` (0.2s, reads config + store) does not already list.
+#      `gortex repos --json` (0.2s, reads config + store) does not already list. That list
+#      includes the AUTOMATIC worktree checkouts gortex discovered on its own.
+#      Worktrees: gortex groups a repo's checkouts into a family and serves a linked worktree as
+#      an automatic overlay on the family's primary graph, indexing only its delta. An explicit
+#      `track` instead makes it a dedicated graph with a full index (measured 2026-10-04: two
+#      fresh worktrees became `main@<worktree>`, ~495 files each). So a linked worktree
+#      (MAIN_REPO_DIR, the git common dir, is neither $PROJECT_DIR nor $PROJECT_DIR/.git) whose
+#      common dir the daemon already serves (`repos explain-view` → "matched": true, ~4s on a
+#      busy daemon, hence inside the background subshell) is not tracked; gortex discovers it
+#      as an automatic checkout itself (16 worktrees of this repo got there with no `track`).
+#      In a fresh pod nothing is served yet, so
+#      the worktree is tracked and becomes the primary.
+#   3. `gortex init` for the LAUNCHING harness only, so a repo never needs the interactive
+#      wizard (which pre-ticks every assistant detected on the machine). Flags, measured v0.64.5
+#      2026-10-04:
+#        --agents=claude-code    only when $HARNESS is claude. The other adapters add nothing
+#                                harnessed lacks: omp and opencode write just a repo MCP entry
+#                                (.omp/mcp.json, opencode.json), a SECOND gortex server beside
+#                                harnessed's own MCP wiring; codex and antigravity write only
+#                                $HOME (~/.codex, ~/.gemini), never the repo.
+#        --no-skills             community-skill generation INDEXES the repo in-process — the
+#                                slow first start. Without it init takes ~90ms, tracked or not,
+#                                and does not re-index (unlike re-tracking, step 2).
+#        --no-hooks              hooks: below owns them; init's copy lands in
+#                                .claude/settings.local.json and would double-fire.
+#        --yes </dev/null        never the wizard, whatever the attach shell's stdin is.
+#      Idempotent: a second run skips every file. For claude it writes the mcp__gortex__*
+#      permission allowlist into .claude/settings.json and skips .mcp.json, because install.sh
+#      already registered gortex at user scope in the profile.
 init:
   run: |
     if command -v gortex >/dev/null 2>&1; then
@@ -105,8 +138,19 @@ init:
       elif gortex repos --json 2>/dev/null | grep -qF "\"path\": \"${PROJECT_DIR}\""; then
         :
       else
-        gortex track "${PROJECT_DIR}" >/dev/null 2>&1 \
-          || echo "gortex: could not register ${PROJECT_DIR}; run 'gortex track ${PROJECT_DIR}' once the daemon is up" >&2
+        ( mkdir -p "${HOME}/.gortex"
+          if [ -n "${MAIN_REPO_DIR:-}" ] && [ "${MAIN_REPO_DIR}" != "${PROJECT_DIR}" ] \
+              && [ "${MAIN_REPO_DIR}" != "${PROJECT_DIR}/.git" ] \
+              && gortex repos explain-view "${MAIN_REPO_DIR}" --format json 2>/dev/null | grep -q '"matched": true'; then
+            :
+          else
+            gortex track "${PROJECT_DIR}" >/dev/null 2>>"${HOME}/.gortex/track.log" \
+              || echo "gortex: could not register ${PROJECT_DIR}; run 'gortex track ${PROJECT_DIR}' once the daemon is up" >>"${HOME}/.gortex/track.log"
+          fi & )
+      fi
+      if [ -n "${PROJECT_DIR:-}" ] && [ "${HARNESS:-}" = claude ]; then
+        gortex init "${PROJECT_DIR}" --agents=claude-code --no-skills --no-hooks --yes --no-progress </dev/null >/dev/null 2>&1 \
+          || echo "gortex: 'gortex init --agents=claude-code' failed in ${PROJECT_DIR}; run it by hand to see why" >&2
       fi
     else
       echo "gortex: not on PATH; graph tools disabled this session" >&2

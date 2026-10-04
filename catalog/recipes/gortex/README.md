@@ -19,6 +19,7 @@ assembler emits it into the generated `settings.json`.
 | skills / commands / subagents | `install.sh` → `gortex install --agents=claude-code …` | install, both modes |
 | MCP server (`gortex mcp`) | hatago child (container) / native `.mcp.json` (host), behind a one-line daemon-ensure wrapper | harness start |
 | daemon + repo registration | `init.run` (daemon ensure + `gortex track "$PROJECT_DIR"`) | every attach |
+| per-repo wiring (claude only) | `init.run` → `gortex init --agents=claude-code --no-skills --no-hooks --yes` | every attach |
 | hooks (`gortex hook`, 8 events) | `recipe.yaml` `hooks:` → assembler `settings.json` | every tool call / prompt |
 
 ## Daemon lifecycle
@@ -39,6 +40,16 @@ alone; all clients speak to the same unix socket with isolated per-session state
    `gortex track "$PROJECT_DIR"` — the step the MCP entry cannot do — so tool calls don't get
    `repo_not_tracked`. It skips `track` when `gortex repos --json` already lists the path:
    re-tracking a tracked repo blocks until the daemon re-indexes it (2m48s measured).
+   A first `track` blocks too: it returns only after the daemon has indexed the path, and the
+   daemon indexes one repo at a time. So `track` runs in a background subshell, and the attach
+   does not wait for the index. Its errors go to `~/.gortex/track.log`.
+   **Worktrees.** gortex serves a linked worktree as an automatic overlay on its repo's primary
+   graph and indexes only the difference. An explicit `track` makes it a separate graph with a
+   full index. So the subshell skips `track` when `$PROJECT_DIR` is a linked worktree and
+   `gortex repos explain-view "$MAIN_REPO_DIR"` shows the daemon already serves its repo.
+   On a `claude` launch it then runs `gortex init --agents=claude-code` non-interactively, so
+   you never see the wizard, which pre-ticks every assistant it detects on the machine. See
+   "Per-repo `gortex init`" below.
 
 Every `init.run` path exits 0: a daemon that will not start degrades to "gortex not connected"
 in the capability report, never blocks the attach.
@@ -49,12 +60,29 @@ and re-indexes only files whose mtime changed. On a host launch a daemon the rec
 an unmanaged orphan that **outlives** the session and is reused by later launches; stop it with
 `gortex daemon stop` when you want it gone.
 
+## Per-repo `gortex init`
+
+On a `claude` launch, `init.run` runs
+`gortex init "$PROJECT_DIR" --agents=claude-code --no-skills --no-hooks --yes` on every attach,
+with stdin from `/dev/null`. Measured at v0.64.5:
+
+- **Claude only.** The other adapters add nothing harnessed lacks. `omp` and `opencode` write
+  only a repo MCP entry (`.omp/mcp.json`, `opencode.json`), which would register a second gortex
+  server beside harnessed's own MCP wiring. `codex` and `antigravity` write only `$HOME`
+  (`~/.codex`, `~/.gemini`), never the repo.
+- **`--no-skills`.** Community-skill generation indexes the repo in-process, which is what made
+  a first start slow. Without it, init takes about 90 ms and does not re-index a tracked repo.
+- **`--no-hooks`.** The recipe's `hooks:` own the hooks. Init's copy would land in
+  `.claude/settings.local.json` and fire twice.
+- **What lands in the repo.** The `mcp__gortex__*` permission allowlist in
+  `.claude/settings.json`. `.mcp.json` is skipped because `install.sh` already registered gortex
+  at user scope in the profile. A second run skips every file.
+
+Run `gortex init` yourself (without `--no-skills`) if you want the community-routing skills in
+a checkout.
+
 ## What is deliberately NOT run
 
-- **`gortex init`** (per-repo). It writes `.mcp.json`, hooks and community-routing blocks into
-  the repo — harnessed already owns the MCP wiring (hatago / native), the hooks come from the
-  recipe, and repo footprint is the user's call. Run it yourself if you want the
-  community-routing surfaces in a given checkout.
 - **`--claude-md` / user-level hooks in install.sh.** The identity `CLAUDE.md` and
   `settings.json` are assembler-owned; the same workflow text reaches the agent via the MCP
   initialize response and the baked `gortex-*` skills.
