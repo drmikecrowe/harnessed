@@ -125,6 +125,15 @@ under `worktrees/<branch-name>/`. Run `git worktree list` when unsure.
 - **Never conclude "file X does not exist" from a worktree.** Gitignored content is not populated
   there — notably `docs/`, which exists only in `main/`. An empty `ls`/`fd` means "ignored here", not
   "missing". Confirm against `main/`, `git ls-tree`, and `.gitignore`.
+- **Never run a bare `harnessed` to verify a worktree's code.** The global `harnessed` is an editable
+  install of `main/`. An AOE pane resolves `harnessed` to it; an interactive shell resolves the branch
+  venv that `mise.toml` activates. Run `tools/run-tests.sh` or `uv run harnessed` from the worktree.
+- **Every checkout shares one runtime state.** `~/.local/share/harnessed` (profiles, build stamps) and
+  the AOE profile are not per worktree. A branch's `harnessed build <stack>` rewrites the profile live
+  sessions use. Test build or launch changes on a throwaway stack, or under an isolated
+  `XDG_DATA_HOME`/`XDG_CONFIG_HOME`.
+- **`.worktree-include` lists the gitignored files a new worktree needs from `main/`.** The
+  `agent-of-empires` skill copies them; add a line when a new local file becomes a build input.
 
 ## Tests
 
