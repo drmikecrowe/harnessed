@@ -28,6 +28,6 @@ lazygit@0.65.1     # git TUI
 
 # Dev/code tools
 ast-grep@0.45.3    # AST-based code search
-ruff@0.16.7        # Python linter/formatter
+ruff@0.16.8        # Python linter/formatter
 stylua@2.5.2       # Lua formatter
 markdownlint-cli2@0.23.2  # markdown linter
