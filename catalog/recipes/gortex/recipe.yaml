@@ -102,6 +102,9 @@ mcp:
 #      common dir the daemon already serves (`repos explain-view` → "matched": true, ~4s on a
 #      busy daemon, hence inside the background subshell) is not tracked; gortex discovers it
 #      as an automatic checkout itself (16 worktrees of this repo got there with no `track`).
+#      `repos reconcile` then runs the janitor's pass on the family now rather than on its
+#      schedule. It names the common dir: a worktree the daemon has not discovered yet fails
+#      with "no tracked repository matches" (measured 2026-10-04). 0.5s idle, 21s busy.
 #      In a fresh pod nothing is served yet, so
 #      the worktree is tracked and becomes the primary.
 #   3. `gortex init` for the LAUNCHING harness only, so a repo never needs the interactive
@@ -142,7 +145,7 @@ init:
           if [ -n "${MAIN_REPO_DIR:-}" ] && [ "${MAIN_REPO_DIR}" != "${PROJECT_DIR}" ] \
               && [ "${MAIN_REPO_DIR}" != "${PROJECT_DIR}/.git" ] \
               && gortex repos explain-view "${MAIN_REPO_DIR}" --format json 2>/dev/null | grep -q '"matched": true'; then
-            :
+            gortex repos reconcile "${MAIN_REPO_DIR}" --index "${MAIN_REPO_DIR}" >/dev/null 2>>"${HOME}/.gortex/track.log" || :
           else
             gortex track "${PROJECT_DIR}" >/dev/null 2>>"${HOME}/.gortex/track.log" \
               || echo "gortex: could not register ${PROJECT_DIR}; run 'gortex track ${PROJECT_DIR}' once the daemon is up" >>"${HOME}/.gortex/track.log"
