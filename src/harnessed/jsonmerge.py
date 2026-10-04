@@ -31,6 +31,35 @@ def _deep_merge_json(base: object, overlay: object) -> object:
     return overlay
 
 
+# The permission lists Claude Code itself appends to when a user answers a prompt in a stack.
+_LIVE_PERMISSION_LISTS = ("allow", "deny", "ask", "additionalDirectories")
+
+
+def carry_live_permissions(merged: dict, live: object) -> dict:
+    """Union the live file's `permissions` lists back into a profile-wins `merged` (#538).
+
+    Both relaunch paths rebuild settings.json from the profile, and the profile always defines
+    `permissions`, so a rule written only into the live file ("Don't ask again") was replaced on
+    every launch. Each list keeps the profile's entries first, then appends live entries it lacks.
+    Scalars such as `defaultMode` are untouched: the profile still wins on those.
+    """
+    live_perms = live.get("permissions") if isinstance(live, dict) else None
+    if not isinstance(live_perms, dict):
+        return merged
+    perms = merged.get("permissions")
+    if not isinstance(perms, dict):
+        return merged
+    out = dict(perms)
+    for key in _LIVE_PERMISSION_LISTS:
+        extra = live_perms.get(key)
+        if not isinstance(extra, list):
+            continue
+        current = out.get(key)
+        base = list(current) if isinstance(current, list) else []
+        out[key] = base + [e for e in extra if e not in base]
+    return {**merged, "permissions": out}
+
+
 def _merge_host_claude_settings(prof: Path, required: dict, harness: str = "") -> None:
     """Apply host ~/.claude/settings.json into the profile settings for launch-time parity.
 
