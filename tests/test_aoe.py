@@ -1426,6 +1426,15 @@ class TestCommandDrift:
         assert self._sync(proj, group="spec-evidence", title="se-1-GH-97-split") is True
         assert rec.added() == [] and self._renames(rec) == []
 
+    def test_an_already_managed_row_is_not_rewritten(self, monkeypatch, proj):
+        # `aoe list --json` calls the field `worktree`; only sessions.json calls it `worktree_info`.
+        row = {"id": "abc123", "title": self.TITLE, "path": str(proj),
+               "command": "./claude-serena-host --", "worktree": {"managed_by_aoe": True}}
+        Recorder(sessions=json.dumps([row])).install(monkeypatch)
+        monkeypatch.setattr(aoe, "_worktree_info", lambda p: {"managed_by_aoe": True})
+        monkeypatch.setattr(aoe, "_rewrite_row", lambda sid, update: pytest.fail("rewrote"))
+        assert self._sync(proj, managed_worktree=True) is True
+
     def test_managed_worktree_refuses_a_folder_that_is_not_a_linked_worktree(
         self, monkeypatch, proj
     ):
