@@ -346,13 +346,52 @@ ensure_branch() {
   fi
 }
 
-copy_settings() {
-  local p=$1 s=.claude/settings.local.json
-  if [ -f "$main_wt/$s" ] && [ ! -e "$p/$s" ]; then
-    mkdir -p "$p/.claude"
-    cp "$main_wt/$s" "$p/$s"
-    echo "settings: copied $s from main"
+# The gitignored local files a new worktree gets from main/. main/.worktree-include lists them,
+# one path relative to main/ a line; `link <path>` symlinks instead of copying. Without the file,
+# only .claude/settings.local.json is copied. Parsed before any change, so a bad line stops the
+# run before AOE or git is touched.
+INC_MODE=() INC_PATH=()
+load_include() {
+  local list=$main_wt/.worktree-include line mode rel
+  INC_MODE=() INC_PATH=()
+  if [ ! -f "$list" ]; then
+    INC_MODE=(copy) INC_PATH=(.claude/settings.local.json)
+    return 0
   fi
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%%#*}
+    line=${line#"${line%%[![:space:]]*}"}
+    line=${line%"${line##*[![:space:]]}"}
+    [ -n "$line" ] || continue
+    mode="copy" rel=$line
+    if [[ $line == "link "* ]]; then
+      mode="link"
+      rel=${line#link }
+      rel=${rel#"${rel%%[![:space:]]*}"}
+    fi
+    case /$rel/ in
+      //*|*/../*) die "$list: $rel must be a path inside main/" ;;
+    esac
+    INC_MODE+=("$mode") INC_PATH+=("${rel%/}")
+  done < "$list"
+}
+
+# Applies the include list to new worktree $1. Never overwrites what the worktree already has.
+copy_local() {
+  local p=$1 i mode rel
+  for i in "${!INC_PATH[@]}"; do
+    mode=${INC_MODE[$i]} rel=${INC_PATH[$i]}
+    [ -e "$main_wt/$rel" ] || [ -L "$main_wt/$rel" ] || { note "local: main/$rel is missing; skipped"; continue; }
+    [ ! -e "$p/$rel" ] && [ ! -L "$p/$rel" ] || continue
+    mkdir -p "$(dirname "$p/$rel")"
+    if [ "$mode" = link ]; then
+      ln -s "$main_wt/$rel" "$p/$rel"
+      echo "local: linked $rel to main/"
+    else
+      cp -a "$main_wt/$rel" "$p/$rel"
+      echo "local: copied $rel from main/"
+    fi
+  done
 }
 
 # Registers a harnessed row for worktree $1 with title $2 in group $3. harnessed cannot see a
@@ -383,7 +422,7 @@ create_one() {
       G worktree add --quiet "$p" "$b"
       echo "worktree: $p on $b"
     fi
-    copy_settings "$p"
+    copy_local "$p"
     harnessed_register "$p" "$t" "$g"
   else
     if [ -n "$wt" ]; then
@@ -395,7 +434,7 @@ create_one() {
     p=$(jq -r --arg t "$t" --arg g "$g" \
       '[.[] | select(.title == $t and .group_path == $g and (.trashed_at | not))][0].project_path // ""' "$sessions")
     [ -n "$p" ] || die "aoe registered no row titled $t"
-    copy_settings "$p"
+    copy_local "$p"
   fi
   echo "session: $t in $g (start it with: aoe -p $profile session start $t)"
 }
@@ -509,6 +548,7 @@ op_new() {
   [ ${#args[@]} -ge 1 ] && [ ${#args[@]} -le 2 ] || die "usage: new <branch> [<title>]"
   local b=${args[0]} t=${args[1]:-${args[0]}}
   [ -z "$stack" ] || need_part_a
+  load_include
   load_rows
   if existing_for_create "$(row_of_branch "$b")" "$t" "$group"; then return 0; fi
   backup
@@ -648,6 +688,7 @@ op_recover() {
   [ ${#args[@]} -ge 1 ] && [ ${#args[@]} -le 2 ] || die "usage: recover <branch> [<title>]"
   local b=${args[0]} t=${args[1]:-${args[0]}} g=$group i p
   [ -z "$stack" ] || need_part_a
+  load_include
   load_rows
   i=$(row_of_branch "$b")
   if [ -n "$i" ] && [ "${R_STATE[$i]}" = trashed ]; then
@@ -666,7 +707,7 @@ op_recover() {
     [ -z "$(worktree_of "$b")" ] || die "recover: branch $b is checked out elsewhere: $(worktree_of "$b")"
     G worktree add --quiet "$p" "$b"
     echo "worktree: $p rebuilt on $b"
-    copy_settings "$p"
+    copy_local "$p"
     if is_harnessed_row "$i"; then repair_row "$i"; fi
   else
     create_one "$b" "$t" "$g"
@@ -705,6 +746,7 @@ op_wave_create() {
   w=$(wave_num "${args[0]}")
   g="$group/wave-$w"
   [ -z "$stack" ] || need_part_a
+  load_include
   load_rows
   for item in "${args[@]:1}"; do
     issue=${item%%:*}

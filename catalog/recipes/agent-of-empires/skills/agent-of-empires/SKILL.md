@@ -24,6 +24,21 @@ Run `aoe-sessions config` first. It prints what the script found. A flag overrid
 
 If `main/` holds wrappers for several stacks, the script stops. Ask the user which stack, then pass `--stack`.
 
+## Local files
+
+A new worktree lacks main's gitignored files. `main/.worktree-include` lists the ones to bring along:
+
+```text
+# one path relative to main/ a line; copied unless the line starts with `link `
+.claude/settings.local.json
+link .env
+```
+
+- `new`, `wave create`, and `recover` apply the list. They never overwrite a file the worktree has.
+- Without the file, only `.claude/settings.local.json` is copied.
+- Copy a file that each branch can change on its own. Link a file that must stay one shared file.
+- Never list a cache or a venv. Each worktree rebuilds its own.
+
 ## Sessions
 
 | Ask | Run |
