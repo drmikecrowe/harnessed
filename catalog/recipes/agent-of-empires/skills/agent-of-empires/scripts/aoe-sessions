@@ -35,6 +35,9 @@ set -euo pipefail
 me=aoe-sessions
 die() { echo "$me: $*" >&2; exit 1; }
 note() { echo "$me: $*" >&2; }
+for bin in jq flock column git aoe; do
+  command -v "$bin" >/dev/null 2>&1 || die "required command not found: $bin"
+done
 
 # ---------------------------------------------------------------- arguments
 root='' profile='' group='' stack='' harness='' cmd=''
@@ -90,7 +93,12 @@ wrappers() {
     read -ra tok <<< "$line"
     h=${tok[3]:-} s=''
     for i in "${!tok[@]}"; do [ "${tok[$i]}" = --stack ] && s=${tok[$((i + 1))]:-}; done
-    [ -z "$s" ] || printf '%s %s\n' "$h" "$s"
+    [ -n "$s" ] || continue
+    if [[ $h =~ ^[A-Za-z0-9._-]+$ && $s =~ ^[A-Za-z0-9._-]+$ ]]; then
+      printf '%s %s\n' "$h" "$s"
+    else
+      note "$f: cannot read a harness and stack from its exec line; skipped"
+    fi
   done | sort -u
 }
 
@@ -106,6 +114,7 @@ if [ -z "$cmd" ] && [ -z "$stack" ]; then
 elif [ -n "$stack" ] && [ -z "$harness" ]; then
   mapfile -t found < <(wrappers)
   for p in "${found[@]}"; do [ "${p#* }" != "$stack" ] || harness=${p%% *}; done
+  [ -n "$harness" ] || note "no wrapper in main/ runs stack $stack; using harness claude (pass --harness to change it)"
 fi
 [ -z "$cmd" ] || [ -z "$stack" ] || die "--cmd makes plain rows; it cannot be combined with --stack"
 harness=${harness:-claude}
@@ -232,12 +241,23 @@ procs_in() {
   echo "${out[*]}"
 }
 
-# Fills BLOCK with the reasons removing the worktree at $1 loses work. Empty means safe.
+# Fills BLOCK with the reasons removing the worktree at $1, on branch $2, loses work. Empty is safe.
 BLOCK=()
 safety() {
-  local p=$1 n live
+  local p=$1 b=${2:-} n live
   BLOCK=()
-  [ -n "$p" ] && [ -d "$p" ] || return 0
+  if [ -z "$p" ] || [ ! -d "$p" ]; then
+    # No folder to inspect, but the branch still holds the commits: check it from main/.
+    if [ -n "$b" ] && G show-ref --verify --quiet "refs/heads/$b"; then
+      n=$(G rev-list --count "refs/heads/$b" --not --remotes)
+      [ "$n" -eq 0 ] || BLOCK+=("worktree missing; branch $b has $n commit(s) on no remote")
+    fi
+    return 0
+  fi
+  if ! is_worktree "$p"; then
+    BLOCK+=("$p is not a git worktree; its state cannot be checked")
+    return 0
+  fi
   n=$(git -C "$p" status --porcelain | wc -l)
   [ "$n" -eq 0 ] || BLOCK+=("$n uncommitted change(s)")
   n=$(git -C "$p" rev-list --count HEAD --not --remotes)
@@ -247,9 +267,18 @@ safety() {
   [ -z "$live" ] || BLOCK+=("live process(es) in the worktree: $live")
 }
 
+# Whether folder $1 is itself a worktree root. A folder inside the bare root that lost its .git
+# file still resolves to the bare repo, which `rev-parse --is-inside-work-tree` does not catch.
+is_worktree() {
+  local top
+  top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || return 1
+  [ "$top" = "$(cd "$1" && pwd -P)" ]
+}
+
 git_summary() {
   local p=$1 sum n behind ahead
   [ -n "$p" ] && [ -d "$p" ] || { echo missing; return; }
+  is_worktree "$p" || { echo "not a worktree"; return; }
   if git -C "$p" rev-parse --abbrev-ref '@{u}' >/dev/null 2>&1; then
     read -r behind ahead < <(git -C "$p" rev-list --left-right --count '@{u}...HEAD')
     if [ "$ahead" -gt 0 ]; then sum="ahead $ahead"; else sum=pushed; fi
@@ -269,7 +298,7 @@ backed_up=0
 backup() {
   [ $backed_up -eq 0 ] && [ -f "$sessions" ] || return 0
   local to
-  to=$sessions.bak-$me-$(date -u +%Y%m%dT%H%M%SZ)
+  to=$sessions.bak-$me-$(date -u +%Y%m%dT%H%M%SZ)-$$
   flock "$lock" cp -p "$sessions" "$to"
   echo "backup: $to"
   backed_up=1
@@ -295,7 +324,7 @@ ensure_group() {
   IFS=/ read -ra segs <<< "$1"
   for seg in "${segs[@]}"; do
     path=${path:+$path/}$seg
-    if ! printf '%s\n' "$have" | awk -v g="$path" '$0 == g { f = 1 } END { exit !f }'; then
+    if ! printf '%s\n' "$have" | GP=$path awk '$0 == ENVIRON["GP"] { f = 1 } END { exit !f }'; then
       if [ -z "$parent" ]; then A group create "$seg"; else A group create "$seg" --parent "$parent"; fi
     fi
     parent=$path
@@ -339,10 +368,13 @@ ensure_branch() {
     G fetch --quiet origin "$b"
     G branch --track "$b" "origin/$b"
     echo "branch: $b tracking origin/$b"
-  else
+  elif G remote get-url origin >/dev/null 2>&1; then
     G fetch --quiet origin main
     G branch --no-track "$b" origin/main
     echo "branch: $b new from origin/main, no upstream until the first push"
+  else
+    G branch --no-track "$b" main
+    echo "branch: $b new from local main; there is no origin remote"
   fi
 }
 
@@ -409,8 +441,8 @@ harnessed_register() {
 # One worktree on branch $1 and one session titled $2 in group $3.
 create_one() {
   local b=$1 t=$2 g=$3 p wt
-  ensure_group "$g"
   ensure_branch "$b"
+  ensure_group "$g"
   wt=$(worktree_of "$b")
   if [ -n "$stack" ]; then
     if [ -n "$wt" ]; then
@@ -478,8 +510,9 @@ repair_row() {
     || die "repair: ${R_TITLE[$i]} runs $bin, not $harness-$stack-host; pass the stack it was made with"
   [ -d "${R_PATH[$i]}" ] || die "repair: ${R_PATH[$i]} is missing; use recover"
   harnessed_register "${R_PATH[$i]}" "${R_TITLE[$i]}" "${R_GROUP[$i]}"
+  local id=${R_ID[$i]}
   load_rows
-  i=$(one "${R_ID[$i]}")
+  i=$(one "$id")
   if row_is_stale "$i"; then die "repair: ${R_TITLE[$i]} still runs ${R_CMD[$i]%% *}"; fi
   echo "repair: ${R_TITLE[$i]} now runs ${R_CMD[$i]%% *}"
 }
@@ -501,8 +534,9 @@ retitle_row() {
   [ "$g" = "${R_GROUP[$i]}" ] || ensure_group "$g"
   [ "$t" = "${R_TITLE[$i]}" ] || A session rename "${R_ID[$i]}" -t "$t"
   [ "$g" = "${R_GROUP[$i]}" ] || A group move "${R_ID[$i]}" "$g"
+  local id=${R_ID[$i]}
   load_rows
-  i=$(one "${R_ID[$i]}")
+  i=$(one "$id")
   if [ "${R_PATH[$i]}" != "$old" ]; then
     echo "moved: the worktree moved from $old to ${R_PATH[$i]}"
     echo "moved: Claude history stays filed under $old; /resume in the new folder will not list it"
@@ -604,7 +638,7 @@ op_check() {
   for t in "${args[@]}"; do
     resolve "$t"
     for i in "${IDX[@]}"; do
-      safety "${R_PATH[$i]}"
+      safety "${R_PATH[$i]}" "${R_BRANCH[$i]}"
       if [ ${#BLOCK[@]} -eq 0 ]; then
         echo "ok: ${R_TITLE[$i]}"
       else
@@ -626,7 +660,8 @@ op_remove() {
   # Whole output, then the first line: `| head -1` closes the pipe and aoe exits 101 on it.
   trash=$(A settings explain session.delete_to_trash 2>/dev/null) || trash=''
   trash=${trash%%$'\n'*}
-  if [ "$trash" != "session.delete_to_trash = true" ] && [ $confirmed -eq 0 ]; then
+  if ! [[ $trash =~ ^session\.delete_to_trash[[:space:]]*=[[:space:]]*true[[:space:]]*$ ]] \
+    && [ $confirmed -eq 0 ]; then
     die "session.delete_to_trash is not true here, so a removal is permanent; add --confirm-irreversible only after an explicit yes"
   fi
   load_rows
@@ -641,7 +676,7 @@ op_remove() {
       bad=1
       continue
     fi
-    safety "${R_PATH[$i]}"
+    safety "${R_PATH[$i]}" "${R_BRANCH[$i]}"
     if [ ${#BLOCK[@]} -gt 0 ] && ! is_allowed "${R_TITLE[$i]}"; then
       bad=1
       echo "remove: SKIPPED ${R_TITLE[$i]} (${R_PATH[$i]})"
@@ -679,8 +714,9 @@ op_restore() {
   i=$(one "${args[0]}")
   [ "${R_STATE[$i]}" = trashed ] || die "restore: ${R_TITLE[$i]} is not in the trash"
   A session restore "${R_ID[$i]}"
+  local id=${R_ID[$i]}
   load_rows
-  i=$(one "${R_ID[$i]}")
+  i=$(one "$id")
   echo "restore: ${R_TITLE[$i]} at ${R_PATH[$i]} on ${R_BRANCH[$i]:-?}: $(git_summary "${R_PATH[$i]}")"
 }
 
@@ -734,8 +770,8 @@ wave_num() { local w=${1#wave-}; [[ $w =~ ^[0-9]+$ ]] || die "not a wave number:
 next_slot() {
   local w=$1 max=0 i
   for i in "${!R_ID[@]}"; do
-    [ "${R_STATE[$i]}" != trashed ] && [ "${R_WAVE[$i]}" = "$w" ] && [ -n "${R_SLOT[$i]}" ] \
-      && [ "${R_SLOT[$i]}" -gt "$max" ] && max=${R_SLOT[$i]}
+    [ "${R_WAVE[$i]}" = "$w" ] && [ -n "${R_SLOT[$i]}" ] && [ "${R_SLOT[$i]}" -gt "$max" ] \
+      && max=${R_SLOT[$i]}
   done
   echo $((max + 1))
 }
@@ -777,13 +813,18 @@ op_wave_move() {
     if [ "${R_WAVE[$i]}" = "$w" ] && [ -n "${R_SLOT[$i]}" ]; then s=${R_SLOT[$i]}; else s=$(next_slot "$w"); fi
   fi
   [[ $s =~ ^[0-9]+$ ]] || die "not a slot number: $s"
+  local j
+  for j in "${!R_ID[@]}"; do
+    [ "$j" != "$i" ] && [ "${R_WAVE[$j]}" = "$w" ] && [ "${R_SLOT[$j]}" = "$s" ] \
+      && die "slot $w.$s is held by ${R_TITLE[$j]} (${R_STATE[$j]}); pick another slot"
+  done
   retitle_row "$i" "$w.$s-${R_REST[$i]}" "$group/wave-$w"
 }
 
 op_wave_renumber() {
   [ ${#args[@]} -eq 1 ] || die "usage: wave renumber <n>"
   local w i n=0 id live
-  local -a order ids
+  local -a order ids held=()
   w=$(wave_num "${args[0]}")
   load_rows
   mapfile -t order < <(for i in "${!R_ID[@]}"; do
@@ -796,8 +837,13 @@ op_wave_renumber() {
   done
   ids=()
   for i in "${order[@]}"; do ids+=("${R_ID[$i]}"); done
+  for i in "${!R_ID[@]}"; do
+    [ "${R_STATE[$i]}" = trashed ] && [ "${R_WAVE[$i]}" = "$w" ] && [ -n "${R_SLOT[$i]}" ] \
+      && held+=("${R_SLOT[$i]}")
+  done
   for id in "${ids[@]}"; do
     n=$((n + 1))
+    while [[ " ${held[*]} " == *" $n "* ]]; do n=$((n + 1)); done
     load_rows
     i=$(one "$id")
     [ "${R_SLOT[$i]}" = "$n" ] || retitle_row "$i" "$w.$n-${R_REST[$i]}" "${R_GROUP[$i]}"
