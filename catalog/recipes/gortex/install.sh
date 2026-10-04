@@ -26,7 +26,7 @@ if ! command -v gortex >/dev/null 2>&1; then
     echo "install.sh: gortex not on PATH — the tools: (github:zzet/gortex@…) layer delivered nothing runnable" >&2
     exit 1
 fi
-gortex version
+version="$(gortex version | head -n 1)"
 
 # --- 2. the wiring ----------------------------------------------------------------------------------
 # --agents=claude-code   recipes never name harnesses; every harness consumes the same
@@ -51,8 +51,17 @@ gortex version
 # read-only at this pin and deliberately unshimmed. A future edit adding another gortex call
 # here must re-pin HOME on it or the containment contract silently stops holding.
 # Idempotent: upstream skips byte-identical files, so the every-launch host re-run is cheap.
-HOME="${HARNESSED_HOME_SHIM:?install.sh requires HARNESSED_HOME_SHIM}" gortex install \
+# Its report is ~60 lines titled "gortex init" (upstream's label for this step), which reads as
+# a wizard in the launch log. It goes to a log; the launch gets one line, or the log on failure.
+log="${HARNESSED_CONFIG_DIR}/gortex-install.log"
+if HOME="${HARNESSED_HOME_SHIM:?install.sh requires HARNESSED_HOME_SHIM}" gortex install \
     --agents=claude-code \
     --no-hooks \
     --no-claude-md \
-    --claude-config-dir "${HARNESSED_CONFIG_DIR}"
+    --claude-config-dir "${HARNESSED_CONFIG_DIR}" >"${log}" 2>&1; then
+    echo "${version} wired for claude-code (log: ${log})"
+else
+    rc=$?
+    cat "${log}" >&2
+    exit "${rc}"
+fi
