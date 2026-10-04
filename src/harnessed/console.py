@@ -8,8 +8,10 @@ launcher and its extracted modules both import from here, and this module import
 """
 from __future__ import annotations
 
+import os
 import re
 import sys
+from typing import Optional
 
 from rich.console import Console
 
@@ -57,6 +59,45 @@ def in_exec_mode() -> bool:
     """Whether this is an `-exec` invocation. Read it, never the global — `set_exec_mode` rebinds
     the module attribute, so a `from … import _EXEC_MODE` would freeze the launch's first answer."""
     return _EXEC_MODE
+
+
+_ACP_STDOUT: Optional[int] = None
+"""The real fd 1, saved while a `container-acp` launch has stdout pointed at stderr (#529)."""
+
+
+def set_acp_mode(on: bool) -> None:
+    """Point fd 1 at stderr for the rest of the launch, or put it back.
+
+    Under `container-acp` stdout IS the JSON-RPC channel, so one stray `[INFO]` line corrupts it for
+    the client. An fd swap rather than retargeting `_out`: podman build, pod create and every other
+    child inherit fd 1, and a console swap would miss all of them. `restore_acp_stdout` hands the
+    real fd back just before the harness takes it over.
+    """
+    global _ACP_STDOUT
+    sys.stdout.flush()
+    if on and _ACP_STDOUT is None:
+        _ACP_STDOUT = os.dup(1)
+        os.dup2(2, 1)
+    elif not on and _ACP_STDOUT is not None:
+        os.dup2(_ACP_STDOUT, 1)
+        os.close(_ACP_STDOUT)
+        _ACP_STDOUT = None
+
+
+def in_acp_mode() -> bool:
+    """Whether this is a `container-acp` invocation. Read it, never the global; see `in_exec_mode`."""
+    return _ACP_STDOUT is not None
+
+
+def acp_stdout() -> Optional[int]:
+    """The saved real stdout under `container-acp`, else None (inherit). For a child that must speak
+    on the client's channel without un-swapping the parent: the `--rm` attach still prints after it."""
+    return _ACP_STDOUT
+
+
+def restore_acp_stdout() -> None:
+    """Give fd 1 back to the client's channel. Call immediately before the exec handoff."""
+    set_acp_mode(False)
 
 
 def _can_prompt() -> bool:

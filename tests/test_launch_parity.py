@@ -54,6 +54,9 @@ CONTAINER_ONLY: dict[str, str] = {
     # predicate itself is shared — both paths reach it through `_prompt_setup_notices` and
     # `_acknowledge_warnings`, which this scanner does not recurse into.
     "_can_prompt": "gates two confirms about an image and an instance; a host launch has neither",
+    # A decision, not a nature (#529): the ACP verb ships for the container backend only, because
+    # that is what the issue scoped. A `host-acp` would wire this into `_launch_host` too.
+    "set_acp_mode": "only `container-acp` exists; there is no host ACP verb",
     "_stopped_leftover": "removes a dead container",
     "_pod_teardown": "tears down a pod",
     # --- the varlock secrets broker (#437, epic #388 Topology B) ---
