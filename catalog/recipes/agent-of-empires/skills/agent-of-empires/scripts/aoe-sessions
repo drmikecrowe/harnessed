@@ -323,16 +323,9 @@ backup() {
   backed_up=1
 }
 
-# aoe prints groups as an indented tree. Rebuild the full paths from the indentation.
+# The text tree lists groups in flat order, so a child can follow the wrong parent. Read the JSON paths.
 group_paths() {
-  A group list | awk '
-    match($0, /^ *[•*-] +[^ ]+ \(/) {
-      line = substr($0, RSTART, RLENGTH); ind = match(line, /[^ ]/) - 1
-      name = line; sub(/^ *[•*-] +/, "", name); sub(/ \($/, "", name)
-      d = int(ind / 2); path[d] = name; p = path[0]
-      for (i = 1; i <= d; i++) p = p "/" path[i]
-      print p
-    }'
+  A group list --json | jq -r '.. | objects | .path? // empty'
 }
 
 # Creates group $1 and each missing parent.
