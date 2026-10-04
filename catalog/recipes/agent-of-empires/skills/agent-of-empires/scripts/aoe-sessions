@@ -325,7 +325,7 @@ backup() {
 
 # The text tree lists groups in flat order, so a child can follow the wrong parent. Read the JSON paths.
 group_paths() {
-  A group list --json | jq -r '.. | objects | .path? // empty'
+  A group list --json | jq -r '.[] | recurse(.children[]?) | .path'
 }
 
 # Creates group $1 and each missing parent.
