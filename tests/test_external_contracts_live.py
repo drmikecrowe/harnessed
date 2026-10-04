@@ -23,6 +23,7 @@ from harnessed.ctrquery import _container_running, _image_exists, _inspect_id, _
 from harnessed.launchenv import (
     _PROXY_ANNOTATION_RE,
     _schema_declares_proxy,
+    _varlock_broker_health,
     _varlock_cache_clear,
     _varlock_proxy_modes,
     _varlock_resolve,
@@ -591,6 +592,20 @@ class TestVarlockProxyRulesOutput:
             monkeypatch.setenv(var, value)
         d = self._schema(tmp_path, '# @sensitive\nA=exec("printf %s x")\n')
         assert _varlock_proxy_modes(d) == {"A": "placeholder"}
+
+    def test_broker_health_with_no_running_broker(self):
+        """With no broker running, _varlock_broker_health returns a non-empty human-readable string.
+
+        This test does NOT start a broker. It only verifies that the function returns gracefully
+        (no exception, no empty string) and that its output does not mention endpointToken or env.
+        A sentinel value in the JSON is covered by the unit test in test_capability_tests.py;
+        this test confirms the real binary's exit-code path is handled correctly.
+        """
+        result = _varlock_broker_health()
+        assert isinstance(result, str)
+        assert result  # never empty
+        assert "endpointToken" not in result
+        assert "env" not in result.split()  # the key itself should not appear in the output
 
 
 # ---------------------------------------------------------------------------

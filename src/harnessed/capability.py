@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import paths, schema
+from .launchenv import _varlock_broker_health, _varlock_proxy_modes, proxy_schema_dirs
 
 # Capability kinds (stable strings — used by report.py + --json consumers).
 MCP = "mcp"
@@ -127,11 +128,41 @@ class CapabilityResult:
 
 
 @dataclass
+class SecretsSection:
+    """Secrets proxy report for the capability test — names and modes only, never values (T-02-07).
+
+    `items` is `None` when `_varlock_proxy_modes` could not be trusted (parse failure). The caller
+    must treat `None` as a hard failure of the section, never as "no secrets".
+    """
+
+    schema_dirs: list[Path]
+    items: dict[str, str] | None  # key -> mode; None = parse failed
+    broker_status: str  # from _varlock_broker_health (allowlisted fields only)
+
+    @property
+    def has_schema(self) -> bool:
+        return bool(self.schema_dirs)
+
+    @property
+    def parse_failed(self) -> bool:
+        return self.has_schema and self.items is None
+
+    def to_dict(self) -> dict:
+        return {
+            "schema_dirs": [str(d) for d in self.schema_dirs],
+            "items": self.items,
+            "broker_status": self.broker_status,
+            "parse_failed": self.parse_failed,
+        }
+
+
+@dataclass
 class CapabilityReport:
     """The structured test result: per-capability status + an overall pass/fail."""
 
     stack: str
     results: list[CapabilityResult] = field(default_factory=list)
+    secrets: SecretsSection | None = None
 
     @property
     def ok(self) -> bool:
@@ -145,11 +176,14 @@ class CapabilityReport:
 
     def to_dict(self) -> dict:
         # names + status ONLY (T-02-07). Do not add a field here that carries container output.
-        return {
+        d: dict = {
             "stack": self.stack,
             "ok": self.ok,
             "results": [r.to_dict() for r in self.results],
         }
+        if self.secrets is not None:
+            d["secrets"] = self.secrets.to_dict()
+        return d
 
 
 @dataclass
@@ -168,6 +202,32 @@ class LiveCapabilities:
 #
 # The manifest→expected mapping itself lives in `schema.expected_capabilities` (reused directly by
 # `run_capability_test`); `build_report` is the pure expected-vs-live diff.
+
+
+def build_secrets_section(project_path: str | Path | None = None) -> SecretsSection:
+    """Build the secrets proxy section for the capability report.
+
+    Pure — no podman. Calls `proxy_schema_dirs`, `_varlock_proxy_modes`, and
+    `_varlock_broker_health`. Never reads or emits secret values — T-02-07.
+
+    When `_varlock_proxy_modes` returns `None`, the section records `parse_failed=True` and
+    the caller must surface that loudly. It never reads `None` as "no secrets".
+    """
+    dirs = proxy_schema_dirs(Path(project_path) if project_path is not None else None)
+    if not dirs:
+        return SecretsSection(schema_dirs=[], items={}, broker_status="no proxy schema found")
+
+    collected: dict[str, str] = {}
+    all_items: dict[str, str] | None = collected
+    for d in dirs:
+        modes = _varlock_proxy_modes(d)
+        if modes is None:
+            all_items = None  # parse failed — propagate immediately
+            break
+        collected.update(modes)
+
+    broker_status = _varlock_broker_health()
+    return SecretsSection(schema_dirs=dirs, items=all_items, broker_status=broker_status)
 
 
 def build_report(
@@ -935,9 +995,12 @@ def run_capability_test(
         finally:
             if not keep:
                 teardown(instance, harnessed_bin=harnessed_bin)
+        # Before the scratch project is removed below: the schema search reads it.
+        secrets = build_secrets_section(project_path)
     finally:
         if own_project and not keep:
             shutil.rmtree(project_path, ignore_errors=True)
     report = build_report(stack_name, expected, live)
     report.results.extend(test_results)
+    report.secrets = secrets
     return report

@@ -23,6 +23,8 @@ They also pin the second half of the bead: when an expected server is absent, th
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from harnessed import capability, schema
@@ -337,6 +339,8 @@ class TestTheTestVerbPublishesNothingFromTheContainer:
             lambda *a, **k: capability.LiveCapabilities(mcp={n: "connected" for n in connected}),
         )
         monkeypatch.setattr(capability, "teardown", lambda *a, **k: None)
+        # Keep the host's ~/.config/harnessed/.env.schema and varlock out of a unit test (#440).
+        monkeypatch.setattr(capability, "proxy_schema_dirs", lambda *a, **k: [])
         # If anything tried to shell into the container for output, this would fire.
         monkeypatch.setattr(capability, "_exec", lambda *a, **k: pytest.fail(
             "run_capability_test read from the container after introspection — T-02-07"
@@ -348,7 +352,20 @@ class TestTheTestVerbPublishesNothingFromTheContainer:
         assert report.ok is False
         detail = report.results[0].detail
         assert "hatago.log" in detail and "--keep" in detail
-        assert set(report.to_dict()) == {"stack", "ok", "results"}
+        assert set(report.to_dict()) == {"stack", "ok", "results", "secrets"}
+
+    def test_the_secrets_section_reads_the_project_before_it_is_deleted(self, monkeypatch):
+        # #542 review: the section was built after the scratch project dir was removed, so a
+        # self-owned project always read as "no proxy schema found".
+        seen: list[bool] = []
+
+        def build(path):
+            seen.append(Path(path).is_dir())
+            return capability.SecretsSection(schema_dirs=[], items={}, broker_status="")
+
+        monkeypatch.setattr(capability, "build_secrets_section", build)
+        self._report(monkeypatch, declared=set(), connected=set())
+        assert seen == [True]
 
     def test_a_green_run_says_nothing_about_the_log(self, monkeypatch):
         report = self._report(monkeypatch, declared={"time"}, connected={"time"})
