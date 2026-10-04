@@ -114,7 +114,9 @@ def main() -> int:
         except subprocess.TimeoutExpired:
             proc.terminate()
             proc.wait(timeout=10)
-            raise SystemExit("FAIL: the agent did not exit within 30s of stdin closing") from None
+    # After the `finally`, so a failure raised in the exchange is never masked by this one.
+    if proc.returncode < 0:
+        raise SystemExit("FAIL: the agent did not exit within 30s of stdin closing")
     # Whatever the agent wrote after the last reply must parse too.
     try:
         while (raw := lines.get(timeout=30)) is not None:
