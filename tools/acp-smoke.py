@@ -47,9 +47,16 @@ def _next_message(lines: queue.Queue, timeout: float) -> dict:
     return msg
 
 
+def _send(proc, msg: dict, what: str) -> None:
+    try:
+        proc.stdin.write(json.dumps(msg) + "\n")
+        proc.stdin.flush()
+    except BrokenPipeError:
+        raise SystemExit(f"FAIL: process closed stdin before {what} could be sent") from None
+
+
 def _request(proc, lines: queue.Queue, req_id: int, method: str, params: dict, timeout: float):
-    proc.stdin.write(json.dumps({"jsonrpc": "2.0", "id": req_id, "method": method, "params": params}) + "\n")
-    proc.stdin.flush()
+    _send(proc, {"jsonrpc": "2.0", "id": req_id, "method": method, "params": params}, method)
     while True:
         msg = _next_message(lines, timeout)
         if msg.get("id") == req_id and "method" not in msg:
@@ -59,11 +66,10 @@ def _request(proc, lines: queue.Queue, req_id: int, method: str, params: dict, t
             return msg["result"]
         if "method" in msg and "id" in msg:
             # A request from the agent (permission, fs). This client grants nothing.
-            proc.stdin.write(json.dumps({
+            _send(proc, {
                 "jsonrpc": "2.0", "id": msg["id"],
                 "error": {"code": -32601, "message": "not supported by acp-smoke"},
-            }) + "\n")
-            proc.stdin.flush()
+            }, f"the reply to {msg['method']}")
         # Anything else is a notification, such as session/update. It parsed, which is the check.
 
 
@@ -97,17 +103,27 @@ def main() -> int:
             }, args.timeout)
             print(f"ok: stopReason={result.get('stopReason')}", file=sys.stderr)
     finally:
-        proc.stdin.close()
+        try:
+            proc.stdin.close()
+        except BrokenPipeError:
+            pass
         try:
             proc.wait(timeout=30)
         except subprocess.TimeoutExpired:
             proc.terminate()
+            proc.wait(timeout=10)
+            raise SystemExit("FAIL: the agent did not exit within 30s of stdin closing") from None
     # Whatever the agent wrote after the last reply must parse too.
-    while (raw := lines.get(timeout=30)) is not None:
-        try:
-            json.loads(raw)
-        except json.JSONDecodeError:
-            raise SystemExit(f"FAIL: stdout byte that is not JSON-RPC: {raw!r}") from None
+    try:
+        while (raw := lines.get(timeout=30)) is not None:
+            try:
+                json.loads(raw)
+            except json.JSONDecodeError:
+                raise SystemExit(f"FAIL: stdout byte that is not JSON-RPC: {raw!r}") from None
+    except queue.Empty:
+        raise SystemExit("FAIL: stdout did not close within 30s") from None
+    if proc.returncode != 0:
+        raise SystemExit(f"FAIL: harnessed exited with {proc.returncode}")
     print("PASS: every stdout byte parsed as JSON-RPC", file=sys.stderr)
     return 0
 
