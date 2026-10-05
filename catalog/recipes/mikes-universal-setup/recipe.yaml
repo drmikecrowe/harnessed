@@ -48,6 +48,9 @@ rules:
   # session identity. Replaces denied-commands, token-efficient, and working-directory-stability.
   # Never leaves harnessed: none of it means anything on claude.ai or in an agent without a shell.
   - path: rules/harness-mechanics
+  # Markdown prose stays one line per paragraph; the renderer wraps it. A hard wrap at ~80 columns
+  # is silent on write and costs every later diff and merge, so this is always-on, not a skill.
+  - path: rules/markdown-no-hard-wrap
 
 # --- Guard-hook layer (GAP 2) ---
 # A PreToolUse hook on Bash that blocks `find` rooted at / or a home directory — the
