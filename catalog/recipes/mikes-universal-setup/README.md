@@ -1,7 +1,7 @@
 # mikes-universal-setup
 
-A personal baseline: 3 always-on rules (the judgment floor in NEVER / ASK / ALWAYS form, prompt
-defense, harness mechanics) plus 20 skills — 14 vendored in-tree and 6 fetched at build time from
+A personal baseline: 4 always-on rules (the judgment floor in NEVER / ASK / ALWAYS form, prompt
+defense, harness mechanics, Markdown without hard wraps) plus 20 skills — 14 vendored in-tree and 6 fetched at build time from
 pinned upstreams. Serves as the worked example of what a personal "how I want my agent to behave"
 recipe looks like, and is the recipe a client stack composes: nothing in it is identity, so it is
 the same baseline on someone else's account.
