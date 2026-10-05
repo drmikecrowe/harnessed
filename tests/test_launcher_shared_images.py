@@ -56,9 +56,10 @@ def test_build_images_cmd_registers_what_it_built(podman, monkeypatch):
 
 def test_build_images_cmd_passes_the_agent_pins_the_dockerfile_demands(monkeypatch):
     """The claude image is an agent image on BOTH build paths, so both owe it exactly the
-    `--build-arg`s its manifest declares — and since the 2026-09-23 concession that is NONE:
-    claude tracks the vendor channel (catalog/agents/claude/agent.yaml), and a leaked
-    `--build-arg CLAUDE_VERSION=…` would name an ARG the Dockerfile no longer declares.
+    `--build-arg`s its manifest declares. Since the 2026-09-23 concession claude's own version is
+    not one: claude tracks the vendor channel (catalog/agents/claude/agent.yaml), and a leaked
+    `--build-arg CLAUDE_VERSION=…` would name an ARG the Dockerfile no longer declares. Since #530
+    the ACP adapter's pin IS one, and it must arrive here like any other.
 
     Regression history, kept because the boundary is the point: this path once built
     Dockerfile.harnessed-claude from a hardcoded pair list with no build args at all, invisible
@@ -85,8 +86,11 @@ def test_build_images_cmd_passes_the_agent_pins_the_dockerfile_demands(monkeypat
     by_image = {cmd[cmd.index("-t") + 1]: cmd for cmd in builds}
     expected = launcher._agent_build_arg_flags(load_agent("claude"))
     claude = by_image[launcher._CLAUDE_IMAGE]
-    assert expected == [], "claude concedes its version — no build-arg may reach this path"
-    assert "--build-arg" not in claude, "a conceded pin leaked onto the shared build path"
+    # #530: the ACP adapter is the one pin claude carries; the conceded CLAUDE_VERSION stays out.
+    assert len(expected) == 2 and expected[1].startswith("CLAUDE_AGENT_ACP_VERSION=")
+    sent = [claude[i + 1] for i, a in enumerate(claude) if a == "--build-arg"]
+    assert sent == expected[1::2], "the shared build path dropped or added a claude pin"
+    assert not any(a.startswith("CLAUDE_VERSION=") for a in sent), "a conceded pin leaked"
     # The base is not an agent image; agent pins must not leak onto it either.
     assert "--build-arg" not in by_image[launcher._BASE_IMAGE]
 

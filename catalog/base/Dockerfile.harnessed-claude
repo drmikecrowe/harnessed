@@ -20,4 +20,22 @@ FROM harnessed-base:latest
 # appended its argument only when non-empty, so an empty value silently installed the default.
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
+# ACP adapter for `harnessed container-acp claude` (#530). The claude binary has no ACP mode, so
+# claude-agent-acp speaks ACP on stdio and drives claude through @anthropic-ai/claude-agent-sdk.
+# No default: the pin lives in catalog/agents/claude/agent.yaml (build_args), the one place
+# `harnessed update` looks. The cache mounts and the chown after them follow harnessed-base.
+ARG CLAUDE_AGENT_ACP_VERSION
+# THE GUARD IS THE PIN, as for codex: an omitted --build-arg leaves `pkg@`, which installs the newest.
+RUN --mount=type=cache,target=/home/harnessed/.cache/mise,id=harnessed-mise,uid=1000,gid=1000,sharing=locked \
+    --mount=type=cache,target=/home/harnessed/.cache/pnpm,id=harnessed-pnpm-meta,uid=1000,gid=1000,sharing=shared \
+    : "${CLAUDE_AGENT_ACP_VERSION:?required build-arg is empty or unset — refusing to install an unpinned claude-agent-acp}" && \
+    pnpm add -g "@agentclientprotocol/claude-agent-acp@${CLAUDE_AGENT_ACP_VERSION}"
+# Literal `harnessed`: the base's USERNAME ARG does not carry across FROM.
+USER root
+RUN chown harnessed:harnessed /home/harnessed /home/harnessed/.cache
+# The adapter spawns this instead of claude, so the stack's MCP hub reaches the session. See the file.
+COPY catalog/base/harnessed-claude-acp-cli /usr/local/bin/harnessed-claude-acp-cli
+RUN chmod 0755 /usr/local/bin/harnessed-claude-acp-cli
+USER harnessed
+
 CMD ["/bin/bash"]

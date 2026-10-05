@@ -323,8 +323,9 @@ class TestA3ClaudeTracksTheVendorChannel:
         asserted rather than assumed: an unpinnable entry that leaked a `--build-arg` would name
         an ARG the Dockerfile no longer declares."""
         agent = self._agent
-        assert agent.build_args == {}
-        assert _agent_build_arg_flags(agent) == []
+        # #530 added the ACP adapter, the one pin claude carries. The conceded version stays out.
+        assert set(agent.build_args) == {"CLAUDE_AGENT_ACP_VERSION"}
+        assert not any("CLAUDE_VERSION=" in f for f in _agent_build_arg_flags(agent))
 
     def test_the_concession_is_declared_with_a_reason_that_names_why(self):
         """Was `test_the_pin_is_held_and_carries_no_resolver_spec`. Same audit discipline the
@@ -354,4 +355,7 @@ class TestA3ClaudeTracksTheVendorChannel:
             resolve=lambda backend, name: [pinupdate.Release(version="99.0.0")],
         )
         assert [f.pin.key for f in report.unpinnable] == ["CLAUDE_VERSION"]
-        assert not report.stale and not report.held and not report.unresolved
+        # The adapter pin (#530) is resolvable, so a newer fake release reports it stale. That is
+        # its job; the conceded version must appear nowhere but `unpinnable`.
+        others = [*report.stale, *report.held, *report.unresolved]
+        assert "CLAUDE_VERSION" not in [f.pin.key for f in others]
