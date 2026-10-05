@@ -790,8 +790,9 @@ class InstallRef:
     repo: str  # owner/repo
     ref: str  # a version tag or a FULL 40-hex SHA — floating is rejected, as for tools:
     hold: str | None = None  # rule 5: scope is THIS ref, not the recipe
-    # #532: an absolute host folder install.sh uses INSTEAD of fetching `ref`, on a host launch
-    # only. Exported as HARNESSED_LOCAL_<KEY>, empty in a container build. `ref` stays mandatory.
+    # #532: an absolute host folder install.sh uses INSTEAD of fetching `ref`. Exported as
+    # HARNESSED_LOCAL_<KEY>: the folder on a host launch, its read-only mount point in a container
+    # install. `ref` stays mandatory.
     local: str | None = None
 
 

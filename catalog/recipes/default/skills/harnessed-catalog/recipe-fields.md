@@ -170,13 +170,14 @@ because a build has no project):
 | `HARNESSED_BIN_DIR` | where an executable goes. Use this, never `$UV_TOOL_BIN_DIR`. |
 | `HARNESSED_HOME_SHIM` | a dir whose `.claude` **is** `$HARNESSED_CONFIG_DIR`, for installers that only know how to install globally: `HOME="$HARNESSED_HOME_SHIM" <installer>`. Never roll your own with `mktemp -d` — that shape is rejected. |
 | `HARNESSED_REF_<KEY>` / `HARNESSED_REPO_<KEY>` | one pair per `install.refs.<key>`: the pinned ref and `owner/repo` |
-| `HARNESSED_LOCAL_<KEY>` | `install.refs.<key>.local` on a host launch; empty in a container build and when undeclared |
+| `HARNESSED_LOCAL_<KEY>` | `install.refs.<key>.local` on a host launch; its read-only mount point in a container install; empty when undeclared |
 
-**Installing from a local folder (host only).** To develop skills in another repo without bumping
-the SHA per edit, add `local:` to the ref in your **overlay** copy of the recipe. `ref:` stays
-required, and a container build still installs from it. The folder must be absolute (`~` is
-expanded) and must exist, or the host launch fails. harnessed only passes the folder on;
-`install.sh` decides how to use it:
+**Installing from a local folder.** To develop skills in another repo without bumping the SHA per
+edit, add `local:` to the ref in your **overlay** copy of the recipe. `ref:` stays required. The
+folder must be absolute (`~` is expanded) and must exist, or the launch fails. harnessed only passes
+the folder on; `install.sh` decides how to use it. In a container install the variable names a
+read-only mount that is gone after the install, so **copy** from it there; link only when
+`$HARNESSED_MODE` is `host`. A container reinstalls when a file in the folder changes:
 
 ```yaml
 install:
@@ -185,7 +186,7 @@ install:
     old_coder:
       repo: drmikecrowe/spec-evidence-aisdlc
       ref: b930a7ed041abfea23f116062efc2603eefb130c
-      local: ~/Programming/AI/old-coder      # host launches install from here instead
+      local: ~/Programming/AI/old-coder      # installs from here instead of the pin
 ```
 
 ```bash
