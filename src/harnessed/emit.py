@@ -1012,6 +1012,14 @@ CTR_RECIPE_DIR = "/opt/harnessed/recipes"
 # — see InstallSpec.cache); the container's cannot and must not: a build layer that kept the clone
 # would bake it into the image. It is removed in the same RUN layer that creates it.
 CTR_INSTALL_CACHE = "/tmp/harnessed-install-cache"  # noqa: S108 — container-side cache path, mount contract
+# Where a container install sees `install.refs.<key>.local`, bind-mounted read-only (#532). The
+# host path means nothing in the container, so $HARNESSED_LOCAL_<KEY> names this instead.
+CTR_LOCAL_REF_DIR = "/opt/harnessed/local"
+
+
+def ctr_local_ref(recipe_name: str, key: str) -> str:
+    """The container-side mount point of one ref's `local:` folder. One name for mount and env."""
+    return f"{CTR_LOCAL_REF_DIR}/{recipe_name}/{key}"
 
 
 def install_env(
@@ -1049,8 +1057,13 @@ def install_env(
         ref_env[f"HARNESSED_REF_{key.upper()}"] = ref.ref
         ref_env[f"HARNESSED_REPO_{key.upper()}"] = ref.repo
         # #532: the key is emitted for EVERY ref in BOTH modes (so the key set stays identical and
-        # `set -u` scripts can test it); only a host launch fills it. A build cannot see the host.
-        ref_env[f"HARNESSED_LOCAL_{key.upper()}"] = (ref.local or "") if mode == "host" else ""
+        # `set -u` scripts can test it), empty when no `local:` is declared. A container install
+        # gets the read-only mount point, never the host path; the script must copy from it, since
+        # a link into the mount dies with the install container.
+        local = ""
+        if ref.local:
+            local = ref.local if mode == "host" else ctr_local_ref(recipe.name, key)
+        ref_env[f"HARNESSED_LOCAL_{key.upper()}"] = local
 
     return {
         **ref_env,

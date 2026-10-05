@@ -1,10 +1,10 @@
-"""#532 — an `install.refs` entry may name a LOCAL FOLDER, used on a host launch instead of the pin.
+"""#532 — an `install.refs` entry may name a LOCAL FOLDER, used instead of the pin.
 
-The case: someone developing skills in a repository outside harnessed wants a host stack to install
-from their working checkout, with no SHA bump per edit. `install.refs.<key>.local` names that
-folder. On a host launch it reaches `install.sh` as `HARNESSED_LOCAL_<KEY>`; in a container build
-the same key is present and EMPTY, because a build has no view of the host filesystem. The pin
-stays mandatory and authoritative: a container build of the same recipe installs from it.
+The case: someone developing skills in a repository outside harnessed wants a stack to install from
+their working checkout, with no SHA bump per edit. `install.refs.<key>.local` names that folder. On
+a host launch it reaches `install.sh` as `HARNESSED_LOCAL_<KEY>`. A container install gets the
+folder bind-mounted read-only and the variable names the mount point, since the host path means
+nothing there; the script copies from it. The pin stays mandatory.
 
 What harnessed does NOT do is decide how the folder is used. The fetch lives in install.sh, as it
 does for the pin, so the script reads `HARNESSED_LOCAL_<KEY>` and chooses (link, copy, build).
@@ -95,11 +95,16 @@ class TestEnvContract:
         env = _env(_recipe(tmp_path, _body("/home/dev/old-coder")), "host")
         assert env["HARNESSED_LOCAL_OLD_CODER"] == "/home/dev/old-coder"
 
-    def test_container_mode_ignores_the_folder_and_keeps_the_pin(self, tmp_path):
-        """AC-1 negative: a container build installs from the pinned SHA."""
+    def test_container_mode_hands_the_mount_point_not_the_host_path(self, tmp_path):
+        """The host path does not exist in the container; the mount point does."""
         env = _env(_recipe(tmp_path, _body("/home/dev/old-coder")), "container")
-        assert env["HARNESSED_LOCAL_OLD_CODER"] == ""
+        assert env["HARNESSED_LOCAL_OLD_CODER"] == "/opt/harnessed/local/r/old_coder"
         assert env["HARNESSED_REF_OLD_CODER"] == _SHA
+
+    def test_container_mode_without_local_yields_an_empty_variable(self, tmp_path):
+        """No `local:` keeps the container on the pin, exactly as before."""
+        env = _env(_recipe(tmp_path, _body(None)), "container")
+        assert env["HARNESSED_LOCAL_OLD_CODER"] == ""
 
     def test_host_mode_still_passes_the_pin(self, tmp_path):
         """The script can report or fall back on the pin; the local folder does not erase it."""
@@ -159,3 +164,79 @@ class TestHostLaunch:
         err = _ANSI.sub("", capsys.readouterr().err)
         assert "old_coder" in err and str(tmp_path / "gone") in err
         assert not ran.exists(), "install.sh ran although its declared folder is missing"
+
+
+def _container_argv(tmp_path, recipe, monkeypatch) -> list[str]:
+    from harnessed import volumes
+
+    captured: list[list[str]] = []
+    monkeypatch.setattr(volumes, "_run", lambda cmd, **kw: captured.append(cmd))
+    monkeypatch.setattr(volumes, "_say", lambda *a, **k: None)
+    volumes._run_container_installs("podman", "s", "claude", "img", [recipe], "cfg", "tools")
+    return captured[-1] if captured else []
+
+
+class TestContainerInstall:
+    def test_the_folder_is_mounted_read_only_where_the_variable_points(self, tmp_path, monkeypatch):
+        """The suite runs no podman, so the argv is the claim: the mount and the env agree."""
+        local = tmp_path / "old-coder"
+        local.mkdir()
+        argv = _container_argv(tmp_path, _recipe(tmp_path, _body(str(local))), monkeypatch)
+
+        assert f"{local}:/opt/harnessed/local/r/old_coder:ro" in argv
+        assert "HARNESSED_LOCAL_OLD_CODER=/opt/harnessed/local/r/old_coder" in argv
+
+    def test_no_local_mounts_nothing(self, tmp_path, monkeypatch):
+        argv = _container_argv(tmp_path, _recipe(tmp_path, _body(None)), monkeypatch)
+        assert not any("/opt/harnessed/local/" in a for a in argv)
+
+    def test_a_missing_folder_fails_the_install_naming_the_ref(self, tmp_path, monkeypatch, capsys):
+        """Same rule as the host launch: never a silent fall back to the pin."""
+        r = _recipe(tmp_path, _body(str(tmp_path / "gone")))
+
+        with pytest.raises(typer.Exit):
+            _container_argv(tmp_path, r, monkeypatch)
+
+        err = _ANSI.sub("", capsys.readouterr().err)
+        assert "old_coder" in err and str(tmp_path / "gone") in err
+
+
+class TestContainerFingerprint:
+    """A container install COPIES, so an edit in the folder must move the fingerprint or the next
+    launch reports the stack unchanged and skips the reinstall."""
+
+    def test_no_local_adds_nothing(self, tmp_path):
+        from harnessed.volumes import _local_refs_digest
+
+        assert _local_refs_digest([_recipe(tmp_path, _body(None))]) == ""
+
+    def test_an_edit_in_the_folder_moves_the_digest(self, tmp_path):
+        import os
+
+        from harnessed.volumes import _local_refs_digest
+
+        local = tmp_path / "old-coder"
+        (local / "skills").mkdir(parents=True)
+        f = local / "skills" / "SKILL.md"
+        f.write_text("one")
+        r = _recipe(tmp_path, _body(str(local)))
+        before = _local_refs_digest([r])
+
+        f.write_text("two!")
+        os.utime(f, ns=(f.stat().st_atime_ns, f.stat().st_mtime_ns + 1_000_000_000))
+
+        assert before and _local_refs_digest([r]) != before
+
+    def test_git_internals_do_not_move_it(self, tmp_path):
+        """A fetch or a `git status` touches .git without changing what installs."""
+        from harnessed.volumes import _local_refs_digest
+
+        local = tmp_path / "old-coder"
+        (local / ".git").mkdir(parents=True)
+        (local / "a.md").write_text("a")
+        r = _recipe(tmp_path, _body(str(local)))
+        before = _local_refs_digest([r])
+
+        (local / ".git" / "index").write_text("changed")
+
+        assert _local_refs_digest([r]) == before

@@ -7,7 +7,9 @@ recipe`s `tools:`/`install:` into them.
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import shlex
 import subprocess
 
@@ -297,7 +299,39 @@ def _container_stack_fingerprint(rt: str, stack: str, recipes: list, image: str)
     img = subprocess.run(
         [rt, "image", "inspect", "-f", "{{.Id}}", image], capture_output=True, text=True,
     ).stdout.strip()
-    return f"{_host_stack_fingerprint(stack, recipes)}:{img}"
+    fp = f"{_host_stack_fingerprint(stack, recipes)}:{img}"
+    local = _local_refs_digest(recipes)
+    return f"{fp}:{local}" if local else fp
+
+
+def _local_refs_digest(recipes: list) -> str:
+    """A digest of every `install.refs.<key>.local` folder's files, or "" when none is declared.
+
+    #532: a container install COPIES from the folder, so an edit there reaches the volume only on a
+    reinstall, and a reinstall happens only when this fingerprint moves. A host launch links instead
+    and needs none of this. Path, size and mtime per file, `.git` skipped: cheap, and an edit moves
+    the mtime. Nothing appended when no recipe declares a folder, so existing stamps stay valid.
+    """
+    h = hashlib.sha256()
+    found = False
+    for recipe in recipes:
+        refs = recipe.install.refs if recipe.install else {}
+        for key, ref in sorted(refs.items()):
+            if not ref.local or not Path(ref.local).is_dir():
+                continue  # absent: `_run_container_installs` fails the launch, naming it
+            found = True
+            root = Path(ref.local)
+            h.update(f"{recipe.name}.{key}\0".encode())
+            for dirpath, dirnames, filenames in os.walk(root):
+                dirnames[:] = sorted(d for d in dirnames if d != ".git")
+                for name in sorted(filenames):
+                    p = Path(dirpath, name)
+                    try:
+                        st = p.stat()
+                    except OSError:
+                        continue  # a dangling link; the copy will fail on it, not this hash
+                    h.update(f"{p.relative_to(root)}\0{st.st_size}\0{st.st_mtime_ns}\0".encode())
+    return h.hexdigest()[:16] if found else ""
 
 
 def _volume_read(rt: str, volume: str, image: str, rel: str) -> str | None:
@@ -465,6 +499,19 @@ def _run_container_installs(
             # be a bare ref, so the parent is exactly one level up on both sides.
             cache_host.parent.mkdir(parents=True, exist_ok=True)
             args += ["-v", f"{cache_host.parent}:{ctr_cache_parent}:rw"]
+        # #532: a declared local folder is mounted read-only where $HARNESSED_LOCAL_<KEY> points.
+        # Absent is an error, as on a host launch: falling back to the pin would let a developer
+        # believe they were running their edits while running the SHA.
+        for key, ref in inst.refs.items():
+            if not ref.local:
+                continue
+            if not Path(ref.local).is_dir():
+                _err.print(
+                    f"[bold red]error:[/bold red] install ({recipe.name}): refs.{key}.local "
+                    f"{ref.local} is not a directory on this host"
+                )
+                raise typer.Exit(1)
+            args += ["-v", f"{ref.local}:{emit.ctr_local_ref(recipe.name, key)}:ro"]
         for k, v in merged.items():
             args += ["-e", f"{k}={v}"]
         args += ["--entrypoint", "bash", image,
