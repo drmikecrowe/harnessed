@@ -4496,7 +4496,7 @@ def _attach(
     if shell:
         tail = "exec bash -l"
     elif in_acp_mode():
-        tail = _acp_attach_cmd(harness, start_dir or project_path)
+        tail = _acp_attach_cmd(harness, start_dir or project_path, no_strict_mcp=no_strict_mcp)
     elif harness == "opencode":
         # Stack-conditional (bd main-rlw): `opencode --agent <name>` when a persona was baked,
         # else the fixed `opencode` command.

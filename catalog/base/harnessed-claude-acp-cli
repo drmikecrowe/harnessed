@@ -1,0 +1,13 @@
+#!/bin/sh
+# The claude CLI that claude-agent-acp spawns under `container-acp` (#530), via CLAUDE_CODE_EXECUTABLE.
+#
+# The adapter takes no CLI flags of its own, and its SDK adds `--strict-mcp-config` only when the
+# ACP client asks. So the stack's hub config would never reach the CLI, and the mounted ~/.claude
+# servers and the project's .mcp.json would load instead. This puts back what the interactive
+# attach passes: the hub config, and strict unless --no-strict-mcp-config. The SDK's own
+# `--mcp-config` (servers the client sent in session/new) still lands, because claude accumulates
+# repeated `--mcp-config` flags.
+#
+# HARNESSED_MCP_CONFIG and HARNESSED_STRICT_MCP are set by the attach command
+# (`attachcmd._acp_attach_cmd`), which owns the path and the strict decision.
+exec claude --mcp-config "$HARNESSED_MCP_CONFIG" ${HARNESSED_STRICT_MCP:+--strict-mcp-config} "$@"

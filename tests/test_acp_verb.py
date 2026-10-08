@@ -3,13 +3,15 @@
 Every byte on stdout has to parse as JSON-RPC, so the contract has three halves: harnessed's own
 launch output goes to stderr (an fd swap, so children that inherit fd 1 are covered too), the attach
 shell's prologue goes to stderr, and the harness alone gets the real stdout. The command that starts
-the harness as an ACP agent is chosen per harness, and only omp has one.
+the harness as an ACP agent is chosen per harness: omp has one built in, and claude goes through
+the claude-agent-acp adapter (#530).
 """
 from __future__ import annotations
 
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -35,7 +37,7 @@ class TestTheVerb:
         monkeypatch.setattr(
             launcher, "_resolve_stack", lambda *a, **k: pytest.fail("must refuse before resolving")
         )
-        result = CliRunner().invoke(launcher.app, ["container-acp", "claude"])
+        result = CliRunner().invoke(launcher.app, ["container-acp", "opencode"])
         assert result.exit_code == 2
         assert "no ACP mode" in result.output
 
@@ -64,11 +66,67 @@ class TestTheAcpCommand:
         monkeypatch.setattr(attachcmd.Path, "home", lambda: tmp_path)
         assert attachcmd._acp_attach_cmd("omp", tmp_path) == "omp acp"
 
-    @pytest.mark.parametrize("harness", ["claude", "opencode", "antigravity", "codex"])
+    @pytest.mark.parametrize("harness", ["opencode", "antigravity", "codex"])
     def test_every_other_harness_has_none(self, harness, tmp_path):
         assert harness not in attachcmd._ACP_HARNESSES
         with pytest.raises(ValueError):
             attachcmd._acp_attach_cmd(harness, tmp_path)
+
+    def test_claude_runs_the_adapter_through_the_mcp_wrapper(self, tmp_path):
+        # #530: the adapter takes no --mcp-config, so the hub reaches it via the CLI it spawns.
+        cmd = attachcmd._acp_attach_cmd("claude", tmp_path)
+        assert cmd.endswith(" claude-agent-acp")
+        assert f"CLAUDE_CODE_EXECUTABLE={attachcmd._CLAUDE_ACP_CLI} " in cmd
+        assert f"HARNESSED_MCP_CONFIG='{launcher.paths.container_mcp_config()}' " in cmd
+        assert "HARNESSED_STRICT_MCP=1 " in cmd
+
+    def test_claude_without_strict_drops_only_the_strict_flag(self, tmp_path):
+        strict = attachcmd._acp_attach_cmd("claude", tmp_path)
+        loose = attachcmd._acp_attach_cmd("claude", tmp_path, no_strict_mcp=True)
+        assert "HARNESSED_STRICT_MCP" not in loose
+        assert loose == strict.replace("HARNESSED_STRICT_MCP=1 ", "")
+
+
+_WRAPPER = Path(__file__).resolve().parents[1] / "catalog" / "base" / "harnessed-claude-acp-cli"
+_FAKE_CLAUDE = '#!/bin/sh\nfor a in "$@"; do printf "%s\\n" "$a"; done\n'
+
+
+class TestTheClaudeWrapper:
+    """The script the adapter's SDK spawns as claude (#530). Run for real, against a `claude` that
+    echoes its argv, because the contract is the argv: the hub config first, strict unless disabled,
+    then whatever the SDK passed, untouched."""
+
+    def _run(self, tmp_path, env_extra: dict) -> list[str]:
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        fake = bin_dir / "claude"
+        fake.write_text(_FAKE_CLAUDE)
+        fake.chmod(0o755)
+        env = {"PATH": f"{bin_dir}:{os.environ['PATH']}", **env_extra}
+        proc = subprocess.run(
+            [str(_WRAPPER), "--mcp-config", '{"mcpServers":{}}', "--print"],
+            capture_output=True, text=True, env=env, check=True,
+        )
+        return proc.stdout.splitlines()
+
+    def test_it_is_executable(self):
+        assert os.access(_WRAPPER, os.X_OK)
+
+    def test_strict_adds_the_hub_and_strict_before_the_sdk_args(self, tmp_path):
+        env = {"HARNESSED_MCP_CONFIG": "/h/.mcp.json", "HARNESSED_STRICT_MCP": "1"}
+        assert self._run(tmp_path, env) == [
+            "--mcp-config", "/h/.mcp.json", "--strict-mcp-config",
+            "--mcp-config", '{"mcpServers":{}}', "--print",
+        ]
+
+    def test_without_strict_only_the_hub_is_added(self, tmp_path):
+        assert self._run(tmp_path, {"HARNESSED_MCP_CONFIG": "/h/.mcp.json"}) == [
+            "--mcp-config", "/h/.mcp.json", "--mcp-config", '{"mcpServers":{}}', "--print",
+        ]
+
+    def test_the_dockerfile_bakes_it_where_the_command_points(self):
+        dockerfile = (_WRAPPER.parent / "Dockerfile.harnessed-claude").read_text()
+        assert f"COPY catalog/base/harnessed-claude-acp-cli {attachcmd._CLAUDE_ACP_CLI}" in dockerfile
 
 
 class TestHostStdoutIsSwapped:
@@ -102,8 +160,11 @@ class _Execed(Exception):
     """Stands in for `os.execvp` replacing the process image."""
 
 
-def _attach_argv(monkeypatch, tmp_path, *, prologue: str = "true", ephemeral: bool = False):
-    """Run `_attach` in ACP mode for omp and return (argv, state seen at the handoff)."""
+def _attach_argv(
+    monkeypatch, tmp_path, *, prologue: str = "true", ephemeral: bool = False,
+    harness: str = "omp", no_strict_mcp: bool = False,
+):
+    """Run `_attach` in ACP mode for `harness` and return (argv, state seen at the handoff)."""
     seen: dict = {}
     monkeypatch.setattr(console, "_EXEC_MODE", True)
     monkeypatch.setattr(launcher, "_touch_attach_marker", lambda _i: None)
@@ -127,8 +188,8 @@ def _attach_argv(monkeypatch, tmp_path, *, prologue: str = "true", ephemeral: bo
     console.set_acp_mode(True)
     try:
         launcher._attach(
-            "podman", "omp", "inst", tmp_path, stack="s", mount_path=tmp_path,
-            ephemeral=ephemeral,
+            "podman", harness, "inst", tmp_path, stack="s", mount_path=tmp_path,
+            ephemeral=ephemeral, no_strict_mcp=no_strict_mcp,
         )
     except _Execed:
         pass
@@ -166,7 +227,7 @@ class TestContainerStdoutIsClean:
         mise.write_text("#!/bin/sh\necho mise-noise\n")
         mise.chmod(0o755)
         monkeypatch.setattr(
-            launcher, "_acp_attach_cmd", lambda *_a: "echo \"{\\\"v\\\":\\\"$FOO\\\"}\""
+            launcher, "_acp_attach_cmd", lambda *_a, **_k: "echo \"{\\\"v\\\":\\\"$FOO\\\"}\""
         )
         argv, _ = _attach_argv(
             monkeypatch, tmp_path, prologue="export FOO=bar; echo prologue-noise"
@@ -178,6 +239,13 @@ class TestContainerStdoutIsClean:
         assert proc.returncode == 0, proc.stderr
         assert proc.stdout == '{"v":"bar"}\n'
         assert "bashrc-noise" in proc.stderr and "prologue-noise" in proc.stderr
+
+    @pytest.mark.parametrize("no_strict", [False, True])
+    def test_claude_gets_its_acp_command_and_the_strict_choice(self, monkeypatch, tmp_path, no_strict):
+        argv, _ = _attach_argv(monkeypatch, tmp_path, harness="claude", no_strict_mcp=no_strict)
+        assert argv[-1].endswith(
+            "; } >&2 && " + attachcmd._acp_attach_cmd("claude", tmp_path, no_strict_mcp=no_strict)
+        )
 
     def test_the_interactive_attach_is_unchanged(self, monkeypatch, tmp_path):
         monkeypatch.setattr(launcher, "_touch_attach_marker", lambda _i: None)

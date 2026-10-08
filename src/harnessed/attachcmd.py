@@ -56,20 +56,33 @@ def _omp_attach_cmd(start_dir: Path) -> str:
     return f"omp --session-dir '{_CONTAINER_HOME_STR}/.omp/agent/sessions/{key}'"
 
 
-# Harnesses with a built-in ACP agent (#529). Every other one would need an adapter, which is not built.
-_ACP_HARNESSES = ("omp",)
+# Harnesses with an ACP agent: omp built in (#529), claude through the claude-agent-acp adapter (#530).
+_ACP_HARNESSES = ("omp", "claude")
+
+# Baked into harnessed-claude from catalog/base/harnessed-claude-acp-cli.
+_CLAUDE_ACP_CLI = "/usr/local/bin/harnessed-claude-acp-cli"
 
 
-def _acp_attach_cmd(harness: str, start_dir: Path) -> str:
+def _acp_attach_cmd(harness: str, start_dir: Path, *, no_strict_mcp: bool = False) -> str:
     """The command that starts `harness` as an ACP agent on stdio. `container_run` rejects a harness
     outside `_ACP_HARNESSES` before launching, so reaching the raise is a caller bug.
 
     omp speaks ACP natively (`omp acp`). It keeps the attach command's `--session-dir`, which omp
     accepts before the subcommand, so an ACP session lands in the same per-folder history as an
     interactive one.
+
+    claude runs through claude-agent-acp, which takes no `--mcp-config`. Its SDK spawns
+    CLAUDE_CODE_EXECUTABLE as the claude CLI, so that points at a wrapper which adds the hub config
+    and, unless `no_strict_mcp`, `--strict-mcp-config`: the same MCP surface as the interactive attach.
     """
     if harness not in _ACP_HARNESSES:
         raise ValueError(f"{harness} has no ACP mode")
+    if harness == "claude":
+        strict = "" if no_strict_mcp else "HARNESSED_STRICT_MCP=1 "
+        return (
+            f"HARNESSED_MCP_CONFIG='{paths.container_mcp_config()}' {strict}"
+            f"CLAUDE_CODE_EXECUTABLE={_CLAUDE_ACP_CLI} claude-agent-acp"
+        )
     return _omp_attach_cmd(start_dir) + " acp"
 
 
