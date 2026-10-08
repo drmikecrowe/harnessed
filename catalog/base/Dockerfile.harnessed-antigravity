@@ -57,10 +57,14 @@ JSON
 #   dbus-x11       — dbus-launch (session bus for the Secret Service)
 #   gnome-keyring  — gnome-keyring-daemon (--unlock / --components=secrets)
 #   libsecret-1-0  — Secret Service client lib agy links against
+# harnessed-base ends as the unprivileged user, so apt needs root. Literal `harnessed`, not
+# ${USERNAME}: that ARG does not carry across FROM (see Dockerfile.harnessed-codex).
+USER root
 RUN apt-get update && apt-get install -y \
     dbus-x11 \
     gnome-keyring \
     libsecret-1-0 \
     && rm -rf /var/lib/apt/lists/*
+USER harnessed
 
 CMD ["/bin/bash"]
