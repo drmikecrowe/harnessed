@@ -51,7 +51,7 @@ day="$(date +%Y-%m-%d)"
 branch="upgrade-$day"
 
 # Resumable: a rerun after a failed step (e.g. gh on the wrong account) skips what already landed.
-trap 'git switch main' EXIT
+trap 'rc=$?; git switch main; exit $rc' EXIT
 git switch "$branch" 2>/dev/null || git switch -c "$branch"
 git add catalog mise.toml
 git diff --cached --quiet || git commit -S -m "chore(catalog): upgrade pins $day"
