@@ -76,3 +76,8 @@ mutants/
 
 
 .old-coder/**/logs/
+
+# Spec-Evidence working files and the gauntlet stamp. The leading slash keeps the per-story
+# stamp copy that /spec-evidence:build commits.
+work/
+/gauntlet-stamp.json

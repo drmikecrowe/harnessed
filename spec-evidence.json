@@ -1,0 +1,6 @@
+{
+  "artifact_root": "spec-evidence",
+  "gauntlet_layers": "tools/gauntlet-layers.json",
+  "story_source": "github",
+  "repo": "github"
+}

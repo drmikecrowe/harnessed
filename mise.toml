@@ -8,6 +8,7 @@ shellcheck = "0.11.0"
 # varlock resolves .env.schema files; required by A6 in test_external_contracts_live.py.
 # Version 1.16.1 is verified against this tree (2026-08-18). The binary name is `varlock`.
 "npm:varlock" = "1.16.1"
+gitleaks = "8.30.1"
 
 [env]
 # Keep the venv outside the repo: `uv` running inside a podman container that
