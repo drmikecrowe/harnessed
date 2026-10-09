@@ -59,10 +59,11 @@ Failure model (Tier 3):
 - S2.3 (negative) Given aoe is not usable (`aoe._bin()` returns None, for example `HARNESSED_NO_AOE=1`) (mcrowe, 2026-10-09), when `harnessed host-run claude <D> --stack default` runs, then D gains no file and no aoe row is registered.
 
 ### S3. The local launcher exists only for aoe (AC-3)
-- S3.1 Given aoe is usable (`aoe._bin()` is not None) and the stack is not ad-hoc, when `harnessed container-run claude <D> --stack default --no-strict-mcp-config` runs, then D holds `claude-default-container` with, in order: `#!/bin/sh`, `# harnessed:launcher v1`, a `# as typed:` line, `CDPATH= cd -- "$(dirname -- "$0")" || exit 1`, and `exec harnessed-claude-default-container --no-strict-mcp-config "$@"`. The aoe row command is `<D>/claude-default-container --`.
+- S3.1 Given aoe is usable (`aoe._bin()` is not None) and the stack is not ad-hoc, when `harnessed container-run claude <D> --stack default --no-strict-mcp-config` runs, then D holds `claude-default-container` with, in order: `#!/bin/sh`, `# harnessed:launcher v1`, a `# as typed:` line, `CDPATH= cd -- "$(dirname -- "$0")" || exit 1`, and `exec harnessed-claude-default-container --no-strict-mcp-config "$@"`. The aoe row command is `<D>/claude-default-container --`. The per-launch flags are exactly those `aoe.command_for` adds after `--stack` today: `--no-strict-mcp-config`, `--aoe-group <g>` and `--aoe-title <t>`, in that order. `--stack`, the verb, the harness and the path are never in the local exec line; the global name carries them.
 - S3.2 (boundary) Given aoe is usable, when the launch adds `--aoe-group g --aoe-title t`, then those flags are in the local exec line after the global name and are absent from `~/.local/bin/harnessed-claude-default-container`.
 - S3.3 (negative) Given aoe is usable, when `harnessed container-acp claude <D> --stack default` runs, then D gains no file.
 - S3.4 (boundary) Given D holds the S3.1 `claude-default-container` and a stub `harnessed-claude-default-container` on `PATH` records its cwd, when the local launcher runs as `<D>/claude-default-container --` from a different folder E, then the stub records cwd D. This settles the Story's deferred question: the local launcher's `cd` line makes the project D whatever folder aoe starts it in.
+- S3.5 Given the S3.1 row command `<D>/claude-default-container --`, when `aoe._is_ours` and `aoe._is_launcher_script` read it, then both return True, unchanged from today's row shape.
 
 ### S4. `harnessed rm` attribution (AC-4)
 - S4.1 Given an aoe row `<D>/claude-default-container --` whose script execs `harnessed-claude-default-container`, when `harnessed rm default` runs, then that row is removed.
@@ -74,6 +75,7 @@ Failure model (Tier 3):
 - S5.1 Given launchers for (`default`, `claude`), (`default.x`, `claude`) and (`default`, `codex`), when `harnessed uninstall default claude` runs, then the three `harnessed-claude-default-*` files are gone and `harnessed-claude-default.x-container` and `harnessed-codex-default-host` remain.
 - S5.2 Given an aoe row whose script execs `harnessed-claude-default-container`, when `harnessed uninstall default claude` runs, then the output names that row's script path.
 - S5.3 (negative) Given `~/.local/bin/harnessed-claude-default-host` without the sentinel, when `harnessed uninstall default claude` runs, then that file remains and one line names it as not removed.
+- S5.4 (boundary) Given no aoe row references any `harnessed-claude-default-*` launcher, when `harnessed uninstall default claude` runs, then it prints no row path and exits 0.
 
 ### S6. The old shim (AC-6)
 - S6.1 Given stack `default`, when `harnessed install default claude` runs, then `~/.local/bin/default` does not exist.
@@ -90,14 +92,14 @@ Failure model (Tier 3):
 - Put `"$@"` before `--stack` in a global launcher. The ordering comment in `install_stack` records why.
 - Change the arguments of `host-run`, `container-run` or `container-acp`.
 - Let `harnessed rm` touch host rows or any file in `~/.local/bin`.
-- Drop the test count below the baseline, except for the tests `decisions.md` names as rewritten.
+- Drop the test count below the baseline. Only these existing tests may be rewritten, each keeping the decision it encodes unless a scenario above changes it: `tests/test_launcher_install.py::TestInstallShim` (4 tests, lines 36-97; replaced by S1.1, S1.10 and S6.1); `tests/test_adhoc_launch_is_not_persisted.py::test_an_ordinary_stack_still_persists` (line 215; now needs aoe usable, per S2.3 and S3.1); `tests/test_launchscript.py` classes `TestParityWithCommandFor` (line 351), `TestProvenanceComment` (line 382) and `TestPassthrough` (line 424), whose expected exec line becomes S3.1's; and the `_replays_stack`/`forget_stack` fixtures in `tests/test_aoe.py` (lines 720, 807-896 and 1725), which gain new-format cases beside the `--stack` ones S4.2 keeps.
 
 ## Touches
 - `src/harnessed/launchscript.py` — accept the `harnessed-` prefix and the `acp` backend for global names only; add the global launcher body and writer; change the local body to exec the global name.
 - `src/harnessed/launcher.py` — `install` and `uninstall` take `<stack> <harness>`; they write, remove and report launchers and remove the old shim; `build`, `host-run` and `container-run` call the writer; `_persist_this_launch` uses the Decide 3 predicate.
 - `src/harnessed/aoe.py` — `_replays_stack` reads the stack from an exec'd global name; add a lookup of rows that reference a given global launcher, for `uninstall`.
 - `src/harnessed/paths.py` — one `user_bin_dir()` helper, replacing the two inline `Path.home() / ".local" / "bin"`.
-- `tests/test_launchscript.py`, `tests/test_aoe.py`, `tests/test_launcher_install.py`, `tests/test_launcher_build.py`, `tests/test_adhoc_launch_is_not_persisted.py` — the scenarios above, and the rewrites `decisions.md` names.
+- `tests/test_launchscript.py`, `tests/test_aoe.py`, `tests/test_launcher_install.py`, `tests/test_launcher_build.py`, `tests/test_adhoc_launch_is_not_persisted.py` — the scenarios above, and the rewrites the Must NOT list names by test.
 - `README.md` — lines 117, 123 and 140 describe the shim.
 - `catalog/recipes/default/skills/harnessed-catalog/stack-fields.md` — line 134 describes the shim.
 

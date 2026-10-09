@@ -55,6 +55,15 @@ Changes: S2.3, S3.1.
 - Accepted: S1.5 was ambiguous about `<D>`. Reworded so a global launcher never carries a path.
 - Declined: S3.2 as an addition. The Story's Design says per-launch flags "(`--no-strict-mcp-config`, and anything else typed) stay in the local file"; `--aoe-group` and `--aoe-title` are per-launch flags that `aoe.command_for` puts in today's exec line, so S3.2 tests a Story rule, not a new one.
 
+## Intent review, round 2
+- Accepted: per-launch flags were not enumerated. S3.1 now names them: the flags `aoe.command_for` adds after `--stack`.
+- Accepted: no scenario proved row recognition. Added S3.5.
+- Accepted: no scenario for zero referencing rows. Added S5.4.
+
 ## Revisions
 ### Revision 1. Decide 1-3 ruled
 All three took the default (mcrowe, 2026-10-09); SPEC.md Orientation, S1.1, S1.9, S2.3, Summary and Known limits updated.
+### Revision 2. Gate 1a round 1 PR-REFERENT
+The Must NOT test-count line and the Touches tests line pointed at decisions.md; both now name the rewritable tests in SPEC.md itself.
+### Revision 3. Intent review round 2
+S3.1 enumerates per-launch flags; S3.5 and S5.4 added.
