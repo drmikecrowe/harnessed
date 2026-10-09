@@ -37,14 +37,14 @@
 - S1.3 (boundary) Given a built image for stack `default` and no pod, when `tools/acp-smoke.py` sends `initialize`, then the reply arrives within 60 s for omp and for claude.
 
 ### S2. The project comes from `session/new` `cwd`
-- S2.1 Given no path argument and a process working directory of an empty temp dir, when the client sends `session/new` with `cwd` = an existing directory P, then the launch runs with P as its project and the child receives `session/new` with `cwd` = P.
+- S2.1 Given no path argument and a process working directory of an empty temp dir, when the client sends `session/new` with `cwd` = an existing directory P, then the launch runs with P as its project and the child receives `session/new` with `cwd` = P's container path, which path mirroring makes equal to P.
 - S2.2 Given no path argument, when the first session request is `session/load` with `cwd` = P, then the launch runs with P as its project, as in S2.1.
 - S2.3 (negative) Given no path argument, when `session/new` has `cwd` = `/nonexistent-gh566`, then the reply is a JSON-RPC error with code -32602 and a message naming that path, the launch is not called, and the proxy goes on reading stdin.
 - S2.4 (negative) Given no path argument, when `session/new` has no `cwd` or a relative one, then the reply is a JSON-RPC error with code -32602, and the launch is not called.
 
 ### S3. A path in the args wins over `cwd`
 - S3.1 Given path argument A, a process working directory C, and `session/new` with `cwd` = B, three different existing directories, when the session starts, then the launch runs with A as its project and the child receives `session/new` with `cwd` = A's container path.
-- S3.2 (boundary) Given path argument A and `--agent-start-folder sub`, when the session starts, then the child receives `cwd` = the container path of `A/sub`.
+- S3.2 (boundary) Given path argument A and the existing `--agent-start-folder sub` option, when the session starts, then the child receives `cwd` = the container path of `A/sub`.
 
 ### S4. The proxy forwards
 - S4.1 Given a started child, when the session starts, then the proxy first sends the child the client's own `initialize` request, reads the child's reply without writing it to stdout, and then forwards `session/new`; the child's `session/new` reply reaches stdout unchanged.
@@ -84,7 +84,7 @@
 
 ## Touches
 - `src/harnessed/acpproxy.py` (new): the proxy. Line-delimited JSON-RPC on stdin and the saved real stdout; the per-harness `initialize` table; the project choice; the replay; the two-way pump; the drift check.
-- `src/harnessed/launcher.py`: under `container-acp`, `container_run` hands control to the proxy after the harness checks and gives it a launch callback holding the rest of the body; `_attach` in ACP mode starts the harness as a child with piped stdin and stdout and returns it instead of exec-ing; `--rm` teardown runs after the child exits; the `container-acp` help text says the path is optional.
+- `src/harnessed/launcher.py`: under `container-acp`, `container_run` hands control to the proxy after the harness checks and gives it a launch callback holding the rest of the body; `_attach` in ACP mode starts the harness as a child with piped stdin and stdout and returns it instead of exec-ing; `--rm` teardown runs after the child exits; the `container-acp` help text says the path is optional. `--agent-start-folder` is an existing `container_run` option, resolved by `_resolve_start_dir` in `src/harnessed/attachcmd.py`; this change adds no flag.
 - `tools/acp-smoke.py`: `--no-path`; `initialize` waits 60 s and `session/new` takes the launch timeout; fails on a drift line in stderr.
 - `tests/test_acp_proxy.py` (new): S1.1, S1.2, S2–S6 and S9 against a fake agent script.
 - `tests/test_acp_verb.py`: `test_stdout_is_restored_before_the_exec` and `test_the_rm_child_gets_the_clients_channel` encode the exec handoff this story replaces in ACP mode; they are rewritten to the piped child.

@@ -52,4 +52,10 @@ Changes: Orientation `Tier:` line.
 - Gap 2 (S9.1 points at an open Decide 2): accepted. S9.1 takes the ruling's behavior once Decide 2 is ruled.
 - Gap 3 (no rule that the proxy never builds): declined. The launch keeps its existing build behavior, for example `--recipe` builds a minted stack. The story puts a cold build out of scope for its criteria, not out of the product; forbidding a build would change working behavior. Known limits names it.
 
+## Intent review, round 2
+- Gap 1 (S2.1 host path or container path): accepted. S2.1 now says the child gets P's container path, equal to P under path mirroring (Fact 2).
+- Gap 2 (S2.4 is extra behavior): declined. A missing or relative `cwd` names no project, and the proxy must answer the request somehow. The alternative is to fall back to the process's own working directory, which is the very behavior the story removes. An error is the smallest answer that launches nothing.
+
 ## Revisions
+### Revision 1. Gate 1a round 1, PR-REFERENT
+S3.2 and Touches now say `--agent-start-folder` is an existing `container_run` option, resolved by `_resolve_start_dir`. Citation only; no scenario's meaning changed.
