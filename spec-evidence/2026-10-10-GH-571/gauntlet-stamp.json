@@ -17,16 +17,16 @@
     "secrets"
   ],
   "layer_seconds": {
-    "tests": 237.475,
-    "coverage": 265.637,
-    "types": 12.402,
-    "lint": 0.132,
-    "shellcheck": 1.612,
-    "secrets": 2.673
+    "tests": 261.994,
+    "coverage": 275.876,
+    "types": 12.187,
+    "lint": 0.115,
+    "shellcheck": 1.345,
+    "secrets": 2.475
   },
   "failed": null,
   "exit_code": 0,
-  "commit": "59dc1d54a730c9ed2a0f9805e42e464d0ec621bd",
+  "commit": "38b9121d7049e0b3d32fbb457122eb3dd778bea8",
   "dirty": false,
-  "written": "2026-10-10T22:54:35.975Z"
+  "written": "2026-10-10T23:53:43.467Z"
 }
