@@ -158,6 +158,28 @@ class TestUninstallRemovesGlobalLaunchers:
         assert foreign.read_bytes() == b"#!/bin/sh\necho mine\n"
         assert "harnessed-claude-claude_time-host" in result.output
 
+    def test_only_removed_launchers_are_looked_up(self, monkeypatch, tmp_path):
+        """Adversary round 1: a refused launcher is still there, so a row using it is not broken."""
+        _home, bin_dir = self._install(monkeypatch, tmp_path)
+        launchscript.write_globals("claude_time", "claude", bin_dir)
+        (bin_dir / "harnessed-claude-claude_time-host").write_bytes(b"#!/bin/sh\necho mine\n")
+        (bin_dir / "harnessed-claude-claude_time-acp").unlink()
+        asked: list = []
+        monkeypatch.setattr(
+            launcher.aoe, "rows_referencing", lambda names: (asked.append(set(names)), [])[1]
+        )
+        CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
+        assert asked == [{"harnessed-claude-claude_time-container"}]
+
+    def test_nothing_removed_looks_nothing_up(self, monkeypatch, tmp_path):
+        _home, _bin_dir = self._install(monkeypatch, tmp_path)
+        asked: list = []
+        monkeypatch.setattr(
+            launcher.aoe, "rows_referencing", lambda names: (asked.append(set(names)), [])[1]
+        )
+        CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
+        assert asked == []
+
     def test_s5_4_no_rows_prints_no_row_path(self, monkeypatch, tmp_path):
         _home, bin_dir = self._install(monkeypatch, tmp_path)
         launchscript.write_globals("claude_time", "claude", bin_dir)

@@ -5330,10 +5330,9 @@ def uninstall_stack(
             _out.print(f"No shim found at {shim}")
     except OSError as exc:
         _err.print(f"[yellow]warning:[/yellow] could not remove {shim}: {exc}")
-    names = {
-        launchscript.global_name(verb, stack, harness) for verb in launchscript._GLOBAL_VERB_SUFFIX
-    }
-    for row in aoe.rows_referencing(names):
+    # Only what was REMOVED: a refused launcher is still there, so a row using it still works.
+    names = {target.name for target in removed}
+    for row in aoe.rows_referencing(names) if names else []:
         _err.print(
             f"[yellow]warning:[/yellow] aoe row still references a removed launcher: {escape(row)}"
         )
