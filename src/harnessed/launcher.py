@@ -2672,10 +2672,57 @@ def _persist_this_launch(
     Same escape hatch `_SKIP_STACKS` grants, for the same stated reason: `--aoe-group`/`--aoe-title`
     name the row, and naming one is asking for it. `--create-aoe-only` is the stronger case —
     registering IS the command the user typed, so it cannot be the thing that gets skipped.
+
+    GH-565 (Decide 3): nothing persists without a usable aoe, because the local launcher exists only
+    for the row. `--create-aoe-only` still passes, so `_aoe_register` reports the missing aoe and
+    exits nonzero instead of the command silently becoming a plain launch.
     """
-    if group is not None or title is not None or only:
+    if only:
+        return True
+    if aoe._bin() is None:
+        return False
+    if group is not None or title is not None:
         return True
     return not dynstack.is_adhoc(stack)
+
+
+def _write_global_launchers(stack: str, harness: str, verb: str, *, asked: bool = False) -> bool:
+    """Write `~/.local/bin/harnessed-<harness>-<stack>-<backend>` (GH-565). Never fatal.
+
+    Skipped for an ad-hoc stack (Decide 2): nothing would ever remove its launchers. Unless `asked`:
+    an aoe row requested by name for an ad-hoc stack still persists, and its local launcher execs one
+    of these, so they are written then (S1.14, SPEC revision 8). A launcher that could not be
+    written is named once and the caller goes on.
+
+    Returns whether THIS launch's own global launcher (`verb`) is in place. When it is not, a local
+    launcher would exec whatever foreign file sits at that name, so the caller persists neither the
+    local launcher nor the aoe row (S1.13, SPEC revision 7).
+    """
+    if dynstack.is_adhoc(stack) and not asked:
+        return True
+    refused = launchscript.write_globals(stack, harness)
+    for target in refused:
+        _err.print(
+            f"[yellow]warning:[/yellow] global launcher not written: {escape(str(target))}",
+            highlight=False,
+        )
+    own = launchscript.global_name(verb, stack, harness)
+    return all(target.name != own for target in refused)
+
+
+def _own_launcher_or_exit(in_place: bool, verb: str, stack: str, harness: str, *, only: bool) -> bool:
+    """Whether the launch may persist. Under `--create-aoe-only` a refused launcher is an error:
+    registering is the whole command, and skipping it would turn the command into a plain launch."""
+    if in_place:
+        return True
+    if only:
+        _err.print(
+            "[bold red]error:[/bold red] --create-aoe-only: "
+            f"{escape(launchscript.global_name(verb, stack, harness))} in ~/.local/bin is not a "
+            "harnessed launcher, so no aoe row was registered"
+        )
+        raise typer.Exit(1)
+    return False
 
 
 def _session_name_args(
@@ -3061,7 +3108,12 @@ def _launch_host(
     # exist — dead on arrival, failing every time it is started from the dashboard. That is the same
     # class of dead row the comment above avoids by registering after assembly.
     # Both or neither, and not at all for an ad-hoc stack — see `_persist_this_launch`.
-    if _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):
+    # The global launchers come first: the local one, when written, execs one of them (GH-565).
+    asked = aoe_group is not None or aoe_title is not None or create_aoe_only
+    own_in_place = _write_global_launchers(stack, harness, "host-run", asked=asked)
+    if _own_launcher_or_exit(
+        own_in_place, "host-run", stack, harness, only=create_aoe_only
+    ) and _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):
         launchscript.write(
             "host-run", stack, harness, project_path,
             group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
@@ -4231,7 +4283,13 @@ def container_run(
     # would point at a file that does not exist.
     # Both or neither, and not at all for an ad-hoc stack — see `_persist_this_launch`.
     extra = list(_passthrough)
-    if _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):
+    # GH-565: every launch refreshes the global launchers, and `container-acp` writes no local one —
+    # aoe never runs it, so there is no row for a local launcher to serve.
+    asked = aoe_group is not None or aoe_title is not None or create_aoe_only
+    own_in_place = _write_global_launchers(stack, harness, "container-run", asked=asked)
+    if not acp_mode and _own_launcher_or_exit(
+        own_in_place, "container-run", stack, harness, only=create_aoe_only
+    ) and _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):
         launchscript.write(
             "container-run", stack, harness, project_path,
             group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp_config,
@@ -4734,6 +4792,8 @@ def build(
                 )
             for target in targets:
                 _build_stack(rt, stack, target, root_path, strict=not no_strict)
+                if root_path is None:
+                    _write_global_launchers(stack, target, "container-run")
         else:
             _build_images_cmd(rt, force=force)
             _reconcile_stacks(rt, root_path, strict=not no_strict, jobs=jobs, force=force)
@@ -5230,52 +5290,80 @@ def new_stack(
 @app.command("install")
 def install_stack(
     stack: str = typer.Argument(..., help="Stack name"),
+    harness: str = typer.Argument(..., help="Harness (claude|omp|opencode|antigravity|codex)"),
 ) -> None:
-    """Write a ~/.local/bin/<stack> launcher shim that runs `harnessed container-run`."""
-    import shlex
-    import stat
-
+    """Write the ~/.local/bin/harnessed-<harness>-<stack>-<backend> global launchers (GH-565)."""
     if not (paths.find_in_catalog("stacks", stack) / "stack.yaml").is_file():
         _err.print(f"[bold red]error:[/bold red] no such stack '{stack}' (see `harnessed list`)")
         raise typer.Exit(1)
-
-    # Bake in the absolute path to THIS `harnessed` binary so the shim works even when
-    # `harnessed` itself is not on PATH (e.g. a dev .venv). Prefer the PATH-resolved
-    # location (stable across shells), fall back to the running interpreter's script.
-    harnessed_bin = shutil.which("harnessed") or str(Path(sys.argv[0]).resolve())
-
-    bin_dir = Path.home() / ".local" / "bin"
-    bin_dir.mkdir(parents=True, exist_ok=True)
-    shim = bin_dir / stack
-    # `--stack` goes BEFORE "$@", and the ordering is load-bearing. The stack can no longer be a
-    # bare leading token — that slot is the harness — so the shim names it with the flag; but put
-    # the flag last and a passthrough invocation swallows it. `mystack claude . -- --resume` would
-    # expand to `… claude . -- --resume --stack mystack`, and `_extract_passthrough` splits at the
-    # FIRST `--`, sending `--stack mystack` to the agent and leaving the CLI with no stack at all.
-    shim.write_text(
-        "#!/usr/bin/env bash\n"
-        f"exec {shlex.quote(harnessed_bin)} container-run --stack {shlex.quote(stack)} \"$@\"\n",
-        encoding="utf-8",
-    )
-    shim.chmod(shim.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-    _out.print(
-        f"[green][SUCCESS][/green] Installed shim: {shim} -> harnessed container-run --stack {stack}"
-    )
+    _require_supported_harness(harness)
+    bin_dir = paths.user_bin_dir()
+    refused = launchscript.write_globals(stack, harness, bin_dir)
+    for verb in launchscript.global_verbs(harness):
+        target = bin_dir / launchscript.global_name(verb, stack, harness)
+        if target not in refused:
+            _out.print(f"[green][SUCCESS][/green] Installed launcher: {target}")
+    for target in refused:
+        _err.print(
+            f"[bold red]error:[/bold red] not written: {escape(str(target))} — it is not a "
+            "harnessed launcher, or it could not be written"
+        )
+    if refused:
+        raise typer.Exit(1)
     if str(bin_dir) not in os.environ.get("PATH", "").split(os.pathsep):
-        _out.print(f"[yellow]note:[/yellow] {bin_dir} is not on your PATH — add it to run `{stack}` directly.")
+        _out.print(f"[yellow]note:[/yellow] {bin_dir} is not on your PATH — add it to run the launchers.")
+
+
+def _is_retired_shim(path: Path, stack: str) -> bool:
+    """Whether `path` is the `~/.local/bin/<stack>` shim `install` wrote before GH-565.
+
+    Recognised by its exec line alone, `exec <harnessed> container-run --stack <stack> "$@"`: that
+    shim carried no sentinel, and anything else at the path is the user's.
+    """
+    if path.is_symlink() or not path.is_file():
+        return False
+    content = launchscript._read_as_the_shell_does(path, launchscript._SENTINEL_READ_LIMIT)
+    for line in content.split("\n"):
+        if not line.startswith("exec "):
+            continue
+        try:
+            tokens = shlex.split(line)
+        except ValueError:
+            return False
+        return len(tokens) == 6 and tokens[2:] == ["container-run", "--stack", stack, "$@"]
+    return False
 
 
 @app.command("uninstall")
 def uninstall_stack(
     stack: str = typer.Argument(..., help="Stack name"),
+    harness: str = typer.Argument(..., help="Harness (claude|omp|opencode|antigravity|codex)"),
 ) -> None:
-    """Remove the ~/.local/bin/<stack> launcher shim."""
-    shim = Path.home() / ".local" / "bin" / stack
-    if shim.is_file():
-        shim.unlink()
-        _out.print(f"[green][SUCCESS][/green] Removed shim: {shim}")
-    else:
-        _out.print(f"No shim found at {shim}")
+    """Remove this pair's global launchers, and the retired ~/.local/bin/<stack> shim (GH-565)."""
+    bin_dir = paths.user_bin_dir()
+    removed, refused = launchscript.remove_globals(stack, harness, bin_dir)
+    for target in removed:
+        _out.print(f"[green][SUCCESS][/green] Removed launcher: {target}")
+    for target in refused:
+        _err.print(
+            f"[yellow]warning:[/yellow] not removed: {escape(str(target))} — it is not a "
+            "harnessed launcher, or it could not be removed"
+        )
+    shim = bin_dir / stack
+    try:
+        if _is_retired_shim(shim, stack):
+            shim.unlink()
+            _out.print(f"[green][SUCCESS][/green] Removed shim: {shim}")
+        else:
+            _out.print(f"No shim found at {shim}")
+    except OSError as exc:
+        _err.print(f"[yellow]warning:[/yellow] could not remove {shim}: {exc}")
+    # Only what was REMOVED: a refused launcher is still there, so a row using it still works.
+    names = {target.name for target in removed}
+    for row in aoe.rows_referencing(names) if names else []:
+        _err.print(
+            f"[yellow]warning:[/yellow] aoe row still references a removed launcher: {escape(row)}"
+        )
 
 
 # Backstop for the whole scan container. Deliberately much larger than harnessed-scan's own

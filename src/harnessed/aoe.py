@@ -1175,12 +1175,31 @@ def _replays_stack(tokens: list[str], verb: str, stack: str, row_path: str | Non
     # left those rows permanently un-removable (found by adversarial review).
     if launchscript.script_backend(Path(tokens[0]).name) != launchscript._VERB_SUFFIX[verb]:
         return False
+    script_tokens = _exec_tokens(tokens, row_path)
+    if script_tokens is None:
+        return False
+    if any(a == _STACK_FLAG[0] and b == stack for a, b in itertools.pairwise(script_tokens)):
+        return True
+    # GH-565: a local launcher now execs its GLOBAL launcher, whose name carries the stack. The exec
+    # line is still the record; the global name is just where in it the stack sits now.
+    target = launchscript.parse_global_name(Path(script_tokens[0]).name) if script_tokens else None
+    return target is not None and target[1] == stack and target[2] == verb
+
+
+def _exec_tokens(tokens: list[str], row_path: str | None) -> list[str] | None:
+    """The argv of the launcher script a row points at, read from its `exec` statement, or None.
+
+    Shared by `_replays_stack` and `rows_referencing`, so both read the script the way the shell
+    will. Every failure is None: the row is not ours to act on.
+    """
+    from . import launchscript  # local, for the cycle reason in `replay_command`
+
     script = Path(tokens[0])
     # A relative script (`replay_command` since #544) lives in the row's folder, which is where
     # aoe runs it. Without a folder there is nothing to read, so the row is left alone.
     if not script.is_absolute():
         if not row_path:
-            return False
+            return None
         script = Path(row_path) / script
     try:
         # `is_file()` BEFORE the read, the same guard `launchscript._ensure_excluded` applies to the
@@ -1188,10 +1207,10 @@ def _replays_stack(tokens: list[str], verb: str, stack: str, row_path: str | Non
         # `exists()`, and opening one BLOCKS until something writes to it — so `harnessed rm`, which
         # runs unattended, would hang rather than fail. `except OSError` cannot catch a hang.
         if not script.is_file():
-            return False
+            return None
         content = launchscript._read_as_the_shell_does(script, _SCRIPT_READ_LIMIT)
     except OSError:
-        return False
+        return None
     # `split("\n")`, not `splitlines()` — see `launchscript.write`. A flag value carrying \x85 or
     # \u2028 would otherwise split the exec line here but not in the shell, and this row would go
     # unattributed while the container it names is torn down.
@@ -1207,15 +1226,43 @@ def _replays_stack(tokens: list[str], verb: str, stack: str, row_path: str | Non
     else:
         index = content.find("\nexec ")
         if index == -1:
-            return False
+            return None
         statement = content[index + len("\nexec "):]
     try:
-        script_tokens = shlex.split(statement)
+        return shlex.split(statement)
     except ValueError:
-        return False
-    return any(
-        a == _STACK_FLAG[0] and b == stack for a, b in itertools.pairwise(script_tokens)
-    )
+        return None
+
+
+def rows_referencing(names: set[str]) -> list[str]:
+    """Script paths of aoe rows whose launcher execs one of these global launchers. Never raises.
+
+    For `harnessed uninstall` (GH-565): a row pointing at a removed global launcher fails on its
+    next start, so the user is told which. Empty when aoe is absent.
+    """
+    found: list[str] = []
+    try:
+        exe = _bin()
+        if exe is None:
+            return found
+        sessions = _sessions(exe)
+    except Exception:  # noqa: BLE001 — a report, best-effort like the rest of this module.
+        return found
+    for session in sessions:
+        # Per session: aoe's JSON is not our schema, and one malformed row must not hide the rest.
+        try:
+            tokens = shlex.split(session.get("command") or "")
+            if not _is_launcher_script(tokens):
+                continue
+            script_tokens = _exec_tokens(tokens, session.get("path"))
+            if script_tokens and Path(script_tokens[0]).name in names:
+                script = Path(tokens[0])
+                if not script.is_absolute():
+                    script = Path(session.get("path") or "") / script
+                found.append(str(script))
+        except Exception:  # noqa: BLE001, S112 — see the comment above.
+            continue
+    return found
 
 
 def forget_stack(verb: str, stack: str, *, background: bool = True) -> None:

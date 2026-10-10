@@ -1,0 +1,13 @@
+{
+  "artifact_root": "spec-evidence",
+  "gauntlet_layers": "tools/gauntlet-layers.json",
+  "story_source": "github",
+  "repo": "github",
+  "story_readiness_model": "claude-sonnet-5-5",
+  "spec_readiness_model": "claude-sonnet-5-5",
+  "evidence_gate_model": "claude-sonnet-5-5",
+  "evidence_plan_model": "claude-sonnet-5-5",
+  "context_pack_model": "claude-sonnet-5-5",
+  "adversary_model": "claude-sonnet-5-5",
+  "spec_intent_model": "claude-sonnet-5-5"
+}

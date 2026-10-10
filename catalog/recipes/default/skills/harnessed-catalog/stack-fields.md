@@ -131,7 +131,8 @@ harnessed build <stack> <harness>                                        # real 
 harnessed test  <stack> <harness>                                        # capability oracle
 harnessed list                                                           # authored stacks + instances
 harnessed stop|rm <stack>                                                # across all projects
-harnessed install <stack>                                                # ~/.local/bin/<stack> shim
+harnessed install <stack> <harness>                                      # ~/.local/bin/harnessed-<harness>-<stack>-<backend>
+harnessed uninstall <stack> <harness>                                    # removes them, and the old <stack> shim
 ```
 
 `harnessed new <name> --recipes a,b` scaffolds a manifest — into the **repo** catalog, refusing to

@@ -11,7 +11,9 @@ from pathlib import Path
 import pytest
 import typer
 
-from harnessed import launcher, paths
+from typer.testing import CliRunner
+
+from harnessed import launcher, launchscript, paths
 from support import patch_all
 
 
@@ -33,64 +35,218 @@ def _home_in(monkeypatch, tmp_path):
     return home
 
 
-class TestInstallShim:
-    def test_bakes_absolute_harnessed_path_from_which(self, monkeypatch, tmp_path):
+def _names(text: str, output: str) -> bool:
+    """Whether `output` names `text`, read past rich's hard wrap.
+
+    rich wraps console output to the terminal width and breaks a long path mid-word, so where a
+    name lands depends on the temp path's length (CI failed on `.../bin/h\narnessed-...`). Names and
+    paths hold no whitespace, so dropping every whitespace character recovers them whole.
+    """
+    return "".join(text.split()) in "".join(output.split())
+
+
+class TestInstallWritesGlobalLaunchers:
+    """GH-565 — `install <stack> <harness>` writes global launchers; the old shim is retired.
+
+    Replaces `TestInstallShim`. Its decisions, each kept or superseded by name:
+      * absolute `harnessed` path baked in — SUPERSEDED by Decide 1 (bare `harnessed` from PATH);
+      * `--stack` before `"$@"` so a passthrough cannot swallow it — KEPT, on the global launcher;
+      * an unknown stack writes nothing — KEPT, S1.10.
+    """
+
+    def test_s1_1_install_writes_three_launchers(self, monkeypatch, tmp_path):
         _stub_catalog(monkeypatch, tmp_path, exists=True)
         home = _home_in(monkeypatch, tmp_path)
-        monkeypatch.setattr(launcher.shutil, "which", lambda _: "/opt/bin/harnessed")
+        result = CliRunner().invoke(launcher.app, ["install", "claude_time", "claude"])
+        assert result.exit_code == 0, result.output
+        bin_dir = home / ".local" / "bin"
+        assert sorted(p.name for p in bin_dir.iterdir()) == [
+            "harnessed-acp-claude-claude_time-container", "harnessed-claude-claude_time-container",
+            "harnessed-claude-claude_time-host",
+        ]
+        assert (bin_dir / "harnessed-claude-claude_time-container").stat().st_mode & 0o111
 
-        launcher.install_stack("claude_time")
-
-        shim = home / ".local" / "bin" / "claude_time"
-        content = shim.read_text()
-        assert shim.exists()
-        assert shim.stat().st_mode & 0o111  # executable
-        # Absolute path baked in — NOT a bare `harnessed`.
-        assert 'exec /opt/bin/harnessed container-run --stack claude_time "$@"' in content
-        assert "exec harnessed " not in content
-
-    def test_falls_back_to_running_binary_when_not_on_path(self, monkeypatch, tmp_path):
+    def test_s1_2_codex_gets_no_acp_launcher(self, monkeypatch, tmp_path):
         _stub_catalog(monkeypatch, tmp_path, exists=True)
         home = _home_in(monkeypatch, tmp_path)
-        monkeypatch.setattr(launcher.shutil, "which", lambda _: None)
-        monkeypatch.setattr(launcher.sys, "argv", ["/dev/venv/bin/harnessed", "install", "claude_time"])
-
-        launcher.install_stack("claude_time")
-
-        content = (home / ".local" / "bin" / "claude_time").read_text()
-        assert '/dev/venv/bin/harnessed container-run --stack claude_time "$@"' in content
+        result = CliRunner().invoke(launcher.app, ["install", "claude_time", "codex"])
+        assert result.exit_code == 0, result.output
+        assert not (home / ".local" / "bin" / "harnessed-acp-codex-claude_time-container").exists()
+        assert (home / ".local" / "bin" / "harnessed-codex-claude_time-host").is_file()
 
     def test_stack_flag_precedes_user_args_so_passthrough_survives(self, monkeypatch, tmp_path):
-        """`--stack` must come BEFORE `"$@"`, and the ordering is load-bearing.
-
-        Put it last and a passthrough invocation swallows it: `mystack claude . -- --resume`
-        expands to `… claude . -- --resume --stack mystack`, and `_extract_passthrough` splits at
-        the FIRST `--` — so `--stack mystack` is handed to the AGENT and the CLI is left with no
-        stack, failing with "provide --stack or at least one --recipe".
-        """
+        """Kept from the shim: put `--stack` after `"$@"` and `_extract_passthrough`, which splits at
+        the FIRST `--`, hands `--stack <name>` to the agent and leaves the CLI with no stack."""
         _stub_catalog(monkeypatch, tmp_path, exists=True)
         home = _home_in(monkeypatch, tmp_path)
-        monkeypatch.setattr(launcher.shutil, "which", lambda _: "/opt/bin/harnessed")
-        launcher.install_stack("claude_time")
-        content = (home / ".local" / "bin" / "claude_time").read_text()
-
+        launcher.install_stack("claude_time", "claude")
+        content = (home / ".local" / "bin" / "harnessed-claude-claude_time-container").read_text()
         assert content.index("--stack") < content.index('"$@"'), content
-
-        # And prove it end-to-end through the real splitter, with the args the shim would produce.
-        shim_argv = ["container-run", "--stack", "claude_time", "claude", ".", "--", "--resume"]
-        head = launcher._extract_passthrough(shim_argv)
+        launcher_argv = ["container-run", "claude", "--stack", "claude_time", "--", "--resume"]
+        head = launcher._extract_passthrough(launcher_argv)
         assert "--stack" in head, "the stack must reach the CLI, not the agent"
         assert launcher._passthrough == ["--resume"]
 
-    def test_unknown_stack_exits_nonzero_and_writes_no_shim(self, monkeypatch, tmp_path):
+    def test_s1_10_unknown_stack_exits_nonzero_and_writes_nothing(self, monkeypatch, tmp_path):
         _stub_catalog(monkeypatch, tmp_path, exists=False)
         home = _home_in(monkeypatch, tmp_path)
-
         with pytest.raises(typer.Exit) as exc:
-            launcher.install_stack("claude_time")
-
+            launcher.install_stack("claude_time", "claude")
         assert exc.value.exit_code == 1
+        assert not (home / ".local" / "bin").exists()
+
+    def test_an_unknown_harness_exits_nonzero_and_writes_nothing(self, monkeypatch, tmp_path):
+        _stub_catalog(monkeypatch, tmp_path, exists=True)
+        home = _home_in(monkeypatch, tmp_path)
+        result = CliRunner().invoke(launcher.app, ["install", "claude_time", "bogus"])
+        assert result.exit_code != 0
+        assert not (home / ".local" / "bin").exists()
+
+    def test_s6_1_install_writes_no_old_shim(self, monkeypatch, tmp_path):
+        _stub_catalog(monkeypatch, tmp_path, exists=True)
+        home = _home_in(monkeypatch, tmp_path)
+        launcher.install_stack("claude_time", "claude")
         assert not (home / ".local" / "bin" / "claude_time").exists()
+
+    def test_a_foreign_file_fails_install_and_is_named(self, monkeypatch, tmp_path):
+        _stub_catalog(monkeypatch, tmp_path, exists=True)
+        home = _home_in(monkeypatch, tmp_path)
+        bin_dir = home / ".local" / "bin"
+        bin_dir.mkdir(parents=True)
+        foreign = bin_dir / "harnessed-claude-claude_time-host"
+        foreign.write_bytes(b"#!/bin/sh\necho mine\n")
+        result = CliRunner().invoke(launcher.app, ["install", "claude_time", "claude"])
+        assert result.exit_code == 1
+        assert _names("harnessed-claude-claude_time-host", result.output)
+        assert foreign.read_bytes() == b"#!/bin/sh\necho mine\n"
+
+
+class TestUninstallRemovesGlobalLaunchers:
+    """GH-565 — `uninstall <stack> <harness>` removes that pair's launchers and the old shim."""
+
+    def _install(self, monkeypatch, tmp_path):
+        _stub_catalog(monkeypatch, tmp_path, exists=True)
+        home = _home_in(monkeypatch, tmp_path)
+        monkeypatch.setattr(launcher.aoe, "rows_referencing", lambda names: [])
+        return home, home / ".local" / "bin"
+
+    def test_s5_1_only_the_named_pair_is_removed(self, monkeypatch, tmp_path):
+        _home, bin_dir = self._install(monkeypatch, tmp_path)
+        launchscript.write_globals("claude_time", "claude", bin_dir)
+        launchscript.write_globals("claude_time.x", "claude", bin_dir)
+        launchscript.write_globals("claude_time", "codex", bin_dir)
+        result = CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
+        assert result.exit_code == 0, result.output
+        assert sorted(p.name for p in bin_dir.iterdir()) == [
+            "harnessed-acp-claude-claude_time.x-container", "harnessed-claude-claude_time.x-container",
+            "harnessed-claude-claude_time.x-host", "harnessed-codex-claude_time-container",
+            "harnessed-codex-claude_time-host",
+        ]
+
+    def test_s5_2_referencing_rows_are_named(self, monkeypatch, tmp_path):
+        _home, bin_dir = self._install(monkeypatch, tmp_path)
+        launchscript.write_globals("claude_time", "claude", bin_dir)
+        asked: list = []
+        monkeypatch.setattr(
+            launcher.aoe, "rows_referencing",
+            lambda names: (asked.append(set(names)), ["/proj/claude-claude_time-container"])[1],
+        )
+        result = CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
+        assert result.exit_code == 0, result.output
+        assert _names("/proj/claude-claude_time-container", result.output)
+        assert asked == [{
+            "harnessed-acp-claude-claude_time-container", "harnessed-claude-claude_time-container",
+            "harnessed-claude-claude_time-host",
+        }]
+
+    def test_s5_3_a_foreign_launcher_is_named_and_kept(self, monkeypatch, tmp_path):
+        _home, bin_dir = self._install(monkeypatch, tmp_path)
+        bin_dir.mkdir(parents=True)
+        foreign = bin_dir / "harnessed-claude-claude_time-host"
+        foreign.write_bytes(b"#!/bin/sh\necho mine\n")
+        result = CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
+        assert foreign.read_bytes() == b"#!/bin/sh\necho mine\n"
+        assert _names("harnessed-claude-claude_time-host", result.output)
+
+    def test_only_removed_launchers_are_looked_up(self, monkeypatch, tmp_path):
+        """Adversary round 1: a refused launcher is still there, so a row using it is not broken."""
+        _home, bin_dir = self._install(monkeypatch, tmp_path)
+        launchscript.write_globals("claude_time", "claude", bin_dir)
+        (bin_dir / "harnessed-claude-claude_time-host").write_bytes(b"#!/bin/sh\necho mine\n")
+        (bin_dir / "harnessed-acp-claude-claude_time-container").unlink()
+        asked: list = []
+        monkeypatch.setattr(
+            launcher.aoe, "rows_referencing", lambda names: (asked.append(set(names)), [])[1]
+        )
+        CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
+        assert asked == [{"harnessed-claude-claude_time-container"}]
+
+    def test_nothing_removed_looks_nothing_up(self, monkeypatch, tmp_path):
+        _home, _bin_dir = self._install(monkeypatch, tmp_path)
+        asked: list = []
+        monkeypatch.setattr(
+            launcher.aoe, "rows_referencing", lambda names: (asked.append(set(names)), [])[1]
+        )
+        CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
+        assert asked == []
+
+    def test_s5_5_uninstall_removes_a_host_acp_launcher(self, monkeypatch, tmp_path):
+        """Adversary round 3: S5.5 through the command, not only `remove_globals`."""
+        _home, bin_dir = self._install(monkeypatch, tmp_path)
+        launchscript.write_globals("claude_time", "claude", bin_dir)
+        host_acp = bin_dir / "harnessed-acp-claude-claude_time-host"
+        host_acp.write_text(f"#!/bin/sh\n{launchscript.SENTINEL}\nexec harnessed host-acp\n", encoding="utf-8")
+        result = CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
+        assert result.exit_code == 0, result.output
+        assert list(bin_dir.iterdir()) == []
+
+    def test_s5_4_no_rows_prints_no_row_path(self, monkeypatch, tmp_path):
+        _home, bin_dir = self._install(monkeypatch, tmp_path)
+        launchscript.write_globals("claude_time", "claude", bin_dir)
+        result = CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
+        assert result.exit_code == 0, result.output
+        assert not _names("still references", result.output)
+
+    def _old_shim(self, bin_dir, stack: str):
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        shim = bin_dir / stack
+        shim.write_text(
+            f'#!/usr/bin/env bash\nexec /opt/bin/harnessed container-run --stack {stack} "$@"\n',
+            encoding="utf-8",
+        )
+        return shim
+
+    def test_s6_2_the_old_shim_is_removed(self, monkeypatch, tmp_path):
+        _home, bin_dir = self._install(monkeypatch, tmp_path)
+        shim = self._old_shim(bin_dir, "claude_time")
+        result = CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
+        assert result.exit_code == 0, result.output
+        assert not shim.exists()
+
+    def test_s6_3_a_second_uninstall_finds_no_shim(self, monkeypatch, tmp_path):
+        _home, bin_dir = self._install(monkeypatch, tmp_path)
+        self._old_shim(bin_dir, "claude_time")
+        CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
+        result = CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
+        assert result.exit_code == 0, result.output
+        assert _names("No shim found", result.output)
+
+    def test_s6_4_a_file_that_is_not_the_old_shim_is_kept(self, monkeypatch, tmp_path):
+        _home, bin_dir = self._install(monkeypatch, tmp_path)
+        bin_dir.mkdir(parents=True)
+        mine = bin_dir / "claude_time"
+        mine.write_bytes(b"#!/bin/sh\nexec /usr/bin/true\n")
+        result = CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
+        assert result.exit_code == 0, result.output
+        assert mine.read_bytes() == b"#!/bin/sh\nexec /usr/bin/true\n"
+
+    def test_a_shim_for_another_stack_is_kept(self, monkeypatch, tmp_path):
+        _home, bin_dir = self._install(monkeypatch, tmp_path)
+        other = self._old_shim(bin_dir, "other")
+        target = bin_dir / "claude_time"
+        target.write_bytes(other.read_bytes())
+        CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
+        assert target.exists(), "its exec line names `other`, not `claude_time`"
 
 
 class TestImageStaleness:
@@ -1163,3 +1319,40 @@ class TestBuildDerivedImageCacheBypass:
         monkeypatch.setenv("HARNESSED_PODMAN_NO_CACHE", "true")
         launcher._build_derived_image("podman", "harnessed-x:latest", tmp_path / "Dockerfile", tmp_path, "deadbeef")
         assert "--no-cache" in calls[0]
+
+
+class TestRetiredShimMutationGaps:
+    """Mutation survivors on `_is_retired_shim`: only the exact old exec line is the old shim."""
+
+    def test_an_unbalanced_exec_line_is_not_the_shim(self, tmp_path):
+        shim = tmp_path / "claude_time"
+        shim.write_text("#!/bin/sh\nexec harnessed container-run --stack 'claude_time\n", encoding="utf-8")
+        assert launcher._is_retired_shim(shim, "claude_time") is False
+
+    def test_a_file_with_no_exec_line_is_not_the_shim(self, tmp_path):
+        shim = tmp_path / "claude_time"
+        shim.write_text("#!/bin/sh\necho claude_time\n", encoding="utf-8")
+        assert launcher._is_retired_shim(shim, "claude_time") is False
+
+    def test_the_exact_old_shim_is_recognised(self, tmp_path):
+        shim = tmp_path / "claude_time"
+        shim.write_text(
+            '#!/usr/bin/env bash\nexec /opt/bin/harnessed container-run --stack claude_time "$@"\n',
+            encoding="utf-8",
+        )
+        assert launcher._is_retired_shim(shim, "claude_time") is True
+
+
+class TestRetiredShimWithASpacedBinaryPath:
+    """PR #570 review claimed a quoted binary path with spaces splits into more than 6 tokens.
+    `install_stack` wrote it through `shlex.quote`, and `shlex.split` keeps it one token."""
+
+    def test_a_spaced_binary_path_is_still_the_old_shim(self, tmp_path):
+        import shlex as _shlex
+        shim = tmp_path / "claude_time"
+        binary = _shlex.quote("/opt/my tools/bin/harnessed")
+        shim.write_text(
+            f'#!/usr/bin/env bash\nexec {binary} container-run --stack claude_time "$@"\n',
+            encoding="utf-8",
+        )
+        assert launcher._is_retired_shim(shim, "claude_time") is True

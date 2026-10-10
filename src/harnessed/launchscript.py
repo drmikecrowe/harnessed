@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import aoe, paths
+from .attachcmd import _ACP_HARNESSES
 from .schema import HARNESS_CONFIG_DIR
 
 # Line 2 of every script we write, and the licence to overwrite one. A file without it belongs to
@@ -73,6 +74,20 @@ _VERB_SUFFIX = {"host-run": "host", "container-run": "container"}
 # The closed set the LAST field of a name is checked against. Derived from `_VERB_SUFFIX` rather
 # than spelled out again, so a third backend cannot arrive in one and be missing from the other.
 _BACKENDS = frozenset(_VERB_SUFFIX.values())
+
+# GH-565: the GLOBAL launcher, `~/.local/bin/harnessed-<harness>-<stack>-<backend>`, is the local
+# name with a prefix, so one grammar reads both. An ACP launcher adds `acp-` after that prefix and
+# keeps the backend `host` or `container`, because ACP has a launcher per backend (SPEC revision 6).
+# `host-acp` is named here before it exists, so `uninstall` already removes what it will write.
+_GLOBAL_PREFIX = "harnessed-"
+_ACP_PREFIX = "acp-"
+_GLOBAL_VERBS = {
+    "host-run": ("", "host"),
+    "container-run": ("", "container"),
+    "container-acp": (_ACP_PREFIX, "container"),
+    "host-acp": (_ACP_PREFIX, "host"),
+}
+_GLOBAL_VERB_OF = {shape: verb for verb, shape in _GLOBAL_VERBS.items()}
 
 _GIT_TIMEOUT = 5
 
@@ -132,6 +147,37 @@ def parse_script_name(name: str) -> Optional[tuple[str, str, str]]:
     if harness not in HARNESS_CONFIG_DIR or backend not in _BACKENDS or not stack:
         return None
     return harness, stack, backend
+
+
+def global_name(verb: str, stack: str, harness: str) -> str:
+    """`harnessed-claude-default-container`, or `harnessed-acp-claude-default-container` (GH-565)."""
+    prefix, backend = _GLOBAL_VERBS[verb]
+    return f"{_GLOBAL_PREFIX}{prefix}{harness}-{stack}-{backend}"
+
+
+def parse_global_name(name: str) -> Optional[tuple[str, str, str]]:
+    """The inverse of `global_name`: `(harness, stack, verb)`, or None.
+
+    `parse_script_name` after the prefixes. `acp-` counts only directly after `harnessed-`, where no
+    harness name can start, so a stack named `acp` stays a stack.
+    """
+    if not name.startswith(_GLOBAL_PREFIX):
+        return None
+    rest = name[len(_GLOBAL_PREFIX):]
+    prefix = _ACP_PREFIX if rest.startswith(_ACP_PREFIX) else ""
+    parsed = parse_script_name(rest[len(prefix):])
+    if parsed is None:
+        return None
+    harness, stack, backend = parsed
+    return harness, stack, _GLOBAL_VERB_OF[(prefix, backend)]
+
+
+def global_verbs(harness: str) -> list[str]:
+    """The verbs a harness gets a global launcher for. ACP only where `container-acp` accepts it."""
+    verbs = ["host-run", "container-run"]
+    if harness in _ACP_HARNESSES:
+        verbs.append("container-acp")
+    return verbs
 
 
 def parse_legacy_script_name(name: str) -> Optional[tuple[str, str]]:
@@ -248,6 +294,10 @@ def _body(
     # silently leave a separator in the script.
     if args and args[-1] == "--":
         args.pop()
+    # GH-565: exec the GLOBAL launcher, which carries verb, harness and stack. Only the per-launch
+    # flags `command_for` puts after `--stack <name>` stay here, so they remain `command_for`'s.
+    stack_at = args.index(aoe._STACK_FLAG[0])
+    args = [global_name(verb, stack, harness), *args[stack_at + 2:]]
 
     lines = [_SHEBANG, SENTINEL]
     if argv:
@@ -325,8 +375,84 @@ def write(
         target.chmod(0o755)
         _ensure_excluded(project_path, target)
         return target
-    except OSError:
+    # ValueError: `_body` locates `--stack` in `command_for`'s output, an invariant another module
+    # owns. If it ever breaks, the launch goes on without a local launcher (PR #570 review).
+    except (OSError, ValueError):
         return None
+
+
+def _global_body(verb: str, stack: str, harness: str) -> str:
+    """The global launcher: no path, so the project is the folder it runs in (GH-565).
+
+    `--stack` BEFORE `"$@"`: a passthrough after the user's `--` would otherwise swallow it.
+    """
+    command = shlex.join(["harnessed", verb, harness, aoe._STACK_FLAG[0], stack])
+    return "\n".join([_SHEBANG, SENTINEL, f"exec {command} \"$@\""]) + "\n"
+
+
+def _is_ours_to_touch(target: Path) -> bool:
+    """A regular file carrying our sentinel on line 1 or 2. Anything else belongs to somebody else.
+
+    A symlink is never ours: writing through one would land wherever it points.
+    """
+    if target.is_symlink() or not target.is_file():
+        return False
+    head = _read_as_the_shell_does(target, _SENTINEL_READ_LIMIT).split("\n")[:2]
+    return SENTINEL in head
+
+
+def write_globals(stack: str, harness: str, bin_dir: Optional[Path] = None) -> list[Path]:
+    """Write `<bin_dir>/harnessed-<harness>-<stack>-<backend>` per backend. Never raises.
+
+    Returns the launchers NOT written: a foreign file in the way, or any OSError. A file whose bytes
+    already match is left untouched. `bin_dir` defaults to `paths.user_bin_dir()`.
+    """
+    bin_dir = paths.user_bin_dir() if bin_dir is None else bin_dir
+    targets = [bin_dir / global_name(verb, stack, harness) for verb in global_verbs(harness)]
+    # One path component, for the reason `write` gives.
+    if not stack or stack in (".", "..") or stack != Path(stack).name:
+        return targets
+    refused: list[Path] = []
+    for verb, target in zip(global_verbs(harness), targets, strict=True):
+        body = _global_body(verb, stack, harness)
+        try:
+            if target.exists() or target.is_symlink():
+                if not _is_ours_to_touch(target):
+                    refused.append(target)
+                    continue
+                if _read_as_the_shell_does(target, len(body) + 1) == body:
+                    continue
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            target.write_text(body, encoding="utf-8")
+            target.chmod(0o755)
+        except OSError:
+            refused.append(target)
+    return refused
+
+
+def remove_globals(
+    stack: str, harness: str, bin_dir: Optional[Path] = None
+) -> tuple[list[Path], list[Path]]:
+    """Delete this pair's global launchers, every backend. Returns (removed, refused). Never raises.
+
+    A file without our sentinel is refused, never deleted.
+    """
+    bin_dir = paths.user_bin_dir() if bin_dir is None else bin_dir
+    removed: list[Path] = []
+    refused: list[Path] = []
+    for verb in _GLOBAL_VERBS:
+        target = bin_dir / global_name(verb, stack, harness)
+        try:
+            if not (target.exists() or target.is_symlink()):
+                continue
+            if not _is_ours_to_touch(target):
+                refused.append(target)
+                continue
+            target.unlink()
+            removed.append(target)
+        except OSError:
+            refused.append(target)
+    return removed, refused
 
 
 def _exclude_pattern(project_path: Path, target: Path) -> Optional[str]:

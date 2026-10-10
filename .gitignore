@@ -76,3 +76,10 @@ mutants/
 
 
 .old-coder/**/logs/
+
+# Spec-Evidence working files and the gauntlet stamp. Two scratch dirs, each anchored: the root's
+# `work/` and every story directory's `work/` (the gate records). The stamp is anchored too, because
+# /spec-evidence:build commits a copy of it in each story directory.
+/work/
+/spec-evidence/*/work/
+/gauntlet-stamp.json
