@@ -67,3 +67,16 @@ All three took the default (mcrowe, 2026-10-09); SPEC.md Orientation, S1.1, S1.9
 The Must NOT test-count line and the Touches tests line pointed at decisions.md; both now name the rewritable tests in SPEC.md itself.
 ### Revision 3. Intent review round 2
 S3.1 enumerates per-launch flags; S3.5 and S5.4 added.
+### Revision 4. Tests the build had to change beyond the Must NOT list
+Found during GREEN; SPEC.md's Must NOT line now names each. Every one keeps the decision it encodes:
+- `tests/test_launchscript.py` `run_script` fixture: writes the real global launcher beside the stub `harnessed`, so local launcher -> global launcher -> harnessed runs end to end. Fixture only.
+- `TestTwoStacksDoNotCollide::test_each_file_launches_its_own_stack`: each file still launches its own stack; the stack is now read from the exec'd global name instead of `--stack`.
+- `TestHostileInput::test_a_path_with_a_space_and_a_quote_survives`: the path still reaches the launch through the `cd` line, never argv; argv now carries no path token at all, so the `.` assertion became the full argv.
+- `tests/test_aoe_real.py::test_an_aoe_rename_leaves_the_row_launchable_and_unduplicated`: the row still runs from aoe's moved folder; the fake bin gains the real global launcher, and the `.` argv token assertion became the full argv.
+- `tests/test_adhoc_launch_is_not_persisted.py` `TestThePersistGate._gate` and `TestHostRunLeavesNothingBehind._launch`: gain an `aoe._bin` stub (Decide 3); assertions unchanged.
+
+### Revision 5. Judgment calls made during the build
+- `--create-aoe-only` bypasses the Decide 3 aoe check, so `_aoe_register` still reports a missing aoe and exits nonzero rather than the command becoming a plain launch.
+- `install` exits 1 when a launcher could not be written (an explicit command fails loudly); launches only warn (S1.8, S1.11).
+- `build --root <dir>` writes no global launchers: the launcher names no root, so it would launch a different stack.
+- A symlink in `~/.local/bin` at a launcher's name is treated as foreign: never written through, never deleted.
