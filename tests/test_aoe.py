@@ -1911,3 +1911,101 @@ class TestSessionName:
     @pytest.mark.parametrize("extra", [["-n", "mine"], ["--name", "mine"], ["--name=mine"]])
     def test_a_name_the_user_passed_wins(self, monkeypatch, extra):
         assert self._args(monkeypatch, "claude", extra) == []
+
+
+class TestGlobalLauncherRows:
+    """GH-565 — rows whose local launcher execs a GLOBAL launcher."""
+
+    def _row(self, script: Path, sid: str = "s1") -> dict:
+        return {"id": sid, "path": str(script.parent), "command": f"{script} --"}
+
+    def test_s4_1_a_new_format_row_is_removed_by_rm(self, monkeypatch, tmp_path):
+        script = launchscript.write("container-run", "default", "claude", tmp_path)
+        assert script is not None
+        assert "exec harnessed-claude-default-container" in script.read_text(encoding="utf-8")
+        rec = Recorder(sessions=json.dumps([self._row(script)])).install(monkeypatch)
+        aoe.forget_stack("container-run", "default")
+        assert rec.removed() == ["s1"]
+
+    def test_s4_2_an_old_stack_flag_row_is_still_removed(self, monkeypatch, tmp_path):
+        script = tmp_path / "claude-default-container"
+        script.write_text(
+            '#!/bin/sh\n# harnessed:launcher v1\nexec harnessed container-run claude . --stack default "$@"\n',
+            encoding="utf-8",
+        )
+        rec = Recorder(sessions=json.dumps([self._row(script)])).install(monkeypatch)
+        aoe.forget_stack("container-run", "default")
+        assert rec.removed() == ["s1"]
+
+    def test_s4_3_a_dotted_neighbour_stays(self, monkeypatch, tmp_path):
+        script = launchscript.write("container-run", "default.x", "claude", tmp_path)
+        assert script is not None
+        assert script.name == "claude-default.x-container"
+        rec = Recorder(sessions=json.dumps([self._row(script)])).install(monkeypatch)
+        aoe.forget_stack("container-run", "default")
+        assert rec.removed() == []
+
+    def test_a_global_launcher_for_another_backend_is_not_attributed(self, monkeypatch, tmp_path):
+        """Name says container, exec says host: the exec line is the record, and it disagrees."""
+        script = tmp_path / "claude-default-container"
+        script.write_text('#!/bin/sh\nexec harnessed-claude-default-host "$@"\n', encoding="utf-8")
+        rec = Recorder(sessions=json.dumps([self._row(script)])).install(monkeypatch)
+        aoe.forget_stack("container-run", "default")
+        assert rec.removed() == []
+
+    def test_an_exec_of_a_non_launcher_is_not_attributed(self, monkeypatch, tmp_path):
+        script = tmp_path / "claude-default-container"
+        script.write_text('#!/bin/sh\nexec /usr/bin/true "$@"\n', encoding="utf-8")
+        rec = Recorder(sessions=json.dumps([self._row(script)])).install(monkeypatch)
+        aoe.forget_stack("container-run", "default")
+        assert rec.removed() == []
+
+    def test_s3_5_the_row_shape_is_still_ours(self, tmp_path):
+        script = launchscript.write("container-run", "default", "claude", tmp_path)
+        assert script is not None
+        command = f"{script} --"
+        assert aoe._is_ours(command) is True
+        assert aoe._is_launcher_script(shlex.split(command)) is True
+
+
+class TestRowsReferencing:
+    """S5.2 / S5.4 — `uninstall` names the rows that still point at the launchers it removed."""
+
+    def _row(self, script: Path, sid: str) -> dict:
+        return {"id": sid, "path": str(script.parent), "command": f"{script} --"}
+
+    def test_s5_2_a_referencing_row_is_named(self, monkeypatch, tmp_path):
+        a = tmp_path / "a"
+        b = tmp_path / "b"
+        a.mkdir()
+        b.mkdir()
+        hit = launchscript.write("container-run", "default", "claude", a)
+        assert hit is not None
+        miss = launchscript.write("container-run", "default.x", "claude", b)
+        assert miss is not None
+        Recorder(sessions=json.dumps([self._row(hit, "s1"), self._row(miss, "s2")])).install(monkeypatch)
+        names = {"harnessed-claude-default-container", "harnessed-claude-default-host"}
+        assert aoe.rows_referencing(names) == [str(hit)]
+
+    def test_a_relative_row_resolves_against_its_folder(self, monkeypatch, tmp_path):
+        hit = launchscript.write("host-run", "default", "claude", tmp_path)
+        assert hit is not None
+        rows = [{"id": "s1", "path": str(tmp_path), "command": f"./{hit.name} --"}]
+        Recorder(sessions=json.dumps(rows)).install(monkeypatch)
+        assert aoe.rows_referencing({"harnessed-claude-default-host"}) == [str(hit)]
+
+    def test_s5_4_no_referencing_row_is_an_empty_list(self, monkeypatch, tmp_path):
+        other = launchscript.write("container-run", "other", "claude", tmp_path)
+        assert other is not None
+        Recorder(sessions=json.dumps([self._row(other, "s1")])).install(monkeypatch)
+        assert aoe.rows_referencing({"harnessed-claude-default-container"}) == []
+
+    def test_no_aoe_is_an_empty_list(self, monkeypatch):
+        monkeypatch.setattr(aoe, "_bin", lambda: None)
+        assert aoe.rows_referencing({"harnessed-claude-default-container"}) == []
+
+    def test_a_raw_harnessed_row_is_not_a_reference(self, monkeypatch, tmp_path):
+        rows = [{"id": "s1", "path": str(tmp_path),
+                 "command": "harnessed container-run claude . --stack default --"}]
+        Recorder(sessions=json.dumps(rows)).install(monkeypatch)
+        assert aoe.rows_referencing({"harnessed-claude-default-container"}) == []
