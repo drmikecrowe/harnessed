@@ -1188,16 +1188,20 @@ class TestGlobalNames:
         assert launchscript.parse_global_name("harnessed-") is None
         assert launchscript.parse_global_name("harnessed-nosuch-default-host") is None
 
-    @settings(max_examples=200, suppress_health_check=[HealthCheck.function_scoped_fixture])
-    @given(
-        stack=st.from_regex(r"[a-z0-9][a-z0-9._-]{0,24}", fullmatch=True),
-        harness=st.sampled_from(["claude", "omp", "codex", "opencode", "antigravity"]),
-        verb=st.sampled_from(["host-run", "container-run", "container-acp"]),
-    )
-    def test_round_trip(self, stack, harness, verb):
-        name = launchscript.global_name(verb, stack, harness)
-        parsed = launchscript.parse_global_name(name)
-        assert parsed == (harness, stack, launchscript._GLOBAL_VERB_SUFFIX[verb])
+
+
+# Module level, not a method: hypothesis refuses a test whose class is instantiated more than once
+# (`differing_executors`), which is what a mutation run does.
+@settings(max_examples=200)
+@given(
+    stack=st.from_regex(r"[a-z0-9][a-z0-9._-]{0,24}", fullmatch=True),
+    harness=st.sampled_from(["claude", "omp", "codex", "opencode", "antigravity"]),
+    verb=st.sampled_from(["host-run", "container-run", "container-acp"]),
+)
+def test_global_name_round_trips(stack, harness, verb):
+    name = launchscript.global_name(verb, stack, harness)
+    parsed = launchscript.parse_global_name(name)
+    assert parsed == (harness, stack, launchscript._GLOBAL_VERB_SUFFIX[verb])
 
 
 class TestWriteGlobals:
@@ -1399,3 +1403,71 @@ class TestRemoveGlobals:
         path.write_text(f"#!/bin/sh\n{launchscript.SENTINEL}\nexec x\n", encoding="utf-8")
         removed, _ = launchscript.remove_globals("default", "codex", gbin)
         assert removed == [path]
+
+
+class TestGlobalWriterMutationGaps:
+    """Mutation survivors on `write_globals` / `remove_globals` / `_is_ours_to_touch`, each pinned."""
+
+    def test_the_sentinel_must_be_on_line_one_or_two(self, gbin):
+        path = gbin / "harnessed-claude-default-host"
+        path.write_text(f"#!/bin/sh\n# mine\n{launchscript.SENTINEL}\n", encoding="utf-8")
+        assert path in launchscript.write_globals("default", "claude", gbin)
+        assert path.read_text(encoding="utf-8").endswith(f"{launchscript.SENTINEL}\n")
+
+    @pytest.mark.parametrize("stack", ["", ".", ".."])
+    def test_a_stack_that_names_no_file_writes_nothing(self, gbin, stack):
+        assert launchscript.write_globals(stack, "claude", gbin) != []
+        assert list(gbin.iterdir()) == []
+
+    def test_traversal_with_the_intermediate_folder_present_writes_nothing(self, gbin, tmp_path):
+        (gbin / "harnessed-claude-x").mkdir()
+        assert launchscript.write_globals("x/../../evil", "claude", gbin) != []
+        assert not any(p.name.startswith("evil") for p in tmp_path.iterdir())
+        assert sorted(p.name for p in gbin.iterdir()) == ["harnessed-claude-x"]
+
+    def test_a_foreign_file_does_not_stop_the_later_launchers(self, gbin):
+        foreign = gbin / "harnessed-claude-default-host"
+        foreign.write_bytes(b"#!/bin/sh\necho mine\n")
+        assert launchscript.write_globals("default", "claude", gbin) == [foreign]
+        assert (gbin / "harnessed-claude-default-container").is_file()
+        assert (gbin / "harnessed-claude-default-acp").is_file()
+
+    def test_an_identical_launcher_does_not_stop_the_later_ones(self, gbin):
+        launchscript.write_globals("default", "claude", gbin)
+        (gbin / "harnessed-claude-default-container").unlink()
+        (gbin / "harnessed-claude-default-acp").unlink()
+        assert launchscript.write_globals("default", "claude", gbin) == []
+        assert (gbin / "harnessed-claude-default-container").is_file()
+        assert (gbin / "harnessed-claude-default-acp").is_file()
+
+    def test_a_missing_launcher_does_not_stop_removal_of_the_rest(self, gbin):
+        launchscript.write_globals("default", "claude", gbin)
+        (gbin / "harnessed-claude-default-host").unlink()
+        removed, refused = launchscript.remove_globals("default", "claude", gbin)
+        assert sorted(p.name for p in removed) == [
+            "harnessed-claude-default-acp", "harnessed-claude-default-container",
+        ]
+        assert refused == []
+
+    def test_a_foreign_file_does_not_stop_removal_of_the_rest(self, gbin):
+        launchscript.write_globals("default", "claude", gbin)
+        foreign = gbin / "harnessed-claude-default-host"
+        foreign.write_bytes(b"#!/bin/sh\necho mine\n")
+        removed, refused = launchscript.remove_globals("default", "claude", gbin)
+        assert refused == [foreign]
+        assert sorted(p.name for p in removed) == [
+            "harnessed-claude-default-acp", "harnessed-claude-default-container",
+        ]
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+    def test_an_unremovable_launcher_is_reported_by_path(self, gbin):
+        launchscript.write_globals("default", "codex", gbin)
+        gbin.chmod(0o555)
+        try:
+            removed, refused = launchscript.remove_globals("default", "codex", gbin)
+        finally:
+            gbin.chmod(0o755)
+        assert removed == []
+        assert refused == [
+            gbin / "harnessed-codex-default-host", gbin / "harnessed-codex-default-container",
+        ]

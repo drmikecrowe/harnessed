@@ -1277,3 +1277,25 @@ class TestBuildDerivedImageCacheBypass:
         monkeypatch.setenv("HARNESSED_PODMAN_NO_CACHE", "true")
         launcher._build_derived_image("podman", "harnessed-x:latest", tmp_path / "Dockerfile", tmp_path, "deadbeef")
         assert "--no-cache" in calls[0]
+
+
+class TestRetiredShimMutationGaps:
+    """Mutation survivors on `_is_retired_shim`: only the exact old exec line is the old shim."""
+
+    def test_an_unbalanced_exec_line_is_not_the_shim(self, tmp_path):
+        shim = tmp_path / "claude_time"
+        shim.write_text("#!/bin/sh\nexec harnessed container-run --stack 'claude_time\n", encoding="utf-8")
+        assert launcher._is_retired_shim(shim, "claude_time") is False
+
+    def test_a_file_with_no_exec_line_is_not_the_shim(self, tmp_path):
+        shim = tmp_path / "claude_time"
+        shim.write_text("#!/bin/sh\necho claude_time\n", encoding="utf-8")
+        assert launcher._is_retired_shim(shim, "claude_time") is False
+
+    def test_the_exact_old_shim_is_recognised(self, tmp_path):
+        shim = tmp_path / "claude_time"
+        shim.write_text(
+            '#!/usr/bin/env bash\nexec /opt/bin/harnessed container-run --stack claude_time "$@"\n',
+            encoding="utf-8",
+        )
+        assert launcher._is_retired_shim(shim, "claude_time") is True

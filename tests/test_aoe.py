@@ -2009,3 +2009,54 @@ class TestRowsReferencing:
                  "command": "harnessed container-run claude . --stack default --"}]
         Recorder(sessions=json.dumps(rows)).install(monkeypatch)
         assert aoe.rows_referencing({"harnessed-claude-default-container"}) == []
+
+
+class TestGlobalRowMutationGaps:
+    """Mutation survivors on `_exec_tokens` / `rows_referencing`, each pinned."""
+
+    def _row(self, script: Path, sid: str) -> dict:
+        return {"id": sid, "path": str(script.parent), "command": f"{script} --"}
+
+    def test_the_first_exec_statement_is_the_record(self, monkeypatch, tmp_path):
+        script = tmp_path / "claude-default-container"
+        script.write_text(
+            '#!/bin/sh\nexec harnessed-claude-default-container "$@"\nexec /usr/bin/true\n',
+            encoding="utf-8",
+        )
+        rec = Recorder(sessions=json.dumps([self._row(script, "s1")])).install(monkeypatch)
+        aoe.forget_stack("container-run", "default")
+        assert rec.removed() == ["s1"]
+
+    def test_a_script_with_no_exec_statement_names_nothing(self, monkeypatch, tmp_path):
+        """Text that merely contains a launcher name, with no `exec`, is not a reference."""
+        script = tmp_path / "claude-default-container"
+        script.write_text("12345harnessed-claude-default-container --stack default\n", encoding="utf-8")
+        rec = Recorder(sessions=json.dumps([self._row(script, "s1")])).install(monkeypatch)
+        aoe.forget_stack("container-run", "default")
+        assert rec.removed() == []
+        assert aoe.rows_referencing({"harnessed-claude-default-container"}) == []
+
+    def test_rows_referencing_asks_the_aoe_it_found(self, monkeypatch, tmp_path):
+        hit = launchscript.write("container-run", "default", "claude", tmp_path)
+        assert hit is not None
+        monkeypatch.setattr(aoe, "_bin", lambda: "/opt/aoe")
+        asked: list = []
+
+        def _sessions(exe):
+            asked.append(exe)
+            return [self._row(hit, "s1")]
+
+        monkeypatch.setattr(aoe, "_sessions", _sessions)
+        assert aoe.rows_referencing({"harnessed-claude-default-container"}) == [str(hit)]
+        assert asked == ["/opt/aoe"]
+
+    def test_a_bad_row_does_not_stop_the_scan(self, monkeypatch, tmp_path):
+        hit = launchscript.write("container-run", "default", "claude", tmp_path)
+        assert hit is not None
+        rows = [
+            {"id": "s0", "path": str(tmp_path), "command": "harnessed " + chr(39) + "unbalanced"},
+            {"id": "s1", "path": str(tmp_path), "command": "vim notes.md"},
+            self._row(hit, "s2"),
+        ]
+        Recorder(sessions=json.dumps(rows)).install(monkeypatch)
+        assert aoe.rows_referencing({"harnessed-claude-default-container"}) == [str(hit)]
