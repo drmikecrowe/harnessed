@@ -4272,6 +4272,7 @@ def _acp_relaunch(project: Path, agent_start_folder: Optional[str]) -> tuple[sub
     Returns the child and the directory the agent starts in, which the proxy puts in `cwd`."""
     start_dir = _resolve_start_dir(project, agent_start_folder)
     env = {**os.environ, _ACP_DIRECT_ENV: "1", _ACP_PROJECT_ENV: str(project)}
+    # unbounded: Popen returns at once, and the child IS the ACP session, alive as long as the client.
     proc = subprocess.Popen(
         [sys.executable, sys.argv[0], *sys.argv[1:]],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env,

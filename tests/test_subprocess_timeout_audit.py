@@ -55,9 +55,12 @@ _EXPECTED_EXEMPT = {
     # timeout on a human finishing a browser flow. Bounded by its own deadline loop instead, and
     # terminated in a `finally` on every exit path.
     ("launcher.py", "_run_mcp_remote_consent"),
+    # The `container-acp` proxy's agent (#566): Popen does not block, and the child is the ACP
+    # session, alive as long as the editor that started it.
+    ("launcher.py", "_acp_relaunch"),
 }
 
-_EXPECTED_EXEMPT_CALL_COUNT = 9  # 8 functions, with aws_sso contributing two
+_EXPECTED_EXEMPT_CALL_COUNT = 10  # 9 functions, with aws_sso contributing two
 
 
 def _enclosing_functions(tree: ast.AST) -> dict[int, str]:

@@ -142,6 +142,13 @@ class TestTheProjectComesFromCwd:
         # A notification the agent sends around its initialize reply still reaches the client.
         assert any(m.get("method") == "_auth/status_update" for m in msgs)
 
+    def test_a_session_before_initialize_still_initializes_the_agent(self, tmp_path, project):  # S4.1
+        fake = _Fake(tmp_path, init=_real("omp"))
+        _, msgs, _ = _serve("omp", [_req(2, "session/new", {"cwd": str(project)})], fake)
+        # The proxy's own initialize is consumed: the client sees only its session/new reply.
+        assert [m.get("id") for m in msgs if "id" in m] == [2]
+        assert _reply(msgs, 2)["result"]["params"]["cwd"] == str(project)
+
     def test_a_cwd_that_does_not_exist_is_an_error(self, tmp_path, project):  # S2.3
         fake = _Fake(tmp_path, init=_real("omp"))
         _, msgs, _ = _serve("omp", [
