@@ -36,6 +36,12 @@
 - Gap 3 (additions): S7.5 cut. S6.6 and S6.7 declined: `build` runs without a terminal in CI and scripts, and a failed install must have defined behavior, so AC-6 cannot be built without them. S4.4 declined: it is the consequence of AC-4's "the first session/new for a project runs the verb" when the first run failed, not a new feature.
 - Gap 4 (another installed version at build): accepted; S6 now counts another version as not installed, and S6.1 covers 0.84.0.
 
+Round 2 (ran beside Gate 1a round 2, so nothing below changed the graded SPEC.md):
+- Gap 1 (real agents may ignore the session cwd): accepted as a build-order note, not a SPEC change. `/spec-evidence:build` runs S3.4 against both real agents first, before RED. If an agent reports the launch folder, the build stops and the SPEC is revised visibly.
+- Gap 2 (MCP servers that need recipe `env:`): declined as a SPEC change. It is the cost that Decide 2 A names, and the engineer ruled with that cost stated. Known limits already says it.
+- Gap 3 (wrong version: build asks, host-acp runs): declined. That split is Decide 3 B as ruled; build installs the pin, and host-acp does not block a working session.
+- Gap 4 (`__main__.py`, README): declined. `__main__.py` serves AC-4: the relay must run `project-setup` from the same installation that runs it, and no `__main__` exists (fact 15). The README section is the documentation that the SPEC's Documentation section requires.
+
 ## Decide calls
 
 ### Decide 1. What is the per-project setup verb called?
@@ -69,3 +75,5 @@ Changes: SPEC.md adds S6.10 and a Known limits line.
 ## Revisions
 ### Revision 1. Decide calls ruled
 Decide 1 B, Decide 2 A, Decide 3 B (mcrowe, 2026-10-10), applied to SPEC.md before Gate 1a.
+### Revision 2. Gate 1a round 1: PR-REFERENT fixed
+Terms now define the stub setup verb and how both stubs are swapped in: parameters to `acprelay.run`, and `monkeypatch` on two launcher functions. The judge's example (an env var or PATH entry) was not used, because it would add a config surface the story did not ask for. Terms also define "the user's own mise variables", from the judge's gap 3.
