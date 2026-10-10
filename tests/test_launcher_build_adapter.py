@@ -1,14 +1,12 @@
 """GH-571 AC-6 — `build <stack> claude` offers to install the pinned claude-agent-acp adapter.
 
 The adapter is what `host-acp claude` runs. Its pin lives in `catalog/agents/claude/agent.yaml`
-(`build_args.CLAUDE_AGENT_ACP_VERSION`), and "installed" means the `package.json` above the real
-path of the `claude-agent-acp` on PATH names that package at that version. The adapter is laid out
-here the way `npm i -g` lays it out, so the detection runs for real; only the install command and
-the image build are stubbed.
+(`build_args.CLAUDE_AGENT_ACP_VERSION`), and "installed" means the `claude-agent-acp` on PATH
+prints that version for `--version` (SPEC revision 5). The fake adapter is a real executable, so
+the detection runs for real; only the install command and the image build are stubbed.
 """
 from __future__ import annotations
 
-import json
 import subprocess
 from pathlib import Path
 
@@ -28,17 +26,12 @@ _NPM = ["npm", "i", "-g", "@agentclientprotocol/claude-agent-acp@0.85.1"]
 
 
 def _adapter(tmp: Path, version: str) -> Path:
-    pkg = tmp / "npm" / "lib" / "node_modules" / "@agentclientprotocol" / "claude-agent-acp"
-    (pkg / "dist").mkdir(parents=True)
-    (pkg / "package.json").write_text(
-        json.dumps({"name": "@agentclientprotocol/claude-agent-acp", "version": version})
-    )
-    entry = pkg / "dist" / "index.js"
-    entry.write_text("#!/bin/sh\nexit 0\n")
-    entry.chmod(0o755)
+    """A `claude-agent-acp` as pnpm and mise install it: a wrapper script that answers --version."""
     bindir = tmp / "npm" / "bin"
     bindir.mkdir(parents=True)
-    (bindir / "claude-agent-acp").symlink_to(entry)
+    entry = bindir / "claude-agent-acp"
+    entry.write_text(f'#!/bin/sh\n[ "$1" = --version ] && echo {version}\nexit 0\n')
+    entry.chmod(0o755)
     return bindir
 
 
@@ -56,8 +49,11 @@ def build_env(monkeypatch, tmp_path):
     monkeypatch.setenv("PATH", str(empty))
     ran: list = []
     state = {"rc": 0}
+    real_run = subprocess.run
 
     def fake_run(cmd, *a, **k):
+        if cmd[1:] == ["--version"]:  # the detection asks the fake adapter for real
+            return real_run(cmd, *a, **k)
         ran.append(cmd)
         return subprocess.CompletedProcess(cmd, state["rc"])
 

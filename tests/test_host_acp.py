@@ -386,16 +386,12 @@ class _Host:
         assemble(None, _STACK, paths.profiles_root().parent, harness, strict=True, shared_identity=False)
 
     def adapter(self, version: str) -> Path:
-        """A `claude-agent-acp` laid out as `npm i -g` lays it out: a bin symlink into the package."""
-        pkg = self.tmp / "npm" / "lib" / "node_modules" / "@agentclientprotocol" / "claude-agent-acp"
-        (pkg / "dist").mkdir(parents=True)
-        (pkg / "package.json").write_text(json.dumps({"name": "@agentclientprotocol/claude-agent-acp", "version": version}))
-        entry = pkg / "dist" / "index.js"
-        entry.write_text("#!/bin/sh\nexit 0\n")
-        entry.chmod(0o755)
+        """A `claude-agent-acp` as pnpm and mise install it: a wrapper script that answers --version."""
         bindir = self.tmp / "npm" / "bin"
         bindir.mkdir(parents=True)
-        (bindir / "claude-agent-acp").symlink_to(entry)
+        entry = bindir / "claude-agent-acp"
+        entry.write_text(f'#!/bin/sh\n[ "$1" = --version ] && echo {version}\nexit 0\n')
+        entry.chmod(0o755)
         return bindir
 
     def run(self, harness: str, *extra: str, msgs: tuple[dict, ...] | list[dict] = (), stub: dict | None = None,
@@ -514,7 +510,7 @@ class TestHostRunSharesTheSetup:
         monkeypatch.setattr(launcher, "_prompt_setup_notices", notices)
         return order
 
-    _STEPS = ["wire_services", "project_tool_env", f"provision:{launcher.ATTACH}", "setup_notices"]
+    _STEPS = ("wire_services", "project_tool_env", f"provision:{launcher.ATTACH}", "setup_notices")
 
     def test_s4_5_host_run_and_project_setup_run_the_same_steps_in_the_same_order(
         self, host, tmp_path, monkeypatch,
@@ -532,7 +528,7 @@ class TestHostRunSharesTheSetup:
         result = CliRunner().invoke(launcher.app, ["host-run", "omp", str(project), "--stack", _STACK])
         assert result.exit_code == 0, result.output
         host_run = [step for step in order if step in self._STEPS]
-        assert host_run == self._STEPS
+        assert host_run == list(self._STEPS)
         assert (project / ".init-cwd").read_text().strip() == str(project)
 
         order.clear()
@@ -540,7 +536,7 @@ class TestHostRunSharesTheSetup:
         other.mkdir()
         result = CliRunner().invoke(launcher.app, ["project-setup", "omp", str(other), "--stack", _STACK])
         assert result.exit_code == 0, result.output
-        assert order == self._STEPS
+        assert order == list(self._STEPS)
         assert (other / ".init-cwd").read_text().strip() == str(other)
 
     def test_s4_6_project_setup_alone_sets_up_one_project(self, host, tmp_path):

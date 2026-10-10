@@ -4835,27 +4835,28 @@ def _acp_adapter_install_cmd(package: str, version: str) -> list[str]:
     return ["npm", "i", "-g", f"{package}@{version}"]
 
 
-def _installed_acp_adapter(package: str) -> Optional[str]:
-    """The version of the `claude-agent-acp` on PATH, or None when there is none or it cannot be read.
+_VERSION_RE = re.compile(r"\d+\.\d+\.\d+\S*")
 
-    Read from the package's own `package.json`, found above the real path of the bin entry, which
-    is how both `npm i -g` and `pnpm add -g` lay it out. The adapter has no version flag to ask.
+
+def _installed_acp_adapter() -> Optional[str]:
+    """The version the `claude-agent-acp` on PATH reports, or None when there is none or it says none.
+
+    Asked, not read from a `package.json`: npm installs a symlink into the package, but pnpm writes
+    a wrapper script and mise puts its own shim in front, so no file layout holds for all three
+    (SPEC revision 5). `--version` answers through every one of them.
     """
     found = shutil.which(_ACP_ADAPTER_BIN)
     if found is None:
         return None
-    for parent in Path(found).resolve().parents:
-        manifest = parent / "package.json"
-        if not manifest.is_file():
-            continue
-        try:
-            data = json.loads(manifest.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return None
-        if isinstance(data, dict) and data.get("name") == package:
-            version = data.get("version")
-            return version if isinstance(version, str) else None
-    return None
+    try:
+        out = subprocess.run(
+            [found, "--version"], stdin=subprocess.DEVNULL, capture_output=True, text=True,
+            check=False, timeout=30,
+        ).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    match = _VERSION_RE.search(out)
+    return match.group(0) if match else None
 
 
 def _require_acp_adapter() -> None:
@@ -4871,7 +4872,7 @@ def _require_acp_adapter() -> None:
             f"needs it. Install it with: {escape(shown)}", soft_wrap=True,
         )
         raise typer.Exit(1)
-    version = _installed_acp_adapter(package)
+    version = _installed_acp_adapter()
     if version != pin:
         _err.print(
             f"[yellow]warning:[/yellow] {_ACP_ADAPTER_BIN} is {version or 'of unknown version'}, "
@@ -4888,7 +4889,7 @@ def _offer_acp_adapter() -> None:
     the stack is built, and only `host-acp claude` needs the adapter.
     """
     package, pin = _acp_adapter_pin()
-    if _installed_acp_adapter(package) == pin:
+    if _installed_acp_adapter() == pin:
         return
     cmd = _acp_adapter_install_cmd(package, pin)
     shown = shlex.join(cmd)
