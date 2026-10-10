@@ -1,0 +1,20 @@
+run: /home/mcrowe/.local/share/harnessed/venvs/GH-571/.venv/bin/harnessed host-acp omp --stack hostspike (in /tmp/acp-smoke-launch-v5q7fvcw)
+[INFO] Assembling 'hostspike' (omp) host-native (no container) ...
+[INFO] skills (greet): omp does not read Claude-shaped skills — the claude-hooks
+bridge covers hooks only, and omp's own skill surface is a different format. 
+They are inert on this launch. Identity, rules, hooks and MCP servers ARE 
+delivered; run this stack under `container-run` for the full omp surface.
+host-native: 
+PI_CODING_AGENT_DIR=/tmp/claude-1000/-home-mcrowe-Programming-Personal-harnessed
+-3-3-gh-571-host-acp/3fbde74c-0821-4111-82c2-87cd815dc820/scratchpad/xdg-data/ha
+rnessed/home/hostspike/omp cwd=/tmp/acp-smoke-launch-v5q7fvcw — no container
+ok: initialize
+ok: session/new
+ok: session/prompt
+ok: stopReason=end_turn
+ok: session/new
+ok: session/prompt
+ok: the session in /tmp/claude-1000/-home-mcrowe-Programming-Personal-harnessed-3-3-gh-571-host-acp/3fbde74c-0821-4111-82c2-87cd815dc820/scratchpad/smokeA reported '/tmp/claude-1000/-home-mcrowe-Programming-Personal-harnessed-3-3-gh-571-host-acp/3fbde74c-0821-4111-82c2-87cd815dc820/scratchpad/smokeA'
+ok: session/prompt
+ok: the session in /tmp/claude-1000/-home-mcrowe-Programming-Personal-harnessed-3-3-gh-571-host-acp/3fbde74c-0821-4111-82c2-87cd815dc820/scratchpad/smokeB reported '/tmp/claude-1000/-home-mcrowe-Programming-Personal-harnessed-3-3-gh-571-host-acp/3fbde74c-0821-4111-82c2-87cd815dc820/scratchpad/smokeB'
+PASS: every stdout byte parsed as JSON-RPC

@@ -3033,29 +3033,6 @@ class HostBackend(ExecutionBackend):
         """
 
 
-def _host_project_setup(
-    backend: "HostBackend", spec: LaunchSpec, *, verb: str,
-    aoe_group: Optional[str] = None, aoe_title: Optional[str] = None,
-) -> None:
-    """The per-project services and tool env file of a host launch (GH-571). `host-run` and
-    `project-setup` each call it, then run ATTACH and the setup notices themselves: ATTACH has to
-    stay a call site in `_launch_host`, where a test pins it outside the home lock.
-
-    Expects the per-project environment on os.environ already: `_launch_host` set it for host-run,
-    and `project-setup` sets it before calling this.
-    """
-    stack, harness, project_path = spec.stack, spec.harness, spec.project_path
-    # Sidecars — the SAME ones `launch` ensures (bd harnessed-2sm). Ahead of the setup scripts
-    # below, which is what needs the socket to already exist.
-    backend.wire_services(spec)
-    # Hand the PROJECT the same tool env we hand the agent, so a plain `bd` in this repo is
-    # configured too. After services, because the client env includes their connection.
-    _write_project_tool_env(
-        stack, project_path, harness=harness, verb=verb,
-        no_strict_mcp=spec.no_strict_mcp, aoe_group=aoe_group, aoe_title=aoe_title,
-    )
-
-
 def _host_acp_agent_argv(harness: str, home: Path, no_strict_mcp: bool) -> list[str]:
     """The agent `host-acp` starts. omp has ACP built in; claude needs the adapter (#530), and its
     MCP wiring travels in the env instead (see `_relay_acp`). A seam: tests swap in a stub agent."""
@@ -3128,7 +3105,7 @@ def _launch_host(
 
     `acp` (`host-acp`, GH-571) does only the per-stack half here and relays instead of exec'ing.
     The folder it starts in is the editor's, not a project: no launcher, aoe row, project secrets,
-    recipe `env:` or folder-env contract is derived from it, and `_host_project_setup` runs per
+    recipe `env:` or folder-env contract is derived from it, and the per-project steps run per
     project from the relay instead (`project-setup`)."""
     set_exec_mode(exec_mode)
     if harness not in _HOST_HARNESSES:
@@ -3242,6 +3219,21 @@ def _launch_host(
         extra=tuple(extra or []), no_strict_mcp=no_strict_mcp, ephemeral=rm,
     )
 
+    # The per-project steps — services, the project tool env file, ATTACH, setup notices — are
+    # skipped under `acp`, whose launch folder is not a project; `project-setup` runs the same four,
+    # in this order, for each folder an editor opens (GH-571).
+    if not acp:
+        # Sidecars — the SAME ones `launch` ensures (bd harnessed-2sm). Ahead of the recipe env and
+        # setup scripts below, which is what needs the socket to already exist.
+        backend.wire_services(spec)
+
+        # Hand the PROJECT the same tool env we are about to hand the agent, so a plain `bd` in this
+        # repo is configured too. After services, because the client env includes their connection.
+        _write_project_tool_env(
+            stack, project_path, harness=harness, verb="host-run",
+            no_strict_mcp=no_strict_mcp, aoe_group=aoe_group, aoe_title=aoe_title,
+        )
+
     # Recipe `env:` — the host half of what the derived image's ENV does for a container launch.
     # Set on THIS process (same reasoning as the PATH mutation below: the process is dedicated to
     # this launch), so all three consumers get it from one place: any install/setup script spawned
@@ -3322,11 +3314,8 @@ def _launch_host(
         # `install:` — the host half of the derived image's `RUN bash install.sh`, i.e. the content
         # a Dockerfile RUN used to deliver to containers only.
         backend.provision_tools(spec, FIRST_START)
-    # Outside the lock, because a setup can prompt (see provision_tools). Under `acp` the relay runs
-    # it per project instead, through `project-setup`.
+    # setup.script — outside the lock, because a setup can prompt (see provision_tools).
     if not acp:
-        _host_project_setup(backend, spec, verb="host-run", aoe_group=aoe_group, aoe_title=aoe_title)
-        # setup.script — outside the lock, because a setup can prompt (see provision_tools).
         backend.provision_tools(spec, ATTACH)
     home, cwd = backend.home, backend.cwd
     if cwd is None or home is None:
@@ -3688,8 +3677,12 @@ def project_setup(
         stack=stack, harness=harness, project_path=project_path, extra=(),
         no_strict_mcp=no_strict_mcp_config, ephemeral=False,
     )
+    # host-run's four per-project steps, in host-run's order (see `_launch_host`).
     backend = HostBackend(host_recipes)
-    _host_project_setup(backend, spec, verb="host-run")
+    backend.wire_services(spec)
+    _write_project_tool_env(
+        stack, project_path, harness=harness, verb="host-run", no_strict_mcp=no_strict_mcp_config,
+    )
     backend.provision_tools(spec, ATTACH)
     _prompt_setup_notices(host_recipes, project_path, stack, harness, allow_terminal=False)
 

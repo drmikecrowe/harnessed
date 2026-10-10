@@ -483,39 +483,65 @@ class TestUnbuiltStack:
 
 
 class TestHostRunSharesTheSetup:
-    def test_s4_5_host_run_calls_the_per_project_function_once_in_order(self, host, tmp_path, monkeypatch):
+    @staticmethod
+    def _record(monkeypatch) -> list[str]:
+        """Record the four per-project steps, in call order, running each for real."""
         order: list[str] = []
+        real_services = launcher.HostBackend.wire_services
         real_provision = launcher.HostBackend.provision_tools
-        real_wire_mcp = launcher.HostBackend.wire_mcp
-        real_setup = launcher._host_project_setup
+        real_env_file = launcher._write_project_tool_env
+        real_notices = launcher._prompt_setup_notices
+
+        def services(self, spec):
+            order.append("wire_services")
+            return real_services(self, spec)
 
         def provision(self, spec, phase):
             order.append(f"provision:{phase}")
             return real_provision(self, spec, phase)
 
-        def wire_mcp(self, spec):
-            order.append("wire_mcp")
-            return real_wire_mcp(self, spec)
+        def env_file(*a, **k):
+            order.append("project_tool_env")
+            return real_env_file(*a, **k)
 
-        def setup(*a, **k):
-            order.append("project_setup")
-            return real_setup(*a, **k)
+        def notices(*a, **k):
+            order.append("setup_notices")
+            return real_notices(*a, **k)
 
+        monkeypatch.setattr(launcher.HostBackend, "wire_services", services)
         monkeypatch.setattr(launcher.HostBackend, "provision_tools", provision)
-        monkeypatch.setattr(launcher.HostBackend, "wire_mcp", wire_mcp)
-        monkeypatch.setattr(launcher, "_host_project_setup", setup)
+        monkeypatch.setattr(launcher, "_write_project_tool_env", env_file)
+        monkeypatch.setattr(launcher, "_prompt_setup_notices", notices)
+        return order
+
+    _STEPS = ["wire_services", "project_tool_env", f"provision:{launcher.ATTACH}", "setup_notices"]
+
+    def test_s4_5_host_run_and_project_setup_run_the_same_steps_in_the_same_order(
+        self, host, tmp_path, monkeypatch,
+    ):
+        """SPEC revision 4: host-run keeps each step at its own call site; project-setup runs the
+        same four, once each, in the same order."""
+        from typer.testing import CliRunner
+
+        order = self._record(monkeypatch)
         monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
         monkeypatch.setattr(launcher.aoe, "_bin", lambda: None)
         project = tmp_path / "proj"
         project.mkdir()
-        from typer.testing import CliRunner
         result = CliRunner().invoke(launcher.app, ["host-run", "omp", str(project), "--stack", _STACK])
         assert result.exit_code == 0, result.output
-        first_start = order.index(f"provision:{launcher.FIRST_START}")
-        assert order.count("project_setup") == 1
-        assert first_start < order.index("project_setup") < order.index("wire_mcp")
+        host_run = [step for step in order if step in self._STEPS]
+        assert host_run == self._STEPS
         assert (project / ".init-cwd").read_text().strip() == str(project)
+
+        order.clear()
+        other = tmp_path / "other"
+        other.mkdir()
+        result = CliRunner().invoke(launcher.app, ["project-setup", "omp", str(other), "--stack", _STACK])
+        assert result.exit_code == 0, result.output
+        assert order == self._STEPS
+        assert (other / ".init-cwd").read_text().strip() == str(other)
 
     def test_s4_6_project_setup_alone_sets_up_one_project(self, host, tmp_path):
         host.build("omp")
