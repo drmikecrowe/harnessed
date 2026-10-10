@@ -173,10 +173,11 @@ def parse_global_name(name: str) -> Optional[tuple[str, str, str]]:
 
 
 def global_verbs(harness: str) -> list[str]:
-    """The verbs a harness gets a global launcher for. ACP only where `container-acp` accepts it."""
+    """The verbs a harness gets a global launcher for. ACP only where `container-acp` and `host-acp`
+    accept it."""
     verbs = ["host-run", "container-run"]
     if harness in _ACP_HARNESSES:
-        verbs.append("container-acp")
+        verbs += ["container-acp", "host-acp"]
     return verbs
 
 

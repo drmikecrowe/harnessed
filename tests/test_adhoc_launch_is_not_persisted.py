@@ -265,8 +265,8 @@ class TestHostRunLeavesNothingBehind:
 
 
 _HOSTSPIKE_LAUNCHERS = [
-    "harnessed-acp-claude-hostspike-container", "harnessed-claude-hostspike-container",
-    "harnessed-claude-hostspike-host",
+    "harnessed-acp-claude-hostspike-container", "harnessed-acp-claude-hostspike-host",
+    "harnessed-claude-hostspike-container", "harnessed-claude-hostspike-host",
 ]
 
 
@@ -393,7 +393,8 @@ class TestGlobalLaunchersAtLaunch:
         result, bin_dir, _project, _rows = self._container(tmp_path, monkeypatch, "container-run")
         assert result.exit_code == 0, result.output
         assert sorted(p.name for p in bin_dir.iterdir()) == [
-            "harnessed-acp-claude-s-container", "harnessed-claude-s-container", "harnessed-claude-s-host",
+            "harnessed-acp-claude-s-container", "harnessed-acp-claude-s-host", "harnessed-claude-s-container",
+            "harnessed-claude-s-host",
         ]
 
     def test_s1_8_a_foreign_launcher_is_kept_and_named(self, tmp_path, monkeypatch):
