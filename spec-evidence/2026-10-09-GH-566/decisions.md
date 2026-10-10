@@ -59,3 +59,5 @@ Changes: Orientation `Tier:` line.
 ## Revisions
 ### Revision 1. Gate 1a round 1, PR-REFERENT
 S3.2 and Touches now say `--agent-start-folder` is an existing `container_run` option, resolved by `_resolve_start_dir`. Citation only; no scenario's meaning changed.
+### Revision 2. The launch is a relaunch of the same command, not a refactor of `container_run`
+Found at RED, after approval. The approved Touches split `container_run`'s body into a callback and changed `_attach` to return a piped child in ACP mode. Starting the same `container-acp` argv again as a child, with the project in `HARNESSED_ACP_PROJECT` and `HARNESSED_ACP_DIRECT=1`, reaches the same scenarios and leaves `container_run`'s 260-line body, the exec handoff, the `--rm` teardown and their tests unchanged. No scenario's Given, When or Then changed; S6.1 now also names the child that exits before `initialize`, and "no child starts" became "no agent runs", because a relaunch child does start and exits. Touches for `launcher.py` and `tests/test_acp_verb.py` changed to match.

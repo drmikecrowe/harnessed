@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from harnessed import attachcmd, console, launcher
@@ -52,6 +53,72 @@ class TestTheVerb:
         monkeypatch.setattr(launcher, "_invocation", ["container-acp", "omp"])
         assert launcher._typed_invocation("container-run") == ["harnessed", "container-acp", "omp"]
         assert launcher._typed_invocation("host-run") is None
+
+
+class TestTheProxyHandOff:
+    """#566 — `container-acp` runs the proxy first, and the proxy relaunches the same command as the
+    agent, with the project in the env. That child skips the proxy and launches as before."""
+
+    def _serve(self, monkeypatch, code=7):
+        seen: dict = {}
+
+        def _fake(harness, **kw):
+            seen.update(harness=harness, **kw)
+            return code
+
+        monkeypatch.delenv(launcher._ACP_DIRECT_ENV, raising=False)
+        monkeypatch.setattr(launcher.acpproxy, "serve", _fake)
+        monkeypatch.setattr(
+            launcher, "_resolve_stack", lambda *a, **k: pytest.fail("the proxy runs before any launch work")
+        )
+        return seen
+
+    def test_no_path_reaches_the_proxy_as_none(self, monkeypatch):
+        seen = self._serve(monkeypatch)
+        result = CliRunner().invoke(launcher.app, ["container-acp", "omp", "--stack", "s"])
+        assert result.exit_code == 7
+        assert seen["harness"] == "omp" and seen["path"] is None
+
+    def test_a_path_reaches_the_proxy_resolved(self, monkeypatch, tmp_path):
+        seen = self._serve(monkeypatch, code=0)
+        result = CliRunner().invoke(launcher.app, ["container-acp", "claude", str(tmp_path), "--stack", "s"])
+        assert result.exit_code == 0
+        assert seen["path"] == tmp_path.resolve()
+
+    def test_the_relaunch_child_skips_the_proxy_and_takes_the_env_project(self, monkeypatch, tmp_path):
+        missing = tmp_path / "missing"
+        monkeypatch.setenv(launcher._ACP_DIRECT_ENV, "1")
+        monkeypatch.setenv(launcher._ACP_PROJECT_ENV, str(missing))
+        monkeypatch.setattr(launcher.acpproxy, "serve", lambda *a, **k: pytest.fail("the child must not proxy"))
+        monkeypatch.setattr(launcher, "_resolve_stack", lambda *a, **k: ("s", None))
+        monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+        monkeypatch.setattr(launcher, "_preflight_runtime", lambda _rt: None)
+        result = CliRunner().invoke(launcher.app, ["container-acp", "omp", "--stack", "s"])
+        assert result.exit_code == 1
+        # rich wraps the long line at the console width, so compare with the whitespace collapsed.
+        assert f"project directory does not exist: {missing}" in " ".join(result.output.split())
+
+    def test_the_relaunch_is_the_same_argv_with_the_project_in_the_env(self, monkeypatch, tmp_path):
+        seen: dict = {}
+
+        def _popen(argv, **kw):
+            seen.update(argv=argv, **kw)
+            return "proc"
+
+        monkeypatch.setattr(launcher.subprocess, "Popen", _popen)
+        monkeypatch.setattr(launcher.sys, "argv", ["/x/harnessed", "container-acp", "omp", "--stack", "s"])
+        (tmp_path / "sub").mkdir()
+        proc, start_dir = launcher._acp_relaunch(tmp_path, "sub")
+        assert proc == "proc" and start_dir == (tmp_path / "sub").resolve()
+        assert seen["argv"] == [sys.executable, "/x/harnessed", "container-acp", "omp", "--stack", "s"]
+        assert seen["stdin"] == subprocess.PIPE and seen["stdout"] == subprocess.PIPE
+        assert seen["env"][launcher._ACP_DIRECT_ENV] == "1"
+        assert seen["env"][launcher._ACP_PROJECT_ENV] == str(tmp_path)
+
+    def test_a_bad_start_folder_fails_before_any_child(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(launcher.subprocess, "Popen", lambda *a, **k: pytest.fail("no child"))
+        with pytest.raises(typer.Exit):
+            launcher._acp_relaunch(tmp_path, "nope")
 
 
 class TestTheAcpCommand:

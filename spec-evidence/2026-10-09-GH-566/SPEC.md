@@ -59,7 +59,7 @@
 - S5.3 Given `tools/acp-smoke.py`, when stderr carries a drift line, then the run fails, so a live run on both harnesses proves AC-5.
 
 ### S6. A launch that fails answers the request
-- S6.1 (negative) Given a launch that raises `typer.Exit(1)`, for example for an unknown stack, when `session/new` arrives, then the reply is a JSON-RPC error with code -32603 and the message `launch failed (exit 1); see stderr`, and no child starts.
+- S6.1 (negative) Given a launch that raises `typer.Exit(1)`, or a relaunch child that exits 1 before it answers `initialize`, for example for an unknown stack, when `session/new` arrives, then the reply is a JSON-RPC error with code -32603 and the message `launch failed (exit 1); see stderr`, and no agent runs (Revision 2).
 
 ### S7. The smoke script runs the way an editor does
 - S7.1 Given `tools/acp-smoke.py <project> --stack default --harness omp --no-path`, when it runs, then it starts `container-acp` in a fresh temp dir with no path argument, sends `session/new` with `cwd` = `<project>`, and passes. The same holds for `--harness claude`.
@@ -84,10 +84,10 @@
 
 ## Touches
 - `src/harnessed/acpproxy.py` (new): the proxy. Line-delimited JSON-RPC on stdin and the saved real stdout; the per-harness `initialize` table; the project choice; the replay; the two-way pump; the drift check.
-- `src/harnessed/launcher.py`: under `container-acp`, `container_run` hands control to the proxy after the harness checks and gives it a launch callback holding the rest of the body; `_attach` in ACP mode starts the harness as a child with piped stdin and stdout and returns it instead of exec-ing; `--rm` teardown runs after the child exits; the `container-acp` help text says the path is optional. `--agent-start-folder` is an existing `container_run` option, resolved by `_resolve_start_dir` in `src/harnessed/attachcmd.py`; this change adds no flag.
+- `src/harnessed/launcher.py`: under `container-acp`, `container_run` hands control to the proxy after the harness checks. The proxy's launch callback starts the same `container-acp` argv again as a child, with piped stdin and stdout and the env `HARNESSED_ACP_DIRECT=1` and `HARNESSED_ACP_PROJECT=<project>`. That child skips the proxy, takes its project from the env when no path argument was given, and runs today's launch and exec handoff unchanged, `--rm` teardown included. The `container-acp` help text says the path is optional. (Revision 2) `--agent-start-folder` is an existing `container_run` option, resolved by `_resolve_start_dir` in `src/harnessed/attachcmd.py`; this change adds no flag.
 - `tools/acp-smoke.py`: `--no-path`; `initialize` waits 60 s and `session/new` takes the launch timeout; fails on a drift line in stderr.
 - `tests/test_acp_proxy.py` (new): S1.1, S1.2, S2–S6 and S9 against a fake agent script.
-- `tests/test_acp_verb.py`: `test_stdout_is_restored_before_the_exec` and `test_the_rm_child_gets_the_clients_channel` encode the exec handoff this story replaces in ACP mode; they are rewritten to the piped child.
+- `tests/test_acp_verb.py`: new tests for the proxy hand-off and the relaunch child's argv and env. The existing exec-handoff tests stay unchanged, because the relaunch child keeps that handoff (Revision 2).
 
 ## Documentation
 - The `container-acp` help text in `src/harnessed/launcher.py`. No other doc in the repository names `container-acp`.
