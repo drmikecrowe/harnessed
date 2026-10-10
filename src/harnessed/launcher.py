@@ -3095,7 +3095,7 @@ def _launch_host(
     no_strict_mcp: bool = False,
     aoe_group: Optional[str] = None, aoe_title: Optional[str] = None,
     exec_mode: bool = False, fresh: bool = False, aoe_managed_worktree: bool = False,
-    acp: bool = False,
+    acp: bool = False, project_only: bool = False,
 ) -> None:
     """Host-native launch: no podman. Materialize the assembled profile into a host CLAUDE_CONFIG_DIR,
     start any host daemons (beads-server, hatago MCP hub), and exec the harness on the host so it sees
@@ -3117,7 +3117,12 @@ def _launch_host(
     `acp` (`host-acp`, GH-571) does only the per-stack half here and relays instead of exec'ing.
     The folder it starts in is the editor's, not a project: no launcher, aoe row, project secrets,
     recipe `env:` or folder-env contract is derived from it, and the per-project steps run per
-    project from the relay instead (`project-setup`)."""
+    project from the relay instead (`project-setup`).
+
+    `project_only` (`project-setup`, GH-571) is the other half: only the per-project lines below run,
+    for `path`, and the launch returns before anything per-stack. It never touches the host home —
+    under `host-acp` an agent is already running on it, and materializing would rmtree it. So
+    `host-run` and `project-setup` run the same per-project code, at the same call sites."""
     set_exec_mode(exec_mode)
     if harness not in _HOST_HARNESSES:
         _err.print(
@@ -3141,21 +3146,25 @@ def _launch_host(
     # multi-GB image), we only need the profile's content layer. Assembly is sub-second, so a
     # rebuild-per-launch also sidesteps staleness bookkeeping entirely. `build_root` is the dir that
     # CONTAINS profiles/ (assemble emits to <build_root>/profiles/<stack>/<harness>).
-    _err.print(f"[blue][INFO][/blue] Assembling '{stack}' ({harness}) host-native (no container) ...")
-    try:
-        # `shared_identity=False`: this backend gives omp a PER-STACK agent dir, so the shared
-        # `~/.omp/agent` block write would land where nothing on this path reads (#307).
-        assemble(
-            None, stack, paths.profiles_root().parent, harness, strict=True, shared_identity=False,
+    if not project_only:
+        _err.print(
+            f"[blue][INFO][/blue] Assembling '{stack}' ({harness}) host-native (no container) ..."
         )
-    except (SchemaError, CollisionError) as exc:
-        _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
-        raise typer.Exit(1) from exc
+        try:
+            # `shared_identity=False`: this backend gives omp a PER-STACK agent dir, so the shared
+            # `~/.omp/agent` block write would land where nothing on this path reads (#307).
+            assemble(
+                None, stack, paths.profiles_root().parent, harness, strict=True,
+                shared_identity=False,
+            )
+        except (SchemaError, CollisionError) as exc:
+            _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
+            raise typer.Exit(1) from exc
 
-    # The assemble above just refreshed THIS stack's block in the shared omp agent dir; this drops
-    # the blocks of stacks that no longer resolve at all. Both launch verbs prune, so it does not
-    # matter which one the user reaches for.
-    _prune_unlaunchable_omp_blocks(harness)
+        # The assemble above just refreshed THIS stack's block in the shared omp agent dir; this
+        # drops the blocks of stacks that no longer resolve at all. Both launch verbs prune, so it
+        # does not matter which one the user reaches for.
+        _prune_unlaunchable_omp_blocks(harness)
 
     # Same mirror as the container path, recorded under this verb so the two never collide: a
     # host-native session and a containerized one for the same stack+harness+folder are different
@@ -3173,8 +3182,8 @@ def _launch_host(
     # Both or neither, and not at all for an ad-hoc stack — see `_persist_this_launch`.
     # The global launchers come first: the local one, when written, execs one of them (GH-565).
     asked = aoe_group is not None or aoe_title is not None or create_aoe_only
-    own_in_place = _write_global_launchers(stack, harness, "host-run", asked=asked)
-    if not acp and _own_launcher_or_exit(
+    own_in_place = project_only or _write_global_launchers(stack, harness, "host-run", asked=asked)
+    if not (acp or project_only) and _own_launcher_or_exit(
         own_in_place, "host-run", stack, harness, only=create_aoe_only
     ) and _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):
         launchscript.write(
@@ -3299,7 +3308,7 @@ def _launch_host(
     # assemble-time FLOOR, so the host's own ~/.claude defaultMode never crossed over and a user
     # running `auto` silently got `acceptEdits` (bd harnessed-8px.8). merge_settings applies
     # required.defaultMode with setdefault — a floor, not an override — so the host's mode wins.
-    if harness in ("claude", "omp", "opencode"):
+    if harness in ("claude", "omp", "opencode") and not project_only:
         _merge_host_claude_settings(
             profile_dir(stack, harness),
             emit.required_settings(
@@ -3311,26 +3320,26 @@ def _launch_host(
     # Lock spans the rebuild AND the installs — see _host_home_lock for why releasing earlier would
     # let a second launch skip installs that are still running. `seed_auth` joins them inside it,
     # exactly where `_host_launch_plan` used to perform it.
-    with _host_home_lock(paths.host_home(stack, harness)):
-        # INSIDE the lock and BEFORE materialize: the gate `_host_fresh_wipe` defeats is read by
-        # materialize_config, and a concurrent launch of this stack+harness must not observe a
-        # half-wiped tree.
-        if fresh:
-            _err.print(
-                f"[blue][INFO][/blue] --fresh: discarding the build stamp and tool tree for '{stack}'"
-            )
-            _host_fresh_wipe(stack, harness)
-        backend.materialize_config(spec)
-        backend.seed_auth(spec)
-        # `install:` — the host half of the derived image's `RUN bash install.sh`, i.e. the content
-        # a Dockerfile RUN used to deliver to containers only.
-        backend.provision_tools(spec, FIRST_START)
+    # The host home is per-stack: `project_only` never touches it (see the docstring).
+    if not project_only:
+        with _host_home_lock(paths.host_home(stack, harness)):
+            # INSIDE the lock and BEFORE materialize: the gate `_host_fresh_wipe` defeats is read by
+            # materialize_config, and a concurrent launch of this stack+harness must not observe a
+            # half-wiped tree.
+            if fresh:
+                _err.print(
+                    f"[blue][INFO][/blue] --fresh: discarding the build stamp and tool tree for "
+                    f"'{stack}'"
+                )
+                _host_fresh_wipe(stack, harness)
+            backend.materialize_config(spec)
+            backend.seed_auth(spec)
+            # `install:` — the host half of the derived image's `RUN bash install.sh`, i.e. the
+            # content a Dockerfile RUN used to deliver to containers only.
+            backend.provision_tools(spec, FIRST_START)
     # setup.script — outside the lock, because a setup can prompt (see provision_tools).
     if not acp:
         backend.provision_tools(spec, ATTACH)
-    home, cwd = backend.home, backend.cwd
-    if cwd is None or home is None:
-        raise RuntimeError("home/cwd not set; materialize_config must be called first")
 
     # Pending `setup:` notices, and BLOCK on them — the host half of what `launch` does at its own
     # line. This was container-only too, so a host launch printed nothing and started the agent
@@ -3340,6 +3349,11 @@ def _launch_host(
     # container to drop a shell into here.
     if not acp:
         _prompt_setup_notices(host_recipes, project_path, stack, harness, allow_terminal=False)
+    if project_only:
+        return
+    home, cwd = backend.home, backend.cwd
+    if cwd is None or home is None:
+        raise RuntimeError("home/cwd not set; materialize_config must be called first")
 
     # Native MCP (hatago deferred): resolve after PATH is set so the stdio-command presence check
     # sees just-provisioned tools AND anything an install/setup script put in the stack bin dir.
@@ -3658,44 +3672,10 @@ def project_setup(
     """Run the per-project half of a host launch for one folder, and exit (GH-571).
 
     The stack's services, the project tool env file, and the recipe setup and init scripts, with
-    the project's environment, exactly as `host-run` runs them. `host-acp` runs this for each new
-    project folder an editor opens; `host-run` calls the same function in-process.
+    the project's environment: `_launch_host` in its project-only mode, so the same lines `host-run`
+    runs. `host-acp` runs this for each new project folder an editor opens.
     """
-    if harness not in _HOST_HARNESSES:
-        _err.print(
-            f"[bold red]error:[/bold red] project-setup supports "
-            f"{', '.join(repr(h) for h in sorted(_HOST_HARNESSES))} (got '{harness}')"
-        )
-        raise typer.Exit(1)
-    project_path = Path(path).resolve()
-    if not project_path.is_dir():
-        _err.print(f"[bold red]error:[/bold red] project directory does not exist: {project_path}")
-        raise typer.Exit(1)
-    stack_dir = paths.find_in_catalog("stacks", stack)
-    if not (stack_dir / "stack.yaml").is_file():
-        _err.print(f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_dir / 'stack.yaml'})")
-        raise typer.Exit(1)
-    # The per-project environment, in `_launch_host`'s order, so the scripts see what they see
-    # under host-run: launch secrets, recipe `env:`, the stack's tool PATH and mise, the folder-env
-    # contract.
-    os.environ.update(_resolve_launch_env(project_path))
-    _, host_recipes = load_stack_with_recipes(None, stack)
-    os.environ.update(_recipe_env(host_recipes, project_path, mode="host"))
-    _apply_host_tool_path(os.environ, stack)
-    _apply_host_mise_env(os.environ, stack)
-    os.environ.update(harnessed_env(stack, project_path, harness=harness, mode="host"))
-    spec = LaunchSpec(
-        stack=stack, harness=harness, project_path=project_path, extra=(),
-        no_strict_mcp=no_strict_mcp_config, ephemeral=False,
-    )
-    # host-run's four per-project steps, in host-run's order (see `_launch_host`).
-    backend = HostBackend(host_recipes)
-    backend.wire_services(spec)
-    _write_project_tool_env(
-        stack, project_path, harness=harness, verb="host-run", no_strict_mcp=no_strict_mcp_config,
-    )
-    backend.provision_tools(spec, ATTACH)
-    _prompt_setup_notices(host_recipes, project_path, stack, harness, allow_terminal=False)
+    _launch_host(stack, harness, path, no_strict_mcp=no_strict_mcp_config, project_only=True)
 
 
 @register

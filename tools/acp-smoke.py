@@ -29,6 +29,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 
@@ -139,11 +140,13 @@ def main() -> int:
         raise SystemExit("FAIL: could not open pipes to harnessed")
     lines: queue.Queue = queue.Queue()
     threading.Thread(target=_reader, args=(proc.stdout, lines), daemon=True).start()
+    started = time.monotonic()
     try:
         _request(proc, lines, 1, "initialize", {
             "protocolVersion": 1,
             "clientCapabilities": {"fs": {"readTextFile": False, "writeTextFile": False}, "terminal": False},
         }, args.launch_timeout)
+        print(f"ok: initialize answered in {time.monotonic() - started:.1f}s", file=sys.stderr)
         session = _request(proc, lines, 2, "session/new", {"cwd": str(project), "mcpServers": []}, args.timeout)
         if args.prompt:
             result = _request(proc, lines, 3, "session/prompt", {

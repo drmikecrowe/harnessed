@@ -517,11 +517,19 @@ class TestHostRunSharesTheSetup:
     def test_s4_5_host_run_and_project_setup_run_the_same_steps_in_the_same_order(
         self, host, tmp_path, monkeypatch,
     ):
-        """SPEC revision 4: host-run keeps each step at its own call site; project-setup runs the
-        same four, once each, in the same order."""
+        """SPEC revision 6: one code path. project-setup runs `_launch_host` in its project-only mode,
+        so both verbs execute the same four per-project lines, once each, in the same order."""
         from typer.testing import CliRunner
 
         order = self._record(monkeypatch)
+        entered: list[bool] = []
+        real_launch_host = launcher._launch_host
+
+        def launch_host(*a, **k):
+            entered.append(bool(k.get("project_only")))
+            return real_launch_host(*a, **k)
+
+        monkeypatch.setattr(launcher, "_launch_host", launch_host)
         monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
         monkeypatch.setattr(launcher.aoe, "_bin", lambda: None)
@@ -539,6 +547,7 @@ class TestHostRunSharesTheSetup:
         result = CliRunner().invoke(launcher.app, ["project-setup", "omp", str(other), "--stack", _STACK])
         assert result.exit_code == 0, result.output
         assert order == list(self._STEPS)
+        assert entered == [False, True], "host-run and project-setup must both run _launch_host"
         assert (other / ".init-cwd").read_text().strip() == str(other)
 
     def test_s4_6_project_setup_alone_sets_up_one_project(self, host, tmp_path):
@@ -553,6 +562,9 @@ class TestHostRunSharesTheSetup:
         assert proc.returncode == 0, proc.stderr.decode()
         assert (a / ".init-cwd").read_text().strip() == str(a)
         assert "R=1" in setupenv.project_env_path(a).read_text()
+        # Never the per-stack half: under host-acp an agent is already running on this home, and
+        # materializing it would rmtree the agent's config dir.
+        assert not paths.host_home(_STACK, "omp").exists()
 
 
 class TestClaudeMcpAndEnv:
