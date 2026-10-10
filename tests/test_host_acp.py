@@ -621,3 +621,29 @@ class TestTheAdapterAtLaunch:
         assert b"0.84.0" in proc.stderr and b"0.85.1" in proc.stderr
         assert host.started.exists()
         _stdout_messages(proc)
+
+
+class TestTheAgentExitsFirst:
+    def test_host_acp_exits_with_the_agents_code_while_the_editor_is_still_connected(self, host):
+        """Found by the claude smoke run: an agent that dies at start left the relay's editor
+        thread blocked on stdin, and the interpreter aborted at shutdown (`Fatal Python error:
+        _enter_buffered_busy`) instead of exiting with the agent's code."""
+        host.build("omp")
+        stub = {"agent": [sys.executable, "-c", "import sys; sys.exit(3)"]}
+        out_path, err_path = host.tmp / "out", host.tmp / "err"
+        with open(out_path, "wb") as out_f, open(err_path, "wb") as err_f:
+            # stdin is a pipe this test holds open and never writes to or closes, as an editor would
+            proc = subprocess.Popen(
+                [sys.executable, "-c", _DRIVER, json.dumps(stub), "host-acp", "omp", "--stack", _STACK],
+                stdin=subprocess.PIPE, stdout=out_f, stderr=err_f, cwd=host.launch, env=host.env,
+            )
+            try:
+                code = proc.wait(timeout=120)
+            finally:
+                proc.kill()
+                if proc.stdin:
+                    proc.stdin.close()
+        err = err_path.read_bytes()
+        assert b"Fatal Python error" not in err, err.decode()
+        assert code == 3, err.decode()
+        assert out_path.read_bytes() == b""

@@ -3075,7 +3075,13 @@ def _relay_acp(
             lambda project: _project_setup_argv(harness, stack, project),
             cwd=launch, stdin=sys.stdin.buffer, stdout=out,
         )
-    raise typer.Exit(code)
+    # os._exit, not typer.Exit: when the agent exits while the editor is still connected, the
+    # relay's reader thread is blocked in a read on stdin that nothing can interrupt, and a normal
+    # interpreter shutdown then aborts on that stream's lock ("Fatal Python error:
+    # _enter_buffered_busy") instead of exiting with the agent's code.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(code)
 
 
 def _launch_host(
