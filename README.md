@@ -135,6 +135,8 @@ and MCP servers it declares.
 | --- | --- |
 | `harnessed host-run <claude \| omp> [path] [--stack <name> \| --recipe <name>…]` | Host-native: no podman. Config isolated per stack, your real filesystem and credentials. Only harnesses whose config dir is an env var (`CLAUDE_CONFIG_DIR`, `PI_CODING_AGENT_DIR`); see [BACKENDS.md](BACKENDS.md) |
 | `harnessed container-run <harness> [path] [--stack <name> \| --recipe <name>…] [--fresh]` | Isolated podman pod: harness + MCP hub + declared services, egress firewall on. `--stack` and `--recipe` are mutually exclusive; with neither, runs `default` |
+| `harnessed host-acp <claude \| omp> --stack <name>` | Host-native ACP agent on stdio, for an editor such as Atlas, Zed or VS Code. One process serves every project the editor opens: each session runs in the folder its `session/new` names, and the first session in a folder runs `project-setup` there. Needs a built stack; claude also needs the `claude-agent-acp` adapter, which `build <stack> claude` offers to install. Point the editor at `~/.local/bin/harnessed-acp-<harness>-<stack>-host` |
+| `harnessed project-setup <claude \| omp> <path> --stack <name>` | The per-project half of `host-run` for one folder: services, the project tool env file, recipe setup and init scripts |
 | `harnessed build [<stack> [<harness>]]` | Build the shared images and reconcile every stale stack, or assemble and build one stack |
 | `harnessed test <stack> <harness>` | Capability test: launch headless and assert the declared capabilities, written as a markdown report |
 | `harnessed list` | Authored stacks (with which harnesses are built) and running instances |

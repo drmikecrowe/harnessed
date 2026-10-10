@@ -317,10 +317,10 @@ def test_s3_6_every_other_line_is_forwarded_byte_for_byte(tmp_path_factory, line
 # keeps them off it, and CliRunner captures none of those. The driver swaps in only the agent
 # command (`_host_acp_agent_argv`) and, where a scenario says so, `assemble`; everything else runs.
 
-import subprocess  # noqa: E402
+import subprocess
 
-from harnessed import hostrun, launcher, paths, setupenv  # noqa: E402
-from harnessed.assemble import assemble  # noqa: E402
+from harnessed import hostrun, launcher, paths, setupenv
+from harnessed.assemble import assemble
 
 _DRIVER = r"""
 import json, sys

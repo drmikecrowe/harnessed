@@ -55,7 +55,7 @@ def _intercept(
     # /dev/null: nobody is at a keyboard, so a setup that would prompt takes its no-TTY branch.
     # unbounded: per-project setup runs recipe setup and init scripts, which host-run runs with no
     # deadline either; a timeout here would fail a slow first setup that host-run lets finish.
-    rc = subprocess.run(  # noqa: S603 — argv vector built by the launcher, no shell
+    rc = subprocess.run(
         setup_argv(project), stdin=subprocess.DEVNULL, stdout=sys.stderr.fileno(), check=False,
     ).returncode
     if rc != 0:
@@ -80,10 +80,11 @@ def run(
     the agent's, which is how an ACP agent is told to stop.
     """
     # unbounded: this IS the agent session, as in host-run.
-    agent = subprocess.Popen(  # noqa: S603 — argv vector built by the launcher, no shell
+    agent = subprocess.Popen(
         agent_argv, env=agent_env, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
     )
-    assert agent.stdin is not None and agent.stdout is not None  # PIPE on both; narrows the types
+    if agent.stdin is None or agent.stdout is None:  # unreachable with PIPE; narrows the types
+        raise RuntimeError("could not open pipes to the agent")
     agent_in, agent_out = agent.stdin, agent.stdout
     lock = threading.Lock()
 

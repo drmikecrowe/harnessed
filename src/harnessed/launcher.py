@@ -4916,7 +4916,7 @@ def _offer_acp_adapter() -> None:
         typed = typer.prompt("Command to run instead")
         cmd, shown = ["bash", "-c", typed], typed
     try:
-        rc = subprocess.run(cmd, check=False, timeout=600).returncode  # noqa: S603 — the user chose it
+        rc = subprocess.run(cmd, check=False, timeout=600).returncode
     except (OSError, subprocess.TimeoutExpired) as exc:
         rc, why = None, str(exc)
     else:
