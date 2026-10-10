@@ -2060,3 +2060,32 @@ class TestGlobalRowMutationGaps:
         ]
         Recorder(sessions=json.dumps(rows)).install(monkeypatch)
         assert aoe.rows_referencing({"harnessed-claude-default-container"}) == [str(hit)]
+
+
+class TestRmLeavesGlobalLaunchersAlone:
+    """S4.4 (adversary round 2) — `harnessed rm` drops rows and never touches ~/.local/bin."""
+
+    def test_s4_4_rm_changes_no_global_launcher(self, monkeypatch, tmp_path):
+        home = tmp_path / "home"
+        bin_dir = home / ".local" / "bin"
+        monkeypatch.setattr(Path, "home", lambda: home)
+        assert launchscript.write_globals("default", "claude", bin_dir) == []
+        before = {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in bin_dir.iterdir()}
+
+        project = tmp_path / "proj"
+        project.mkdir()
+        script = launchscript.write("container-run", "default", "claude", project)
+        assert script is not None
+        rows = [{"id": "s1", "path": str(project), "command": f"{script} --"}]
+        rec = Recorder(sessions=json.dumps(rows)).install(monkeypatch)
+        patch_all(monkeypatch, "_runtime", lambda: "podman")
+        monkeypatch.setattr(
+            launcher, "_bounded",
+            lambda *a, **k: subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+        )
+
+        launcher.remove("default")
+
+        assert rec.removed() == ["s1"], "the row is dropped, as S4.1 says"
+        after = {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in bin_dir.iterdir()}
+        assert after == before
