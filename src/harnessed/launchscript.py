@@ -359,7 +359,9 @@ def write(
         target.chmod(0o755)
         _ensure_excluded(project_path, target)
         return target
-    except OSError:
+    # ValueError: `_body` locates `--stack` in `command_for`'s output, an invariant another module
+    # owns. If it ever breaks, the launch goes on without a local launcher (PR #570 review).
+    except (OSError, ValueError):
         return None
 
 

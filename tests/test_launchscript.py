@@ -1471,3 +1471,13 @@ class TestGlobalWriterMutationGaps:
         assert refused == [
             gbin / "harnessed-codex-default-host", gbin / "harnessed-codex-default-container",
         ]
+
+
+class TestWriteNeverRaisesOnAMissingStackFlag:
+    """PR #570 review: `_body` finds `--stack` by index. Should `command_for` ever drop it, `write`
+    must keep its "never fatal" contract and return None, not raise out of a launch."""
+
+    def test_no_stack_flag_returns_none(self, proj, monkeypatch):
+        monkeypatch.setattr(aoe, "command_for", lambda *a, **k: "harnessed host-run claude . --")
+        assert launchscript.write("host-run", "serena", "claude", proj) is None
+        assert list(proj.iterdir()) == []
