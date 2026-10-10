@@ -1,0 +1,32 @@
+{
+  "result": "green",
+  "expected_layers": [
+    "tests",
+    "coverage",
+    "types",
+    "lint",
+    "shellcheck",
+    "secrets"
+  ],
+  "completed_layers": [
+    "tests",
+    "coverage",
+    "types",
+    "lint",
+    "shellcheck",
+    "secrets"
+  ],
+  "layer_seconds": {
+    "tests": 374.158,
+    "coverage": 640.482,
+    "types": 22.38,
+    "lint": 0.159,
+    "shellcheck": 2.215,
+    "secrets": 3.81
+  },
+  "failed": null,
+  "exit_code": 0,
+  "commit": "2acfc39c7c6d48df9510a6952333a45de3cc00ca",
+  "dirty": true,
+  "written": "2026-10-10T11:25:26.290Z"
+}
