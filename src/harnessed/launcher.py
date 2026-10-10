@@ -2686,17 +2686,19 @@ def _persist_this_launch(
     return not dynstack.is_adhoc(stack)
 
 
-def _write_global_launchers(stack: str, harness: str, verb: str) -> bool:
+def _write_global_launchers(stack: str, harness: str, verb: str, *, asked: bool = False) -> bool:
     """Write `~/.local/bin/harnessed-<harness>-<stack>-<backend>` (GH-565). Never fatal.
 
-    Skipped for an ad-hoc stack (Decide 2): nothing would ever remove its launchers. A launcher that
-    could not be written is named once and the caller goes on.
+    Skipped for an ad-hoc stack (Decide 2): nothing would ever remove its launchers. Unless `asked`:
+    an aoe row requested by name for an ad-hoc stack still persists, and its local launcher execs one
+    of these, so they are written then (S1.14, SPEC revision 8). A launcher that could not be
+    written is named once and the caller goes on.
 
     Returns whether THIS launch's own global launcher (`verb`) is in place. When it is not, a local
     launcher would exec whatever foreign file sits at that name, so the caller persists neither the
     local launcher nor the aoe row (S1.13, SPEC revision 7).
     """
-    if dynstack.is_adhoc(stack):
+    if dynstack.is_adhoc(stack) and not asked:
         return True
     refused = launchscript.write_globals(stack, harness)
     for target in refused:
@@ -3107,7 +3109,8 @@ def _launch_host(
     # class of dead row the comment above avoids by registering after assembly.
     # Both or neither, and not at all for an ad-hoc stack — see `_persist_this_launch`.
     # The global launchers come first: the local one, when written, execs one of them (GH-565).
-    own_in_place = _write_global_launchers(stack, harness, "host-run")
+    asked = aoe_group is not None or aoe_title is not None or create_aoe_only
+    own_in_place = _write_global_launchers(stack, harness, "host-run", asked=asked)
     if _own_launcher_or_exit(
         own_in_place, "host-run", stack, harness, only=create_aoe_only
     ) and _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):
@@ -4282,7 +4285,8 @@ def container_run(
     extra = list(_passthrough)
     # GH-565: every launch refreshes the global launchers, and `container-acp` writes no local one —
     # aoe never runs it, so there is no row for a local launcher to serve.
-    own_in_place = _write_global_launchers(stack, harness, "container-run")
+    asked = aoe_group is not None or aoe_title is not None or create_aoe_only
+    own_in_place = _write_global_launchers(stack, harness, "container-run", asked=asked)
     if not acp_mode and _own_launcher_or_exit(
         own_in_place, "container-run", stack, harness, only=create_aoe_only
     ) and _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):

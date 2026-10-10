@@ -281,7 +281,7 @@ class TestGlobalLaunchersAtLaunch:
         yield
         console.set_acp_mode(False)
 
-    def _host_run(self, tmp_path, monkeypatch, stack: str, *, aoe_bin, home=None):
+    def _host_run(self, tmp_path, monkeypatch, stack: str, *extra: str, aoe_bin, home=None):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
@@ -305,7 +305,7 @@ class TestGlobalLaunchersAtLaunch:
         monkeypatch.setattr(launcher.os, "execvpe", _exec)
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
         result = runner.invoke(
-            launcher.app, ["host-run", "claude", str(project), "--stack", stack]
+            launcher.app, ["host-run", "claude", str(project), "--stack", stack, *extra]
         )
         return result, home / ".local" / "bin", project, rows, seen_at_exec
 
@@ -324,6 +324,19 @@ class TestGlobalLaunchersAtLaunch:
         )
         assert result.exit_code == 0, result.output
         assert not bin_dir.exists() or list(bin_dir.iterdir()) == []
+
+    def test_s1_14_an_adhoc_row_gets_its_global_launchers(self, tmp_path, monkeypatch):
+        """PR #570 review: the row asked for by name must exec a launcher that exists."""
+        _overlay_stack(tmp_path, "test.hostspike", TestHostRunLeavesNothingBehind.BODY)
+        result, bin_dir, project, rows, _seen = self._host_run(
+            tmp_path, monkeypatch, "test.hostspike", "--aoe-title", "scratch", aoe_bin="/usr/bin/aoe"
+        )
+        assert result.exit_code == 0, result.output
+        local = project / "claude-test.hostspike-host"
+        lines = local.read_text(encoding="utf-8").split("\n")
+        target = next(ln for ln in lines if ln.startswith("exec ")).split()[1]
+        assert (bin_dir / target).is_file(), f"the row's launcher execs {target}, which must exist"
+        assert len(rows) == 1
 
     def test_s1_11_an_unwritable_bin_dir_warns_and_launches(self, tmp_path, monkeypatch):
         home = tmp_path / "home"
