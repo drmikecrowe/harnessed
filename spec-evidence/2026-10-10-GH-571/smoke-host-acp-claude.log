@@ -1,4 +1,4 @@
-run: /home/mcrowe/.local/share/harnessed/venvs/GH-571/.venv/bin/harnessed host-acp claude --stack hostspike (in /tmp/acp-smoke-launch-wt9axxsb)
+run: /home/mcrowe/.local/share/harnessed/venvs/GH-571/.venv/bin/harnessed host-acp claude --stack hostspike (in /tmp/acp-smoke-launch-dz07p2q4)
 [INFO] Assembling 'hostspike' (claude) host-native (no container) ...
 [INFO] Stack unchanged — reusing 
 /tmp/claude-1000/-home-mcrowe-Programming-Personal-harnessed-3-3-gh-571-host-acp
@@ -7,29 +7,29 @@ ke/claude (installs skipped)
 host-native: 
 CLAUDE_CONFIG_DIR=/tmp/claude-1000/-home-mcrowe-Programming-Personal-harnessed-3
 -3-gh-571-host-acp/3fbde74c-0821-4111-82c2-87cd815dc820/scratchpad/xdg-data/harn
-essed/home/hostspike/claude cwd=/tmp/acp-smoke-launch-wt9axxsb — no container
+essed/home/hostspike/claude cwd=/tmp/acp-smoke-launch-dz07p2q4 — no container
 ok: initialize
-[session/create] sessionId=fd86dbf6-28fc-4a82-8c72-d7de88a85bb9 phase=validate-cwd durationMs=2 totalMs=2
-[session/create] sessionId=fd86dbf6-28fc-4a82-8c72-d7de88a85bb9 phase=settings durationMs=121 totalMs=123
-[session/query] sessionId=fd86dbf6-28fc-4a82-8c72-d7de88a85bb9 resume=none apiType=native baseUrl=native
-[session/create] sessionId=fd86dbf6-28fc-4a82-8c72-d7de88a85bb9 phase=prepare-query durationMs=28 totalMs=151
-[session/create] sessionId=fd86dbf6-28fc-4a82-8c72-d7de88a85bb9 phase=sdk-initialize durationMs=3211 totalMs=3362
-[session/models] sessionId=fd86dbf6-28fc-4a82-8c72-d7de88a85bb9 phase=set-model durationMs=20 model=opus outcome=success
-[session/create] sessionId=fd86dbf6-28fc-4a82-8c72-d7de88a85bb9 phase=models durationMs=44 totalMs=3406
-[session/create] sessionId=fd86dbf6-28fc-4a82-8c72-d7de88a85bb9 phase=modes durationMs=1 totalMs=3407
-[session/create] sessionId=fd86dbf6-28fc-4a82-8c72-d7de88a85bb9 phase=register durationMs=5 totalMs=3412
+[session/create] sessionId=65a28090-bd59-44f4-a569-fba1a1314309 phase=validate-cwd durationMs=4 totalMs=4
+[session/create] sessionId=65a28090-bd59-44f4-a569-fba1a1314309 phase=settings durationMs=76 totalMs=80
+[session/query] sessionId=65a28090-bd59-44f4-a569-fba1a1314309 resume=none apiType=native baseUrl=native
+[session/create] sessionId=65a28090-bd59-44f4-a569-fba1a1314309 phase=prepare-query durationMs=24 totalMs=104
+[session/create] sessionId=65a28090-bd59-44f4-a569-fba1a1314309 phase=sdk-initialize durationMs=4006 totalMs=4110
+[session/models] sessionId=65a28090-bd59-44f4-a569-fba1a1314309 phase=set-model durationMs=7 model=opus outcome=success
+[session/create] sessionId=65a28090-bd59-44f4-a569-fba1a1314309 phase=models durationMs=14 totalMs=4123
+[session/create] sessionId=65a28090-bd59-44f4-a569-fba1a1314309 phase=modes durationMs=1 totalMs=4124
+[session/create] sessionId=65a28090-bd59-44f4-a569-fba1a1314309 phase=register durationMs=6 totalMs=4130
 ok: session/new
 ok: session/prompt
 ok: stopReason=end_turn
-[session/create] sessionId=deae4c97-32a8-444a-b4a6-14b41205a61f phase=validate-cwd durationMs=0 totalMs=0
-[session/create] sessionId=deae4c97-32a8-444a-b4a6-14b41205a61f phase=settings durationMs=13 totalMs=13
-[session/query] sessionId=deae4c97-32a8-444a-b4a6-14b41205a61f resume=none apiType=native baseUrl=native
-[session/create] sessionId=deae4c97-32a8-444a-b4a6-14b41205a61f phase=prepare-query durationMs=13 totalMs=26
-[session/create] sessionId=deae4c97-32a8-444a-b4a6-14b41205a61f phase=sdk-initialize durationMs=1156 totalMs=1182
-[session/models] sessionId=deae4c97-32a8-444a-b4a6-14b41205a61f phase=set-model durationMs=11 model=opus outcome=success
-[session/create] sessionId=deae4c97-32a8-444a-b4a6-14b41205a61f phase=models durationMs=13 totalMs=1195
-[session/create] sessionId=deae4c97-32a8-444a-b4a6-14b41205a61f phase=modes durationMs=0 totalMs=1195
-[session/create] sessionId=deae4c97-32a8-444a-b4a6-14b41205a61f phase=register durationMs=1 totalMs=1196
+[session/create] sessionId=8bb38c38-95e8-47c7-96d3-984d5064d16e phase=validate-cwd durationMs=1 totalMs=1
+[session/create] sessionId=8bb38c38-95e8-47c7-96d3-984d5064d16e phase=settings durationMs=14 totalMs=15
+[session/query] sessionId=8bb38c38-95e8-47c7-96d3-984d5064d16e resume=none apiType=native baseUrl=native
+[session/create] sessionId=8bb38c38-95e8-47c7-96d3-984d5064d16e phase=prepare-query durationMs=10 totalMs=25
+[session/create] sessionId=8bb38c38-95e8-47c7-96d3-984d5064d16e phase=sdk-initialize durationMs=3627 totalMs=3652
+[session/models] sessionId=8bb38c38-95e8-47c7-96d3-984d5064d16e phase=set-model durationMs=9 model=opus outcome=success
+[session/create] sessionId=8bb38c38-95e8-47c7-96d3-984d5064d16e phase=models durationMs=11 totalMs=3663
+[session/create] sessionId=8bb38c38-95e8-47c7-96d3-984d5064d16e phase=modes durationMs=0 totalMs=3663
+[session/create] sessionId=8bb38c38-95e8-47c7-96d3-984d5064d16e phase=register durationMs=2 totalMs=3665
 ok: session/new
 ok: session/prompt
 ok: the session in /tmp/claude-1000/-home-mcrowe-Programming-Personal-harnessed-3-3-gh-571-host-acp/3fbde74c-0821-4111-82c2-87cd815dc820/scratchpad/smokeA reported '/tmp/claude-1000/-home-mcrowe-Programming-Personal-harnessed-3-3-gh-571-host-acp/3fbde74c-0821-4111-82c2-87cd815dc820/scratchpad/smokeA'
