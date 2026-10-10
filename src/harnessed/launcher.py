@@ -3042,10 +3042,14 @@ def _host_acp_agent_argv(harness: str, home: Path, no_strict_mcp: bool) -> list[
     return [_HOST_HARNESSES[harness].argv0, "acp"]
 
 
-def _project_setup_argv(harness: str, stack: str, project: Path) -> list[str]:
+def _project_setup_argv(
+    harness: str, stack: str, project: Path, *, no_strict_mcp: bool = False,
+) -> list[str]:
     """`project-setup` for one folder, run by the SAME installation as this process: a bare
-    `harnessed` on PATH may be another checkout's editable install."""
-    return [sys.executable, "-m", "harnessed", "project-setup", harness, str(project), "--stack", stack]
+    `harnessed` on PATH may be another checkout's editable install. Carries `host-acp`'s
+    `--no-strict-mcp-config`, so the project's tool env agrees with the agent (PR #572 review)."""
+    argv = [sys.executable, "-m", "harnessed", "project-setup", harness, str(project), "--stack", stack]
+    return [*argv, "--no-strict-mcp-config"] if no_strict_mcp else argv
 
 
 def _relay_acp(
@@ -3069,12 +3073,14 @@ def _relay_acp(
     out_fd = acp_stdout()
     if out_fd is None:
         raise RuntimeError("host-acp relays only in ACP mode; set_acp_mode(True) must run first")
-    with os.fdopen(os.dup(out_fd), "wb") as out:
-        code = acprelay.run(
-            _host_acp_agent_argv(harness, home, no_strict_mcp), agent_env,
-            lambda project: _project_setup_argv(harness, stack, project),
-            cwd=launch, stdin=sys.stdin.buffer, stdout=out,
-        )
+    # Never closed: the editor's thread may still be writing a reply when `run` returns, and
+    # closing the stream under it would drop the reply. os._exit below ends the process anyway.
+    out = os.fdopen(os.dup(out_fd), "wb")
+    code = acprelay.run(
+        _host_acp_agent_argv(harness, home, no_strict_mcp), agent_env,
+        lambda project: _project_setup_argv(harness, stack, project, no_strict_mcp=no_strict_mcp),
+        cwd=launch, stdin=sys.stdin.buffer, stdout=out,
+    )
     # os._exit, not typer.Exit: when the agent exits while the editor is still connected, the
     # relay's reader thread is blocked in a read on stdin that nothing can interrupt, and a normal
     # interpreter shutdown then aborts on that stream's lock ("Fatal Python error:

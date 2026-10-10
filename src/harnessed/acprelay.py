@@ -31,16 +31,51 @@ def _error(rid, code: int, message: str) -> bytes:
     return json.dumps(msg, separators=(",", ":")).encode() + b"\n"
 
 
+class _Setups:
+    """The project-setup processes in flight, shared by the editor's thread (which starts them) and
+    `run` (which stops them when the relay ends). One lock covers both, and once `close` has run no
+    new setup starts, so none can slip in after the stop and outlive the relay (PR #572 review)."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._running: list[subprocess.Popen] = []
+        self._closed = False
+
+    def start(self, argv: list[str]) -> Optional[subprocess.Popen]:
+        """Start one setup, or return None once the relay is ending. Raises OSError as Popen does."""
+        with self._lock:
+            if self._closed:
+                return None
+            # Its own session, so `_stop` can end everything it started (scripts, service
+            # containers), not only its pid.
+            setup = subprocess.Popen(
+                argv, stdin=subprocess.DEVNULL, stdout=sys.stderr.fileno(), start_new_session=True,
+            )
+            self._running.append(setup)
+            return setup
+
+    def finished(self, setup: subprocess.Popen) -> None:
+        with self._lock:
+            self._running.remove(setup)
+
+    def close(self) -> None:
+        """Refuse new setups, then stop the ones still running."""
+        with self._lock:
+            self._closed = True
+            running = list(self._running)
+        for setup in running:
+            _stop(setup)
+
+
 def _intercept(
-    line: bytes, done: set[Path], setup_argv: Callable[[Path], list[str]],
-    running: list[subprocess.Popen],
+    line: bytes, done: set[Path], setup_argv: Callable[[Path], list[str]], setups: _Setups,
 ) -> Optional[bytes]:
     """The reply to send the editor INSTEAD of forwarding `line`, or None to forward it.
 
     Only a `session/new` request is ever held back. Its folder is set up once per relay, keyed on
     the resolved path so a symlink to a set-up project is the same project. A failed setup is not
-    remembered, so the next `session/new` for that folder tries again. A running setup is listed in
-    `running` until it ends, so `run` can stop it if the relay ends first.
+    remembered, so the next `session/new` for that folder tries again. Setups start through
+    `setups`, so `run` can stop one if the relay ends first.
     """
     try:
         msg = json.loads(line)
@@ -57,22 +92,19 @@ def _intercept(
         return None
     # stdout to stderr: the child's output must never reach the editor's channel. stdin from
     # /dev/null: nobody is at a keyboard, so a setup that would prompt takes its no-TTY branch.
-    # Its own session, so `_stop` can end everything it started (scripts, service containers),
-    # not only its pid (PR #572 review).
     # unbounded: per-project setup runs recipe setup and init scripts, which host-run runs with no
     # deadline either; a timeout here would fail a slow first setup that host-run lets finish.
+    argv = setup_argv(project)
     try:
-        setup = subprocess.Popen(
-            setup_argv(project), stdin=subprocess.DEVNULL, stdout=sys.stderr.fileno(),
-            start_new_session=True,
-        )
+        setup = setups.start(argv)
     except OSError as exc:  # the setup command could not start at all
         return _error(msg["id"], _SETUP_FAILED, f"per-project setup failed for {cwd} ({exc})")
-    running.append(setup)
+    if setup is None:
+        return _error(msg["id"], _SETUP_FAILED, f"per-project setup not started for {cwd}: the relay is ending")
     try:
         rc = setup.wait()
     finally:
-        running.remove(setup)
+        setups.finished(setup)
     if rc != 0:
         return _error(msg["id"], _SETUP_FAILED, f"per-project setup failed for {cwd} (exit {rc})")
     done.add(project)
@@ -132,13 +164,13 @@ def run(
                 agent.kill()
                 return
 
-    running: list[subprocess.Popen] = []
+    setups = _Setups()
 
     def from_editor() -> None:
         done: set[Path] = set()
         try:
             for line in iter(stdin.readline, b""):
-                reply = _intercept(line, done, setup_argv, running)
+                reply = _intercept(line, done, setup_argv, setups)
                 if reply is not None:
                     emit(reply)
                     continue
@@ -159,6 +191,5 @@ def run(
     pump.join()
     # A setup the editor's thread still waits on would outlive the relay: host-acp ends with
     # os._exit, and the setup would go on starting services for an editor that is gone.
-    for setup in list(running):
-        _stop(setup)
+    setups.close()
     return code

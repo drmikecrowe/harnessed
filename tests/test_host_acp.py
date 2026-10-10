@@ -15,6 +15,7 @@ import os
 import queue
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -805,3 +806,78 @@ class TestPrReview572:
         os.close(in_w)
         assert returned, "run() hung after the editor's stream was closed"
         assert result["code"] != 0
+
+
+
+class TestPrReview572Round2:
+    """PR #572 automated review, second run (on 95cee58), each seen failing first."""
+
+    @pytest.mark.parametrize("no_strict", [True, False])
+    def test_project_setup_gets_the_no_strict_choice_host_acp_was_given(self, monkeypatch, tmp_path, no_strict):
+        """Comment A: host-acp --no-strict-mcp-config ran project-setup strict, so the project's
+        tool env disagreed with the agent the editor talks to."""
+        seen: dict = {}
+
+        def fake_run(agent_argv, agent_env, setup_argv, **kw):
+            seen["setup"] = setup_argv(tmp_path)
+            return 0
+
+        class _Exited(Exception):
+            pass
+
+        def fake_exit(code):
+            raise _Exited(code)
+
+        monkeypatch.setattr(launcher.acprelay, "run", fake_run)
+        monkeypatch.setattr(launcher, "acp_stdout", lambda: os.open(os.devnull, os.O_WRONLY))
+        monkeypatch.setattr(launcher.os, "_exit", fake_exit)
+        with pytest.raises(_Exited):
+            launcher._relay_acp("s", "omp", tmp_path, {}, tmp_path, no_strict_mcp=no_strict)
+        assert ("--no-strict-mcp-config" in seen["setup"]) is no_strict
+        assert seen["setup"][:6] == [sys.executable, "-m", "harnessed", "project-setup", "omp", str(tmp_path)]
+
+    def test_no_setup_starts_once_the_relay_is_ending(self, tmp_path):
+        """Comment B: a session/new read just as the agent exits could start its setup after `run`
+        had stopped the setups it saw, and that setup outlived the relay. Here the setup command
+        is only handed over after `run` has returned."""
+        pids = tmp_path / "pids"
+        setup = tmp_path / "slow_setup.py"
+        setup.write_text(
+            "import os, subprocess, time\n"
+            "child = subprocess.Popen(['sleep', '60'])\n"
+            f"open({str(pids)!r}, 'w').write(f'{{os.getpid()}} {{child.pid}}')\n"
+            "time.sleep(60)\n"
+        )
+        a = tmp_path / "projA"
+        a.mkdir()
+        in_r, in_w = os.pipe()
+        out_r, out_w = os.pipe()
+        returned = threading.Event()
+        asked = threading.Event()
+
+        def late_setup(project: Path) -> list[str]:
+            asked.set()
+            returned.wait(30)  # hand the command over only once `run` has returned
+            return [sys.executable, str(setup)]
+
+        def run() -> None:
+            stdin, stdout = os.fdopen(in_r, "rb"), os.fdopen(out_w, "wb")
+            acprelay.run(
+                [sys.executable, "-c", "import time; time.sleep(2)"], dict(os.environ),
+                late_setup, cwd=tmp_path, stdin=stdin, stdout=stdout,
+            )
+            returned.set()
+
+        threading.Thread(target=run, daemon=True).start()
+        os.write(in_w, json.dumps({"jsonrpc": "2.0", "id": 1, "method": "session/new",
+                                   "params": {"cwd": str(a), "mcpServers": []}}).encode() + b"\n")
+        assert asked.wait(30), "the relay never asked for the setup command"
+        # The agent exits on its own after 2 s, which ends `run` while the setup is pending.
+        assert returned.wait(30), "run() did not return after the agent exited"
+        time.sleep(2)  # room for a late setup to start and write its pids
+        os.close(in_w)
+        os.close(out_r)
+        if pids.exists():
+            setup_pid, child_pid = (int(x) for x in pids.read_text().split())
+            assert _gone(setup_pid, wait=1) and _gone(child_pid, wait=1), \
+                "a setup started after the relay ended, and outlived it"
