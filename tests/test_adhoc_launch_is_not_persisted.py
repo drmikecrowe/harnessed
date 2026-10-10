@@ -265,7 +265,7 @@ class TestHostRunLeavesNothingBehind:
 
 
 _HOSTSPIKE_LAUNCHERS = [
-    "harnessed-claude-hostspike-acp", "harnessed-claude-hostspike-container",
+    "harnessed-acp-claude-hostspike-container", "harnessed-claude-hostspike-container",
     "harnessed-claude-hostspike-host",
 ]
 
@@ -380,7 +380,7 @@ class TestGlobalLaunchersAtLaunch:
         result, bin_dir, _project, _rows = self._container(tmp_path, monkeypatch, "container-run")
         assert result.exit_code == 0, result.output
         assert sorted(p.name for p in bin_dir.iterdir()) == [
-            "harnessed-claude-s-acp", "harnessed-claude-s-container", "harnessed-claude-s-host",
+            "harnessed-acp-claude-s-container", "harnessed-claude-s-container", "harnessed-claude-s-host",
         ]
 
     def test_s1_8_a_foreign_launcher_is_kept_and_named(self, tmp_path, monkeypatch):
@@ -411,4 +411,4 @@ class TestGlobalLaunchersAtLaunch:
         assert result.exit_code == 0, result.output
         assert list(project.iterdir()) == []
         assert rows == []
-        assert (bin_dir / "harnessed-claude-s-acp").is_file(), "the global launchers still land"
+        assert (bin_dir / "harnessed-acp-claude-s-container").is_file(), "the global launchers still land"

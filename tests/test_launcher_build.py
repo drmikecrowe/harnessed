@@ -256,7 +256,7 @@ class TestBuildWritesGlobalLaunchers:
         assert result.exit_code == 0, result.output
         assert built == [("default", "claude")]
         assert sorted(p.name for p in (home / ".local" / "bin").iterdir()) == [
-            "harnessed-claude-default-acp", "harnessed-claude-default-container",
+            "harnessed-acp-claude-default-container", "harnessed-claude-default-container",
             "harnessed-claude-default-host",
         ]
 

@@ -115,8 +115,9 @@ harnessed host-run claude --stack mine
 
 **5. Add the container boundary.** Build the image once, then launch the same stack as a podman pod
 with the egress firewall on. Building, launching or `harnessed install` writes one launcher per
-backend into `~/.local/bin` (`harnessed-claude-mine-host`, `-container`, and `-acp` for harnesses
-with an ACP mode), so later launches from any folder are one word.
+backend into `~/.local/bin` (`harnessed-claude-mine-host`, `-container`, and
+`harnessed-acp-claude-mine-container` for harnesses with an ACP mode), so later launches from any
+folder are one word.
 
 ```bash
 harnessed build mine claude

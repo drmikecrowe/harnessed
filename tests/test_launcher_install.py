@@ -61,7 +61,7 @@ class TestInstallWritesGlobalLaunchers:
         assert result.exit_code == 0, result.output
         bin_dir = home / ".local" / "bin"
         assert sorted(p.name for p in bin_dir.iterdir()) == [
-            "harnessed-claude-claude_time-acp", "harnessed-claude-claude_time-container",
+            "harnessed-acp-claude-claude_time-container", "harnessed-claude-claude_time-container",
             "harnessed-claude-claude_time-host",
         ]
         assert (bin_dir / "harnessed-claude-claude_time-container").stat().st_mode & 0o111
@@ -71,7 +71,7 @@ class TestInstallWritesGlobalLaunchers:
         home = _home_in(monkeypatch, tmp_path)
         result = CliRunner().invoke(launcher.app, ["install", "claude_time", "codex"])
         assert result.exit_code == 0, result.output
-        assert not (home / ".local" / "bin" / "harnessed-codex-claude_time-acp").exists()
+        assert not (home / ".local" / "bin" / "harnessed-acp-codex-claude_time-container").exists()
         assert (home / ".local" / "bin" / "harnessed-codex-claude_time-host").is_file()
 
     def test_stack_flag_precedes_user_args_so_passthrough_survives(self, monkeypatch, tmp_path):
@@ -138,7 +138,7 @@ class TestUninstallRemovesGlobalLaunchers:
         result = CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
         assert result.exit_code == 0, result.output
         assert sorted(p.name for p in bin_dir.iterdir()) == [
-            "harnessed-claude-claude_time.x-acp", "harnessed-claude-claude_time.x-container",
+            "harnessed-acp-claude-claude_time.x-container", "harnessed-claude-claude_time.x-container",
             "harnessed-claude-claude_time.x-host", "harnessed-codex-claude_time-container",
             "harnessed-codex-claude_time-host",
         ]
@@ -155,7 +155,7 @@ class TestUninstallRemovesGlobalLaunchers:
         assert result.exit_code == 0, result.output
         assert _names("/proj/claude-claude_time-container", result.output)
         assert asked == [{
-            "harnessed-claude-claude_time-acp", "harnessed-claude-claude_time-container",
+            "harnessed-acp-claude-claude_time-container", "harnessed-claude-claude_time-container",
             "harnessed-claude-claude_time-host",
         }]
 
@@ -173,7 +173,7 @@ class TestUninstallRemovesGlobalLaunchers:
         _home, bin_dir = self._install(monkeypatch, tmp_path)
         launchscript.write_globals("claude_time", "claude", bin_dir)
         (bin_dir / "harnessed-claude-claude_time-host").write_bytes(b"#!/bin/sh\necho mine\n")
-        (bin_dir / "harnessed-claude-claude_time-acp").unlink()
+        (bin_dir / "harnessed-acp-claude-claude_time-container").unlink()
         asked: list = []
         monkeypatch.setattr(
             launcher.aoe, "rows_referencing", lambda names: (asked.append(set(names)), [])[1]

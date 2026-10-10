@@ -1183,7 +1183,7 @@ def _replays_stack(tokens: list[str], verb: str, stack: str, row_path: str | Non
     # GH-565: a local launcher now execs its GLOBAL launcher, whose name carries the stack. The exec
     # line is still the record; the global name is just where in it the stack sits now.
     target = launchscript.parse_global_name(Path(script_tokens[0]).name) if script_tokens else None
-    return target is not None and target[1] == stack and target[2] == launchscript._VERB_SUFFIX[verb]
+    return target is not None and target[1] == stack and target[2] == verb
 
 
 def _exec_tokens(tokens: list[str], row_path: str | None) -> list[str] | None:

@@ -1160,26 +1160,41 @@ def _exec_line(path: Path) -> str:
 
 
 class TestGlobalNames:
-    """The global name is the local name with a `harnessed-` prefix, read by the same grammar."""
+    """The global name is the local name with a `harnessed-` prefix, and an ACP launcher adds
+    `acp-` after it. One grammar reads all of them, and the parse names the verb (SPEC revision 6)."""
 
     def test_global_name_per_verb(self):
         assert launchscript.global_name("host-run", "default", "claude") == "harnessed-claude-default-host"
         assert launchscript.global_name("container-run", "default", "claude") == (
             "harnessed-claude-default-container"
         )
-        assert launchscript.global_name("container-acp", "default", "claude") == "harnessed-claude-default-acp"
+        assert launchscript.global_name("container-acp", "default", "claude") == "harnessed-acp-claude-default-container"
+        assert launchscript.global_name("host-acp", "default", "claude") == "harnessed-acp-claude-default-host"
 
     def test_a_dotted_stack_parses_whole(self):
         name = "harnessed-claude-default.codebase-memory-mcp.gh-issue-tracker-container"
         assert launchscript.parse_global_name(name) == (
-            "claude", "default.codebase-memory-mcp.gh-issue-tracker", "container",
+            "claude", "default.codebase-memory-mcp.gh-issue-tracker", "container-run",
         )
 
-    def test_acp_is_a_backend_only_in_a_global_name(self):
-        """Must NOT: a local launcher name never carries `acp`."""
-        assert launchscript.parse_global_name("harnessed-claude-default-acp") == ("claude", "default", "acp")
+    def test_acp_is_a_prefix_with_a_backend(self):
+        assert launchscript.parse_global_name("harnessed-acp-claude-default-container") == (
+            "claude", "default", "container-acp",
+        )
+        assert launchscript.parse_global_name("harnessed-acp-claude-default-host") == (
+            "claude", "default", "host-acp",
+        )
+
+    def test_acp_is_never_a_backend(self):
+        """Must NOT (SPEC revision 6): the old `-acp` suffix names no backend, so nothing reads it."""
+        assert launchscript.parse_global_name("harnessed-claude-default-acp") is None
         assert launchscript.parse_script_name("claude-default-acp") is None
         assert launchscript.script_backend("claude-default-acp") is None
+
+    def test_a_plain_name_is_not_an_acp_one(self):
+        assert launchscript.parse_global_name("harnessed-claude-acp-container") == (
+            "claude", "acp", "container-run",
+        ), "a stack named `acp` stays a stack: `acp-` is only a prefix right after `harnessed-`"
 
     def test_a_local_name_is_not_a_global_one(self):
         assert launchscript.parse_global_name("claude-default-container") is None
@@ -1196,12 +1211,11 @@ class TestGlobalNames:
 @given(
     stack=st.from_regex(r"[a-z0-9][a-z0-9._-]{0,24}", fullmatch=True),
     harness=st.sampled_from(["claude", "omp", "codex", "opencode", "antigravity"]),
-    verb=st.sampled_from(["host-run", "container-run", "container-acp"]),
+    verb=st.sampled_from(["host-run", "container-run", "container-acp", "host-acp"]),
 )
 def test_global_name_round_trips(stack, harness, verb):
     name = launchscript.global_name(verb, stack, harness)
-    parsed = launchscript.parse_global_name(name)
-    assert parsed == (harness, stack, launchscript._GLOBAL_VERB_SUFFIX[verb])
+    assert launchscript.parse_global_name(name) == (harness, stack, verb)
 
 
 class TestWriteGlobals:
@@ -1213,7 +1227,7 @@ class TestWriteGlobals:
         expected = {
             "harnessed-claude-default-host": 'exec harnessed host-run claude --stack default "$@"',
             "harnessed-claude-default-container": 'exec harnessed container-run claude --stack default "$@"',
-            "harnessed-claude-default-acp": 'exec harnessed container-acp claude --stack default "$@"',
+            "harnessed-acp-claude-default-container": 'exec harnessed container-acp claude --stack default "$@"',
         }
         assert sorted(p.name for p in gbin.iterdir()) == sorted(expected)
         for name, line in expected.items():
@@ -1222,6 +1236,11 @@ class TestWriteGlobals:
             lines = launchscript._read_as_the_shell_does(path).split("\n")
             assert lines[1] == launchscript.SENTINEL
             assert _exec_line(path) == line
+
+    def test_s1_12_no_host_acp_launcher_is_written(self, gbin):
+        """`-host` is reserved for `host-acp`, which this change does not build."""
+        launchscript.write_globals("default", "claude", gbin)
+        assert not (gbin / "harnessed-acp-claude-default-host").exists()
 
     def test_s1_2_no_acp_launcher_for_codex(self, gbin):
         launchscript.write_globals("default", "codex", gbin)
@@ -1377,15 +1396,24 @@ class TestRemoveGlobals:
         launchscript.write_globals("default", "codex", gbin)
         removed, refused = launchscript.remove_globals("default", "claude", gbin)
         assert sorted(p.name for p in removed) == [
-            "harnessed-claude-default-acp", "harnessed-claude-default-container",
+            "harnessed-acp-claude-default-container", "harnessed-claude-default-container",
             "harnessed-claude-default-host",
         ]
         assert refused == []
         assert sorted(p.name for p in gbin.iterdir()) == [
-            "harnessed-claude-default.x-acp", "harnessed-claude-default.x-container",
+            "harnessed-acp-claude-default.x-container", "harnessed-claude-default.x-container",
             "harnessed-claude-default.x-host", "harnessed-codex-default-container",
             "harnessed-codex-default-host",
         ]
+
+    def test_s5_5_a_host_acp_launcher_is_removed_too(self, gbin):
+        """As `host-acp` will write it: carrying our sentinel, it goes with the pair."""
+        launchscript.write_globals("default", "claude", gbin)
+        host_acp = gbin / "harnessed-acp-claude-default-host"
+        host_acp.write_text(f"#!/bin/sh\n{launchscript.SENTINEL}\nexec harnessed host-acp\n", encoding="utf-8")
+        removed, refused = launchscript.remove_globals("default", "claude", gbin)
+        assert host_acp in removed and refused == []
+        assert list(gbin.iterdir()) == []
 
     def test_s5_3_a_foreign_file_is_not_removed(self, gbin):
         path = gbin / "harnessed-claude-default-host"
@@ -1399,7 +1427,7 @@ class TestRemoveGlobals:
 
     def test_acp_is_removed_even_for_a_harness_without_acp_mode(self, gbin):
         """A launcher of ours is removed by name; the harness's ACP support does not matter."""
-        path = gbin / "harnessed-codex-default-acp"
+        path = gbin / "harnessed-acp-codex-default-container"
         path.write_text(f"#!/bin/sh\n{launchscript.SENTINEL}\nexec x\n", encoding="utf-8")
         removed, _ = launchscript.remove_globals("default", "codex", gbin)
         assert removed == [path]
@@ -1430,22 +1458,22 @@ class TestGlobalWriterMutationGaps:
         foreign.write_bytes(b"#!/bin/sh\necho mine\n")
         assert launchscript.write_globals("default", "claude", gbin) == [foreign]
         assert (gbin / "harnessed-claude-default-container").is_file()
-        assert (gbin / "harnessed-claude-default-acp").is_file()
+        assert (gbin / "harnessed-acp-claude-default-container").is_file()
 
     def test_an_identical_launcher_does_not_stop_the_later_ones(self, gbin):
         launchscript.write_globals("default", "claude", gbin)
         (gbin / "harnessed-claude-default-container").unlink()
-        (gbin / "harnessed-claude-default-acp").unlink()
+        (gbin / "harnessed-acp-claude-default-container").unlink()
         assert launchscript.write_globals("default", "claude", gbin) == []
         assert (gbin / "harnessed-claude-default-container").is_file()
-        assert (gbin / "harnessed-claude-default-acp").is_file()
+        assert (gbin / "harnessed-acp-claude-default-container").is_file()
 
     def test_a_missing_launcher_does_not_stop_removal_of_the_rest(self, gbin):
         launchscript.write_globals("default", "claude", gbin)
         (gbin / "harnessed-claude-default-host").unlink()
         removed, refused = launchscript.remove_globals("default", "claude", gbin)
         assert sorted(p.name for p in removed) == [
-            "harnessed-claude-default-acp", "harnessed-claude-default-container",
+            "harnessed-acp-claude-default-container", "harnessed-claude-default-container",
         ]
         assert refused == []
 
@@ -1456,7 +1484,7 @@ class TestGlobalWriterMutationGaps:
         removed, refused = launchscript.remove_globals("default", "claude", gbin)
         assert refused == [foreign]
         assert sorted(p.name for p in removed) == [
-            "harnessed-claude-default-acp", "harnessed-claude-default-container",
+            "harnessed-acp-claude-default-container", "harnessed-claude-default-container",
         ]
 
     @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")

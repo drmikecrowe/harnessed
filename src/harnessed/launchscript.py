@@ -76,11 +76,18 @@ _VERB_SUFFIX = {"host-run": "host", "container-run": "container"}
 _BACKENDS = frozenset(_VERB_SUFFIX.values())
 
 # GH-565: the GLOBAL launcher, `~/.local/bin/harnessed-<harness>-<stack>-<backend>`, is the local
-# name with a prefix, so one grammar reads both. `acp` is a backend here and nowhere else: aoe never
-# runs `container-acp`, so no local launcher carries it.
+# name with a prefix, so one grammar reads both. An ACP launcher adds `acp-` after that prefix and
+# keeps the backend `host` or `container`, because ACP has a launcher per backend (SPEC revision 6).
+# `host-acp` is named here before it exists, so `uninstall` already removes what it will write.
 _GLOBAL_PREFIX = "harnessed-"
-_GLOBAL_VERB_SUFFIX = {**_VERB_SUFFIX, "container-acp": "acp"}
-_GLOBAL_BACKENDS = frozenset(_GLOBAL_VERB_SUFFIX.values())
+_ACP_PREFIX = "acp-"
+_GLOBAL_VERBS = {
+    "host-run": ("", "host"),
+    "container-run": ("", "container"),
+    "container-acp": (_ACP_PREFIX, "container"),
+    "host-acp": (_ACP_PREFIX, "host"),
+}
+_GLOBAL_VERB_OF = {shape: verb for verb, shape in _GLOBAL_VERBS.items()}
 
 _GIT_TIMEOUT = 5
 
@@ -106,9 +113,7 @@ def script_name(verb: str, stack: str, harness: str) -> str:
     return f"{harness}-{stack}-{_VERB_SUFFIX[verb]}"
 
 
-def parse_script_name(
-    name: str, *, backends: frozenset[str] = _BACKENDS
-) -> Optional[tuple[str, str, str]]:
+def parse_script_name(name: str) -> Optional[tuple[str, str, str]]:
     """The inverse of `script_name`: `(harness, stack, backend)`, or None when `name` is not ours.
 
     HERE, BESIDE `script_name`, deliberately. This grammar used to be written twice — once to build
@@ -139,21 +144,32 @@ def parse_script_name(
     """
     harness, _, rest = name.partition("-")
     stack, _, backend = rest.rpartition("-")
-    if harness not in HARNESS_CONFIG_DIR or backend not in backends or not stack:
+    if harness not in HARNESS_CONFIG_DIR or backend not in _BACKENDS or not stack:
         return None
     return harness, stack, backend
 
 
 def global_name(verb: str, stack: str, harness: str) -> str:
-    """`harnessed-claude-default-container`: the local name with the `harnessed-` prefix (GH-565)."""
-    return f"{_GLOBAL_PREFIX}{harness}-{stack}-{_GLOBAL_VERB_SUFFIX[verb]}"
+    """`harnessed-claude-default-container`, or `harnessed-acp-claude-default-container` (GH-565)."""
+    prefix, backend = _GLOBAL_VERBS[verb]
+    return f"{_GLOBAL_PREFIX}{prefix}{harness}-{stack}-{backend}"
 
 
 def parse_global_name(name: str) -> Optional[tuple[str, str, str]]:
-    """The inverse of `global_name`, or None. `parse_script_name` after the prefix, with `acp` allowed."""
+    """The inverse of `global_name`: `(harness, stack, verb)`, or None.
+
+    `parse_script_name` after the prefixes. `acp-` counts only directly after `harnessed-`, where no
+    harness name can start, so a stack named `acp` stays a stack.
+    """
     if not name.startswith(_GLOBAL_PREFIX):
         return None
-    return parse_script_name(name[len(_GLOBAL_PREFIX):], backends=_GLOBAL_BACKENDS)
+    rest = name[len(_GLOBAL_PREFIX):]
+    prefix = _ACP_PREFIX if rest.startswith(_ACP_PREFIX) else ""
+    parsed = parse_script_name(rest[len(prefix):])
+    if parsed is None:
+        return None
+    harness, stack, backend = parsed
+    return harness, stack, _GLOBAL_VERB_OF[(prefix, backend)]
 
 
 def global_verbs(harness: str) -> list[str]:
@@ -424,7 +440,7 @@ def remove_globals(
     bin_dir = paths.user_bin_dir() if bin_dir is None else bin_dir
     removed: list[Path] = []
     refused: list[Path] = []
-    for verb in _GLOBAL_VERB_SUFFIX:
+    for verb in _GLOBAL_VERBS:
         target = bin_dir / global_name(verb, stack, harness)
         try:
             if not (target.exists() or target.is_symlink()):
