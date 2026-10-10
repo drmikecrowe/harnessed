@@ -190,6 +190,16 @@ class TestUninstallRemovesGlobalLaunchers:
         CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
         assert asked == []
 
+    def test_s5_5_uninstall_removes_a_host_acp_launcher(self, monkeypatch, tmp_path):
+        """Adversary round 3: S5.5 through the command, not only `remove_globals`."""
+        _home, bin_dir = self._install(monkeypatch, tmp_path)
+        launchscript.write_globals("claude_time", "claude", bin_dir)
+        host_acp = bin_dir / "harnessed-acp-claude-claude_time-host"
+        host_acp.write_text(f"#!/bin/sh\n{launchscript.SENTINEL}\nexec harnessed host-acp\n", encoding="utf-8")
+        result = CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
+        assert result.exit_code == 0, result.output
+        assert list(bin_dir.iterdir()) == []
+
     def test_s5_4_no_rows_prints_no_row_path(self, monkeypatch, tmp_path):
         _home, bin_dir = self._install(monkeypatch, tmp_path)
         launchscript.write_globals("claude_time", "claude", bin_dir)
