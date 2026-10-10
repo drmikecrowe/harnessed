@@ -13,6 +13,8 @@ interleave inside a line once a message outgrows the pipe's atomic write size.
 from __future__ import annotations
 
 import json
+import os
+import signal
 import subprocess
 import sys
 import threading
@@ -30,13 +32,15 @@ def _error(rid, code: int, message: str) -> bytes:
 
 
 def _intercept(
-    line: bytes, done: set[Path], setup_argv: Callable[[Path], list[str]]
+    line: bytes, done: set[Path], setup_argv: Callable[[Path], list[str]],
+    running: list[subprocess.Popen],
 ) -> Optional[bytes]:
     """The reply to send the editor INSTEAD of forwarding `line`, or None to forward it.
 
     Only a `session/new` request is ever held back. Its folder is set up once per relay, keyed on
     the resolved path so a symlink to a set-up project is the same project. A failed setup is not
-    remembered, so the next `session/new` for that folder tries again.
+    remembered, so the next `session/new` for that folder tries again. A running setup is listed in
+    `running` until it ends, so `run` can stop it if the relay ends first.
     """
     try:
         msg = json.loads(line)
@@ -53,18 +57,40 @@ def _intercept(
         return None
     # stdout to stderr: the child's output must never reach the editor's channel. stdin from
     # /dev/null: nobody is at a keyboard, so a setup that would prompt takes its no-TTY branch.
+    # Its own session, so `_stop` can end everything it started (scripts, service containers),
+    # not only its pid (PR #572 review).
     # unbounded: per-project setup runs recipe setup and init scripts, which host-run runs with no
     # deadline either; a timeout here would fail a slow first setup that host-run lets finish.
     try:
-        rc = subprocess.run(
-            setup_argv(project), stdin=subprocess.DEVNULL, stdout=sys.stderr.fileno(), check=False,
-        ).returncode
+        setup = subprocess.Popen(
+            setup_argv(project), stdin=subprocess.DEVNULL, stdout=sys.stderr.fileno(),
+            start_new_session=True,
+        )
     except OSError as exc:  # the setup command could not start at all
         return _error(msg["id"], _SETUP_FAILED, f"per-project setup failed for {cwd} ({exc})")
+    running.append(setup)
+    try:
+        rc = setup.wait()
+    finally:
+        running.remove(setup)
     if rc != 0:
         return _error(msg["id"], _SETUP_FAILED, f"per-project setup failed for {cwd} (exit {rc})")
     done.add(project)
     return None
+
+
+def _stop(setup: subprocess.Popen) -> None:
+    """End a setup and its whole process group: TERM, then KILL after 10 s."""
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(setup.pid, sig)
+        except ProcessLookupError:
+            return
+        try:
+            setup.wait(timeout=10)
+            return
+        except subprocess.TimeoutExpired:
+            continue
 
 
 def run(
@@ -100,17 +126,19 @@ def run(
         for line in iter(agent_out.readline, b""):
             try:
                 emit(line)
-            except OSError:
+            except (OSError, ValueError):  # ValueError: the stream was closed
                 # The editor's channel is gone. Left running, the agent fills its stdout pipe and
                 # blocks, and `run` waits on it forever.
                 agent.kill()
                 return
 
+    running: list[subprocess.Popen] = []
+
     def from_editor() -> None:
         done: set[Path] = set()
         try:
             for line in iter(stdin.readline, b""):
-                reply = _intercept(line, done, setup_argv)
+                reply = _intercept(line, done, setup_argv, running)
                 if reply is not None:
                     emit(reply)
                     continue
@@ -129,4 +157,8 @@ def run(
     threading.Thread(target=from_editor, daemon=True).start()
     code = agent.wait()
     pump.join()
+    # A setup the editor's thread still waits on would outlive the relay: host-acp ends with
+    # os._exit, and the setup would go on starting services for an editor that is gone.
+    for setup in list(running):
+        _stop(setup)
     return code

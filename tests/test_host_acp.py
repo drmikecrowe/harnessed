@@ -717,3 +717,91 @@ class TestExitStatus:
         assert launcher._exit_status(-9) == 137
         assert launcher._exit_status(3) == 3
         assert launcher._exit_status(0) == 0
+
+
+def _gone(pid: int, wait: float = 10.0) -> bool:
+    """Whether `pid` has exited (or is a zombie awaiting its reaper), polling up to `wait` s."""
+    import time
+    deadline = time.monotonic() + wait
+    while time.monotonic() < deadline:
+        try:
+            state = Path(f"/proc/{pid}/stat").read_text().split(")")[-1].split()[0]
+        except FileNotFoundError:
+            return True
+        if state == "Z":
+            return True
+        time.sleep(0.1)
+    return False
+
+
+class TestPrReview572:
+    """PR #572 review comments, each seen failing first."""
+
+    def test_a_setup_still_running_when_the_relay_ends_is_stopped_with_its_children(self, tmp_path):
+        """Comment 2: the editor goes away (here: the agent exits) while project-setup is still
+        running. The setup and everything it started must not outlive the relay."""
+        pids = tmp_path / "pids"
+        setup = tmp_path / "slow_setup.py"
+        setup.write_text(
+            "import os, subprocess, sys, time\n"
+            "child = subprocess.Popen(['sleep', '60'])\n"
+            f"open({str(pids)!r}, 'w').write(f'{{os.getpid()}} {{child.pid}}')\n"
+            "time.sleep(60)\n"
+        )
+        a = tmp_path / "projA"
+        a.mkdir()
+        in_r, in_w = os.pipe()
+        out_r, out_w = os.pipe()
+        result: dict = {}
+        done = threading.Event()
+
+        def run() -> None:
+            stdin, stdout = os.fdopen(in_r, "rb"), os.fdopen(out_w, "wb")
+            result["code"] = acprelay.run(
+                # the agent outlives the moment the setup starts, then exits on its own
+                [sys.executable, "-c", "import time; time.sleep(2)"], dict(os.environ),
+                lambda p: [sys.executable, str(setup)], cwd=tmp_path, stdin=stdin, stdout=stdout,
+            )
+            done.set()
+
+        threading.Thread(target=run, daemon=True).start()
+        os.write(in_w, json.dumps({"jsonrpc": "2.0", "id": 1, "method": "session/new",
+                                   "params": {"cwd": str(a), "mcpServers": []}}).encode() + b"\n")
+        assert done.wait(30), "run() did not return after the agent exited"
+        os.close(in_w)
+        os.close(out_r)
+        setup_pid, child_pid = (int(x) for x in pids.read_text().split())
+        assert _gone(setup_pid), "the project-setup process outlived the relay"
+        assert _gone(child_pid), "a process project-setup started outlived the relay"
+
+    def test_a_closed_editor_stream_stops_the_agent_too(self, tmp_path):
+        """Comment 1: `emit` on a closed stdout raises ValueError, not OSError."""
+        import io
+
+        agent = tmp_path / "loud.py"
+        agent.write_text(
+            "import sys, time\n"
+            "for _ in range(2000):\n"
+            "    sys.stdout.write('{\"jsonrpc\":\"2.0\",\"method\":\"x\",\"params\":{}}' + ' ' * 4096 + '\\n')\n"
+            "    sys.stdout.flush()\n"
+            "time.sleep(60)\n"
+        )
+        closed = io.BytesIO()
+        closed.close()
+        in_r, in_w = os.pipe()
+        result: dict = {}
+        done = threading.Event()
+
+        def run() -> None:
+            stdin = os.fdopen(in_r, "rb")
+            result["code"] = acprelay.run(
+                [sys.executable, str(agent)], dict(os.environ), lambda p: ["true"],
+                cwd=tmp_path, stdin=stdin, stdout=closed,
+            )
+            done.set()
+
+        threading.Thread(target=run, daemon=True).start()
+        returned = done.wait(30)
+        os.close(in_w)
+        assert returned, "run() hung after the editor's stream was closed"
+        assert result["code"] != 0

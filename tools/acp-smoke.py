@@ -24,7 +24,9 @@ from __future__ import annotations
 import argparse
 import json
 import queue
+import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -113,6 +115,13 @@ def _parser() -> argparse.ArgumentParser:
     return ap
 
 
+def _cwd_matches(reply: str, folder: Path) -> bool:
+    """Whether one whole path in `reply` is `folder`. Not a substring test: `/a/b-check` is not
+    `/a/b` (PR #572 review). Quotes, backticks and trailing punctuation around the path are allowed."""
+    tokens = re.split(r"[\s`'\"]+", reply)
+    return any(Path(t.rstrip(".,:;")) == folder for t in tokens if t.startswith("/"))
+
+
 def _check_cwd(proc, lines: queue.Queue, sessions: list[tuple[str, Path]], timeout: float) -> None:
     for n, (session_id, folder) in enumerate(sessions):
         text: list = []
@@ -120,7 +129,7 @@ def _check_cwd(proc, lines: queue.Queue, sessions: list[tuple[str, Path]], timeo
             "sessionId": session_id, "prompt": [{"type": "text", "text": _CWD_QUESTION}],
         }, timeout, text)
         reply = "".join(text).strip()
-        if str(folder) not in reply:
+        if not _cwd_matches(reply, folder):
             raise SystemExit(f"FAIL: the session in {folder} reported its cwd as {reply!r}")
         print(f"ok: the session in {folder} reported {reply!r}", file=sys.stderr)
 
@@ -172,6 +181,8 @@ def main() -> int:
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait()
+        if launch_dir:
+            shutil.rmtree(launch_dir, ignore_errors=True)
     # After the `finally`, so a failure raised in the exchange is never masked by this one.
     if proc.returncode < 0:
         raise SystemExit("FAIL: the agent did not exit within 30s of stdin closing")
