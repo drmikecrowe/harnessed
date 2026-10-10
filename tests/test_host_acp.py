@@ -26,6 +26,10 @@ from harnessed import acprelay
 _STUB_AGENT = r'''
 import json, sys
 log, events = sys.argv[1], sys.argv[2]
+if len(sys.argv) > 3:  # the launcher-level tests read the env the agent was started with
+    import os
+    with open(sys.argv[3], "w") as f:
+        json.dump({"env": dict(os.environ), "cwd": os.getcwd()}, f)
 sessions = {}
 out = sys.stdout.buffer
 def send(msg):
@@ -304,3 +308,294 @@ def test_s3_6_every_other_line_is_forwarded_byte_for_byte(tmp_path_factory, line
     finally:
         r.close()
     assert r.log.read_bytes() == b"".join(line + b"\n" for line in lines) + sync
+
+
+# --- The verb: `host-acp` as a real process ------------------------------------------------------
+#
+# A real process, because the stdout contract is about file descriptors: an INFO line printed by
+# harnessed, an init script's echo, and the setup verb's output all reach fd 1 unless the launch
+# keeps them off it, and CliRunner captures none of those. The driver swaps in only the agent
+# command (`_host_acp_agent_argv`) and, where a scenario says so, `assemble`; everything else runs.
+
+import subprocess  # noqa: E402
+
+from harnessed import hostrun, launcher, paths, setupenv  # noqa: E402
+from harnessed.assemble import assemble  # noqa: E402
+
+_DRIVER = r"""
+import json, sys
+from harnessed import launcher as L
+stub = json.loads(sys.argv.pop(1))
+if stub.get("agent"):
+    L._host_acp_agent_argv = lambda harness, home, no_strict_mcp: stub["agent"]
+if stub.get("no_assemble"):
+    def _never(*a, **k):
+        raise SystemExit("assemble must not run")
+    L.assemble = _never
+sys.argv[0] = "harnessed"
+L.main()
+"""
+
+_STACK = "acpspike"
+_INHERITED = ("PROJECT_DIR", "MAIN_REPO_DIR", "HARNESS", "HARNESSED_GIT_COMMON_DIR",
+              "CONTAINER_WORKSPACE_DIR", "HOST_WORKSPACE_DIR", "G", "P", "R")
+_RECIPE = (
+    "name: acpinit\n"
+    "description: GH-571 test recipe with an init line and an env value.\n"
+    "init:\n"
+    "  run: echo INIT-OUT; pwd > \"$PROJECT_DIR/.init-cwd\"\n"
+    "env:\n"
+    "  R: \"1\"\n"
+)
+_STACK_BODY = f"name: {_STACK}\ninstructions: GH-571 tracer.\nrecipes: [greet, acpinit]\nservices: []\n"
+
+
+class _Host:
+    """A temporary HOME and XDG tree with the overlay stack authored, and helpers to run the verb."""
+
+    def __init__(self, tmp: Path, monkeypatch) -> None:
+        self.tmp = tmp
+        self.env = dict(os.environ)
+        for var, sub in (("HOME", "home"), ("XDG_DATA_HOME", "data"), ("XDG_CONFIG_HOME", "config"),
+                         ("XDG_STATE_HOME", "state"), ("XDG_CACHE_HOME", "cache")):
+            (tmp / sub).mkdir(exist_ok=True)
+            self.env[var] = str(tmp / sub)
+            monkeypatch.setenv(var, str(tmp / sub))
+        self.env["CLAUDE_CONFIG_DIR"] = str(tmp / "no-host-src")
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp / "no-host-src"))
+        self.env.pop("HARNESSED_DIR", None)
+        # A developer running this suite inside a harnessed session inherits that session's
+        # folder-env contract; the scenarios are about what THIS launch sets.
+        for var in _INHERITED:
+            self.env.pop(var, None)
+            monkeypatch.delenv(var, raising=False)
+        catalog = tmp / "config" / "harnessed" / "catalog"
+        (catalog / "recipes" / "acpinit").mkdir(parents=True)
+        (catalog / "recipes" / "acpinit" / "recipe.yaml").write_text(_RECIPE)
+        (catalog / "stacks" / _STACK).mkdir(parents=True)
+        (catalog / "stacks" / _STACK / "stack.yaml").write_text(_STACK_BODY)
+        self.launch = tmp / "launch"
+        self.launch.mkdir()
+        self.agent_log = tmp / "agent.log"
+        self.events = tmp / "events.log"
+        self.started = tmp / "agent-start.json"
+        self.agent = tmp / "stub_agent.py"
+        self.agent.write_text(_STUB_AGENT)
+
+    def build(self, harness: str) -> None:
+        assemble(None, _STACK, paths.profiles_root().parent, harness, strict=True, shared_identity=False)
+
+    def adapter(self, version: str) -> Path:
+        """A `claude-agent-acp` laid out as `npm i -g` lays it out: a bin symlink into the package."""
+        pkg = self.tmp / "npm" / "lib" / "node_modules" / "@agentclientprotocol" / "claude-agent-acp"
+        (pkg / "dist").mkdir(parents=True)
+        (pkg / "package.json").write_text(json.dumps({"name": "@agentclientprotocol/claude-agent-acp", "version": version}))
+        entry = pkg / "dist" / "index.js"
+        entry.write_text("#!/bin/sh\nexit 0\n")
+        entry.chmod(0o755)
+        bindir = self.tmp / "npm" / "bin"
+        bindir.mkdir(parents=True)
+        (bindir / "claude-agent-acp").symlink_to(entry)
+        return bindir
+
+    def run(self, harness: str, *extra: str, msgs: tuple[dict, ...] | list[dict] = (), stub: dict | None = None,
+            path_prefix: Path | None = None) -> subprocess.CompletedProcess:
+        stub = {"agent": [sys.executable, str(self.agent), str(self.agent_log), str(self.events), str(self.started)]} \
+            if stub is None else stub
+        env = dict(self.env)
+        if path_prefix is not None:
+            env["PATH"] = f"{path_prefix}{os.pathsep}{env['PATH']}"
+        stdin = b"".join(json.dumps(m).encode() + b"\n" for m in msgs)
+        return subprocess.run(
+            [sys.executable, "-c", _DRIVER, json.dumps(stub), "host-acp", harness, "--stack", _STACK, *extra],
+            input=stdin, capture_output=True, cwd=self.launch, env=env, timeout=180,
+        )
+
+    def agent_start(self) -> dict:
+        return json.loads(self.started.read_text())
+
+
+def _rpc(rid, method, params):
+    return {"jsonrpc": "2.0", "id": rid, "method": method, "params": params}
+
+
+def _stdout_messages(proc: subprocess.CompletedProcess) -> list[dict]:
+    out = [json.loads(line) for line in proc.stdout.splitlines()]
+    assert all(isinstance(m, dict) and m.get("jsonrpc") == "2.0" for m in out), proc.stdout
+    return out
+
+
+@pytest.fixture
+def host(tmp_path, monkeypatch):
+    return _Host(tmp_path, monkeypatch)
+
+
+class TestStdoutIsJsonRpcOnly:
+    @pytest.mark.parametrize("harness", ["omp", "claude"])
+    def test_s1_1_and_s1_3_initialize_and_session_new_answer_on_a_clean_stdout(self, host, tmp_path, harness):
+        host.build(harness)
+        a = tmp_path / "projA"
+        a.mkdir()
+        prefix = host.adapter("0.85.1") if harness == "claude" else None
+        proc = host.run(harness, path_prefix=prefix, msgs=[
+            _rpc(1, "initialize", {"protocolVersion": 1}),
+            _rpc(2, "session/new", {"cwd": str(a), "mcpServers": []}),
+        ])
+        assert proc.returncode == 0, proc.stderr.decode()
+        out = _stdout_messages(proc)
+        assert [m.get("id") for m in out] == [1, 2]
+        assert all("result" in m for m in out)
+
+    def test_s1_2_launch_and_init_output_go_to_stderr(self, host, tmp_path):
+        host.build("omp")
+        a = tmp_path / "projA"
+        a.mkdir()
+        proc = host.run("omp", msgs=[_rpc(1, "session/new", {"cwd": str(a), "mcpServers": []})])
+        assert proc.returncode == 0, proc.stderr.decode()
+        assert b"INIT-OUT" in proc.stderr
+        assert b"Assembling" in proc.stderr
+        assert b"INIT-OUT" not in proc.stdout and b"Assembling" not in proc.stdout
+        _stdout_messages(proc)
+
+    def test_s1_4_the_launch_folder_gets_no_per_project_setup(self, host):
+        host.build("omp")
+        proc = host.run("omp", msgs=[_rpc(1, "initialize", {"protocolVersion": 1})])
+        assert proc.returncode == 0, proc.stderr.decode()
+        assert b"INIT-OUT" not in proc.stderr
+        assert not (host.launch / ".init-cwd").exists()
+        # And no project tool env file. The recipe's `env: {R: "1"}` means one is written for any
+        # folder the per-project setup runs in, so its absence is the setup's absence.
+        assert not setupenv.project_env_path(host.launch).exists()
+
+    def test_s1_5_a_harness_without_acp_is_refused_before_any_work(self, host):
+        proc = host.run("opencode", stub={"no_assemble": True})
+        assert proc.returncode == 2
+        assert b"opencode has no ACP mode; host-acp supports: omp, claude" in proc.stderr
+        assert proc.stdout == b""
+
+
+class TestUnbuiltStack:
+    def test_s2_2_an_unbuilt_stack_names_the_build_command(self, host):
+        proc = host.run("omp", stub={"no_assemble": True})
+        assert proc.returncode == 1
+        assert proc.stdout == b""
+        assert f"harnessed build {_STACK} omp".encode() in proc.stderr
+
+
+class TestHostRunSharesTheSetup:
+    def test_s4_5_host_run_calls_the_per_project_function_once_in_order(self, host, tmp_path, monkeypatch):
+        order: list[str] = []
+        real_provision = launcher.HostBackend.provision_tools
+        real_wire_mcp = launcher.HostBackend.wire_mcp
+        real_setup = launcher._host_project_setup
+
+        def provision(self, spec, phase):
+            order.append(f"provision:{phase}")
+            return real_provision(self, spec, phase)
+
+        def wire_mcp(self, spec):
+            order.append("wire_mcp")
+            return real_wire_mcp(self, spec)
+
+        def setup(*a, **k):
+            order.append("project_setup")
+            return real_setup(*a, **k)
+
+        monkeypatch.setattr(launcher.HostBackend, "provision_tools", provision)
+        monkeypatch.setattr(launcher.HostBackend, "wire_mcp", wire_mcp)
+        monkeypatch.setattr(launcher, "_host_project_setup", setup)
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+        monkeypatch.setattr(launcher.aoe, "_bin", lambda: None)
+        project = tmp_path / "proj"
+        project.mkdir()
+        from typer.testing import CliRunner
+        result = CliRunner().invoke(launcher.app, ["host-run", "omp", str(project), "--stack", _STACK])
+        assert result.exit_code == 0, result.output
+        first_start = order.index(f"provision:{launcher.FIRST_START}")
+        assert order.count("project_setup") == 1
+        assert first_start < order.index("project_setup") < order.index("wire_mcp")
+        assert (project / ".init-cwd").read_text().strip() == str(project)
+
+    def test_s4_6_project_setup_alone_sets_up_one_project(self, host, tmp_path):
+        host.build("omp")
+        a = tmp_path / "projA"
+        a.mkdir()
+        subprocess.run(["git", "-C", str(a), "init", "-q"], check=True, timeout=30)
+        proc = subprocess.run(
+            [sys.executable, "-m", "harnessed", "project-setup", "omp", str(a), "--stack", _STACK],
+            capture_output=True, cwd=host.launch, env=host.env, timeout=180, stdin=subprocess.DEVNULL,
+        )
+        assert proc.returncode == 0, proc.stderr.decode()
+        assert (a / ".init-cwd").read_text().strip() == str(a)
+        assert "R=1" in setupenv.project_env_path(a).read_text()
+
+
+class TestClaudeMcpAndEnv:
+    def test_s5_1_the_adapter_gets_the_stack_mcp_file_and_strict(self, host):
+        host.build("claude")
+        proc = host.run("claude", path_prefix=host.adapter("0.85.1"), msgs=[_rpc(1, "initialize", {})])
+        assert proc.returncode == 0, proc.stderr.decode()
+        env = host.agent_start()["env"]
+        home = paths.host_home(_STACK, "claude")
+        assert env["CLAUDE_CONFIG_DIR"] == str(home)
+        assert env["CLAUDE_CODE_EXECUTABLE"] == str(paths.harnessed_home() / "catalog" / "base" / "harnessed-claude-acp-cli")
+        assert env["HARNESSED_MCP_CONFIG"] == str(home / ".mcp.json")
+        assert env["HARNESSED_STRICT_MCP"] == "1"
+        assert "mcpServers" in json.loads((home / ".mcp.json").read_text())
+
+    def test_s5_2_no_strict_keeps_the_file_and_drops_strict(self, host):
+        host.build("claude")
+        proc = host.run("claude", "--no-strict-mcp-config", path_prefix=host.adapter("0.85.1"),
+                        msgs=[_rpc(1, "initialize", {})])
+        assert proc.returncode == 0, proc.stderr.decode()
+        env = host.agent_start()["env"]
+        assert env["HARNESSED_MCP_CONFIG"] == str(paths.host_home(_STACK, "claude") / ".mcp.json")
+        assert "HARNESSED_STRICT_MCP" not in env
+
+    @pytest.mark.parametrize("harness", ["omp", "claude"])
+    def test_s5_4_the_agent_gets_per_stack_env_only(self, host, tmp_path, harness):
+        host.build(harness)
+        (host.tmp / "home" / ".config" / "harnessed").mkdir(parents=True)
+        (host.tmp / "home" / ".config" / "harnessed" / ".env").write_text("G=1\n")
+        (host.launch / ".env").write_text("P=1\n")
+        host.env["MISE_DATA_DIR"] = "/users/own/mise"
+        a = tmp_path / "projA"
+        a.mkdir()
+        prefix = host.adapter("0.85.1") if harness == "claude" else None
+        proc = host.run(harness, path_prefix=prefix, msgs=[_rpc(1, "session/new", {"cwd": str(a), "mcpServers": []})])
+        assert proc.returncode == 0, proc.stderr.decode()
+        start = host.agent_start()
+        env = start["env"]
+        assert start["cwd"] == str(host.launch)
+        assert env["G"] == "1"
+        assert "P" not in env and "R" not in env and "PROJECT_DIR" not in env
+        assert env["PATH"].split(os.pathsep)[0] == hostrun._stack_tool_path_prefix(_STACK)[0]
+        assert env["MISE_DATA_DIR"] == "/users/own/mise"
+        home = paths.host_home(_STACK, harness)
+        if harness == "omp":
+            assert env["PI_CODING_AGENT_DIR"] == str(home)
+            assert env["CLAUDE_CONFIG_DIR"] == str(launcher._host_omp_claude_dir(home))
+        else:
+            assert env["CLAUDE_CONFIG_DIR"] == str(home)
+
+
+class TestTheAdapterAtLaunch:
+    def test_s6_8_a_missing_adapter_refuses_on_stderr(self, host):
+        host.build("claude")
+        host.env["PATH"] = os.pathsep.join(
+            d for d in host.env["PATH"].split(os.pathsep) if not (Path(d) / "claude-agent-acp").exists()
+        )
+        proc = host.run("claude", msgs=[_rpc(1, "initialize", {})])
+        assert proc.returncode == 1
+        assert proc.stdout == b""
+        assert b"npm i -g @agentclientprotocol/claude-agent-acp@0.85.1" in proc.stderr
+        assert not host.started.exists()
+
+    def test_s6_10_another_version_runs_with_a_warning(self, host):
+        host.build("claude")
+        proc = host.run("claude", path_prefix=host.adapter("0.84.0"), msgs=[_rpc(1, "initialize", {})])
+        assert proc.returncode == 0, proc.stderr.decode()
+        assert b"0.84.0" in proc.stderr and b"0.85.1" in proc.stderr
+        assert host.started.exists()
+        _stdout_messages(proc)
