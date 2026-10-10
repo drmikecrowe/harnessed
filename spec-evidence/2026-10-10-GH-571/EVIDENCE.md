@@ -1,33 +1,33 @@
 ## Evidence Report — host-acp: run a stack as an ACP agent on the host (Tier 3)
 
 ## Summary
-**Delivered.** `harnessed host-acp <omp|claude> --stack <name>` runs a stack as an ACP agent on the host, for an editor that reuses one agent process across projects. It does the per-stack half of `host-run` once, starts `omp acp` or `claude-agent-acp`, and relays JSON-RPC. The first `session/new` for a folder runs the new `project-setup` verb there first. `build` and `install` write the host ACP launcher, `build <stack> claude` offers to install the pinned adapter, and `tools/acp-smoke.py` drives `host-acp`. Why: Atlas reuses one process per entry, and `container-acp` cannot follow each session's folder.
+**Delivered.** `harnessed host-acp <omp|claude> --stack <name>` runs a stack as an ACP agent on the host, for an editor that reuses one agent process across projects. It does the per-stack half of `host-run` once, starts `omp acp` or `claude-agent-acp`, and relays JSON-RPC. The first `session/new` for a folder runs the new `project-setup` verb there first. `project-setup` is `_launch_host` in a project-only mode, so `host-run` and `project-setup` run the same per-project code. `build` and `install` write the host ACP launcher, `build <stack> claude` offers to install the pinned adapter, and `tools/acp-smoke.py` drives `host-acp`. Why: Atlas reuses one process per entry, and `container-acp` cannot follow each session's folder.
 
 **Each criterion and its proof.**
 - AC-1: stdout carries only JSON-RPC for omp and claude, launch and init output go to stderr, and `opencode` exits 2 before any work. Proven by real-process tests (S1.1 to S1.5) and by both smoke runs.
-- AC-2: `initialize` answers within 60 s, and an unbuilt stack is refused with the build command named. Proven by S2.2 and by both smoke runs with `--launch-timeout 60`. The smoke runs used the `hostspike` stack, not `gortex-ghissues` (see Not proven).
+- AC-2: `initialize` answers within 60 s, and an unbuilt stack is refused with the build command named. Proven by S2.2 and by both smoke runs with `--launch-timeout 60`: claude on the real `gortex-ghissues` stack answered in 6.7 s, and omp on `hostspike` in 5.1 s (Revision 7).
 - AC-3: one process serves two folders, and a missing folder is a JSON-RPC error. Proven by relay tests (S3.1 to S3.3, S3.5, S3.6) and, for the real agents, by the `--check-cwd` smoke runs: omp and claude each reported folder A, then folder B.
-- AC-4: the first session in a folder runs `project-setup` once, a failure is a JSON-RPC error, and `host-run` runs the same steps in the same order with its existing tests unchanged. Proven by S4.1 to S4.6 and the full suite.
+- AC-4: the first session in a folder runs `project-setup` once, a failure is a JSON-RPC error, and `host-run` runs the same code: both verbs run `_launch_host`, and the existing `host-run` tests pass unchanged. Proven by S4.1 to S4.6 and the full suite.
 - AC-5: claude gets the stack's MCP file and strict by default, and `--no-strict-mcp-config` drops strict. Proven by S5.1 to S5.4 and the existing wrapper tests.
 - AC-6: `build <stack> claude` asks the exact question and honours y, n and c; `host-acp claude` without the adapter refuses on stderr. Proven by S6.1 to S6.10.
 - AC-7: `build` writes `harnessed-acp-<harness>-<stack>-host` for omp and claude, and `uninstall` removes it. Proven by S7.1 to S7.4.
 - AC-8: `tools/acp-smoke.py` passes for omp and claude against `host-acp`, from a new empty folder. Proven by S8.1 to S8.3.
 
-**Not proven.** Mutation testing did not run: the engineer stopped it before it scored any mutant. The `live.yml` layer has not run yet; it runs on the pull request. S2.1 ran on `hostspike`, not `gortex-ghissues`. A fresh wheel install of the claude wrapper path was not exercised.
+**Not proven.** Commit e8cdfd9 (the one-code-path change) had no adversary review: the run allowed two rounds, and both read 087249a. Mutation testing did not run: the engineer stopped it before it scored any mutant. The `live.yml` layer has not run yet; it runs on the pull request. The omp half of S2.1 ran on `hostspike`, by the engineer's ruling. A fresh wheel install of the claude wrapper path was not exercised.
 
-**Judgment calls.** Existing tests were kept unchanged wherever they pinned `host-run`'s call sites and order (engineer's ruling), so `host-run` and `project-setup` run the same four steps rather than share one function (Revisions 3 and 4). The adapter version is asked with `--version`, because pnpm and mise layouts defeat a `package.json` lookup (Revision 5). Tests that pinned "no host ACP launcher" changed by design for AC-7.
+**Judgment calls.** Existing tests were kept unchanged wherever they pinned `host-run`'s call sites and order (engineer's ruling, Revisions 3 and 4). After Gate 2 pass 1, `project-setup` became `_launch_host` in a project-only mode, so both verbs run the same per-project lines at those sites (Revision 6). The adapter version is asked with `--version`, because pnpm and mise layouts defeat a `package.json` lookup (Revision 5). Tests that pinned "no host ACP launcher" changed by design for AC-7.
 
 ## Orientation
 - Verdict: PASSED WITH LIMITS
 - Delivered: `host-acp` and `project-setup` verbs, the host ACP launcher, the build-time adapter offer, and a smoke script that drives `host-acp`.
-- Proven: 48/48 scenarios mapped and passing (S2.1 on a substituted stack).
-- Not proven: mutation layer (not run, stopped by the engineer); live layer (`live.yml`, runs on the PR, not yet run); S2.1 stack substituted (`hostspike` for `gortex-ghissues`); fresh-wheel install of the claude wrapper path (unverified).
+- Proven: 48/48 scenarios mapped and passing.
+- Not proven: adversarial review of e8cdfd9 (not run: the run allowed two rounds, and both read 087249a); mutation layer (not run, stopped by the engineer); live layer (`live.yml`, runs on the PR, not yet run); fresh-wheel install of the claude wrapper path (unverified).
 
 - Process: spec-evidence 0.0.1
 - Spec: spec-evidence/2026-10-10-GH-571/SPEC.md (committed)
 - Spec approval: obtained from mcrowe (commit 9dbf591, "GH-571: spec approved")
 - Intent review: round 1 changed the SPEC (S3 states that S3.4 is the required proof for real agents; S6 counts another installed version as not installed; S7.5 cut; S5.4 added once Decide 2 was ruled); round 2 changed nothing
-- Source state: commit 087249aaa8b174dd71b62be2fa5d708ccbc83543 — the commit the final run and adversary round 2 read
+- Source state: commit e8cdfd9dfb23a04cd9dca980f2117f7644df43ce — the commit the final run read. Adversary round 2 read 087249aaa8b174dd71b62be2fa5d708ccbc83543; e8cdfd9 had no adversary review, because the run allowed only two rounds.
 - Stamp:
 
 ```json
@@ -50,25 +50,25 @@
     "secrets"
   ],
   "layer_seconds": {
-    "tests": 372.226,
-    "coverage": 408.103,
-    "types": 56.327,
-    "lint": 0.458,
-    "shellcheck": 5.53,
-    "secrets": 9.507
+    "tests": 232.531,
+    "coverage": 364.594,
+    "types": 21.146,
+    "lint": 0.376,
+    "shellcheck": 2.484,
+    "secrets": 6.229
   },
   "failed": null,
   "exit_code": 0,
-  "commit": "087249aaa8b174dd71b62be2fa5d708ccbc83543",
+  "commit": "e8cdfd9dfb23a04cd9dca980f2117f7644df43ce",
   "dirty": false,
-  "written": "2026-10-10T19:44:24.443Z"
+  "written": "2026-10-10T20:47:48.081Z"
 }
 ```
 
 - Baseline: spec-evidence/2026-10-10-GH-571/baseline-stamp.json at commit 9dbf591ece158dc9d481791315a1f2f0802a811f, green
 
 ### Spec → Test mapping
-Test ids are relative to the repository root. `HA` is `tests/test_host_acp.py`, `BA` is `tests/test_launcher_build_adapter.py`. The smoke logs are the final runs on commit 087249a.
+Test ids are relative to the repository root. `HA` is `tests/test_host_acp.py`, `BA` is `tests/test_launcher_build_adapter.py`. The smoke logs are the final runs on commit e8cdfd9.
 
 | Scenario | Test | Status |
 |---|---|---|
@@ -77,20 +77,20 @@ Test ids are relative to the repository root. `HA` is `tests/test_host_acp.py`, 
 | S1.3 | `HA::TestStdoutIsJsonRpcOnly::test_s1_1_and_s1_3_initialize_and_session_new_answer_on_a_clean_stdout[claude]` | pass |
 | S1.4 | `HA::TestStdoutIsJsonRpcOnly::test_s1_4_the_launch_folder_gets_no_per_project_setup` | pass |
 | S1.5 | `HA::TestStdoutIsJsonRpcOnly::test_s1_5_a_harness_without_acp_is_refused_before_any_work` | pass |
-| S2.1 | `tools/acp-smoke.py --verb host-acp --launch-timeout 60`, logs `spec-evidence/2026-10-10-GH-571/smoke-host-acp-omp.log:24` and `spec-evidence/2026-10-10-GH-571/smoke-host-acp-claude.log:38` (stack `hostspike`, substituted for `gortex-ghissues`) | pass |
+| S2.1 | `tools/acp-smoke.py --verb host-acp --launch-timeout 60`: claude on `gortex-ghissues`, `initialize answered in 6.7s` at `spec-evidence/2026-10-10-GH-571/smoke-host-acp-claude.log:18`; omp on `hostspike` (Revision 7), `initialize answered in 5.1s` at `spec-evidence/2026-10-10-GH-571/smoke-host-acp-omp.log:16` | pass |
 | S2.2 | `HA::TestUnbuiltStack::test_s2_2_an_unbuilt_stack_names_the_build_command` | pass |
 | S3.1 | `HA::TestOneProcessManyProjects::test_s3_1_each_session_reports_its_own_folder` | pass |
 | S3.2 | `HA::TestOneProcessManyProjects::test_s3_2_the_agent_gets_each_cwd_unchanged` | pass |
 | S3.3 | `HA::TestOneProcessManyProjects::test_s3_3_a_missing_cwd_is_an_error_and_never_reaches_the_agent` | pass |
-| S3.4 | `tools/acp-smoke.py --check-cwd`, logs `spec-evidence/2026-10-10-GH-571/smoke-host-acp-omp.log:21,23` and `spec-evidence/2026-10-10-GH-571/smoke-host-acp-claude.log:35,37` | pass |
+| S3.4 | `tools/acp-smoke.py --check-cwd`, logs `spec-evidence/2026-10-10-GH-571/smoke-host-acp-omp.log:30,32` and `spec-evidence/2026-10-10-GH-571/smoke-host-acp-claude.log:62,64` | pass |
 | S3.5 | `HA::test_s3_5_concurrent_writers_never_interleave_a_line` (hypothesis, 200 examples) | pass |
 | S3.6 | `HA::test_s3_6_every_other_line_is_forwarded_byte_for_byte` (hypothesis, 200 examples) | pass |
 | S4.1 | `HA::TestPerProjectSetup::test_s4_1_the_first_session_runs_setup_before_the_agent_sees_it` | pass |
 | S4.2 | `HA::TestPerProjectSetup::test_s4_2_a_second_session_in_the_same_project_does_not_rerun_it` | pass |
 | S4.3 | `HA::TestFailedSetup::test_s4_3_a_failed_setup_is_an_error_naming_the_project` | pass |
 | S4.4 | `HA::TestFailedSetup::test_s4_4_a_failed_project_is_set_up_again_next_time` | pass |
-| S4.5 | `HA::TestHostRunSharesTheSetup::test_s4_5_host_run_and_project_setup_run_the_same_steps_in_the_same_order`, plus every test in the six named files unchanged (gauntlet tests layer) | pass |
-| S4.6 | `HA::TestHostRunSharesTheSetup::test_s4_6_project_setup_alone_sets_up_one_project` | pass |
+| S4.5 | `HA::TestHostRunSharesTheSetup::test_s4_5_host_run_and_project_setup_run_the_same_steps_in_the_same_order` (also asserts both verbs enter `_launch_host`), plus every test in the six named files unchanged (gauntlet tests layer) | pass |
+| S4.6 | `HA::TestHostRunSharesTheSetup::test_s4_6_project_setup_alone_sets_up_one_project` (also asserts the stack's host home is never created) | pass |
 | S5.1 | `HA::TestClaudeMcpAndEnv::test_s5_1_the_adapter_gets_the_stack_mcp_file_and_strict` | pass |
 | S5.2 | `HA::TestClaudeMcpAndEnv::test_s5_2_no_strict_keeps_the_file_and_drops_strict` | pass |
 | S5.3 | `tests/test_acp_verb.py::TestTheClaudeWrapper::test_strict_adds_the_hub_and_strict_before_the_sdk_args` (existing) | pass |
@@ -109,27 +109,27 @@ Test ids are relative to the repository root. `HA` is `tests/test_host_acp.py`, 
 | S7.2 | `tests/test_launcher_build.py::TestBuildWritesGlobalLaunchers::test_gh571_s7_2_a_second_build_leaves_one_identical_launcher` | pass |
 | S7.3 | `tests/test_launcher_build.py::TestBuildWritesGlobalLaunchers::test_gh571_s7_3_uninstall_removes_what_build_wrote` | pass |
 | S7.4 | `tests/test_launcher_build.py::TestBuildWritesGlobalLaunchers::test_gh571_s7_4_no_host_acp_launcher_without_acp[opencode]`, `[antigravity]`, `[codex]` | pass |
-| S8.1 | `tools/acp-smoke.py ... --harness omp --verb host-acp`, log `spec-evidence/2026-10-10-GH-571/smoke-host-acp-omp.log:24` | pass |
-| S8.2 | `tools/acp-smoke.py ... --harness claude --verb host-acp`, log `spec-evidence/2026-10-10-GH-571/smoke-host-acp-claude.log:38` | pass |
+| S8.1 | `tools/acp-smoke.py ... --harness omp --verb host-acp`, log `spec-evidence/2026-10-10-GH-571/smoke-host-acp-omp.log:33` | pass |
+| S8.2 | `tools/acp-smoke.py ... --harness claude --verb host-acp` on `gortex-ghissues`, log `spec-evidence/2026-10-10-GH-571/smoke-host-acp-claude.log:65` | pass |
 | S8.3 | `tests/test_acp_smoke.py::test_s8_3_container_acp_argv_is_unchanged`; also `test_s8_host_acp_argv_names_no_project`, `test_s8_the_default_verb_is_container_acp` | pass |
 | AC-1 condition | S1.1, S1.3 tests above | pass |
 | AC-1 boundary | `HA::TestStdoutIsJsonRpcOnly::test_s1_2_launch_and_init_output_go_to_stderr` | pass |
 | AC-1 negative | `HA::TestStdoutIsJsonRpcOnly::test_s1_5_a_harness_without_acp_is_refused_before_any_work` | pass |
-| AC-2 condition | S2.1 smoke runs with `--launch-timeout 60` | pass |
-| AC-2 boundary | the 60 s limit is `--launch-timeout 60` in both smoke runs | pass |
-| AC-2 negative | `HA::TestUnbuiltStack::test_s2_2_an_unbuilt_stack_names_the_build_command` | pass |
+| AC-2 condition | S2.1 smoke runs with `--launch-timeout 60`: 6.7 s at `spec-evidence/2026-10-10-GH-571/smoke-host-acp-claude.log:18`, 5.1 s at `spec-evidence/2026-10-10-GH-571/smoke-host-acp-omp.log:16` | pass |
+| AC-2 boundary | the 60 s limit is `--launch-timeout 60` in both smoke runs; measured 6.7 s and 5.1 s | pass |
+| AC-2 negative | `HA::TestUnbuiltStack::test_s2_2_an_unbuilt_stack_names_the_build_command` (asserts exit 1, empty stdout, and the build command on stderr) | pass |
 | AC-3 condition | `HA::TestOneProcessManyProjects::test_s3_1_each_session_reports_its_own_folder`; S3.4 smoke runs | pass |
 | AC-3 boundary | one process, two folders: S3.4 smoke runs (`--check-cwd`) | pass |
-| AC-3 negative | `HA::TestOneProcessManyProjects::test_s3_3_a_missing_cwd_is_an_error_and_never_reaches_the_agent` | pass |
+| AC-3 negative | `HA::TestOneProcessManyProjects::test_s3_3_a_missing_cwd_is_an_error_and_never_reaches_the_agent` (asserts the exact error, that no setup ran, and that the agent's log holds no `session/new`) | pass |
 | AC-4 condition | `HA::TestPerProjectSetup::test_s4_1_the_first_session_runs_setup_before_the_agent_sees_it` | pass |
-| AC-4 boundary | `HA::TestPerProjectSetup::test_s4_2_a_second_session_in_the_same_project_does_not_rerun_it`; `HA::TestHostRunSharesTheSetup::test_s4_5_host_run_and_project_setup_run_the_same_steps_in_the_same_order` | pass |
-| AC-4 negative | `HA::TestFailedSetup::test_s4_3_a_failed_setup_is_an_error_naming_the_project` | pass |
+| AC-4 boundary | `HA::TestPerProjectSetup::test_s4_2_a_second_session_in_the_same_project_does_not_rerun_it`; `HA::TestHostRunSharesTheSetup::test_s4_5_host_run_and_project_setup_run_the_same_steps_in_the_same_order` (host-run runs the same verb's code: both enter `_launch_host`, and the same four lines run once each, in order); the six named host-run test files pass unchanged | pass |
+| AC-4 negative | `HA::TestFailedSetup::test_s4_3_a_failed_setup_is_an_error_naming_the_project` (asserts the error names the project and that the agent's log holds no `session/new`) | pass |
 | AC-5 condition | `HA::TestClaudeMcpAndEnv::test_s5_1_the_adapter_gets_the_stack_mcp_file_and_strict` | pass |
 | AC-5 boundary | `HA::TestClaudeMcpAndEnv::test_s5_2_no_strict_keeps_the_file_and_drops_strict` | pass |
 | AC-5 negative | `tests/test_acp_verb.py::TestTheClaudeWrapper::test_strict_adds_the_hub_and_strict_before_the_sdk_args` | pass |
 | AC-6 condition | `BA::TestTheOffer::test_s6_1_a_missing_or_other_version_asks_exactly[None]`, `test_s6_2_yes_runs_the_npm_install`, `test_s6_3_c_runs_the_typed_command_through_bash`, `test_s6_4_no_runs_nothing_and_builds_on` | pass |
 | AC-6 boundary | `BA::TestTheOffer::test_s6_5_the_pinned_version_asks_nothing` | pass |
-| AC-6 negative | `HA::TestTheAdapterAtLaunch::test_s6_8_a_missing_adapter_refuses_on_stderr` | pass |
+| AC-6 negative | `HA::TestTheAdapterAtLaunch::test_s6_8_a_missing_adapter_refuses_on_stderr` (asserts exit 1, empty stdout, the install command on stderr, and that the agent never started) | pass |
 | AC-7 condition | `tests/test_launcher_build.py::TestBuildWritesGlobalLaunchers::test_gh571_s7_1_build_writes_the_host_acp_launcher[omp]` and `[claude]`; `test_gh571_s7_3_uninstall_removes_what_build_wrote` | pass |
 | AC-7 boundary | `tests/test_launcher_build.py::TestBuildWritesGlobalLaunchers::test_gh571_s7_2_a_second_build_leaves_one_identical_launcher` | pass |
 | AC-7 negative | `tests/test_launcher_build.py::TestBuildWritesGlobalLaunchers::test_gh571_s7_4_no_host_acp_launcher_without_acp[opencode]`, `[antigravity]`, `[codex]` | pass |
@@ -151,19 +151,20 @@ Tests changed by design for AC-7 (each listed with its old and new assertion):
 | Layer | Command | Status + result | Log |
 |---|---|---|---|
 | tests | `mise exec -- tools/run-tests.sh` | PASSED — 4202 passed, 80 skipped, 0 failed | work/tests.log |
-| coverage | `mise exec -- uv run --extra dev pytest -q --cov=src --cov-branch --cov-fail-under=80` | PASSED — 85.62% total (80% required); `acprelay.py` 93%, `launchscript.py` 99% | work/coverage.log |
+| coverage | `mise exec -- uv run --extra dev pytest -q --cov=src --cov-branch --cov-fail-under=80` | PASSED — 85.68% total (80% required); `acprelay.py` 93%, `launchscript.py` 99% | work/coverage.log |
 | types | pyright, as `tools/gauntlet-layers.json` declares | PASSED — 0 errors, 0 warnings | work/types.log |
 | lint | `mise exec -- uv run --extra dev ruff check src tests tools` | PASSED — 0 findings | work/lint.log |
 | shellcheck | `mise exec -- sh -c 'shellcheck $(git ls-files "*.sh")'` | PASSED — 0 findings | work/shellcheck.log |
 | secrets | `mise exec -- gitleaks detect --no-banner --redact` | PASSED — no leaks | work/secrets.log |
 | property | hypothesis inside the tests layer: S3.5 and S3.6, 200 examples each | PASSED | work/tests.log |
-| adversarial review | `spec-evidence-adversary`, 2 rounds | PASSED — round 1: 0 findings, 4 hunches, all fixed in 087249a with tests seen failing; round 2 (on 087249a): 0 findings, 2 hunches declined with evidence | findings-code-round1.md, findings-code.md |
-| real execution | `tools/acp-smoke.py --verb host-acp` for omp and claude, on 087249a | PASSED — 9 `ok` lines and `PASS` each | smoke-host-acp-omp.log, smoke-host-acp-claude.log |
+| adversarial review | `spec-evidence-adversary`, 2 rounds | PASSED for 087249a — round 1: 0 findings, 4 hunches, all fixed in 087249a with tests seen failing; round 2 (on 087249a): 0 findings, 2 hunches declined with evidence. NOT RUN for e8cdfd9 (see below) | findings-code-round1.md, findings-code.md |
+| real execution | `tools/acp-smoke.py --verb host-acp` on e8cdfd9: claude on `gortex-ghissues`, omp on `hostspike` | PASSED — 10 `ok` lines and `PASS` each; `initialize` in 6.7 s and 5.1 s | smoke-host-acp-claude.log, smoke-host-acp-omp.log |
 
 ### Layers not run as specified
 - N-A: none.
 - UNAVAILABLE: none.
-- SUBSTITUTED: S2.1 real-agent timing ran on the `hostspike` stack in an isolated `XDG_DATA_HOME`, not on `gortex-ghissues`. That stack is built only for claude on this machine, and building it for omp would rewrite runtime state that live sessions share. It cannot detect a slow per-stack setup specific to `gortex-ghissues`, such as long tool installs.
+- SUBSTITUTED: none. (The omp half of S2.1 runs on `hostspike` by SPEC Revision 7, which the engineer ruled: `gortex-ghissues` is not built for omp on this machine.)
+- NOT RUN: adversarial review of e8cdfd9. Commit e8cdfd9 (`project-setup` runs `_launch_host` in a project-only mode, Revision 6) came after round 2, and the run allows only two rounds. It could catch a project-only path that reaches a per-stack step, such as the home lock or materialize; S4.6 checks that the host home is never created.
 - NOT RUN: mutation (`mutmut run "harnessed.acprelay.x_*" "harnessed.launchscript.x_global_verbs*"`). Started, then stopped by the engineer during mutant generation, before any mutant was scored. It would catch assertions too weak to kill a changed relay branch.
 - NOT RUN YET: live (`live.yml`, both jobs). It triggers on `src/harnessed/launcher.py` and runs on the pull request.
 
@@ -196,4 +197,6 @@ Tests changed by design for AC-7 (each listed with its old and new assertion):
 - The first claude smoke run also failed because the test command set `XDG_DATA_HOME` to a scratch folder, which hid mise's own installs. The final runs set `MISE_DATA_DIR` to the real mise data folder. That was a fault of the test command, not of the product.
 - The claude adapter was installed by the engineer's instruction with `mise use -g npm:@agentclientprotocol/claude-agent-acp@0.85.1`, which wrote the user's global mise config.
 - `src/harnessed/__main__.py` shows 0% coverage: only the `python -m harnessed` subprocess in S4.6 runs it, and coverage does not follow subprocesses. S4.6 passing is its proof.
-- AC-4 says `host-run` "runs the same verb". `host-run` runs the same four steps, in the same order, at its own call sites, not by calling `project-setup` (Revision 4, by the engineer's ruling to keep existing tests unchanged).
+- AC-4 says `host-run` "runs the same verb". Gate 2 pass 1 ruled it unproven while the two verbs ran the same steps through separate code. Since e8cdfd9, `project-setup` calls `_launch_host(..., project_only=True)`, so both verbs run the same per-project lines at their existing call sites (Revision 6).
+- Gauntlet run 4 (on e8cdfd9) failed one timing test, `tests/test_launcher_timeouts.py::TestRunTaggedAcceptsATimeout::test_a_success_is_never_reported_as_a_timeout` (0.05 s sleep, 0.35 s limit), while two smoke runs loaded the machine. This branch changes neither that test nor `proc.py`; it passed 5 of 5 alone, and in the final run.
+- The session running this build was killed once during a gauntlet rerun; the final gauntlet was rerun from a clean tree at e8cdfd9.
