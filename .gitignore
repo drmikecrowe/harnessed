@@ -77,7 +77,8 @@ mutants/
 
 .old-coder/**/logs/
 
-# Spec-Evidence working files and the gauntlet stamp. The leading slash keeps the per-story
-# stamp copy that /spec-evidence:build commits.
+# Spec-Evidence working files and the gauntlet stamp. `work/` is UNANCHORED on purpose: the root has
+# one, and so does every story directory (`spec-evidence/<story>/work/`, the gate records). The
+# stamp is anchored for the opposite reason: /spec-evidence:build commits a copy per story.
 work/
 /gauntlet-stamp.json

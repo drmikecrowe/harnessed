@@ -1,4 +1,4 @@
-# gitleaks false positives, reviewed 2026-10-09. Test sentinels marked `noqa: S105 - a fixture`,
+# gitleaks false positives, reviewed 2026-10-09: test sentinel strings (each marked `noqa: S105`),
 # plus two files that exist only in history. A new finding still fails the secrets layer.
 22d288a4e28f4345bdbb60944c8f429cc5c38fe3:tests/test_capability_tests.py:generic-api-key:303
 f02f385f56f6a53f466071a999cfb09280889856:tests/test_broker_launch_gate.py:generic-api-key:29
