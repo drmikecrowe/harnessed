@@ -56,6 +56,13 @@ def run_script(tmp_path):
     argv_out = tmp_path / "argv.txt"
 
     def _run(script: Path, *extra: str) -> list[str]:
+        # GH-565: a local launcher execs its GLOBAL launcher, which execs `harnessed`. Write the
+        # real global launcher beside the stub, so the whole chain runs rather than being parsed.
+        # The first WORD only: a flag value may hold a newline, so the statement can span lines.
+        target = _exec_line(script)[len("exec "):].split(" ", 1)[0]
+        parsed = launchscript.parse_global_name(target)
+        if parsed is not None:
+            assert launchscript.write_globals(parsed[1], parsed[0], bin_dir) == []
         env = {
             **os.environ,
             "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
@@ -153,8 +160,9 @@ class TestTwoStacksDoNotCollide:
         launchscript.write("container-run", "beta", "claude", proj)
         alpha = launchscript._read_as_the_shell_does(proj / "claude-alpha-container")
         beta = launchscript._read_as_the_shell_does(proj / "claude-beta-container")
-        assert "--stack alpha" in alpha and "--stack beta" not in alpha
-        assert "--stack beta" in beta and "--stack alpha" not in beta
+        # GH-565: the stack is carried by the GLOBAL launcher each file execs, not by a flag.
+        assert "exec harnessed-claude-alpha-container " in alpha and "beta" not in alpha
+        assert "exec harnessed-claude-beta-container " in beta and "alpha" not in beta
 
 
 class TestTheExcludeSurfaceGrowsPerStack:
@@ -376,7 +384,11 @@ class TestParityWithCommandFor:
         exec_line = next(ln for ln in content.split("\n") if ln.startswith("exec "))
         assert exec_line.endswith(' "$@"'), "S4: the script forwards its own argv"
         body = shlex.split(exec_line[len("exec "):-len(' "$@"')])
-        assert body == authority[:-1]
+        # GH-565: the local line execs the global launcher, followed by exactly the per-launch
+        # flags `command_for` puts after `--stack <name>`, minus the separator.
+        stack_at = authority.index("--stack")
+        assert body == [launchscript.global_name("host-run", "serena", "claude"),
+                        *authority[stack_at + 2:-1]]
 
 
 class TestProvenanceComment:
@@ -468,8 +480,10 @@ class TestHostileInput:
         proj = tmp_path / "we ird's proj"
         proj.mkdir()
         script = launchscript.write("host-run", "serena", "claude", proj)
-        # The path reaches the script through `$0` and the `cd` line now, not argv (#544).
-        assert run_script(script)[2] == "."
+        # The path reaches the script through `$0` and the `cd` line now, not argv (#544). Since
+        # GH-565 no path token reaches argv at all: the global launcher names none.
+        argv = run_script(script)
+        assert argv == ["host-run", "claude", "--stack", "serena"]
         assert (tmp_path / "argv.txt.cwd").read_text().strip() == str(proj.resolve())
 
 
@@ -1087,3 +1101,301 @@ class TestTheTargetPathIsCheckedForWhatItIs:
         first = launchscript.write("host-run", "serena", "claude", proj)
         assert first is not None and first.is_file()
         assert self._write_within(proj) is not None, "our own file is still rewritable"
+
+
+# ---------------------------------------------------------------------------------------------------
+# GH-565 — global launchers in ~/.local/bin, and the local launcher that execs one.
+# ---------------------------------------------------------------------------------------------------
+
+_GLOBAL_STUB = """#!/bin/sh
+: > "$ARGV_OUT"
+pwd -P > "$ARGV_OUT.cwd"
+for a in "$@"; do printf '%s\\0' "$a" >> "$ARGV_OUT"; done
+"""
+
+
+@pytest.fixture
+def gbin(tmp_path):
+    """A stand-in for ~/.local/bin, so no test writes the real one."""
+    d = tmp_path / "gbin"
+    d.mkdir()
+    return d
+
+
+@pytest.fixture
+def run_global(tmp_path, gbin):
+    """Run a script with `gbin` and a stub `harnessed` on PATH, from a chosen cwd.
+
+    Returns the argv and the cwd the stub `harnessed` received, so a chain of local launcher ->
+    global launcher -> harnessed is executed for real rather than parsed.
+    """
+    stub_dir = tmp_path / "stubbin"
+    stub_dir.mkdir()
+    stub = stub_dir / "harnessed"
+    stub.write_text(_GLOBAL_STUB, encoding="utf-8")
+    stub.chmod(0o755)
+    argv_out = tmp_path / "gargv.txt"
+
+    def _run(script: Path, *extra: str, cwd: Path) -> tuple[list[str], Path]:
+        env = {
+            **os.environ,
+            "PATH": f"{gbin}{os.pathsep}{stub_dir}{os.pathsep}{os.environ['PATH']}",
+            "ARGV_OUT": str(argv_out),
+        }
+        result = subprocess.run(
+            [str(script), *extra], env=env, cwd=cwd, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, f"script failed: {result.stderr}"
+        raw = argv_out.read_bytes()
+        argv = [part.decode("utf-8") for part in raw.split(b"\x00")[:-1]]
+        cwd_seen = Path(Path(f"{argv_out}.cwd").read_text(encoding="utf-8").strip())
+        return argv, cwd_seen
+
+    return _run
+
+
+def _exec_line(path: Path) -> str:
+    content = launchscript._read_as_the_shell_does(path)
+    return next(ln for ln in content.split("\n") if ln.startswith("exec "))
+
+
+class TestGlobalNames:
+    """The global name is the local name with a `harnessed-` prefix, read by the same grammar."""
+
+    def test_global_name_per_verb(self):
+        assert launchscript.global_name("host-run", "default", "claude") == "harnessed-claude-default-host"
+        assert launchscript.global_name("container-run", "default", "claude") == (
+            "harnessed-claude-default-container"
+        )
+        assert launchscript.global_name("container-acp", "default", "claude") == "harnessed-claude-default-acp"
+
+    def test_a_dotted_stack_parses_whole(self):
+        name = "harnessed-claude-default.codebase-memory-mcp.gh-issue-tracker-container"
+        assert launchscript.parse_global_name(name) == (
+            "claude", "default.codebase-memory-mcp.gh-issue-tracker", "container",
+        )
+
+    def test_acp_is_a_backend_only_in_a_global_name(self):
+        """Must NOT: a local launcher name never carries `acp`."""
+        assert launchscript.parse_global_name("harnessed-claude-default-acp") == ("claude", "default", "acp")
+        assert launchscript.parse_script_name("claude-default-acp") is None
+        assert launchscript.script_backend("claude-default-acp") is None
+
+    def test_a_local_name_is_not_a_global_one(self):
+        assert launchscript.parse_global_name("claude-default-container") is None
+
+    def test_a_prefix_alone_is_not_enough(self):
+        assert launchscript.parse_global_name("harnessed-") is None
+        assert launchscript.parse_global_name("harnessed-nosuch-default-host") is None
+
+    @settings(max_examples=200, suppress_health_check=[HealthCheck.function_scoped_fixture])
+    @given(
+        stack=st.from_regex(r"[a-z0-9][a-z0-9._-]{0,24}", fullmatch=True),
+        harness=st.sampled_from(["claude", "omp", "codex", "opencode", "antigravity"]),
+        verb=st.sampled_from(["host-run", "container-run", "container-acp"]),
+    )
+    def test_round_trip(self, stack, harness, verb):
+        name = launchscript.global_name(verb, stack, harness)
+        parsed = launchscript.parse_global_name(name)
+        assert parsed == (harness, stack, launchscript._GLOBAL_VERB_SUFFIX[verb])
+
+
+class TestWriteGlobals:
+    """S1 — `write_globals` leaves one launcher per backend, and nothing it did not write is touched."""
+
+    def test_s1_1_three_launchers_for_claude(self, gbin):
+        refused = launchscript.write_globals("default", "claude", gbin)
+        assert refused == []
+        expected = {
+            "harnessed-claude-default-host": 'exec harnessed host-run claude --stack default "$@"',
+            "harnessed-claude-default-container": 'exec harnessed container-run claude --stack default "$@"',
+            "harnessed-claude-default-acp": 'exec harnessed container-acp claude --stack default "$@"',
+        }
+        assert sorted(p.name for p in gbin.iterdir()) == sorted(expected)
+        for name, line in expected.items():
+            path = gbin / name
+            assert stat.S_IMODE(path.stat().st_mode) == 0o755
+            lines = launchscript._read_as_the_shell_does(path).split("\n")
+            assert lines[1] == launchscript.SENTINEL
+            assert _exec_line(path) == line
+
+    def test_s1_2_no_acp_launcher_for_codex(self, gbin):
+        launchscript.write_globals("default", "codex", gbin)
+        assert sorted(p.name for p in gbin.iterdir()) == [
+            "harnessed-codex-default-container", "harnessed-codex-default-host",
+        ]
+
+    def test_s1_3_dotted_stack(self, gbin):
+        stack = "default.codebase-memory-mcp.gh-issue-tracker"
+        launchscript.write_globals(stack, "claude", gbin)
+        path = gbin / f"harnessed-claude-{stack}-container"
+        assert _exec_line(path) == f'exec harnessed container-run claude --stack {stack} "$@"'
+
+    def test_s1_5_no_global_launcher_names_a_path(self, gbin):
+        launchscript.write_globals("default", "claude", gbin)
+        for path in gbin.iterdir():
+            tokens = shlex.split(_exec_line(path)[len("exec "):])
+            assert tokens[:2] in (["harnessed", "host-run"], ["harnessed", "container-run"],
+                                  ["harnessed", "container-acp"])
+            assert tokens[2:] == ["claude", "--stack", "default", "$@"]
+
+    def test_s1_7_identical_launcher_is_not_rewritten(self, gbin):
+        launchscript.write_globals("default", "claude", gbin)
+        path = gbin / "harnessed-claude-default-container"
+        os.utime(path, (1_000_000, 1_000_000))
+        before = path.stat()
+        launchscript.write_globals("default", "claude", gbin)
+        after = path.stat()
+        assert (after.st_ino, after.st_mtime) == (before.st_ino, before.st_mtime)
+
+    def test_a_stale_launcher_of_ours_is_rewritten(self, gbin):
+        path = gbin / "harnessed-claude-default-container"
+        path.write_text(f"#!/bin/sh\n{launchscript.SENTINEL}\nexec old\n", encoding="utf-8")
+        assert launchscript.write_globals("default", "claude", gbin) == []
+        assert _exec_line(path) == 'exec harnessed container-run claude --stack default "$@"'
+
+    def test_s1_8_a_foreign_file_is_left_alone(self, gbin):
+        path = gbin / "harnessed-claude-default-container"
+        path.write_bytes(b"#!/bin/sh\necho mine\n")
+        refused = launchscript.write_globals("default", "claude", gbin)
+        assert refused == [path]
+        assert path.read_bytes() == b"#!/bin/sh\necho mine\n"
+        assert (gbin / "harnessed-claude-default-host").is_file(), "the other launchers still land"
+
+    def test_a_directory_in_the_way_is_refused(self, gbin):
+        (gbin / "harnessed-claude-default-host").mkdir()
+        refused = launchscript.write_globals("default", "claude", gbin)
+        assert refused == [gbin / "harnessed-claude-default-host"]
+
+    def test_a_symlink_is_never_written_through_or_removed(self, gbin, tmp_path):
+        """Even one pointing at a file that carries our sentinel: the write would land elsewhere."""
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.write_text(f"#!/bin/sh\n{launchscript.SENTINEL}\nexec x\n", encoding="utf-8")
+        link = gbin / "harnessed-claude-default-host"
+        link.symlink_to(elsewhere)
+        assert launchscript.write_globals("default", "claude", gbin) == [link]
+        assert elsewhere.read_text(encoding="utf-8").endswith("exec x\n")
+        removed, refused = launchscript.remove_globals("default", "claude", gbin)
+        assert link not in removed and link in refused
+        assert link.is_symlink()
+
+    def test_s1_11_an_unwritable_dir_never_raises(self, tmp_path):
+        target = tmp_path / "not-a-dir"
+        target.write_text("file", encoding="utf-8")
+        refused = launchscript.write_globals("default", "claude", target)
+        assert len(refused) == 3
+
+    def test_a_stack_that_is_not_one_path_component_writes_nothing(self, gbin):
+        assert launchscript.write_globals("x/../../evil", "claude", gbin) != []
+        assert list(gbin.iterdir()) == []
+
+    def test_the_bin_dir_is_created(self, tmp_path):
+        target = tmp_path / "home" / ".local" / "bin"
+        assert launchscript.write_globals("default", "claude", target) == []
+        assert (target / "harnessed-claude-default-host").is_file()
+
+    def test_the_default_dir_is_the_user_bin(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        launchscript.write_globals("default", "claude")
+        assert (tmp_path / ".local" / "bin" / "harnessed-claude-default-host").is_file()
+
+
+class TestRunningAGlobalLauncher:
+    """S2 — a global launcher launches where it is run, and passes every argument on."""
+
+    def test_s2_1_cwd_is_the_project(self, gbin, run_global, tmp_path):
+        launchscript.write_globals("default", "claude", gbin)
+        d = tmp_path / "D"
+        d.mkdir()
+        argv, cwd = run_global(gbin / "harnessed-claude-default-container", "--fresh", cwd=d)
+        assert argv == ["container-run", "claude", "--stack", "default", "--fresh"]
+        assert cwd == d.resolve()
+
+    def test_s2_2_separator_and_agent_flags_pass_through(self, gbin, run_global, tmp_path):
+        launchscript.write_globals("default", "claude", gbin)
+        argv, _ = run_global(
+            gbin / "harnessed-claude-default-container", "-x", "--", "--resume", "abc", cwd=tmp_path,
+        )
+        assert argv == ["container-run", "claude", "--stack", "default", "-x", "--", "--resume", "abc"]
+
+
+class TestTheLocalLauncherExecsTheGlobalOne:
+    """S3 — the in-project launcher keeps only per-launch flags and calls the global launcher."""
+
+    def test_s3_1_body(self, proj):
+        written = launchscript.write(
+            "container-run", "default", "claude", proj, no_strict_mcp=True,
+            argv=["container-run", "claude", "--no-strict-mcp-config"],
+        )
+        assert written is not None
+        assert written == proj.resolve() / "claude-default-container"
+        lines = launchscript._read_as_the_shell_does(written).split("\n")
+        assert lines[0] == "#!/bin/sh"
+        assert lines[1] == launchscript.SENTINEL
+        assert lines[2].startswith("# as typed: ")
+        assert lines[3] == 'CDPATH= cd -- "$(dirname -- "$0")" || exit 1'
+        assert lines[4] == 'exec harnessed-claude-default-container --no-strict-mcp-config "$@"'
+
+    def test_s3_2_aoe_flags_stay_local(self, proj, gbin):
+        written = launchscript.write(
+            "container-run", "default", "claude", proj, group="g", title="t",
+        )
+        assert written is not None
+        assert _exec_line(written) == (
+            'exec harnessed-claude-default-container --aoe-group g --aoe-title t "$@"'
+        )
+        launchscript.write_globals("default", "claude", gbin)
+        global_text = (gbin / "harnessed-claude-default-container").read_text(encoding="utf-8")
+        assert "--aoe-group" not in global_text and "--aoe-title" not in global_text
+
+    def test_no_bare_stack_flag_or_path_in_the_local_line(self, proj):
+        written = launchscript.write("host-run", "default", "claude", proj)
+        assert written is not None
+        assert _exec_line(written) == 'exec harnessed-claude-default-host "$@"'
+
+    def test_s3_4_the_project_is_the_launchers_folder(self, proj, gbin, run_global, tmp_path):
+        written = launchscript.write("container-run", "default", "claude", proj)
+        assert written is not None
+        launchscript.write_globals("default", "claude", gbin)
+        elsewhere = tmp_path / "E"
+        elsewhere.mkdir()
+        argv, cwd = run_global(written, "--", cwd=elsewhere)
+        assert cwd == proj.resolve()
+        assert argv == ["container-run", "claude", "--stack", "default", "--"]
+
+
+class TestRemoveGlobals:
+    """S5 — `remove_globals` deletes exactly one (stack, harness) pair's launchers."""
+
+    def test_s5_1_only_the_named_pair_goes(self, gbin):
+        launchscript.write_globals("default", "claude", gbin)
+        launchscript.write_globals("default.x", "claude", gbin)
+        launchscript.write_globals("default", "codex", gbin)
+        removed, refused = launchscript.remove_globals("default", "claude", gbin)
+        assert sorted(p.name for p in removed) == [
+            "harnessed-claude-default-acp", "harnessed-claude-default-container",
+            "harnessed-claude-default-host",
+        ]
+        assert refused == []
+        assert sorted(p.name for p in gbin.iterdir()) == [
+            "harnessed-claude-default.x-acp", "harnessed-claude-default.x-container",
+            "harnessed-claude-default.x-host", "harnessed-codex-default-container",
+            "harnessed-codex-default-host",
+        ]
+
+    def test_s5_3_a_foreign_file_is_not_removed(self, gbin):
+        path = gbin / "harnessed-claude-default-host"
+        path.write_bytes(b"#!/bin/sh\necho mine\n")
+        removed, refused = launchscript.remove_globals("default", "claude", gbin)
+        assert removed == [] and refused == [path]
+        assert path.read_bytes() == b"#!/bin/sh\necho mine\n"
+
+    def test_nothing_there_removes_nothing(self, gbin):
+        assert launchscript.remove_globals("default", "claude", gbin) == ([], [])
+
+    def test_acp_is_removed_even_for_a_harness_without_acp_mode(self, gbin):
+        """A launcher of ours is removed by name; the harness's ACP support does not matter."""
+        path = gbin / "harnessed-codex-default-acp"
+        path.write_text(f"#!/bin/sh\n{launchscript.SENTINEL}\nexec x\n", encoding="utf-8")
+        removed, _ = launchscript.remove_globals("default", "codex", gbin)
+        assert removed == [path]

@@ -317,6 +317,11 @@ def xdg_config_home() -> Path:
     return Path(xdg) if xdg else Path.home() / ".config"
 
 
+def user_bin_dir() -> Path:
+    """Return ~/.local/bin, where `harnessed install` and every launch write global launchers."""
+    return Path.home() / ".local" / "bin"
+
+
 def xdg_state_home() -> Path:
     """Return $XDG_STATE_HOME, defaulting to ~/.local/state."""
     xdg = os.environ.get("XDG_STATE_HOME", "")
