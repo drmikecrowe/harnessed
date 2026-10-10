@@ -2089,3 +2089,17 @@ class TestRmLeavesGlobalLaunchersAlone:
         assert rec.removed() == ["s1"], "the row is dropped, as S4.1 says"
         after = {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in bin_dir.iterdir()}
         assert after == before
+
+
+class TestRowsReferencingIsPerSession:
+    """PR #570 review: one malformed session must not hide the rows after it."""
+
+    def test_a_bad_session_does_not_stop_the_report(self, monkeypatch, tmp_path):
+        hit = launchscript.write("container-run", "default", "claude", tmp_path)
+        assert hit is not None
+        rows = [
+            {"id": "s0", "path": 123, "command": f"./{hit.name} --"},
+            {"id": "s1", "path": str(tmp_path), "command": f"{hit} --"},
+        ]
+        Recorder(sessions=json.dumps(rows)).install(monkeypatch)
+        assert aoe.rows_referencing({"harnessed-claude-default-container"}) == [str(hit)]

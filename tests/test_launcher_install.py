@@ -1341,3 +1341,18 @@ class TestRetiredShimMutationGaps:
             encoding="utf-8",
         )
         assert launcher._is_retired_shim(shim, "claude_time") is True
+
+
+class TestRetiredShimWithASpacedBinaryPath:
+    """PR #570 review claimed a quoted binary path with spaces splits into more than 6 tokens.
+    `install_stack` wrote it through `shlex.quote`, and `shlex.split` keeps it one token."""
+
+    def test_a_spaced_binary_path_is_still_the_old_shim(self, tmp_path):
+        import shlex as _shlex
+        shim = tmp_path / "claude_time"
+        binary = _shlex.quote("/opt/my tools/bin/harnessed")
+        shim.write_text(
+            f'#!/usr/bin/env bash\nexec {binary} container-run --stack claude_time "$@"\n',
+            encoding="utf-8",
+        )
+        assert launcher._is_retired_shim(shim, "claude_time") is True

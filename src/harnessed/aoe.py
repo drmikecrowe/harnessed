@@ -1245,11 +1245,13 @@ def rows_referencing(names: set[str]) -> list[str]:
         exe = _bin()
         if exe is None:
             return found
-        for session in _sessions(exe):
-            try:
-                tokens = shlex.split(session.get("command") or "")
-            except ValueError:
-                continue
+        sessions = _sessions(exe)
+    except Exception:  # noqa: BLE001 — a report, best-effort like the rest of this module.
+        return found
+    for session in sessions:
+        # Per session: aoe's JSON is not our schema, and one malformed row must not hide the rest.
+        try:
+            tokens = shlex.split(session.get("command") or "")
             if not _is_launcher_script(tokens):
                 continue
             script_tokens = _exec_tokens(tokens, session.get("path"))
@@ -1258,8 +1260,8 @@ def rows_referencing(names: set[str]) -> list[str]:
                 if not script.is_absolute():
                     script = Path(session.get("path") or "") / script
                 found.append(str(script))
-    except Exception:  # noqa: BLE001 — a report, best-effort like the rest of this module.
-        return found
+        except Exception:  # noqa: BLE001, S112 — see the comment above.
+            continue
     return found
 
 
