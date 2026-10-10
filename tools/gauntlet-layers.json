@@ -4,5 +4,5 @@
   {"name": "types", "cmd": "mise exec -- sh -c 'pyright --pythonpath \"$(uv run --extra dev python -c \"import sys; print(sys.executable)\")\"'"},
   {"name": "lint", "cmd": "mise exec -- uv run --extra dev ruff check src tests tools"},
   {"name": "shellcheck", "cmd": "mise exec -- sh -c 'shellcheck $(git ls-files \"*.sh\")'"},
-  {"name": "secrets", "cmd": "mise exec -- gitleaks detect --no-banner"}
+  {"name": "secrets", "cmd": "mise exec -- gitleaks detect --no-banner --redact"}
 ]
