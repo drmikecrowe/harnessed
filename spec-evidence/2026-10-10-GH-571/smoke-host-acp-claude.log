@@ -1,4 +1,4 @@
-run: /home/mcrowe/.local/share/harnessed/venvs/GH-571/.venv/bin/harnessed host-acp claude --stack gortex-ghissues (in /tmp/acp-smoke-launch-gn2zd3dw)
+run: /home/mcrowe/.local/share/harnessed/venvs/GH-571/.venv/bin/harnessed host-acp claude --stack gortex-ghissues (in /tmp/acp-smoke-launch-1xhtyt3d)
 [INFO] Assembling 'gortex-ghissues' (claude) host-native (no container) ...
 [INFO] egress (gh-issue-tracker): the declared egress allowlist is NOT enforced 
 on the host backend — it has no network boundary to apply it to (isolation: 
@@ -13,9 +13,9 @@ in a container to get the allowlist enforced.
 skipped)
 host-native: 
 CLAUDE_CONFIG_DIR=/home/mcrowe/.local/share/harnessed/home/gortex-ghissues/claud
-e cwd=/tmp/acp-smoke-launch-gn2zd3dw — no container
+e cwd=/tmp/acp-smoke-launch-1xhtyt3d — no container
 ok: initialize
-ok: initialize answered in 6.7s
+ok: initialize answered in 3.0s
 [INFO] egress (gh-issue-tracker): the declared egress allowlist is NOT enforced 
 on the host backend — it has no network boundary to apply it to (isolation: 
 none). The agent can reach anything this machine can. Run this stack in a 
@@ -26,15 +26,15 @@ enforced on the host backend — it has no network boundary to apply it to
 in a container to get the allowlist enforced.
 [INFO] init (gh-issue-tracker): host
 [INFO] init (gortex): host
-[session/create] sessionId=9dc91eb6-e961-4855-b9e8-fafa08648042 phase=validate-cwd durationMs=11 totalMs=11
-[session/create] sessionId=9dc91eb6-e961-4855-b9e8-fafa08648042 phase=settings durationMs=197 totalMs=208
-[session/query] sessionId=9dc91eb6-e961-4855-b9e8-fafa08648042 resume=none apiType=native baseUrl=native
-[session/create] sessionId=9dc91eb6-e961-4855-b9e8-fafa08648042 phase=prepare-query durationMs=27 totalMs=236
-[session/create] sessionId=9dc91eb6-e961-4855-b9e8-fafa08648042 phase=sdk-initialize durationMs=12442 totalMs=12678
-[session/models] sessionId=9dc91eb6-e961-4855-b9e8-fafa08648042 phase=set-model durationMs=29 model=opus outcome=success
-[session/create] sessionId=9dc91eb6-e961-4855-b9e8-fafa08648042 phase=models durationMs=69 totalMs=12747
-[session/create] sessionId=9dc91eb6-e961-4855-b9e8-fafa08648042 phase=modes durationMs=4 totalMs=12751
-[session/create] sessionId=9dc91eb6-e961-4855-b9e8-fafa08648042 phase=register durationMs=14 totalMs=12764
+[session/create] sessionId=c3250ba0-ce81-44c2-8b37-8ffb0b0365de phase=validate-cwd durationMs=1 totalMs=1
+[session/create] sessionId=c3250ba0-ce81-44c2-8b37-8ffb0b0365de phase=settings durationMs=50 totalMs=51
+[session/query] sessionId=c3250ba0-ce81-44c2-8b37-8ffb0b0365de resume=none apiType=native baseUrl=native
+[session/create] sessionId=c3250ba0-ce81-44c2-8b37-8ffb0b0365de phase=prepare-query durationMs=15 totalMs=65
+[session/create] sessionId=c3250ba0-ce81-44c2-8b37-8ffb0b0365de phase=sdk-initialize durationMs=1140 totalMs=1206
+[session/models] sessionId=c3250ba0-ce81-44c2-8b37-8ffb0b0365de phase=set-model durationMs=23 model=opus outcome=success
+[session/create] sessionId=c3250ba0-ce81-44c2-8b37-8ffb0b0365de phase=models durationMs=32 totalMs=1238
+[session/create] sessionId=c3250ba0-ce81-44c2-8b37-8ffb0b0365de phase=modes durationMs=1 totalMs=1239
+[session/create] sessionId=c3250ba0-ce81-44c2-8b37-8ffb0b0365de phase=register durationMs=4 totalMs=1242
 ok: session/new
 ok: session/prompt
 ok: stopReason=end_turn
@@ -48,15 +48,15 @@ enforced on the host backend — it has no network boundary to apply it to
 in a container to get the allowlist enforced.
 [INFO] init (gh-issue-tracker): host
 [INFO] init (gortex): host
-[session/create] sessionId=6c08a7ff-6c63-4277-ab0f-bbd9ba9478d7 phase=validate-cwd durationMs=0 totalMs=0
-[session/create] sessionId=6c08a7ff-6c63-4277-ab0f-bbd9ba9478d7 phase=settings durationMs=53 totalMs=53
-[session/query] sessionId=6c08a7ff-6c63-4277-ab0f-bbd9ba9478d7 resume=none apiType=native baseUrl=native
-[session/create] sessionId=6c08a7ff-6c63-4277-ab0f-bbd9ba9478d7 phase=prepare-query durationMs=9 totalMs=63
-[session/create] sessionId=6c08a7ff-6c63-4277-ab0f-bbd9ba9478d7 phase=sdk-initialize durationMs=11377 totalMs=11439
-[session/models] sessionId=6c08a7ff-6c63-4277-ab0f-bbd9ba9478d7 phase=set-model durationMs=51 model=opus outcome=success
-[session/create] sessionId=6c08a7ff-6c63-4277-ab0f-bbd9ba9478d7 phase=models durationMs=52 totalMs=11491
-[session/create] sessionId=6c08a7ff-6c63-4277-ab0f-bbd9ba9478d7 phase=modes durationMs=0 totalMs=11491
-[session/create] sessionId=6c08a7ff-6c63-4277-ab0f-bbd9ba9478d7 phase=register durationMs=0 totalMs=11492
+[session/create] sessionId=4412a56c-494a-48a6-8be6-84ea4201f73d phase=validate-cwd durationMs=0 totalMs=0
+[session/create] sessionId=4412a56c-494a-48a6-8be6-84ea4201f73d phase=settings durationMs=12 totalMs=12
+[session/query] sessionId=4412a56c-494a-48a6-8be6-84ea4201f73d resume=none apiType=native baseUrl=native
+[session/create] sessionId=4412a56c-494a-48a6-8be6-84ea4201f73d phase=prepare-query durationMs=10 totalMs=21
+[session/create] sessionId=4412a56c-494a-48a6-8be6-84ea4201f73d phase=sdk-initialize durationMs=1040 totalMs=1061
+[session/models] sessionId=4412a56c-494a-48a6-8be6-84ea4201f73d phase=set-model durationMs=6 model=opus outcome=success
+[session/create] sessionId=4412a56c-494a-48a6-8be6-84ea4201f73d phase=models durationMs=9 totalMs=1071
+[session/create] sessionId=4412a56c-494a-48a6-8be6-84ea4201f73d phase=modes durationMs=0 totalMs=1071
+[session/create] sessionId=4412a56c-494a-48a6-8be6-84ea4201f73d phase=register durationMs=1 totalMs=1071
 ok: session/new
 ok: session/prompt
 ok: the session in /tmp/claude-1000/-home-mcrowe-Programming-Personal-harnessed-3-3-gh-571-host-acp/3fbde74c-0821-4111-82c2-87cd815dc820/scratchpad/smokeA reported '/tmp/claude-1000/-home-mcrowe-Programming-Personal-harnessed-3-3-gh-571-host-acp/3fbde74c-0821-4111-82c2-87cd815dc820/scratchpad/smokeA'
