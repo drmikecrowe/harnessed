@@ -53,6 +53,7 @@ Failure model (Tier 3):
 - S1.10 (negative) Given no stack `nosuch`, when `harnessed install nosuch claude` runs, then it exits nonzero and `~/.local/bin` gains no file.
 - S1.11 (negative) Given `~/.local/bin` is not writable, when `harnessed host-run claude <D> --stack default` runs, then one warning prints and the launch goes on.
 - S1.12 (negative) Given stack `default`, when `harnessed install default claude` runs, then `harnessed-acp-claude-default-host` does not exist: `-host` is reserved for `host-acp`, which this change does not build.
+- S1.13 (negative) Given `~/.local/bin/harnessed-claude-s-container` is a foreign file and aoe is usable, when `harnessed container-run claude <D> --stack s` runs, then D gains no file and no aoe row is registered: a local launcher would exec that foreign file. The launch itself goes on, and one warning names the refused launcher.
 
 ### S2. A global launcher launches where it is run (AC-2)
 - S2.1 Given `harnessed-claude-default-container` and a stub `harnessed` on `PATH` that records its argv and cwd, when the launcher runs from folder D with `--fresh`, then the stub records argv `container-run claude --stack default --fresh` and cwd D.
