@@ -2686,19 +2686,41 @@ def _persist_this_launch(
     return not dynstack.is_adhoc(stack)
 
 
-def _write_global_launchers(stack: str, harness: str) -> None:
+def _write_global_launchers(stack: str, harness: str, verb: str) -> bool:
     """Write `~/.local/bin/harnessed-<harness>-<stack>-<backend>` (GH-565). Never fatal.
 
     Skipped for an ad-hoc stack (Decide 2): nothing would ever remove its launchers. A launcher that
     could not be written is named once and the caller goes on.
+
+    Returns whether THIS launch's own global launcher (`verb`) is in place. When it is not, a local
+    launcher would exec whatever foreign file sits at that name, so the caller persists neither the
+    local launcher nor the aoe row (S1.13, SPEC revision 7).
     """
     if dynstack.is_adhoc(stack):
-        return
-    for target in launchscript.write_globals(stack, harness):
+        return True
+    refused = launchscript.write_globals(stack, harness)
+    for target in refused:
         _err.print(
             f"[yellow]warning:[/yellow] global launcher not written: {escape(str(target))}",
             highlight=False,
         )
+    own = launchscript.global_name(verb, stack, harness)
+    return all(target.name != own for target in refused)
+
+
+def _own_launcher_or_exit(in_place: bool, verb: str, stack: str, harness: str, *, only: bool) -> bool:
+    """Whether the launch may persist. Under `--create-aoe-only` a refused launcher is an error:
+    registering is the whole command, and skipping it would turn the command into a plain launch."""
+    if in_place:
+        return True
+    if only:
+        _err.print(
+            "[bold red]error:[/bold red] --create-aoe-only: "
+            f"{escape(launchscript.global_name(verb, stack, harness))} in ~/.local/bin is not a "
+            "harnessed launcher, so no aoe row was registered"
+        )
+        raise typer.Exit(1)
+    return False
 
 
 def _session_name_args(
@@ -3085,8 +3107,10 @@ def _launch_host(
     # class of dead row the comment above avoids by registering after assembly.
     # Both or neither, and not at all for an ad-hoc stack — see `_persist_this_launch`.
     # The global launchers come first: the local one, when written, execs one of them (GH-565).
-    _write_global_launchers(stack, harness)
-    if _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):
+    own_in_place = _write_global_launchers(stack, harness, "host-run")
+    if _own_launcher_or_exit(
+        own_in_place, "host-run", stack, harness, only=create_aoe_only
+    ) and _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):
         launchscript.write(
             "host-run", stack, harness, project_path,
             group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
@@ -4258,10 +4282,10 @@ def container_run(
     extra = list(_passthrough)
     # GH-565: every launch refreshes the global launchers, and `container-acp` writes no local one —
     # aoe never runs it, so there is no row for a local launcher to serve.
-    _write_global_launchers(stack, harness)
-    if not acp_mode and _persist_this_launch(
-        stack, group=aoe_group, title=aoe_title, only=create_aoe_only
-    ):
+    own_in_place = _write_global_launchers(stack, harness, "container-run")
+    if not acp_mode and _own_launcher_or_exit(
+        own_in_place, "container-run", stack, harness, only=create_aoe_only
+    ) and _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):
         launchscript.write(
             "container-run", stack, harness, project_path,
             group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp_config,
@@ -4765,7 +4789,7 @@ def build(
             for target in targets:
                 _build_stack(rt, stack, target, root_path, strict=not no_strict)
                 if root_path is None:
-                    _write_global_launchers(stack, target)
+                    _write_global_launchers(stack, target, "container-run")
         else:
             _build_images_cmd(rt, force=force)
             _reconcile_stacks(rt, root_path, strict=not no_strict, jobs=jobs, force=force)

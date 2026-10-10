@@ -406,9 +406,63 @@ class TestGlobalLaunchersAtLaunch:
         ]
         assert len(rows) == 1
 
+    def test_s1_13_a_refused_global_launcher_means_no_local_one(self, tmp_path, monkeypatch):
+        """PR #570 review: the local launcher would exec the foreign file at the global name."""
+        bin_dir = tmp_path / "home" / ".local" / "bin"
+        bin_dir.mkdir(parents=True)
+        (bin_dir / "harnessed-claude-s-container").write_bytes(b"#!/bin/sh\necho mine\n")
+        result, _b, project, rows = self._container(tmp_path, monkeypatch, "container-run")
+        assert result.exit_code == 0, result.output
+        assert list(project.iterdir()) == []
+        assert rows == []
+        assert _names("harnessed-claude-s-container", result.output)
+
+    def test_s1_13_host_run_too(self, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        (home / ".local" / "bin").mkdir(parents=True)
+        (home / ".local" / "bin" / "harnessed-claude-hostspike-host").write_bytes(b"#!/bin/sh\necho mine\n")
+        result, _bin_dir, project, rows, seen = self._host_run(
+            tmp_path, monkeypatch, "hostspike", aoe_bin="/usr/bin/aoe", home=home
+        )
+        assert result.exit_code == 0, result.output
+        assert list(project.iterdir()) == []
+        assert rows == []
+        assert len(seen) == 1, "the launch still reached the harness exec"
+
     def test_s3_3_container_acp_writes_no_local_launcher(self, tmp_path, monkeypatch):
         result, bin_dir, project, rows = self._container(tmp_path, monkeypatch, "container-acp")
         assert result.exit_code == 0, result.output
         assert list(project.iterdir()) == []
         assert rows == []
         assert (bin_dir / "harnessed-acp-claude-s-container").is_file(), "the global launchers still land"
+
+
+class TestCreateAoeOnlyWithARefusedLauncher:
+    """S1.13 under `--create-aoe-only`: registering is the command, so a refused launcher is an error,
+    not a silent fall-through into a plain launch."""
+
+    def test_it_exits_nonzero_and_registers_nothing(self, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        bin_dir = home / ".local" / "bin"
+        bin_dir.mkdir(parents=True)
+        (bin_dir / "harnessed-claude-s-container").write_bytes(b"#!/bin/sh\necho mine\n")
+        monkeypatch.setattr(Path, "home", lambda: home)
+        rows: list = []
+        monkeypatch.setattr(launcher.aoe, "sync_session", lambda *a, **k: rows.append(a) or True)
+        monkeypatch.setattr(launcher.aoe, "_bin", lambda: "/usr/bin/aoe")
+        catalog = tmp_path / "s"
+        catalog.mkdir()
+        (catalog / "stack.yaml").write_text("name: s\n")
+        monkeypatch.setattr(launcher.paths, "find_in_catalog", lambda *a: catalog)
+        patch_all(monkeypatch, "_runtime", lambda: "podman")
+        monkeypatch.setattr(launcher, "is_built", lambda *a: True)
+        monkeypatch.setattr(launcher.staleness, "check_profile_fresh", lambda *a: None)
+        project = tmp_path / "proj"
+        project.mkdir()
+        result = runner.invoke(
+            launcher.app,
+            ["container-run", "claude", str(project), "--stack", "s", "--create-aoe-only"],
+        )
+        assert result.exit_code == 1, result.output
+        assert rows == [] and list(project.iterdir()) == []
+        assert _names("harnessed-claude-s-container", result.output)
