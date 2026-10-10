@@ -12,7 +12,7 @@
 - AC-5, `uninstall` removes exactly one pair and names the rows it strands: S5.1 to S5.4.
 - AC-6, the old shim: S6.1 to S6.4.
 
-All 30 scenarios pass in the final run: 4141 tests passed and 80 skipped, against a baseline of 4056 passed. Coverage is 85.95% (threshold 80%), and pyright, ruff, shellcheck and gitleaks report zero findings.
+All 31 scenarios pass in the final run: 4141 tests passed and 80 skipped, against a baseline of 4056 passed. Coverage is 85.95% (threshold 80%), and pyright, ruff, shellcheck and gitleaks report zero findings.
 
 **What is not proven.**
 - `live.yml` (the container layer) runs only on the pull request, so it has not run yet.
@@ -33,7 +33,7 @@ All 30 scenarios pass in the final run: 4141 tests passed and 80 skipped, agains
 
 - Verdict: ready for review. Every scenario passes, and the gauntlet is green.
 - Delivered: global launchers in `~/.local/bin`, written by `install`, `build`, `host-run` and `container-run`, and removed by `uninstall`. The local launcher is written only for aoe and execs the global launcher. `rm` attributes rows by the exec'd global name.
-- Proven: S1.1 to S6.4 (30 scenarios), the full suite, coverage, types, lint, shellcheck, secrets, a property round trip, real execution, and two adversary rounds.
+- Proven: S1.1 to S6.4 (31 scenarios), the full suite, coverage, types, lint, shellcheck, secrets, a property round trip, real execution, and two adversary rounds.
 - Not proven: `live.yml` (UNAVAILABLE until the PR), changed-line coverage (SUBSTITUTED), mutation over whole changed files (SUBSTITUTED), and adversarial review of `2acfc39` and `4eb4543` (not run; test-only and config-only).
 - Stamp: `gauntlet-stamp.json`, result green, commit `2acfc39c7c6d48df9510a6952333a45de3cc00ca`, `dirty: true`. The only uncommitted files at the run's start were `baseline-stamp.json`, `findings-code.md` and `findings-code-round1.md` in this story directory, and no source.
 - Process: spec-evidence 0.0.1
