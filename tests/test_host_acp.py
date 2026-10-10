@@ -79,7 +79,7 @@ sys.exit(rc)
 class _Relay:
     """`acprelay.run` on a thread, with the editor's two pipes in the test's hands."""
 
-    def __init__(self, tmp: Path, *, setup_rc: int = 0) -> None:
+    def __init__(self, tmp: Path, *, setup_rc: int = 0, setup_cmd: list[str] | None = None) -> None:
         self.tmp = tmp
         self.log = tmp / "agent.log"
         self.events = tmp / "events.log"
@@ -102,6 +102,8 @@ class _Relay:
         self.code: int | None = None
 
         def setup_argv(project: Path) -> list[str]:
+            if setup_cmd is not None:
+                return setup_cmd
             return [sys.executable, str(setup), str(self.events), str(self.setup_rc),
                     "omp", str(project), "--stack", "s"]
 
@@ -647,3 +649,59 @@ class TestTheAgentExitsFirst:
         assert b"Fatal Python error" not in err, err.decode()
         assert code == 3, err.decode()
         assert out_path.read_bytes() == b""
+
+
+class TestAdversaryRound1:
+    """Hunches from adversary round 1 (findings-code-round1.md), each seen failing first."""
+
+    def test_a_setup_that_cannot_start_is_an_error_not_a_dead_relay(self, tmp_path):
+        r = _Relay(tmp_path, setup_cmd=[str(tmp_path / "no-such-setup-binary")])
+        try:
+            a, _ = _dirs(tmp_path)
+            reply, _ = r.request(1, "session/new", {"cwd": str(a), "mcpServers": []})
+            assert reply["error"]["code"] == -32000
+            assert str(a) in reply["error"]["message"]
+            pong, _ = r.request(2, "initialize", {})  # the relay is still serving
+            assert "result" in pong
+        finally:
+            r.close()
+
+    def test_a_lost_editor_stdout_stops_the_agent_instead_of_hanging(self, tmp_path):
+        """The editor's read end of our stdout goes away; the agent then writes far more than a
+        pipe holds. run() must return rather than wait forever on an agent blocked writing."""
+        agent = tmp_path / "loud.py"
+        agent.write_text(
+            "import sys, time\n"
+            "for _ in range(2000):\n"
+            "    sys.stdout.write('{\"jsonrpc\":\"2.0\",\"method\":\"x\",\"params\":{\"p\":\"' + 'y' * 4096 + '\"}}\\n')\n"
+            "    sys.stdout.flush()\n"
+            "time.sleep(60)\n"
+        )
+        out_r, out_w = os.pipe()
+        os.close(out_r)  # nobody will ever read the editor's channel
+        in_r, in_w = os.pipe()
+        result: dict = {}
+
+        def run() -> None:
+            # Not closed here: the relay's reader thread stays blocked reading stdin, as on a real
+            # editor pipe, and closing a reader another thread holds would block this thread.
+            stdin, stdout = os.fdopen(in_r, "rb"), os.fdopen(out_w, "wb")
+            result["code"] = acprelay.run(
+                [sys.executable, str(agent)], dict(os.environ), lambda p: ["true"],
+                cwd=tmp_path, stdin=stdin, stdout=stdout,
+            )
+            done.set()
+
+        done = threading.Event()
+        threading.Thread(target=run, daemon=True).start()
+        returned = done.wait(30)
+        os.close(in_w)
+        assert returned, "run() hung after the editor's stdout went away"
+        assert result["code"] != 0
+
+
+class TestExitStatus:
+    def test_a_signal_death_maps_to_128_plus_the_signal(self):
+        assert launcher._exit_status(-9) == 137
+        assert launcher._exit_status(3) == 3
+        assert launcher._exit_status(0) == 0

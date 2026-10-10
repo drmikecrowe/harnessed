@@ -55,9 +55,12 @@ def _intercept(
     # /dev/null: nobody is at a keyboard, so a setup that would prompt takes its no-TTY branch.
     # unbounded: per-project setup runs recipe setup and init scripts, which host-run runs with no
     # deadline either; a timeout here would fail a slow first setup that host-run lets finish.
-    rc = subprocess.run(
-        setup_argv(project), stdin=subprocess.DEVNULL, stdout=sys.stderr.fileno(), check=False,
-    ).returncode
+    try:
+        rc = subprocess.run(
+            setup_argv(project), stdin=subprocess.DEVNULL, stdout=sys.stderr.fileno(), check=False,
+        ).returncode
+    except OSError as exc:  # the setup command could not start at all
+        return _error(msg["id"], _SETUP_FAILED, f"per-project setup failed for {cwd} ({exc})")
     if rc != 0:
         return _error(msg["id"], _SETUP_FAILED, f"per-project setup failed for {cwd} (exit {rc})")
     done.add(project)
@@ -95,7 +98,13 @@ def run(
 
     def from_agent() -> None:
         for line in iter(agent_out.readline, b""):
-            emit(line)
+            try:
+                emit(line)
+            except OSError:
+                # The editor's channel is gone. Left running, the agent fills its stdout pipe and
+                # blocks, and `run` waits on it forever.
+                agent.kill()
+                return
 
     def from_editor() -> None:
         done: set[Path] = set()

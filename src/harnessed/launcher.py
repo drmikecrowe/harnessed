@@ -3081,7 +3081,12 @@ def _relay_acp(
     # _enter_buffered_busy") instead of exiting with the agent's code.
     sys.stdout.flush()
     sys.stderr.flush()
-    os._exit(code)
+    os._exit(_exit_status(code))
+
+
+def _exit_status(code: int) -> int:
+    """A Popen returncode as a shell reports it: a signal death (-N) is 128+N, not N mod 256."""
+    return 128 - code if code < 0 else code
 
 
 def _launch_host(
@@ -4857,7 +4862,7 @@ def _installed_acp_adapter() -> Optional[str]:
     try:
         out = subprocess.run(
             [found, "--version"], stdin=subprocess.DEVNULL, capture_output=True, text=True,
-            check=False, timeout=30,
+            check=False, timeout=10,
         ).stdout
     except (OSError, subprocess.TimeoutExpired):
         return None
