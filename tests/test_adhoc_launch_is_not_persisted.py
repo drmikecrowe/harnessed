@@ -13,9 +13,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
-from harnessed import dynstack, launcher, paths
+from harnessed import console, dynstack, launcher, paths
+from support import patch_all
 
 runner = CliRunner()
 
@@ -123,8 +125,10 @@ class TestIsAdhocReadsTheName:
 class TestThePersistGate:
     """`_persist_this_launch` answers once for BOTH surfaces — script and row, together."""
 
-    def _gate(self, monkeypatch, *, adhoc: bool, **kwargs) -> bool:
+    def _gate(self, monkeypatch, *, adhoc: bool, aoe_bin: str | None = "/usr/bin/aoe", **kwargs) -> bool:
         monkeypatch.setattr(launcher.dynstack, "is_adhoc", lambda _s: adhoc)
+        # GH-565 Decide 3: persistence needs a usable aoe. Usable unless a test says otherwise.
+        monkeypatch.setattr(launcher.aoe, "_bin", lambda: aoe_bin)
         kwargs.setdefault("group", None)
         kwargs.setdefault("title", None)
         kwargs.setdefault("only", False)
@@ -146,6 +150,18 @@ class TestThePersistGate:
     def test_create_aoe_only_overrules_the_skip(self, monkeypatch):
         """Registering IS the command the user typed, so it cannot be the thing that is skipped."""
         assert self._gate(monkeypatch, adhoc=True, only=True) is True
+
+    def test_s2_3_without_a_usable_aoe_nothing_persists(self, monkeypatch):
+        """GH-565 Decide 3: no aoe row can be registered, so no local launcher is written."""
+        assert self._gate(monkeypatch, adhoc=False, aoe_bin=None) is False
+
+    def test_an_aoe_title_without_a_usable_aoe_persists_nothing(self, monkeypatch):
+        assert self._gate(monkeypatch, adhoc=False, aoe_bin=None, title="t") is False
+
+    def test_create_aoe_only_without_aoe_still_reaches_the_register_error(self, monkeypatch):
+        """`--create-aoe-only` must reach `_aoe_register`, which reports that aoe is missing and
+        exits nonzero. Skipping it would turn the command into a plain launch."""
+        assert self._gate(monkeypatch, adhoc=False, aoe_bin=None, only=True) is True
 
 
 class TestHostRunLeavesNothingBehind:
@@ -176,6 +192,7 @@ class TestHostRunLeavesNothingBehind:
         monkeypatch.setattr(
             launcher.aoe, "sync_session", lambda *a, **k: rows.append((a, k)) or True
         )
+        monkeypatch.setattr(launcher.aoe, "_bin", lambda: "/usr/bin/aoe")  # GH-565 Decide 3
         monkeypatch.setattr(
             launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0))
         )
@@ -227,6 +244,7 @@ class TestHostRunLeavesNothingBehind:
             launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0))
         )
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+        monkeypatch.setattr(launcher.aoe, "_bin", lambda: "/usr/bin/aoe")  # GH-565: aoe is usable
 
         result = runner.invoke(
             launcher.app, ["host-run", "claude", str(project), "--stack", "hostspike"]
@@ -234,3 +252,153 @@ class TestHostRunLeavesNothingBehind:
         assert result.exit_code == 0, result.output
         assert [p.name for p in project.iterdir()] == ["claude-hostspike-host"]
         assert len(rows) == 1
+
+
+_HOSTSPIKE_LAUNCHERS = [
+    "harnessed-claude-hostspike-acp", "harnessed-claude-hostspike-container",
+    "harnessed-claude-hostspike-host",
+]
+
+
+class TestGlobalLaunchersAtLaunch:
+    """GH-565 — every launch writes the global launchers; the local one needs a usable aoe."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_modes(self, monkeypatch):
+        """`container-acp` sets process-wide ACP and exec modes, and these launches stop before
+        anything resets them. Same reset `test_acp_verb.py` uses."""
+        monkeypatch.setattr(console, "_EXEC_MODE", False)
+        yield
+        console.set_acp_mode(False)
+
+    def _host_run(self, tmp_path, monkeypatch, stack: str, *, aoe_bin, home=None):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+        home = home or tmp_path / "home"
+        home.mkdir(exist_ok=True)
+        monkeypatch.setattr(Path, "home", lambda: home)
+        project = tmp_path / "project"
+        project.mkdir()
+        rows: list = []
+        seen_at_exec: list = []
+        monkeypatch.setattr(
+            launcher.aoe, "sync_session", lambda *a, **k: rows.append((a, k)) or True
+        )
+        monkeypatch.setattr(launcher.aoe, "_bin", lambda: aoe_bin)
+
+        def _exec(*_a):
+            bin_dir = home / ".local" / "bin"
+            seen_at_exec.append(sorted(p.name for p in bin_dir.iterdir()) if bin_dir.is_dir() else [])
+            raise SystemExit(0)
+
+        monkeypatch.setattr(launcher.os, "execvpe", _exec)
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+        result = runner.invoke(
+            launcher.app, ["host-run", "claude", str(project), "--stack", stack]
+        )
+        return result, home / ".local" / "bin", project, rows, seen_at_exec
+
+    def test_s1_5_host_run_writes_them_before_the_harness_starts(self, tmp_path, monkeypatch):
+        result, bin_dir, _p, _rows, seen = self._host_run(
+            tmp_path, monkeypatch, "hostspike", aoe_bin="/usr/bin/aoe"
+        )
+        assert result.exit_code == 0, result.output
+        assert seen == [_HOSTSPIKE_LAUNCHERS]
+        assert str(tmp_path / "project") not in (bin_dir / _HOSTSPIKE_LAUNCHERS[1]).read_text()
+
+    def test_s1_9_an_adhoc_stack_gets_none(self, tmp_path, monkeypatch):
+        _overlay_stack(tmp_path, "test.hostspike", TestHostRunLeavesNothingBehind.BODY)
+        result, bin_dir, _p, _rows, _seen = self._host_run(
+            tmp_path, monkeypatch, "test.hostspike", aoe_bin="/usr/bin/aoe"
+        )
+        assert result.exit_code == 0, result.output
+        assert not bin_dir.exists() or list(bin_dir.iterdir()) == []
+
+    def test_s1_11_an_unwritable_bin_dir_warns_and_launches(self, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        (home / ".local").mkdir(parents=True)
+        (home / ".local" / "bin").write_text("a file, not a directory", encoding="utf-8")
+        result, _bin_dir, _p, _rows, seen = self._host_run(
+            tmp_path, monkeypatch, "hostspike", aoe_bin="/usr/bin/aoe", home=home
+        )
+        assert result.exit_code == 0, result.output
+        assert "harnessed-claude-hostspike-host" in result.output
+        assert seen == [[]], "the launch reached the harness exec"
+
+    def test_s2_3_no_usable_aoe_leaves_nothing_in_the_project(self, tmp_path, monkeypatch):
+        result, bin_dir, project, rows, _seen = self._host_run(
+            tmp_path, monkeypatch, "hostspike", aoe_bin=None
+        )
+        assert result.exit_code == 0, result.output
+        assert list(project.iterdir()) == []
+        assert rows == []
+        assert sorted(p.name for p in bin_dir.iterdir()) == _HOSTSPIKE_LAUNCHERS, "global launchers still land"
+
+    # --- container-run, stopped right after the launcher/aoe block -------------------------------
+
+    def _container(self, tmp_path, monkeypatch, verb: str, *argv: str, aoe_bin="/usr/bin/aoe"):
+        home = tmp_path / "home"
+        home.mkdir(exist_ok=True)
+        monkeypatch.setattr(Path, "home", lambda: home)
+        rows: list = []
+        monkeypatch.setattr(
+            launcher.aoe, "sync_session", lambda *a, **k: rows.append((a, k)) or True
+        )
+        monkeypatch.setattr(launcher.aoe, "_bin", lambda: aoe_bin)
+        catalog = tmp_path / "s"
+        catalog.mkdir(exist_ok=True)
+        (catalog / "stack.yaml").write_text("name: s\n")
+        monkeypatch.setattr(launcher.paths, "find_in_catalog", lambda *a: catalog)
+        patch_all(monkeypatch, "_runtime", lambda: "podman")
+        monkeypatch.setattr(launcher, "is_built", lambda *a: True)
+        monkeypatch.setattr(launcher.staleness, "check_profile_fresh", lambda *a: None)
+
+        def _no_build(*_a, **_k):
+            raise AssertionError("an up-to-date stack must not be rebuilt")
+
+        monkeypatch.setattr(launcher, "_build_stack", _no_build)
+        monkeypatch.setattr(
+            launcher, "_derived_image", lambda *a: (_ for _ in ()).throw(SystemExit(0))
+        )
+        project = tmp_path / "proj"
+        project.mkdir(exist_ok=True)
+        result = runner.invoke(launcher.app, [verb, "claude", str(project), "--stack", "s", *argv])
+        return result, home / ".local" / "bin", project, rows
+
+    def test_s1_6_container_run_writes_them_without_a_build(self, tmp_path, monkeypatch):
+        result, bin_dir, _project, _rows = self._container(tmp_path, monkeypatch, "container-run")
+        assert result.exit_code == 0, result.output
+        assert sorted(p.name for p in bin_dir.iterdir()) == [
+            "harnessed-claude-s-acp", "harnessed-claude-s-container", "harnessed-claude-s-host",
+        ]
+
+    def test_s1_8_a_foreign_launcher_is_kept_and_named(self, tmp_path, monkeypatch):
+        bin_dir = tmp_path / "home" / ".local" / "bin"
+        bin_dir.mkdir(parents=True)
+        foreign = bin_dir / "harnessed-claude-s-container"
+        foreign.write_bytes(b"#!/bin/sh\necho mine\n")
+        result, _b, _project, _rows = self._container(tmp_path, monkeypatch, "container-run")
+        assert result.exit_code == 0, result.output
+        assert foreign.read_bytes() == b"#!/bin/sh\necho mine\n"
+        assert "harnessed-claude-s-container" in result.output
+        assert (bin_dir / "harnessed-claude-s-host").is_file(), "the launch went on"
+
+    def test_s3_1_the_local_launcher_execs_the_global_one(self, tmp_path, monkeypatch):
+        result, _b, project, rows = self._container(
+            tmp_path, monkeypatch, "container-run", "--no-strict-mcp-config"
+        )
+        assert result.exit_code == 0, result.output
+        local = project / "claude-s-container"
+        lines = local.read_text(encoding="utf-8").split("\n")
+        assert [ln for ln in lines if ln.startswith("exec ")] == [
+            'exec harnessed-claude-s-container --no-strict-mcp-config "$@"'
+        ]
+        assert len(rows) == 1
+
+    def test_s3_3_container_acp_writes_no_local_launcher(self, tmp_path, monkeypatch):
+        result, bin_dir, project, rows = self._container(tmp_path, monkeypatch, "container-acp")
+        assert result.exit_code == 0, result.output
+        assert list(project.iterdir()) == []
+        assert rows == []
+        assert (bin_dir / "harnessed-claude-s-acp").is_file(), "the global launchers still land"

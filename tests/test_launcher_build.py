@@ -11,6 +11,7 @@ covered elsewhere — what matters here is WHICH (stack, harness) pairs get hand
 import os
 import re
 import subprocess
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -243,3 +244,38 @@ class TestBareBuildReconcile:
         assert os.environ.get("HARNESSED_PODMAN_NO_CACHE") == "false", (
             "a pre-existing env value must be restored, not clobbered with the process default"
         )
+
+
+class TestBuildWritesGlobalLaunchers:
+    """GH-565 S1.4 — `build <stack> <harness>` leaves the global launchers."""
+
+    def test_s1_4_build_writes_them(self, built, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        monkeypatch.setattr(Path, "home", lambda: home)
+        result = runner.invoke(launcher.app, ["build", "default", "claude"])
+        assert result.exit_code == 0, result.output
+        assert built == [("default", "claude")]
+        assert sorted(p.name for p in (home / ".local" / "bin").iterdir()) == [
+            "harnessed-claude-default-acp", "harnessed-claude-default-container",
+            "harnessed-claude-default-host",
+        ]
+
+    def test_a_failed_build_writes_none(self, built, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        monkeypatch.setattr(Path, "home", lambda: home)
+
+        def _fail(*_a, **_k):
+            raise launcher.typer.Exit(1)
+
+        monkeypatch.setattr(launcher, "_build_stack", _fail)
+        result = runner.invoke(launcher.app, ["build", "default", "claude"])
+        assert result.exit_code == 1
+        assert not (home / ".local" / "bin").exists()
+
+    def test_an_alternate_root_writes_none(self, root, built, tmp_path, monkeypatch):
+        """A global launcher names no `--root`, so it would launch a different stack."""
+        home = tmp_path / "home"
+        monkeypatch.setattr(Path, "home", lambda: home)
+        result = runner.invoke(launcher.app, ["build", "multi", "claude", "--root", str(root)])
+        assert result.exit_code == 0, result.output
+        assert not (home / ".local" / "bin").exists()

@@ -114,13 +114,14 @@ harnessed host-run claude --stack mine
 ```
 
 **5. Add the container boundary.** Build the image once, then launch the same stack as a podman pod
-with the egress firewall on. `harnessed install` writes a `~/.local/bin/mine` shim so the launch
-is one word plus the harness.
+with the egress firewall on. Building, launching or `harnessed install` writes one launcher per
+backend into `~/.local/bin` (`harnessed-claude-mine-host`, `-container`, and `-acp` for harnesses
+with an ACP mode), so later launches from any folder are one word.
 
 ```bash
 harnessed build mine claude
 harnessed container-run claude --stack mine
-harnessed install mine && mine claude
+harnessed-claude-mine-container            # from any project folder
 ```
 
 The first build is slow (it builds the base toolchain image). Later builds are cache hits.
@@ -137,7 +138,7 @@ and MCP servers it declares.
 | `harnessed test <stack> <harness>` | Capability test: launch headless and assert the declared capabilities, written as a markdown report |
 | `harnessed list` | Authored stacks (with which harnesses are built) and running instances |
 | `harnessed stop \| rm <stack> [<harness>]` | Stop or remove instances of a stack |
-| `harnessed install \| uninstall <stack>` | Write or remove the `~/.local/bin/<stack>` launcher shim |
+| `harnessed install \| uninstall <stack> <harness>` | Write or remove the `~/.local/bin/harnessed-<harness>-<stack>-<backend>` launchers; `uninstall` also removes the retired `~/.local/bin/<stack>` shim and names aoe rows that still use a removed launcher |
 | `harnessed svc up \| down \| recreate \| sync \| migrate <service>` | Manage service sidecars |
 | `harnessed update [--check] [--yes]` | Find outdated catalog pins and offer to bump them; `--check` is the CI mode |
 | `harnessed --fresh …` / `--no-firewall …` | Tear down the existing pod first / skip the egress firewall for one run |

@@ -232,11 +232,15 @@ def test_an_aoe_rename_leaves_the_row_launchable_and_unduplicated(renamable, tmp
     record = tmp_path / "argv.txt"
     (fake / "harnessed").write_text(f'#!/bin/sh\npwd -P > {record}\nprintf "%s\\n" "$@" >> {record}\n')
     (fake / "harnessed").chmod(0o755)
+    # GH-565: the row's script execs its GLOBAL launcher, which execs `harnessed`; put the real one
+    # beside the stand-in so the whole chain runs.
+    assert launchscript.write_globals("serena", "claude", fake) == []
     env = {**os.environ, "PATH": f"{fake}:{os.environ['PATH']}"}
     subprocess.run(["sh", "-c", row["command"]], cwd=row["path"], env=env, check=True)
     recorded = record.read_text().split("\n")
     assert recorded[0] == str(moved.resolve()), "the wrapper ran from the moved folder"
-    assert recorded[1:4] == ["host-run", "claude", "."], "and named that folder, not the old one"
+    # Since GH-565 no folder is named in argv at all: the project is the folder it ran from, above.
+    assert recorded[1:5] == ["host-run", "claude", "--stack", "serena"]
 
     # D2: the wrapper still bakes the OLD title; the relaunch must find the renamed row anyway.
     assert _launch(moved, title="se-1-GH-97-split") is True
