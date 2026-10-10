@@ -80,3 +80,5 @@ Found during GREEN; SPEC.md's Must NOT line now names each. Every one keeps the 
 - `install` exits 1 when a launcher could not be written (an explicit command fails loudly); launches only warn (S1.8, S1.11).
 - `build --root <dir>` writes no global launchers: the launcher names no root, so it would launch a different stack.
 - A symlink in `~/.local/bin` at a launcher's name is treated as foreign: never written through, never deleted.
+### Revision 6. ACP launchers carry a backend (author, 2026-10-10)
+Raised in code review of PR #570: `harnessed-<harness>-<stack>-acp` names no backend, so it assumes `container-acp` is the only ACP backend, and `host-acp` is about to land. The author ruled the form `harnessed-acp-<harness>-<stack>-<backend>`, backend `host` or `container`: this change writes `-container` only, reserves `-host` for `host-acp`, and `acp` is no longer a backend anywhere. The author directed: update the SPEC and restart the build. Changed: Summary AC-1, S1.1, S1.2, S5.1, the `acp` Must NOT line, Touches; added S1.12 and S5.5. STORY.md in this directory takes the same wording; the issue body on the tracker is unchanged.

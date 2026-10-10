@@ -8,7 +8,7 @@
 **What changes.** A new writer puts `harnessed-<harness>-<stack>-<backend>` files in `~/.local/bin`. `install`, `build`, `host-run` and every `container-run` call it. `install` and `uninstall` take `<stack> <harness>`. The old `~/.local/bin/<stack>` shim stops being written, and `uninstall` removes one it finds. The in-project launcher is written only when aoe is in use, and it now calls the global launcher. `harnessed rm` learns to read the stack from the global name.
 
 **Each criterion in plain words.**
-- AC-1: install, build, host-run and container-run each leave the host and container launchers, plus the ACP one for `omp` and `claude` (S1).
+- AC-1: install, build, host-run and container-run each leave the host and container launchers, plus the container ACP one, `harnessed-acp-<harness>-<stack>-container`, for `omp` and `claude` (S1).
 - AC-2: a global launcher started from a folder launches there and passes every argument on; a launch without aoe writes nothing into the folder (S2).
 - AC-3: with aoe, the project gets a small launcher that keeps your one-off flags and calls the global one; never for ACP (S3).
 - AC-4: `harnessed rm <stack>` still removes the right aoe rows, old and new, and never another stack's rows or any global launcher (S4).
@@ -41,8 +41,8 @@ Failure model (Tier 3):
 
 ## Scenarios
 ### S1. Global launchers are written (AC-1)
-- S1.1 Given stack `default` exists and `HOME` is a temp dir, when `harnessed install default claude` runs, then `~/.local/bin` holds `harnessed-claude-default-host`, `harnessed-claude-default-container` and `harnessed-claude-default-acp`, each mode 0755, line 2 `# harnessed:launcher v1`, with exec lines `exec harnessed host-run claude --stack default "$@"`, `exec harnessed container-run claude --stack default "$@"` and `exec harnessed container-acp claude --stack default "$@"`.
-- S1.2 (negative) Given stack `default`, when `harnessed install default codex` runs, then `harnessed-codex-default-host` and `harnessed-codex-default-container` exist and `harnessed-codex-default-acp` does not.
+- S1.1 Given stack `default` exists and `HOME` is a temp dir, when `harnessed install default claude` runs, then `~/.local/bin` holds `harnessed-claude-default-host`, `harnessed-claude-default-container` and `harnessed-acp-claude-default-container`, each mode 0755, line 2 `# harnessed:launcher v1`, with exec lines `exec harnessed host-run claude --stack default "$@"`, `exec harnessed container-run claude --stack default "$@"` and `exec harnessed container-acp claude --stack default "$@"`.
+- S1.2 (negative) Given stack `default`, when `harnessed install default codex` runs, then `harnessed-codex-default-host` and `harnessed-codex-default-container` exist and `harnessed-acp-codex-default-container` does not.
 - S1.3 (boundary) Given stack `default.codebase-memory-mcp.gh-issue-tracker`, when `harnessed install default.codebase-memory-mcp.gh-issue-tracker claude` runs, then `harnessed-claude-default.codebase-memory-mcp.gh-issue-tracker-container` exists and its exec line names `--stack default.codebase-memory-mcp.gh-issue-tracker`.
 - S1.4 Given stack `default`, when `harnessed build default claude` succeeds, then the same three files as S1.1 exist.
 - S1.5 Given stack `default`, when `harnessed host-run claude <D> --stack default` runs with the harness exec stubbed, then the three files of S1.1 exist before the harness starts, byte-identical to S1.1's, and none names `<D>`: a global launcher never carries a path, and the project comes from the folder it runs in.
@@ -52,6 +52,7 @@ Failure model (Tier 3):
 - S1.9 (negative) Given an ad-hoc stack minted by `--recipe`, when `container-run` launches it, then `~/.local/bin` gains no file: ad-hoc stacks get no global launchers (mcrowe, 2026-10-09).
 - S1.10 (negative) Given no stack `nosuch`, when `harnessed install nosuch claude` runs, then it exits nonzero and `~/.local/bin` gains no file.
 - S1.11 (negative) Given `~/.local/bin` is not writable, when `harnessed host-run claude <D> --stack default` runs, then one warning prints and the launch goes on.
+- S1.12 (negative) Given stack `default`, when `harnessed install default claude` runs, then `harnessed-acp-claude-default-host` does not exist: `-host` is reserved for `host-acp`, which this change does not build.
 
 ### S2. A global launcher launches where it is run (AC-2)
 - S2.1 Given `harnessed-claude-default-container` and a stub `harnessed` on `PATH` that records its argv and cwd, when the launcher runs from folder D with `--fresh`, then the stub records argv `container-run claude --stack default --fresh` and cwd D.
@@ -72,10 +73,11 @@ Failure model (Tier 3):
 - S4.4 (negative) Given launchers from S1.1, when `harnessed rm default` runs, then every file in `~/.local/bin` is unchanged.
 
 ### S5. `harnessed uninstall <stack> <harness>` (AC-5)
-- S5.1 Given launchers for (`default`, `claude`), (`default.x`, `claude`) and (`default`, `codex`), when `harnessed uninstall default claude` runs, then the three `harnessed-claude-default-*` files are gone and `harnessed-claude-default.x-container` and `harnessed-codex-default-host` remain.
+- S5.1 Given launchers for (`default`, `claude`), (`default.x`, `claude`) and (`default`, `codex`), when `harnessed uninstall default claude` runs, then `harnessed-claude-default-host`, `harnessed-claude-default-container` and `harnessed-acp-claude-default-container` are gone, and `harnessed-claude-default.x-container`, `harnessed-acp-claude-default.x-container` and `harnessed-codex-default-host` remain.
 - S5.2 Given an aoe row whose script execs `harnessed-claude-default-container`, when `harnessed uninstall default claude` runs, then the output names that row's script path.
 - S5.3 (negative) Given `~/.local/bin/harnessed-claude-default-host` without the sentinel, when `harnessed uninstall default claude` runs, then that file remains and one line names it as not removed.
 - S5.4 (boundary) Given no aoe row references any `harnessed-claude-default-*` launcher, when `harnessed uninstall default claude` runs, then it prints no row path and exits 0.
+- S5.5 (boundary) Given `~/.local/bin/harnessed-acp-claude-default-host` exists with the sentinel, as `host-acp` will write it, when `harnessed uninstall default claude` runs, then that file is gone too.
 
 ### S6. The old shim (AC-6)
 - S6.1 Given stack `default`, when `harnessed install default claude` runs, then `~/.local/bin/default` does not exist.
@@ -85,7 +87,7 @@ Failure model (Tier 3):
 
 ## Must NOT
 - Break legacy recognition: `parse_legacy_script_name` names and `--stack` exec lines stay readable by `aoe._is_launcher_script` and `aoe._replays_stack` (the bug its docstring records).
-- Accept `acp` as a backend in a local launcher name. `parse_script_name` on `claude-default-acp` returns None.
+- Accept `acp` as a backend in any launcher name. `parse_script_name("claude-default-acp")` and `parse_global_name("harnessed-claude-default-acp")` return None; ACP is the `harnessed-acp-` prefix, and its backend is `host` or `container`.
 - Overwrite or delete a `~/.local/bin` file without the sentinel on line 2. This is the rule `launchscript.write` already applies.
 - Let a launcher write failure end a launch. This is `launchscript`'s "never fatal" contract.
 - Quote twice. Exec lines are built with `shlex.join`, the way `aoe.command_for` already builds them.
@@ -95,7 +97,7 @@ Failure model (Tier 3):
 - Drop the test count below the baseline. Only these existing tests may be rewritten, each keeping the decision it encodes unless a scenario above changes it: `tests/test_launcher_install.py::TestInstallShim` (4 tests, lines 36-97; replaced by S1.1, S1.10 and S6.1); `tests/test_adhoc_launch_is_not_persisted.py::test_an_ordinary_stack_still_persists` (line 215; now needs aoe usable, per S2.3 and S3.1); `tests/test_launchscript.py` classes `TestParityWithCommandFor` (line 351), `TestProvenanceComment` (line 382) and `TestPassthrough` (line 424), whose expected exec line becomes S3.1's; and the `_replays_stack`/`forget_stack` fixtures in `tests/test_aoe.py` (lines 720, 807-896 and 1725), which gain new-format cases beside the `--stack` ones S4.2 keeps. Revision 4 adds, found during the build: the `run_script` fixture, `TestTwoStacksDoNotCollide::test_each_file_launches_its_own_stack` and `TestHostileInput::test_a_path_with_a_space_and_a_quote_survives` in `tests/test_launchscript.py`; `test_an_aoe_rename_leaves_the_row_launchable_and_unduplicated` in `tests/test_aoe_real.py`; and the `_gate`/`_launch` fixtures in `tests/test_adhoc_launch_is_not_persisted.py`, which gain an `aoe._bin` stub with assertions unchanged.
 
 ## Touches
-- `src/harnessed/launchscript.py` — accept the `harnessed-` prefix and the `acp` backend for global names only; add the global launcher body and writer; change the local body to exec the global name.
+- `src/harnessed/launchscript.py` — accept the `harnessed-` and `harnessed-acp-` prefixes for global names, with the backend `host` or `container`; add the global launcher body and writer; change the local body to exec the global name.
 - `src/harnessed/launcher.py` — `install` and `uninstall` take `<stack> <harness>`; they write, remove and report launchers and remove the old shim; `build`, `host-run` and `container-run` call the writer; `_persist_this_launch` uses the Decide 3 predicate.
 - `src/harnessed/aoe.py` — `_replays_stack` reads the stack from an exec'd global name; add a lookup of rows that reference a given global launcher, for `uninstall`.
 - `src/harnessed/paths.py` — one `user_bin_dir()` helper, replacing the two inline `Path.home() / ".local" / "bin"`.
