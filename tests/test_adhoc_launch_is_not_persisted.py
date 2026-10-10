@@ -38,6 +38,16 @@ def _generated_stack(tmp_path: Path, name: str) -> Path:
     return stack_dir
 
 
+def _names(text: str, output: str) -> bool:
+    """Whether `output` names `text`, read past rich's hard wrap.
+
+    rich wraps console output to the terminal width and breaks a long path mid-word, so where a
+    name lands depends on the temp path's length (CI failed on `.../bin/h\narnessed-...`). Names and
+    paths hold no whitespace, so dropping every whitespace character recovers them whole.
+    """
+    return "".join(text.split()) in "".join(output.split())
+
+
 class TestIsAdhocReadsTheLocation:
     """A minted stack is known by WHERE it resolves, never by who minted it."""
 
@@ -323,7 +333,7 @@ class TestGlobalLaunchersAtLaunch:
             tmp_path, monkeypatch, "hostspike", aoe_bin="/usr/bin/aoe", home=home
         )
         assert result.exit_code == 0, result.output
-        assert "harnessed-claude-hostspike-host" in result.output
+        assert _names("harnessed-claude-hostspike-host", result.output)
         assert seen == [[]], "the launch reached the harness exec"
 
     def test_s2_3_no_usable_aoe_leaves_nothing_in_the_project(self, tmp_path, monkeypatch):
@@ -381,7 +391,7 @@ class TestGlobalLaunchersAtLaunch:
         result, _b, _project, _rows = self._container(tmp_path, monkeypatch, "container-run")
         assert result.exit_code == 0, result.output
         assert foreign.read_bytes() == b"#!/bin/sh\necho mine\n"
-        assert "harnessed-claude-s-container" in result.output
+        assert _names("harnessed-claude-s-container", result.output)
         assert (bin_dir / "harnessed-claude-s-host").is_file(), "the launch went on"
 
     def test_s3_1_the_local_launcher_execs_the_global_one(self, tmp_path, monkeypatch):

@@ -35,6 +35,16 @@ def _home_in(monkeypatch, tmp_path):
     return home
 
 
+def _names(text: str, output: str) -> bool:
+    """Whether `output` names `text`, read past rich's hard wrap.
+
+    rich wraps console output to the terminal width and breaks a long path mid-word, so where a
+    name lands depends on the temp path's length (CI failed on `.../bin/h\narnessed-...`). Names and
+    paths hold no whitespace, so dropping every whitespace character recovers them whole.
+    """
+    return "".join(text.split()) in "".join(output.split())
+
+
 class TestInstallWritesGlobalLaunchers:
     """GH-565 — `install <stack> <harness>` writes global launchers; the old shim is retired.
 
@@ -107,7 +117,7 @@ class TestInstallWritesGlobalLaunchers:
         foreign.write_bytes(b"#!/bin/sh\necho mine\n")
         result = CliRunner().invoke(launcher.app, ["install", "claude_time", "claude"])
         assert result.exit_code == 1
-        assert "harnessed-claude-claude_time-host" in result.output
+        assert _names("harnessed-claude-claude_time-host", result.output)
         assert foreign.read_bytes() == b"#!/bin/sh\necho mine\n"
 
 
@@ -143,7 +153,7 @@ class TestUninstallRemovesGlobalLaunchers:
         )
         result = CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
         assert result.exit_code == 0, result.output
-        assert "/proj/claude-claude_time-container" in result.output
+        assert _names("/proj/claude-claude_time-container", result.output)
         assert asked == [{
             "harnessed-claude-claude_time-acp", "harnessed-claude-claude_time-container",
             "harnessed-claude-claude_time-host",
@@ -156,7 +166,7 @@ class TestUninstallRemovesGlobalLaunchers:
         foreign.write_bytes(b"#!/bin/sh\necho mine\n")
         result = CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
         assert foreign.read_bytes() == b"#!/bin/sh\necho mine\n"
-        assert "harnessed-claude-claude_time-host" in result.output
+        assert _names("harnessed-claude-claude_time-host", result.output)
 
     def test_only_removed_launchers_are_looked_up(self, monkeypatch, tmp_path):
         """Adversary round 1: a refused launcher is still there, so a row using it is not broken."""
@@ -185,7 +195,7 @@ class TestUninstallRemovesGlobalLaunchers:
         launchscript.write_globals("claude_time", "claude", bin_dir)
         result = CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
         assert result.exit_code == 0, result.output
-        assert "still references" not in result.output
+        assert not _names("still references", result.output)
 
     def _old_shim(self, bin_dir, stack: str):
         bin_dir.mkdir(parents=True, exist_ok=True)
@@ -209,7 +219,7 @@ class TestUninstallRemovesGlobalLaunchers:
         CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
         result = CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
         assert result.exit_code == 0, result.output
-        assert "No shim found" in result.output
+        assert _names("No shim found", result.output)
 
     def test_s6_4_a_file_that_is_not_the_old_shim_is_kept(self, monkeypatch, tmp_path):
         _home, bin_dir = self._install(monkeypatch, tmp_path)
