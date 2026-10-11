@@ -40,7 +40,13 @@ description = "Report docs/ wiki link and sidebar problems without writing (exit
 run = "python3 tools/wiki-links.py --check"
 
 [tasks.pull-and-build]
-run = 'git pull && uv tool install --editable .'
+description = "Pull main, then install the newest release tag as the global harnessed"
+run = """
+git pull --tags
+tag=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+echo "installing harnessed ${tag}"
+uv tool install --force "harnessed @ git+https://github.com/drmikecrowe/harnessed@${tag}"
+"""
 
 # Catalog and mise.toml pin upgrades land as their own dated PR rather than riding along with
 # unrelated work, so a bad pin can be reverted as a unit.

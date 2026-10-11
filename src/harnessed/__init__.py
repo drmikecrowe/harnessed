@@ -4,4 +4,4 @@ The package owns all assembly + launch logic. Assembly (assemble/emit/schema) is
 invokes podman; the launcher drives podman on the host. See ARCHITECTURE.md.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.0"  # x-release-please-version
