@@ -1,4 +1,4 @@
-run: /home/mcrowe/.local/share/harnessed/venvs/GH-571/.venv/bin/harnessed host-acp omp --stack hostspike (in /tmp/acp-smoke-launch-yt0eksca)
+run: /home/mcrowe/.local/share/harnessed/venvs/GH-571/.venv/bin/harnessed host-acp omp --stack hostspike (in /tmp/acp-smoke-launch-ns3mnw92)
 [INFO] Assembling 'hostspike' (omp) host-native (no container) ...
 [INFO] skills (greet): omp does not read Claude-shaped skills — the claude-hooks
 bridge covers hooks only, and omp's own skill surface is a different format. 
@@ -11,9 +11,9 @@ ke/omp (installs skipped)
 host-native: 
 PI_CODING_AGENT_DIR=/tmp/claude-1000/-home-mcrowe-Programming-Personal-harnessed
 -3-3-gh-571-host-acp/3fbde74c-0821-4111-82c2-87cd815dc820/scratchpad/xdg-data/ha
-rnessed/home/hostspike/omp cwd=/tmp/acp-smoke-launch-yt0eksca — no container
+rnessed/home/hostspike/omp cwd=/tmp/acp-smoke-launch-ns3mnw92 — no container
 ok: initialize
-ok: initialize answered in 1.9s
+ok: initialize answered in 2.1s
 [INFO] skills (greet): omp does not read Claude-shaped skills — the claude-hooks
 bridge covers hooks only, and omp's own skill surface is a different format. 
 They are inert on this launch. Identity, rules, hooks and MCP servers ARE 
