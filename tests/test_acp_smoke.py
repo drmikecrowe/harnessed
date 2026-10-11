@@ -91,3 +91,22 @@ def test_pr572_the_launch_folder_is_removed_after_a_run(tmp_path):
 def test_round3_the_cwd_check_matches_a_path_with_a_space(reply, ok):
     """Adversary round 3 hunch 5: splitting on whitespace meant a folder with a space never matched."""
     assert smoke._cwd_matches(reply, Path("/srv/my project/a")) is ok
+
+
+
+@pytest.mark.parametrize(("reply", "ok"), [
+    ("(/a/b)", True),
+    ("/a/b!", True),
+    ("The cwd is (/a/b).", True),
+    ("[/a/b]", True),
+    ("</a/b>", True),
+    ("/a/b - that is it", True),
+    ("/a/b.txt", False),
+    ("/a/b-check", False),
+    ("/a/b_2", False),
+    ("(/srv/my project/a)", False),
+])
+def test_pr572_the_cwd_check_allows_brackets_and_punctuation(reply, ok):
+    """PR #572 review, third run: `(/a/b)` and `/a/b!` were rejected, so a correct agent reply could
+    fail the smoke run. A file in the folder (`/a/b.txt`) still must not count as the folder."""
+    assert smoke._cwd_matches(reply, Path("/a/b")) is ok

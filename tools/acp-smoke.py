@@ -116,11 +116,13 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _cwd_matches(reply: str, folder: Path) -> bool:
-    """Whether `reply` names `folder` as a whole path. Not a substring test: `/a/b-check` is not
-    `/a/b` (PR #572 review). The path may contain spaces (adversary round 3), and may sit between
-    quotes or backticks or end a sentence."""
-    pattern = r"(?:^|[\s`'\"])" + re.escape(str(folder)) + r"/?(?=$|[\s`'\".,:;])"
-    return re.search(pattern, reply) is not None
+    """Whether `reply` names `folder` as a whole path. Not a substring test: `/a/b-check` and the
+    file `/a/b.txt` are not `/a/b` (PR #572 review). The path may contain spaces (adversary round
+    3), may sit in quotes, backticks or brackets, and may be followed by any non-path character; a
+    `.` counts only when it ends the sentence."""
+    before = r"(?:^|[\s`'\"(\[<])"
+    after = r"(?=$|[^\w/.-]|\.(?=$|\s))"
+    return re.search(before + re.escape(str(folder)) + r"/?" + after, reply) is not None
 
 
 def _check_cwd(proc, lines: queue.Queue, sessions: list[tuple[str, Path]], timeout: float) -> None:
