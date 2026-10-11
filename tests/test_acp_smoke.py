@@ -32,6 +32,7 @@ def test_s8_the_default_verb_is_container_acp():
 
 
 
+import os
 import subprocess
 import sys
 
@@ -110,3 +111,20 @@ def test_pr572_the_cwd_check_allows_brackets_and_punctuation(reply, ok):
     """PR #572 review, third run: `(/a/b)` and `/a/b!` were rejected, so a correct agent reply could
     fail the smoke run. A file in the folder (`/a/b.txt`) still must not count as the folder."""
     assert smoke._cwd_matches(reply, Path("/a/b")) is ok
+
+
+def test_pr572_a_launch_that_fails_to_start_leaves_no_launch_folder(tmp_path):
+    """PR #572 review, fourth run: when the harnessed command cannot start, the launch folder made
+    before the run's `try` was never removed."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    temp = tmp_path / "temp"
+    temp.mkdir()
+    proc = subprocess.run(
+        [sys.executable, str(_SCRIPT), str(project), "--stack", "s", "--verb", "host-acp",
+         "--harnessed", str(tmp_path / "no-such-harnessed")],
+        capture_output=True, text=True, timeout=60, env={**os.environ, "TMPDIR": str(temp)},
+    )
+    assert proc.returncode != 0
+    assert "FAIL" in proc.stderr
+    assert list(temp.iterdir()) == [], "the failed launch left its launch folder behind"

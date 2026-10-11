@@ -145,9 +145,15 @@ def main() -> int:
     # host-acp starts where the editor starts it, never in the project.
     launch_dir = tempfile.mkdtemp(prefix="acp-smoke-launch-") if args.verb == "host-acp" else None
     print(f"run: {shlex.join(argv)}" + (f" (in {launch_dir})" if launch_dir else ""), file=sys.stderr)
-    proc = subprocess.Popen(
-        argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1, cwd=launch_dir,
-    )
+    try:
+        proc = subprocess.Popen(
+            argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1, cwd=launch_dir,
+        )
+    except OSError as exc:
+        # Before the `try` whose `finally` removes the launch folder, so remove it here (PR #572).
+        if launch_dir:
+            shutil.rmtree(launch_dir, ignore_errors=True)
+        raise SystemExit(f"FAIL: could not start {argv[0]}: {exc}") from None
     if proc.stdin is None or proc.stdout is None:  # unreachable with PIPE; narrows the types
         raise SystemExit("FAIL: could not open pipes to harnessed")
     lines: queue.Queue = queue.Queue()
