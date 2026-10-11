@@ -112,17 +112,22 @@ def _intercept(
 
 
 def _stop(setup: subprocess.Popen) -> None:
-    """End a setup and its whole process group: TERM, then KILL after 10 s."""
-    for sig in (signal.SIGTERM, signal.SIGKILL):
-        try:
-            os.killpg(setup.pid, sig)
-        except ProcessLookupError:
-            return
-        try:
-            setup.wait(timeout=10)
-            return
-        except subprocess.TimeoutExpired:
-            continue
+    """End a setup and its whole process group: TERM, up to 10 s for the leader to exit, then KILL
+    the group whatever the leader did. A child that ignores TERM outlives a leader that obeys it,
+    so the leader exiting proves nothing about the rest of the group (adversary round 3)."""
+    try:
+        os.killpg(setup.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        setup.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(setup.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass  # the whole group is already gone
+    setup.wait()
 
 
 def run(

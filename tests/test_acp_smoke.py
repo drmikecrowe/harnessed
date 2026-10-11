@@ -78,3 +78,16 @@ def test_pr572_the_launch_folder_is_removed_after_a_run(tmp_path):
     launch_dir = Path(where.read_text())
     assert launch_dir.name.startswith("acp-smoke-launch-")
     assert not launch_dir.exists(), "the smoke run left its launch folder behind"
+
+
+
+@pytest.mark.parametrize(("reply", "ok"), [
+    ("/srv/my project/a", True),
+    ("`/srv/my project/a`", True),
+    ("The working directory is /srv/my project/a.", True),
+    ("/srv/my project/a-b", False),
+    ("/srv/my project", False),
+])
+def test_round3_the_cwd_check_matches_a_path_with_a_space(reply, ok):
+    """Adversary round 3 hunch 5: splitting on whitespace meant a folder with a space never matched."""
+    assert smoke._cwd_matches(reply, Path("/srv/my project/a")) is ok

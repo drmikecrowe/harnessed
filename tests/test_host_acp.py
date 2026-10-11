@@ -881,3 +881,45 @@ class TestPrReview572Round2:
             setup_pid, child_pid = (int(x) for x in pids.read_text().split())
             assert _gone(setup_pid, wait=1) and _gone(child_pid, wait=1), \
                 "a setup started after the relay ended, and outlived it"
+
+
+
+class TestAdversaryRound3:
+    """Supplementary adversary round 3 (findings-code-round3.md), each seen failing first."""
+
+    def test_a_setup_child_that_ignores_term_is_still_stopped(self, tmp_path):
+        """Hunch 4: `_stop` stopped at SIGTERM once the group leader exited, so a child of the
+        setup that ignores SIGTERM (a service wrapper, say) outlived the relay."""
+        pids = tmp_path / "pids"
+        stubborn = "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"
+        setup = tmp_path / "slow_setup.py"
+        setup.write_text(
+            "import os, subprocess, sys, time\n"
+            f"child = subprocess.Popen([sys.executable, '-c', {stubborn!r}])\n"
+            "time.sleep(0.5)  # let the child install its SIGTERM handler\n"
+            f"open({str(pids)!r}, 'w').write(f'{{os.getpid()}} {{child.pid}}')\n"
+            "time.sleep(60)\n"
+        )
+        a = tmp_path / "projA"
+        a.mkdir()
+        in_r, in_w = os.pipe()
+        out_r, out_w = os.pipe()
+        done = threading.Event()
+
+        def run() -> None:
+            stdin, stdout = os.fdopen(in_r, "rb"), os.fdopen(out_w, "wb")
+            acprelay.run(
+                [sys.executable, "-c", "import time; time.sleep(3)"], dict(os.environ),
+                lambda p: [sys.executable, str(setup)], cwd=tmp_path, stdin=stdin, stdout=stdout,
+            )
+            done.set()
+
+        threading.Thread(target=run, daemon=True).start()
+        os.write(in_w, json.dumps({"jsonrpc": "2.0", "id": 1, "method": "session/new",
+                                   "params": {"cwd": str(a), "mcpServers": []}}).encode() + b"\n")
+        assert done.wait(40), "run() did not return after the agent exited"
+        os.close(in_w)
+        os.close(out_r)
+        setup_pid, child_pid = (int(x) for x in pids.read_text().split())
+        assert _gone(setup_pid), "the project-setup process outlived the relay"
+        assert _gone(child_pid), "a setup child that ignores SIGTERM outlived the relay"
