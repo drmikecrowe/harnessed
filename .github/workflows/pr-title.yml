@@ -7,11 +7,18 @@ on:
   pull_request:
     types: [opened, edited, reopened, synchronize]
 
+# `synchronize` stays: checks attach to the head SHA, so a push without a run leaves the new head
+# with no title result, which would block the PR once this check is required.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 permissions: {}
 
 jobs:
   conventional-title:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       # The title goes through env, never interpolated into the script: it is attacker-controlled.
       - env:
@@ -19,7 +26,9 @@ jobs:
         run: |
           pattern='^(feat|fix|perf|refactor|revert|docs|test|build|ci|chore|style)(\([a-z0-9._/-]+\))?!?: .+'
           if [[ ! "$TITLE" =~ $pattern ]]; then
-            echo "::error::PR title is not a conventional commit: $TITLE"
+            # Title printed apart from the annotation, so it cannot inject a workflow command.
+            echo "::error::PR title is not a conventional commit."
+            printf 'Title: %s\n' "$TITLE"
             echo "Expected '<type>(<scope>): <summary>', e.g. 'feat(acp): run a stack over ACP (GH-571)'."
             exit 1
           fi
