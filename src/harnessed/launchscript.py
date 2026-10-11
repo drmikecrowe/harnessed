@@ -23,8 +23,10 @@ the useful work, and losing the shortcut is not worth killing it. Every failure 
 
 from __future__ import annotations
 
+import os
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -382,12 +384,27 @@ def write(
         return None
 
 
-def _global_body(verb: str, stack: str, harness: str) -> str:
+def _harnessed_argv(bin_dir: Path) -> list[str]:
+    """The harnessed a global launcher runs, by absolute path. Never a bare name (GH-574).
+
+    A bare `harnessed` resolves through the CALLER's PATH. An editor starts its agent in the opened
+    project's shell env, where a mise-activated branch venv can shadow the install with one that
+    lacks the verb: `No such command 'host-acp'`. The `harnessed` beside the launchers is the uv
+    tool entry point that install.sh and an editable `uv tool install` both put there. Without
+    one, the interpreter writing the launcher runs it, which has every verb this code writes.
+    """
+    entry = bin_dir / "harnessed"
+    if entry.is_file() and os.access(entry, os.X_OK):
+        return [str(entry)]
+    return [sys.executable, "-m", "harnessed"]
+
+
+def _global_body(verb: str, stack: str, harness: str, bin_dir: Path) -> str:
     """The global launcher: no path, so the project is the folder it runs in (GH-565).
 
     `--stack` BEFORE `"$@"`: a passthrough after the user's `--` would otherwise swallow it.
     """
-    command = shlex.join(["harnessed", verb, harness, aoe._STACK_FLAG[0], stack])
+    command = shlex.join([*_harnessed_argv(bin_dir), verb, harness, aoe._STACK_FLAG[0], stack])
     return "\n".join([_SHEBANG, SENTINEL, f"exec {command} \"$@\""]) + "\n"
 
 
@@ -415,7 +432,7 @@ def write_globals(stack: str, harness: str, bin_dir: Optional[Path] = None) -> l
         return targets
     refused: list[Path] = []
     for verb, target in zip(global_verbs(harness), targets, strict=True):
-        body = _global_body(verb, stack, harness)
+        body = _global_body(verb, stack, harness, bin_dir)
         try:
             if target.exists() or target.is_symlink():
                 if not _is_ours_to_touch(target):

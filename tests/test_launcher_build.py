@@ -10,7 +10,9 @@ covered elsewhere — what matters here is WHICH (stack, harness) pairs get hand
 
 import os
 import re
+import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -269,7 +271,8 @@ class TestBuildWritesGlobalLaunchers:
         path = home / ".local" / "bin" / f"harnessed-acp-{harness}-default-host"
         lines = path.read_text().splitlines()
         assert lines[1] == launchscript.SENTINEL
-        assert lines[-1] == f'exec harnessed host-acp {harness} --stack default "$@"'
+        harnessed = shlex.join([sys.executable, "-m", "harnessed"])
+        assert lines[-1] == f'exec {harnessed} host-acp {harness} --stack default "$@"'
         assert path.stat().st_mode & 0o777 == 0o755
 
     def test_gh571_s7_2_a_second_build_leaves_one_identical_launcher(self, built, tmp_path, monkeypatch):

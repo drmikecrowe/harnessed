@@ -14,8 +14,10 @@ import os
 import shlex
 import stat
 import subprocess
+import sys
 import threading
 from pathlib import Path
+from typing import Optional
 
 import pytest
 from hypothesis import HealthCheck, given, settings
@@ -1114,6 +1116,29 @@ for a in "$@"; do printf '%s\\0' "$a" >> "$ARGV_OUT"; done
 """
 
 
+# A `harnessed` from before the verb existed, as a mise-activated branch venv puts first on PATH.
+_STALE_HARNESSED = """#!/bin/sh
+echo "No such command '$1'." >&2
+exit 2
+"""
+
+# What a global launcher runs when no `harnessed` sits beside it: the interpreter that wrote it.
+_FALLBACK = [sys.executable, "-m", "harnessed"]
+
+
+def _global_line(*args: str, harnessed: Optional[list[str]] = None) -> str:
+    return f'exec {shlex.join([*(_FALLBACK if harnessed is None else harnessed), *args])} "$@"'
+
+
+def _stale_bin(tmp_path: Path) -> Path:
+    d = tmp_path / "stalebin"
+    d.mkdir()
+    stale = d / "harnessed"
+    stale.write_text(_STALE_HARNESSED, encoding="utf-8")
+    stale.chmod(0o755)
+    return d
+
+
 @pytest.fixture
 def gbin(tmp_path):
     """A stand-in for ~/.local/bin, so no test writes the real one."""
@@ -1124,22 +1149,22 @@ def gbin(tmp_path):
 
 @pytest.fixture
 def run_global(tmp_path, gbin):
-    """Run a script with `gbin` and a stub `harnessed` on PATH, from a chosen cwd.
+    """Run a script with a stub `harnessed` beside the launchers in `gbin`, from a chosen cwd.
 
     Returns the argv and the cwd the stub `harnessed` received, so a chain of local launcher ->
-    global launcher -> harnessed is executed for real rather than parsed.
+    global launcher -> harnessed is executed for real rather than parsed. The `harnessed` first on
+    PATH is a stale one that fails, as a mise branch venv's is: the global launcher must not reach it.
     """
-    stub_dir = tmp_path / "stubbin"
-    stub_dir.mkdir()
-    stub = stub_dir / "harnessed"
+    stub = gbin / "harnessed"
     stub.write_text(_GLOBAL_STUB, encoding="utf-8")
     stub.chmod(0o755)
+    stale_dir = _stale_bin(tmp_path)
     argv_out = tmp_path / "gargv.txt"
 
     def _run(script: Path, *extra: str, cwd: Path) -> tuple[list[str], Path]:
         env = {
             **os.environ,
-            "PATH": f"{gbin}{os.pathsep}{stub_dir}{os.pathsep}{os.environ['PATH']}",
+            "PATH": f"{stale_dir}{os.pathsep}{gbin}{os.pathsep}{os.environ['PATH']}",
             "ARGV_OUT": str(argv_out),
         }
         result = subprocess.run(
@@ -1225,10 +1250,14 @@ class TestWriteGlobals:
         refused = launchscript.write_globals("default", "claude", gbin)
         assert refused == []
         expected = {
-            "harnessed-claude-default-host": 'exec harnessed host-run claude --stack default "$@"',
-            "harnessed-claude-default-container": 'exec harnessed container-run claude --stack default "$@"',
-            "harnessed-acp-claude-default-container": 'exec harnessed container-acp claude --stack default "$@"',
-            "harnessed-acp-claude-default-host": 'exec harnessed host-acp claude --stack default "$@"',
+            "harnessed-claude-default-host": _global_line("host-run", "claude", "--stack", "default"),
+            "harnessed-claude-default-container": _global_line(
+                "container-run", "claude", "--stack", "default"
+            ),
+            "harnessed-acp-claude-default-container": _global_line(
+                "container-acp", "claude", "--stack", "default"
+            ),
+            "harnessed-acp-claude-default-host": _global_line("host-acp", "claude", "--stack", "default"),
         }
         assert sorted(p.name for p in gbin.iterdir()) == sorted(expected)
         for name, line in expected.items():
@@ -1243,7 +1272,7 @@ class TestWriteGlobals:
         """GH-571 AC-7 reverses GH-565 S1.12: `host-acp` exists now, so its launcher is written."""
         launchscript.write_globals("default", harness, gbin)
         path = gbin / f"harnessed-acp-{harness}-default-host"
-        assert _exec_line(path) == f'exec harnessed host-acp {harness} --stack default "$@"'
+        assert _exec_line(path) == _global_line("host-acp", harness, "--stack", "default")
         assert stat.S_IMODE(path.stat().st_mode) == 0o755
 
     def test_s1_2_no_acp_launcher_for_codex(self, gbin):
@@ -1256,15 +1285,39 @@ class TestWriteGlobals:
         stack = "default.codebase-memory-mcp.gh-issue-tracker"
         launchscript.write_globals(stack, "claude", gbin)
         path = gbin / f"harnessed-claude-{stack}-container"
-        assert _exec_line(path) == f'exec harnessed container-run claude --stack {stack} "$@"'
+        assert _exec_line(path) == _global_line("container-run", "claude", "--stack", stack)
 
     def test_s1_5_no_global_launcher_names_a_path(self, gbin):
         launchscript.write_globals("default", "claude", gbin)
         for path in gbin.iterdir():
             tokens = shlex.split(_exec_line(path)[len("exec "):])
-            assert tokens[:2] in (["harnessed", "host-run"], ["harnessed", "container-run"],
-                                  ["harnessed", "container-acp"], ["harnessed", "host-acp"])
-            assert tokens[2:] == ["claude", "--stack", "default", "$@"]
+            assert tokens[:3] == _FALLBACK
+            assert tokens[3] in ("host-run", "container-run", "container-acp", "host-acp")
+            assert tokens[4:] == ["claude", "--stack", "default", "$@"]
+
+    def test_the_harnessed_beside_the_launchers_is_run_by_absolute_path(self, gbin):
+        entry = gbin / "harnessed"
+        entry.write_text("#!/bin/sh\n", encoding="utf-8")
+        entry.chmod(0o755)
+        launchscript.write_globals("default", "claude", gbin)
+        path = gbin / "harnessed-acp-claude-default-host"
+        assert _exec_line(path) == _global_line(
+            "host-acp", "claude", "--stack", "default", harnessed=[str(entry)]
+        )
+
+    def test_a_harnessed_that_is_not_executable_is_not_run(self, gbin):
+        entry = gbin / "harnessed"
+        entry.write_text("#!/bin/sh\n", encoding="utf-8")
+        entry.chmod(0o644)
+        launchscript.write_globals("default", "claude", gbin)
+        path = gbin / "harnessed-acp-claude-default-host"
+        assert _exec_line(path) == _global_line("host-acp", "claude", "--stack", "default")
+
+    def test_no_launcher_runs_a_bare_harnessed(self, gbin):
+        """A bare name resolves through the caller's PATH, where a stale venv can shadow it."""
+        launchscript.write_globals("default", "claude", gbin)
+        for path in gbin.iterdir():
+            assert Path(shlex.split(_exec_line(path)[len("exec "):])[0]).is_absolute()
 
     def test_s1_7_identical_launcher_is_not_rewritten(self, gbin):
         launchscript.write_globals("default", "claude", gbin)
@@ -1279,7 +1332,7 @@ class TestWriteGlobals:
         path = gbin / "harnessed-claude-default-container"
         path.write_text(f"#!/bin/sh\n{launchscript.SENTINEL}\nexec old\n", encoding="utf-8")
         assert launchscript.write_globals("default", "claude", gbin) == []
-        assert _exec_line(path) == 'exec harnessed container-run claude --stack default "$@"'
+        assert _exec_line(path) == _global_line("container-run", "claude", "--stack", "default")
 
     def test_s1_8_a_foreign_file_is_left_alone(self, gbin):
         path = gbin / "harnessed-claude-default-container"
@@ -1344,6 +1397,17 @@ class TestRunningAGlobalLauncher:
             gbin / "harnessed-claude-default-container", "-x", "--", "--resume", "abc", cwd=tmp_path,
         )
         assert argv == ["container-run", "claude", "--stack", "default", "-x", "--", "--resume", "abc"]
+
+    def test_the_fallback_launcher_runs_with_a_stale_harnessed_first_on_path(self, gbin, tmp_path):
+        """No `harnessed` beside it: the writer's interpreter runs the verb, whatever PATH holds."""
+        launchscript.write_globals("default", "claude", gbin)
+        env = {**os.environ, "PATH": f"{_stale_bin(tmp_path)}{os.pathsep}{os.environ['PATH']}"}
+        result = subprocess.run(
+            [str(gbin / "harnessed-acp-claude-default-host"), "--help"],
+            env=env, cwd=tmp_path, capture_output=True, text=True, timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "No such command" not in result.stderr
 
 
 class TestTheLocalLauncherExecsTheGlobalOne:
