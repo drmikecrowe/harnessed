@@ -1,0 +1,25 @@
+name: pr title
+
+# The repo merges by squash only, and the squash commit takes the PR title. release-please builds
+# the changelog from those titles, so a title that is not a conventional commit drops the whole PR
+# from the changelog and from the version bump. This check makes that visible before merge.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  conventional-title:
+    runs-on: ubuntu-latest
+    steps:
+      # The title goes through env, never interpolated into the script: it is attacker-controlled.
+      - env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|perf|refactor|revert|docs|test|build|ci|chore|style)(\([a-z0-9._/-]+\))?!?: .+'
+          if [[ ! "$TITLE" =~ $pattern ]]; then
+            echo "::error::PR title is not a conventional commit: $TITLE"
+            echo "Expected '<type>(<scope>): <summary>', e.g. 'feat(acp): run a stack over ACP (GH-571)'."
+            exit 1
+          fi
