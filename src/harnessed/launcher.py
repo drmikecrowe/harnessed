@@ -31,6 +31,7 @@ from typing import Callable, Optional, TypeVar
 import typer
 from rich.markup import escape
 
+from . import acprelay
 from . import aoe
 from . import broker
 from . import dynstack
@@ -3032,12 +3033,75 @@ class HostBackend(ExecutionBackend):
         """
 
 
+def _host_acp_agent_argv(harness: str, home: Path, no_strict_mcp: bool) -> list[str]:
+    """The agent `host-acp` starts. omp has ACP built in; claude needs the adapter (#530), and its
+    MCP wiring travels in the env instead (see `_relay_acp`). A seam: tests swap in a stub agent."""
+    del home, no_strict_mcp  # part of the seam's signature; the real agents take neither as argv
+    if harness == "claude":
+        return ["claude-agent-acp"]
+    return [_HOST_HARNESSES[harness].argv0, "acp"]
+
+
+def _project_setup_argv(
+    harness: str, stack: str, project: Path, *, no_strict_mcp: bool = False,
+) -> list[str]:
+    """`project-setup` for one folder, run by the SAME installation as this process: a bare
+    `harnessed` on PATH may be another checkout's editable install. Carries `host-acp`'s
+    `--no-strict-mcp-config`, so the project's tool env agrees with the agent (PR #572 review)."""
+    argv = [sys.executable, "-m", "harnessed", "project-setup", harness, str(project), "--stack", stack]
+    return [*argv, "--no-strict-mcp-config"] if no_strict_mcp else argv
+
+
+def _relay_acp(
+    stack: str, harness: str, home: Path, env: dict[str, str], launch: Path, *, no_strict_mcp: bool,
+) -> None:
+    """Start the agent in `launch` and relay the editor's JSON-RPC to it until it exits (GH-571).
+
+    claude-agent-acp takes no `--mcp-config`, so the stack's MCP file reaches claude the way it does
+    under `container-acp`: the adapter spawns the wrapper as its claude CLI, and the wrapper adds the
+    file and, unless `--no-strict-mcp-config`, strict. The wrapper ships in the catalog.
+    """
+    agent_env = dict(env)
+    if harness == "claude":
+        agent_env["CLAUDE_CODE_EXECUTABLE"] = str(
+            paths.harnessed_home() / "catalog" / "base" / "harnessed-claude-acp-cli"
+        )
+        agent_env["HARNESSED_MCP_CONFIG"] = str(home / ".mcp.json")
+        agent_env.pop("HARNESSED_STRICT_MCP", None)
+        if not no_strict_mcp:
+            agent_env["HARNESSED_STRICT_MCP"] = "1"
+    out_fd = acp_stdout()
+    if out_fd is None:
+        raise RuntimeError("host-acp relays only in ACP mode; set_acp_mode(True) must run first")
+    # Never closed: the editor's thread may still be writing a reply when `run` returns, and
+    # closing the stream under it would drop the reply. os._exit below ends the process anyway.
+    out = os.fdopen(os.dup(out_fd), "wb")
+    code = acprelay.run(
+        _host_acp_agent_argv(harness, home, no_strict_mcp), agent_env,
+        lambda project: _project_setup_argv(harness, stack, project, no_strict_mcp=no_strict_mcp),
+        cwd=launch, stdin=sys.stdin.buffer, stdout=out,
+    )
+    # os._exit, not typer.Exit: when the agent exits while the editor is still connected, the
+    # relay's reader thread is blocked in a read on stdin that nothing can interrupt, and a normal
+    # interpreter shutdown then aborts on that stream's lock ("Fatal Python error:
+    # _enter_buffered_busy") instead of exiting with the agent's code.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(_exit_status(code))
+
+
+def _exit_status(code: int) -> int:
+    """A Popen returncode as a shell reports it: a signal death (-N) is 128+N, not N mod 256."""
+    return 128 - code if code < 0 else code
+
+
 def _launch_host(
     stack: str, harness: str, path: Optional[str], *, rm: bool = False,
     extra: Optional[list[str]] = None, create_aoe_only: bool = False,
     no_strict_mcp: bool = False,
     aoe_group: Optional[str] = None, aoe_title: Optional[str] = None,
     exec_mode: bool = False, fresh: bool = False, aoe_managed_worktree: bool = False,
+    acp: bool = False, project_only: bool = False,
 ) -> None:
     """Host-native launch: no podman. Materialize the assembled profile into a host CLAUDE_CONFIG_DIR,
     start any host daemons (beads-server, hatago MCP hub), and exec the harness on the host so it sees
@@ -3054,7 +3118,17 @@ def _launch_host(
 
     `fresh` (--fresh, #452) discards this stack's build stamp and host tool tree so the config dir
     rebuilds and every `tools:` pin is reinstalled. Nothing to do with the container verb's --fresh,
-    which tears down a pod: there is no pod here, and the stamp gate is host-only."""
+    which tears down a pod: there is no pod here, and the stamp gate is host-only.
+
+    `acp` (`host-acp`, GH-571) does only the per-stack half here and relays instead of exec'ing.
+    The folder it starts in is the editor's, not a project: no launcher, aoe row, project secrets,
+    recipe `env:` or folder-env contract is derived from it, and the per-project steps run per
+    project from the relay instead (`project-setup`).
+
+    `project_only` (`project-setup`, GH-571) is the other half: only the per-project lines below run,
+    for `path`, and the launch returns before anything per-stack. It never touches the host home —
+    under `host-acp` an agent is already running on it, and materializing would rmtree it. So
+    `host-run` and `project-setup` run the same per-project code, at the same call sites."""
     set_exec_mode(exec_mode)
     if harness not in _HOST_HARNESSES:
         _err.print(
@@ -3078,21 +3152,25 @@ def _launch_host(
     # multi-GB image), we only need the profile's content layer. Assembly is sub-second, so a
     # rebuild-per-launch also sidesteps staleness bookkeeping entirely. `build_root` is the dir that
     # CONTAINS profiles/ (assemble emits to <build_root>/profiles/<stack>/<harness>).
-    _err.print(f"[blue][INFO][/blue] Assembling '{stack}' ({harness}) host-native (no container) ...")
-    try:
-        # `shared_identity=False`: this backend gives omp a PER-STACK agent dir, so the shared
-        # `~/.omp/agent` block write would land where nothing on this path reads (#307).
-        assemble(
-            None, stack, paths.profiles_root().parent, harness, strict=True, shared_identity=False,
+    if not project_only:
+        _err.print(
+            f"[blue][INFO][/blue] Assembling '{stack}' ({harness}) host-native (no container) ..."
         )
-    except (SchemaError, CollisionError) as exc:
-        _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
-        raise typer.Exit(1) from exc
+        try:
+            # `shared_identity=False`: this backend gives omp a PER-STACK agent dir, so the shared
+            # `~/.omp/agent` block write would land where nothing on this path reads (#307).
+            assemble(
+                None, stack, paths.profiles_root().parent, harness, strict=True,
+                shared_identity=False,
+            )
+        except (SchemaError, CollisionError) as exc:
+            _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
+            raise typer.Exit(1) from exc
 
-    # The assemble above just refreshed THIS stack's block in the shared omp agent dir; this drops
-    # the blocks of stacks that no longer resolve at all. Both launch verbs prune, so it does not
-    # matter which one the user reaches for.
-    _prune_unlaunchable_omp_blocks(harness)
+        # The assemble above just refreshed THIS stack's block in the shared omp agent dir; this
+        # drops the blocks of stacks that no longer resolve at all. Both launch verbs prune, so it
+        # does not matter which one the user reaches for.
+        _prune_unlaunchable_omp_blocks(harness)
 
     # Same mirror as the container path, recorded under this verb so the two never collide: a
     # host-native session and a containerized one for the same stack+harness+folder are different
@@ -3110,8 +3188,8 @@ def _launch_host(
     # Both or neither, and not at all for an ad-hoc stack — see `_persist_this_launch`.
     # The global launchers come first: the local one, when written, execs one of them (GH-565).
     asked = aoe_group is not None or aoe_title is not None or create_aoe_only
-    own_in_place = _write_global_launchers(stack, harness, "host-run", asked=asked)
-    if _own_launcher_or_exit(
+    own_in_place = project_only or _write_global_launchers(stack, harness, "host-run", asked=asked)
+    if not (acp or project_only) and _own_launcher_or_exit(
         own_in_place, "host-run", stack, harness, only=create_aoe_only
     ) and _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):
         launchscript.write(
@@ -3148,7 +3226,8 @@ def _launch_host(
     #   - overrides an inherited shell value of the same name. The schema is the declared source of
     #     truth; letting a stale export in the invoking shell silently beat it is the failure mode
     #     that is hardest to see from inside a session.
-    os.environ.update(_resolve_launch_env(project_path))
+    # Under `acp` only the global half: the launch folder is not a project (GH-571 Decide 2).
+    os.environ.update(_resolve_launch_env(None if acp else project_path))
 
     # The recipe closure, hoisted above the sidecars so the backend can be constructed with it.
     # Inert as a reordering: `assemble(..., strict=True)` above already resolved and validated every
@@ -3166,16 +3245,20 @@ def _launch_host(
         extra=tuple(extra or []), no_strict_mcp=no_strict_mcp, ephemeral=rm,
     )
 
-    # Sidecars — the SAME ones `launch` ensures (bd harnessed-2sm). Ahead of the recipe env and setup
-    # scripts below, which is what needs the socket to already exist.
-    backend.wire_services(spec)
+    # The per-project steps — services, the project tool env file, ATTACH, setup notices — are
+    # skipped under `acp`, whose launch folder is not a project; `project-setup` runs the same four,
+    # in this order, for each folder an editor opens (GH-571).
+    if not acp:
+        # Sidecars — the SAME ones `launch` ensures (bd harnessed-2sm). Ahead of the recipe env and
+        # setup scripts below, which is what needs the socket to already exist.
+        backend.wire_services(spec)
 
-    # Hand the PROJECT the same tool env we are about to hand the agent, so a plain `bd` in this
-    # repo is configured too. After services, because the client env includes their connection.
-    _write_project_tool_env(
-        stack, project_path, harness=harness, verb="host-run",
-        no_strict_mcp=no_strict_mcp, aoe_group=aoe_group, aoe_title=aoe_title,
-    )
+        # Hand the PROJECT the same tool env we are about to hand the agent, so a plain `bd` in this
+        # repo is configured too. After services, because the client env includes their connection.
+        _write_project_tool_env(
+            stack, project_path, harness=harness, verb="host-run",
+            no_strict_mcp=no_strict_mcp, aoe_group=aoe_group, aoe_title=aoe_title,
+        )
 
     # Recipe `env:` — the host half of what the derived image's ENV does for a container launch.
     # Set on THIS process (same reasoning as the PATH mutation below: the process is dedicated to
@@ -3183,7 +3266,8 @@ def _launch_host(
     # from here inherits it, and so does claude itself — `env = dict(os.environ)` at the exec below
     # is what actually delivers it to the running agent, the row that was broken before.
     # Recipe declarations win over an inherited value, mirroring `podman run -e` in container mode.
-    os.environ.update(_recipe_env(host_recipes, project_path, mode="host"))
+    if not acp:
+        os.environ.update(_recipe_env(host_recipes, project_path, mode="host"))
 
     # Put the stack bin dir on PATH BEFORE recipe setups + native MCP check. install.sh may put tools
     # there (via UV_TOOL_BIN_DIR / PNPM_HOME redirect), and _host_native_mcp's presence check runs
@@ -3213,7 +3297,8 @@ def _launch_host(
     # every process agrees, and the host has no box — os.environ IS the box. Without this the agent
     # exec'd below inherits nothing, because subprocess.run(env=…) in _host_run_setups is a private
     # copy that dies with the setup. Set BEFORE the setups so they see it too.
-    os.environ.update(harnessed_env(stack, project_path, harness=harness, mode="host"))
+    if not acp:
+        os.environ.update(harnessed_env(stack, project_path, harness=harness, mode="host"))
 
     # Materialize the host home FIRST, then install, then setup. This order is required, not
     # stylistic: _materialize_host_home rmtree's the home on every launch, so an install that ran
@@ -3229,7 +3314,7 @@ def _launch_host(
     # assemble-time FLOOR, so the host's own ~/.claude defaultMode never crossed over and a user
     # running `auto` silently got `acceptEdits` (bd harnessed-8px.8). merge_settings applies
     # required.defaultMode with setdefault — a floor, not an override — so the host's mode wins.
-    if harness in ("claude", "omp", "opencode"):
+    if harness in ("claude", "omp", "opencode") and not project_only:
         _merge_host_claude_settings(
             profile_dir(stack, harness),
             emit.required_settings(
@@ -3241,25 +3326,26 @@ def _launch_host(
     # Lock spans the rebuild AND the installs — see _host_home_lock for why releasing earlier would
     # let a second launch skip installs that are still running. `seed_auth` joins them inside it,
     # exactly where `_host_launch_plan` used to perform it.
-    with _host_home_lock(paths.host_home(stack, harness)):
-        # INSIDE the lock and BEFORE materialize: the gate `_host_fresh_wipe` defeats is read by
-        # materialize_config, and a concurrent launch of this stack+harness must not observe a
-        # half-wiped tree.
-        if fresh:
-            _err.print(
-                f"[blue][INFO][/blue] --fresh: discarding the build stamp and tool tree for '{stack}'"
-            )
-            _host_fresh_wipe(stack, harness)
-        backend.materialize_config(spec)
-        backend.seed_auth(spec)
-        # `install:` — the host half of the derived image's `RUN bash install.sh`, i.e. the content
-        # a Dockerfile RUN used to deliver to containers only.
-        backend.provision_tools(spec, FIRST_START)
+    # The host home is per-stack: `project_only` never touches it (see the docstring).
+    if not project_only:
+        with _host_home_lock(paths.host_home(stack, harness)):
+            # INSIDE the lock and BEFORE materialize: the gate `_host_fresh_wipe` defeats is read by
+            # materialize_config, and a concurrent launch of this stack+harness must not observe a
+            # half-wiped tree.
+            if fresh:
+                _err.print(
+                    f"[blue][INFO][/blue] --fresh: discarding the build stamp and tool tree for "
+                    f"'{stack}'"
+                )
+                _host_fresh_wipe(stack, harness)
+            backend.materialize_config(spec)
+            backend.seed_auth(spec)
+            # `install:` — the host half of the derived image's `RUN bash install.sh`, i.e. the
+            # content a Dockerfile RUN used to deliver to containers only.
+            backend.provision_tools(spec, FIRST_START)
     # setup.script — outside the lock, because a setup can prompt (see provision_tools).
-    backend.provision_tools(spec, ATTACH)
-    home, cwd = backend.home, backend.cwd
-    if cwd is None or home is None:
-        raise RuntimeError("home/cwd not set; materialize_config must be called first")
+    if not acp:
+        backend.provision_tools(spec, ATTACH)
 
     # Pending `setup:` notices, and BLOCK on them — the host half of what `launch` does at its own
     # line. This was container-only too, so a host launch printed nothing and started the agent
@@ -3267,7 +3353,14 @@ def _launch_host(
     # rather than the user. Runs after init, so a recipe that self-initializes (beads/stealth) has
     # already satisfied its own condition and stays silent. `allow_terminal=False` — there is no
     # container to drop a shell into here.
-    _prompt_setup_notices(host_recipes, project_path, stack, harness, allow_terminal=False)
+    if not acp:
+        _prompt_setup_notices(host_recipes, project_path, stack, harness, allow_terminal=False)
+    if project_only:
+        return
+    home, cwd = backend.home, backend.cwd
+    if cwd is None or home is None:
+        raise RuntimeError("home/cwd not set; materialize_config must be called first")
+
     # Native MCP (hatago deferred): resolve after PATH is set so the stdio-command presence check
     # sees just-provisioned tools AND anything an install/setup script put in the stack bin dir.
     backend.wire_mcp(spec)
@@ -3294,6 +3387,8 @@ def _launch_host(
         # stay silent — see `_host_omp_claude_dir`. Harmless when the bridge is absent; the variable
         # is then simply unread.
         env["CLAUDE_CONFIG_DIR"] = str(_host_omp_claude_dir(home))
+    if acp:
+        _relay_acp(stack, harness, home, env, project_path, no_strict_mcp=no_strict_mcp)
     os.chdir(cwd)
 
     if not rm:
@@ -3536,6 +3631,57 @@ def host_run(
         if minted_dir is not None:
             shutil.rmtree(minted_dir, ignore_errors=True)
         raise
+
+
+@app.command("host-acp")
+def host_acp(
+    harness: str = typer.Argument(..., help="Harness to run as an ACP agent: omp or claude"),
+    stack: str = typer.Option(..., "--stack", "-s", help="Authored stack to run (must be built)"),
+    no_strict_mcp_config: bool = _NO_STRICT_MCP_OPT,
+) -> None:
+    """Run a stack HOST-NATIVELY as an ACP agent on stdio, for an editor (GH-571).
+
+    One process serves every project the editor opens: each session runs in the folder its
+    `session/new` names, and the first session in a folder runs `project-setup` there first. The
+    folder this starts in gets only the per-stack setup. Stdout carries JSON-RPC and nothing else.
+
+        harnessed host-acp <harness> --stack <name>
+    """
+    if harness not in _ACP_HARNESSES:
+        _err.print(
+            f"[bold red]error:[/bold red] {harness} has no ACP mode; host-acp supports: "
+            f"{', '.join(_ACP_HARNESSES)}", soft_wrap=True,
+        )
+        raise typer.Exit(2)
+    # Before anything can print: stdout is the editor's channel from here on.
+    set_acp_mode(True)
+    if not paths.is_built(stack, harness):
+        _err.print(
+            f"[bold red]error:[/bold red] stack '{stack}' ({harness}) has no assembled profile "
+            f"(run: harnessed build {stack} {harness})", soft_wrap=True,
+        )
+        raise typer.Exit(1)
+    if harness == "claude":
+        _require_acp_adapter()
+    _launch_host(
+        stack, harness, None, exec_mode=True, no_strict_mcp=no_strict_mcp_config, acp=True,
+    )
+
+
+@app.command("project-setup")
+def project_setup(
+    harness: str = typer.Argument(..., help="Harness the stack runs as: omp or claude"),
+    path: str = typer.Argument(..., help="Project directory to set up"),
+    stack: str = typer.Option(..., "--stack", "-s", help="Authored stack the project runs"),
+    no_strict_mcp_config: bool = _NO_STRICT_MCP_OPT,
+) -> None:
+    """Run the per-project half of a host launch for one folder, and exit (GH-571).
+
+    The stack's services, the project tool env file, and the recipe setup and init scripts, with
+    the project's environment: `_launch_host` in its project-only mode, so the same lines `host-run`
+    runs. `host-acp` runs this for each new project folder an editor opens.
+    """
+    _launch_host(stack, harness, path, no_strict_mcp=no_strict_mcp_config, project_only=True)
 
 
 @register
@@ -4670,6 +4816,109 @@ app.command(
 )(container_run)
 
 
+_ACP_ADAPTER_ARG = "CLAUDE_AGENT_ACP_VERSION"
+_ACP_ADAPTER_BIN = "claude-agent-acp"
+
+
+def _acp_adapter_pin() -> tuple[str, str]:
+    """(package, version) of the claude ACP adapter, from the claude agent manifest — the same pin
+    the image build installs, so the host and the container never run different adapters."""
+    agent = load_agent("claude")
+    package = agent.build_arg_specs[_ACP_ADAPTER_ARG].removeprefix("npm:")
+    return package, agent.build_args[_ACP_ADAPTER_ARG]
+
+
+def _acp_adapter_install_cmd(package: str, version: str) -> list[str]:
+    return ["npm", "i", "-g", f"{package}@{version}"]
+
+
+_VERSION_RE = re.compile(r"\d+\.\d+\.\d+\S*")
+
+
+def _installed_acp_adapter() -> Optional[str]:
+    """The version the `claude-agent-acp` on PATH reports, or None when there is none or it says none.
+
+    Asked, not read from a `package.json`: npm installs a symlink into the package, but pnpm writes
+    a wrapper script and mise puts its own shim in front, so no file layout holds for all three
+    (SPEC revision 5). `--version` answers through every one of them.
+    """
+    found = shutil.which(_ACP_ADAPTER_BIN)
+    if found is None:
+        return None
+    try:
+        out = subprocess.run(
+            [found, "--version"], stdin=subprocess.DEVNULL, capture_output=True, text=True,
+            check=False, timeout=10,
+        ).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    match = _VERSION_RE.search(out)
+    return match.group(0) if match else None
+
+
+def _require_acp_adapter() -> None:
+    """`host-acp claude`: refuse without the adapter, warn when it is not the pin (GH-571 Decide 3).
+
+    Never asks: an editor started this process and nobody can answer. The install is `build`'s.
+    """
+    package, pin = _acp_adapter_pin()
+    shown = shlex.join(_acp_adapter_install_cmd(package, pin))
+    if shutil.which(_ACP_ADAPTER_BIN) is None:
+        _err.print(
+            f"[bold red]error:[/bold red] {_ACP_ADAPTER_BIN} is not installed; host-acp claude "
+            f"needs it. Install it with: {escape(shown)}", soft_wrap=True,
+        )
+        raise typer.Exit(1)
+    version = _installed_acp_adapter()
+    if version != pin:
+        _err.print(
+            f"[yellow]warning:[/yellow] {_ACP_ADAPTER_BIN} is {version or 'of unknown version'}, "
+            f"not the pinned {pin}; running it anyway. Reinstall with: {escape(shown)}",
+            soft_wrap=True,
+        )
+
+
+def _offer_acp_adapter() -> None:
+    """`build <stack> claude`: offer to install the pinned adapter `host-acp claude` runs (AC-6).
+
+    `y` runs the npm install, `c` runs a command the user types instead (a pnpm user's own), `n`
+    skips. Without a terminal it only names the command. A failed install never fails the build:
+    the stack is built, and only `host-acp claude` needs the adapter.
+    """
+    package, pin = _acp_adapter_pin()
+    if _installed_acp_adapter() == pin:
+        return
+    cmd = _acp_adapter_install_cmd(package, pin)
+    shown = shlex.join(cmd)
+    if not _can_prompt():
+        _err.print(
+            f"[blue][INFO][/blue] host-acp claude needs {package} {pin}; install it with: "
+            f"{escape(shown)}", soft_wrap=True,
+        )
+        return
+    answer = ""
+    while answer not in ("y", "n", "c"):
+        answer = typer.prompt(
+            f"I need to install `{shown}` to support ACP -- is that OK? (y/n/c)", prompt_suffix=" ",
+        ).strip().lower()
+    if answer == "n":
+        return
+    if answer == "c":
+        typed = typer.prompt("Command to run instead")
+        cmd, shown = ["bash", "-c", typed], typed
+    try:
+        rc = subprocess.run(cmd, check=False, timeout=600).returncode
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        rc, why = None, str(exc)
+    else:
+        why = f"exit {rc}"
+    if rc != 0:
+        _err.print(
+            f"[yellow]warning:[/yellow] the ACP adapter install failed ({escape(why)}): "
+            f"{escape(shown)}", soft_wrap=True,
+        )
+
+
 @app.command("build")
 def build(
     stack: Optional[str] = typer.Argument(
@@ -4794,6 +5043,8 @@ def build(
                 _build_stack(rt, stack, target, root_path, strict=not no_strict)
                 if root_path is None:
                     _write_global_launchers(stack, target, "container-run")
+                if target == "claude":
+                    _offer_acp_adapter()
         else:
             _build_images_cmd(rt, force=force)
             _reconcile_stacks(rt, root_path, strict=not no_strict, jobs=jobs, force=force)

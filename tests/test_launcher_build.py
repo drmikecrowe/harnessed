@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from harnessed import launcher
+from harnessed import launcher, launchscript
 from support import patch_all
 
 runner = CliRunner()
@@ -256,9 +256,51 @@ class TestBuildWritesGlobalLaunchers:
         assert result.exit_code == 0, result.output
         assert built == [("default", "claude")]
         assert sorted(p.name for p in (home / ".local" / "bin").iterdir()) == [
-            "harnessed-acp-claude-default-container", "harnessed-claude-default-container",
-            "harnessed-claude-default-host",
+            "harnessed-acp-claude-default-container", "harnessed-acp-claude-default-host",
+            "harnessed-claude-default-container", "harnessed-claude-default-host",
         ]
+
+    @pytest.mark.parametrize("harness", ["omp", "claude"])
+    def test_gh571_s7_1_build_writes_the_host_acp_launcher(self, built, tmp_path, monkeypatch, harness):
+        home = tmp_path / "home"
+        monkeypatch.setattr(Path, "home", lambda: home)
+        result = runner.invoke(launcher.app, ["build", "default", harness])
+        assert result.exit_code == 0, result.output
+        path = home / ".local" / "bin" / f"harnessed-acp-{harness}-default-host"
+        lines = path.read_text().splitlines()
+        assert lines[1] == launchscript.SENTINEL
+        assert lines[-1] == f'exec harnessed host-acp {harness} --stack default "$@"'
+        assert path.stat().st_mode & 0o777 == 0o755
+
+    def test_gh571_s7_2_a_second_build_leaves_one_identical_launcher(self, built, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        monkeypatch.setattr(Path, "home", lambda: home)
+        runner.invoke(launcher.app, ["build", "default", "claude"])
+        path = home / ".local" / "bin" / "harnessed-acp-claude-default-host"
+        first = path.read_bytes()
+        result = runner.invoke(launcher.app, ["build", "default", "claude"])
+        assert result.exit_code == 0, result.output
+        assert path.read_bytes() == first
+        assert [p.name for p in path.parent.iterdir()].count(path.name) == 1
+
+    def test_gh571_s7_3_uninstall_removes_what_build_wrote(self, built, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        monkeypatch.setattr(Path, "home", lambda: home)
+        monkeypatch.setattr(launcher.aoe, "rows_referencing", lambda names: [])
+        runner.invoke(launcher.app, ["build", "default", "claude"])
+        path = home / ".local" / "bin" / "harnessed-acp-claude-default-host"
+        assert path.is_file()
+        result = runner.invoke(launcher.app, ["uninstall", "default", "claude"])
+        assert result.exit_code == 0, result.output
+        assert not path.exists()
+
+    @pytest.mark.parametrize("harness", ["opencode", "antigravity", "codex"])
+    def test_gh571_s7_4_no_host_acp_launcher_without_acp(self, built, tmp_path, monkeypatch, harness):
+        home = tmp_path / "home"
+        monkeypatch.setattr(Path, "home", lambda: home)
+        result = runner.invoke(launcher.app, ["build", "default", harness])
+        assert result.exit_code == 0, result.output
+        assert not (home / ".local" / "bin" / f"harnessed-acp-{harness}-default-host").exists()
 
     def test_a_failed_build_writes_none(self, built, tmp_path, monkeypatch):
         home = tmp_path / "home"
