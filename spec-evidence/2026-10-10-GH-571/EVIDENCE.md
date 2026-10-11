@@ -1,0 +1,209 @@
+## Evidence Report — host-acp: run a stack as an ACP agent on the host (Tier 3)
+
+## Summary
+**Delivered.** `harnessed host-acp <omp|claude> --stack <name>` runs a stack as an ACP agent on the host, for an editor that reuses one agent process across projects. It does the per-stack half of `host-run` once, starts `omp acp` or `claude-agent-acp`, and relays JSON-RPC. The first `session/new` for a folder runs the new `project-setup` verb there first. `project-setup` is `_launch_host` in a project-only mode, so `host-run` and `project-setup` run the same per-project code. `build` and `install` write the host ACP launcher, `build <stack> claude` offers to install the pinned adapter, and `tools/acp-smoke.py` drives `host-acp`. Why: Atlas reuses one process per entry, and `container-acp` cannot follow each session's folder.
+
+**Each criterion and its proof.**
+- AC-1: stdout carries only JSON-RPC for omp and claude, launch and init output go to stderr, and `opencode` exits 2 before any work. Proven by real-process tests (S1.1 to S1.5) and by both smoke runs.
+- AC-2: `initialize` answers within 60 s, and an unbuilt stack is refused with the build command named. Proven by S2.2 and by both smoke runs with `--launch-timeout 60`: claude on the real `gortex-ghissues` stack answered in 2.4 s, and omp on `hostspike` in 2.1 s (Revision 7).
+- AC-3: one process serves two folders, and a missing folder is a JSON-RPC error. Proven by relay tests (S3.1 to S3.3, S3.5, S3.6) and, for the real agents, by the `--check-cwd` smoke runs: omp and claude each reported folder A, then folder B.
+- AC-4: the first session in a folder runs `project-setup` once, a failure is a JSON-RPC error, and `host-run` runs the same code: both verbs run `_launch_host`, and the existing `host-run` tests pass unchanged. Proven by S4.1 to S4.6 and the full suite.
+- AC-5: claude gets the stack's MCP file and strict by default, and `--no-strict-mcp-config` drops strict. Proven by S5.1 to S5.4 and the existing wrapper tests.
+- AC-6: `build <stack> claude` asks the exact question and honours y, n and c; `host-acp claude` without the adapter refuses on stderr. Proven by S6.1 to S6.10.
+- AC-7: `build` writes `harnessed-acp-<harness>-<stack>-host` for omp and claude, and `uninstall` removes it. Proven by S7.1 to S7.4.
+- AC-8: `tools/acp-smoke.py` passes for omp and claude against `host-acp`, from a new empty folder. Proven by S8.1 to S8.3.
+
+**Not proven.** No adversary has read the middle of `_launch_host`: every round, including supplementary round 3 on 087249a..38b9121, was blocked from opening `src/harnessed/launcher.py` by the Gortex hook, so round 3 reviewed only the diff hunks. Commit 91e5202 (round 3's fixes) had no review. Mutation testing did not run: the engineer stopped it before it scored any mutant. The `live.yml` layer has not run yet; it runs on the pull request. The omp half of S2.1 ran on `hostspike`, by the engineer's ruling. A fresh wheel install of the claude wrapper path was not exercised.
+
+**Judgment calls.** Existing tests were kept unchanged wherever they pinned `host-run`'s call sites and order (engineer's ruling, Revisions 3 and 4). After Gate 2 pass 1, `project-setup` became `_launch_host` in a project-only mode, so both verbs run the same per-project lines at those sites (Revision 6). The adapter version is asked with `--version`, because pnpm and mise layouts defeat a `package.json` lookup (Revision 5). All seven PR #572 review comments were fixed; six have a test seen failing first, and the seventh removes a stream close in an exit race no test can pin. A supplementary adversary round 3, approved by the engineer, found no defects and five hunches: two were fixed in 91e5202 with tests seen failing first, and three were checked clean by the author. Tests that pinned "no host ACP launcher" changed by design for AC-7.
+
+## Orientation
+- Verdict: PASSED WITH LIMITS
+- Delivered: `host-acp` and `project-setup` verbs, the host ACP launcher, the build-time adapter offer, and a smoke script that drives `host-acp`.
+- Proven: 48/48 scenarios mapped and passing.
+- Not proven: adversarial review of the middle of `_launch_host` (every round was blocked from `launcher.py` by the Gortex hook; supplementary round 3 read only the diff of 087249a..38b9121); adversarial review of 91e5202 (not run); mutation layer (not run, stopped by the engineer); live layer (`live.yml`, runs on the PR, not yet run); fresh-wheel install of the claude wrapper path (unverified).
+
+- Process: spec-evidence 0.0.1
+- Spec: spec-evidence/2026-10-10-GH-571/SPEC.md (committed)
+- Spec approval: obtained from mcrowe (commit 9dbf591, "GH-571: spec approved")
+- Intent review: round 1 changed the SPEC (S3 states that S3.4 is the required proof for real agents; S6 counts another installed version as not installed; S7.5 cut; S5.4 added once Decide 2 was ruled); round 2 changed nothing
+- Source state: commit 91e5202d06e5493201ec78c5721874b400f35eec — the commit the final run and the final smoke runs read. Process rounds 1 and 2 read 087249a; supplementary round 3 read the diff 087249a..38b9121; 91e5202 had no adversary review.
+- Stamp:
+
+```json
+{
+  "result": "green",
+  "expected_layers": [
+    "tests",
+    "coverage",
+    "types",
+    "lint",
+    "shellcheck",
+    "secrets"
+  ],
+  "completed_layers": [
+    "tests",
+    "coverage",
+    "types",
+    "lint",
+    "shellcheck",
+    "secrets"
+  ],
+  "layer_seconds": {
+    "tests": 331.229,
+    "coverage": 349.147,
+    "types": 17.257,
+    "lint": 0.128,
+    "shellcheck": 1.669,
+    "secrets": 3.096
+  },
+  "failed": null,
+  "exit_code": 0,
+  "commit": "91e5202d06e5493201ec78c5721874b400f35eec",
+  "dirty": false,
+  "written": "2026-10-11T01:11:23.871Z"
+}
+```
+
+- Baseline: spec-evidence/2026-10-10-GH-571/baseline-stamp.json at commit 9dbf591ece158dc9d481791315a1f2f0802a811f, green
+
+### Spec → Test mapping
+Test ids are relative to the repository root. `HA` is `tests/test_host_acp.py`, `BA` is `tests/test_launcher_build_adapter.py`. The smoke logs are the final runs on commit 91e5202.
+
+| Scenario | Test | Status |
+|---|---|---|
+| S1.1 | `HA::TestStdoutIsJsonRpcOnly::test_s1_1_and_s1_3_initialize_and_session_new_answer_on_a_clean_stdout[omp]` | pass |
+| S1.2 | `HA::TestStdoutIsJsonRpcOnly::test_s1_2_launch_and_init_output_go_to_stderr` | pass |
+| S1.3 | `HA::TestStdoutIsJsonRpcOnly::test_s1_1_and_s1_3_initialize_and_session_new_answer_on_a_clean_stdout[claude]` | pass |
+| S1.4 | `HA::TestStdoutIsJsonRpcOnly::test_s1_4_the_launch_folder_gets_no_per_project_setup` | pass |
+| S1.5 | `HA::TestStdoutIsJsonRpcOnly::test_s1_5_a_harness_without_acp_is_refused_before_any_work` | pass |
+| S2.1 | `tools/acp-smoke.py --verb host-acp --launch-timeout 60`: claude on `gortex-ghissues`, `initialize answered in 2.4s` at `spec-evidence/2026-10-10-GH-571/smoke-host-acp-claude.log:18`; omp on `hostspike` (Revision 7), `initialize answered in 2.1s` at `spec-evidence/2026-10-10-GH-571/smoke-host-acp-omp.log:16` | pass |
+| S2.2 | `HA::TestUnbuiltStack::test_s2_2_an_unbuilt_stack_names_the_build_command` | pass |
+| S3.1 | `HA::TestOneProcessManyProjects::test_s3_1_each_session_reports_its_own_folder` | pass |
+| S3.2 | `HA::TestOneProcessManyProjects::test_s3_2_the_agent_gets_each_cwd_unchanged` | pass |
+| S3.3 | `HA::TestOneProcessManyProjects::test_s3_3_a_missing_cwd_is_an_error_and_never_reaches_the_agent` | pass |
+| S3.4 | `tools/acp-smoke.py --check-cwd`, logs `spec-evidence/2026-10-10-GH-571/smoke-host-acp-omp.log:30,32` and `spec-evidence/2026-10-10-GH-571/smoke-host-acp-claude.log:62,64` | pass |
+| S3.5 | `HA::test_s3_5_concurrent_writers_never_interleave_a_line` (hypothesis, 200 examples) | pass |
+| S3.6 | `HA::test_s3_6_every_other_line_is_forwarded_byte_for_byte` (hypothesis, 200 examples) | pass |
+| S4.1 | `HA::TestPerProjectSetup::test_s4_1_the_first_session_runs_setup_before_the_agent_sees_it` | pass |
+| S4.2 | `HA::TestPerProjectSetup::test_s4_2_a_second_session_in_the_same_project_does_not_rerun_it` | pass |
+| S4.3 | `HA::TestFailedSetup::test_s4_3_a_failed_setup_is_an_error_naming_the_project` | pass |
+| S4.4 | `HA::TestFailedSetup::test_s4_4_a_failed_project_is_set_up_again_next_time` | pass |
+| S4.5 | `HA::TestHostRunSharesTheSetup::test_s4_5_host_run_and_project_setup_run_the_same_steps_in_the_same_order` (also asserts both verbs enter `_launch_host`), plus every test in the six named files unchanged (gauntlet tests layer) | pass |
+| S4.6 | `HA::TestHostRunSharesTheSetup::test_s4_6_project_setup_alone_sets_up_one_project` (also asserts the stack's host home is never created) | pass |
+| S5.1 | `HA::TestClaudeMcpAndEnv::test_s5_1_the_adapter_gets_the_stack_mcp_file_and_strict` | pass |
+| S5.2 | `HA::TestClaudeMcpAndEnv::test_s5_2_no_strict_keeps_the_file_and_drops_strict` | pass |
+| S5.3 | `tests/test_acp_verb.py::TestTheClaudeWrapper::test_strict_adds_the_hub_and_strict_before_the_sdk_args` (existing) | pass |
+| S5.4 | `HA::TestClaudeMcpAndEnv::test_s5_4_the_agent_gets_per_stack_env_only[omp]` and `[claude]` | pass |
+| S6.1 | `BA::TestTheOffer::test_s6_1_a_missing_or_other_version_asks_exactly[None]` and `[0.84.0]` | pass |
+| S6.2 | `BA::TestTheOffer::test_s6_2_yes_runs_the_npm_install` | pass |
+| S6.3 | `BA::TestTheOffer::test_s6_3_c_runs_the_typed_command_through_bash` | pass |
+| S6.4 | `BA::TestTheOffer::test_s6_4_no_runs_nothing_and_builds_on` | pass |
+| S6.5 | `BA::TestTheOffer::test_s6_5_the_pinned_version_asks_nothing` | pass |
+| S6.6 | `BA::TestTheOffer::test_s6_6_a_failed_install_warns_and_builds_on` | pass |
+| S6.7 | `BA::TestTheOffer::test_s6_7_no_terminal_asks_nothing_and_names_the_command` | pass |
+| S6.8 | `HA::TestTheAdapterAtLaunch::test_s6_8_a_missing_adapter_refuses_on_stderr` | pass |
+| S6.9 | `BA::TestTheOffer::test_s6_9_omp_never_checks_the_adapter` | pass |
+| S6.10 | `HA::TestTheAdapterAtLaunch::test_s6_10_another_version_runs_with_a_warning` | pass |
+| S7.1 | `tests/test_launcher_build.py::TestBuildWritesGlobalLaunchers::test_gh571_s7_1_build_writes_the_host_acp_launcher[omp]` and `[claude]`; `tests/test_launchscript.py::TestWriteGlobals::test_gh571_s7_1_a_host_acp_launcher_is_written[omp]` and `[claude]` | pass |
+| S7.2 | `tests/test_launcher_build.py::TestBuildWritesGlobalLaunchers::test_gh571_s7_2_a_second_build_leaves_one_identical_launcher` | pass |
+| S7.3 | `tests/test_launcher_build.py::TestBuildWritesGlobalLaunchers::test_gh571_s7_3_uninstall_removes_what_build_wrote` | pass |
+| S7.4 | `tests/test_launcher_build.py::TestBuildWritesGlobalLaunchers::test_gh571_s7_4_no_host_acp_launcher_without_acp[opencode]`, `[antigravity]`, `[codex]` | pass |
+| S8.1 | `tools/acp-smoke.py ... --harness omp --verb host-acp`, log `spec-evidence/2026-10-10-GH-571/smoke-host-acp-omp.log:33` | pass |
+| S8.2 | `tools/acp-smoke.py ... --harness claude --verb host-acp` on `gortex-ghissues`, log `spec-evidence/2026-10-10-GH-571/smoke-host-acp-claude.log:65` | pass |
+| S8.3 | `tests/test_acp_smoke.py::test_s8_3_container_acp_argv_is_unchanged`; also `test_s8_host_acp_argv_names_no_project`, `test_s8_the_default_verb_is_container_acp` | pass |
+| AC-1 condition | S1.1, S1.3 tests above | pass |
+| AC-1 boundary | `HA::TestStdoutIsJsonRpcOnly::test_s1_2_launch_and_init_output_go_to_stderr` | pass |
+| AC-1 negative | `HA::TestStdoutIsJsonRpcOnly::test_s1_5_a_harness_without_acp_is_refused_before_any_work` | pass |
+| AC-2 condition | S2.1 smoke runs with `--launch-timeout 60`: 2.4 s at `spec-evidence/2026-10-10-GH-571/smoke-host-acp-claude.log:18`, 2.1 s at `spec-evidence/2026-10-10-GH-571/smoke-host-acp-omp.log:16` | pass |
+| AC-2 boundary | the 60 s limit is `--launch-timeout 60` in both smoke runs; measured 2.4 s and 2.1 s | pass |
+| AC-2 negative | `HA::TestUnbuiltStack::test_s2_2_an_unbuilt_stack_names_the_build_command` (asserts exit 1, empty stdout, and the build command on stderr) | pass |
+| AC-3 condition | `HA::TestOneProcessManyProjects::test_s3_1_each_session_reports_its_own_folder`; S3.4 smoke runs | pass |
+| AC-3 boundary | one process, two folders: S3.4 smoke runs (`--check-cwd`) | pass |
+| AC-3 negative | `HA::TestOneProcessManyProjects::test_s3_3_a_missing_cwd_is_an_error_and_never_reaches_the_agent` (asserts the exact error, that no setup ran, and that the agent's log holds no `session/new`) | pass |
+| AC-4 condition | `HA::TestPerProjectSetup::test_s4_1_the_first_session_runs_setup_before_the_agent_sees_it` | pass |
+| AC-4 boundary | `HA::TestPerProjectSetup::test_s4_2_a_second_session_in_the_same_project_does_not_rerun_it`; `HA::TestHostRunSharesTheSetup::test_s4_5_host_run_and_project_setup_run_the_same_steps_in_the_same_order` (host-run runs the same verb's code: both enter `_launch_host`, and the same four lines run once each, in order); the six named host-run test files pass unchanged | pass |
+| AC-4 negative | `HA::TestFailedSetup::test_s4_3_a_failed_setup_is_an_error_naming_the_project` (asserts the error names the project and that the agent's log holds no `session/new`) | pass |
+| AC-5 condition | `HA::TestClaudeMcpAndEnv::test_s5_1_the_adapter_gets_the_stack_mcp_file_and_strict` | pass |
+| AC-5 boundary | `HA::TestClaudeMcpAndEnv::test_s5_2_no_strict_keeps_the_file_and_drops_strict` | pass |
+| AC-5 negative | `tests/test_acp_verb.py::TestTheClaudeWrapper::test_strict_adds_the_hub_and_strict_before_the_sdk_args` | pass |
+| AC-6 condition | `BA::TestTheOffer::test_s6_1_a_missing_or_other_version_asks_exactly[None]`, `test_s6_2_yes_runs_the_npm_install`, `test_s6_3_c_runs_the_typed_command_through_bash`, `test_s6_4_no_runs_nothing_and_builds_on` | pass |
+| AC-6 boundary | `BA::TestTheOffer::test_s6_5_the_pinned_version_asks_nothing` | pass |
+| AC-6 negative | `HA::TestTheAdapterAtLaunch::test_s6_8_a_missing_adapter_refuses_on_stderr` (asserts exit 1, empty stdout, the install command on stderr, and that the agent never started) | pass |
+| AC-7 condition | `tests/test_launcher_build.py::TestBuildWritesGlobalLaunchers::test_gh571_s7_1_build_writes_the_host_acp_launcher[omp]` and `[claude]`; `test_gh571_s7_3_uninstall_removes_what_build_wrote` | pass |
+| AC-7 boundary | `tests/test_launcher_build.py::TestBuildWritesGlobalLaunchers::test_gh571_s7_2_a_second_build_leaves_one_identical_launcher` | pass |
+| AC-7 negative | `tests/test_launcher_build.py::TestBuildWritesGlobalLaunchers::test_gh571_s7_4_no_host_acp_launcher_without_acp[opencode]`, `[antigravity]`, `[codex]` | pass |
+| AC-8 condition | S8.1 and S8.2 smoke runs, started in a new empty folder with no project path in the args (log line 1 of each) | pass |
+
+Tests changed by design for AC-7 (each listed with its old and new assertion):
+- `tests/test_launchscript.py::TestWriteGlobals::test_s1_12_no_host_acp_launcher_is_written`: asserted the host ACP launcher is absent; replaced by `test_gh571_s7_1_a_host_acp_launcher_is_written`, which asserts it is written with `exec harnessed host-acp <harness> --stack default "$@"`.
+- `tests/test_launchscript.py::TestWriteGlobals::test_s1_1_three_launchers_for_claude`, renamed `test_s1_1_four_launchers_for_claude`: expected set gains `harnessed-acp-claude-default-host`.
+- `tests/test_launchscript.py::TestWriteGlobals::test_s1_5_no_global_launcher_names_a_path`: allowed verbs gain `host-acp`.
+- `tests/test_launchscript.py::TestWriteGlobals::test_s1_11_an_unwritable_dir_never_raises`: `len(refused) == 3` becomes `4`.
+- `tests/test_launchscript.py::TestRemoveGlobals::test_s5_1_only_the_named_pair_goes`: removed and remaining sets gain the host ACP launchers.
+- `tests/test_launchscript.py::TestGlobalWriterMutationGaps::test_a_missing_launcher_does_not_stop_removal_of_the_rest` and `test_a_foreign_file_does_not_stop_removal_of_the_rest`: removed set gains `harnessed-acp-claude-default-host`.
+- `tests/test_launcher_install.py::TestInstallWritesGlobalLaunchers::test_s1_1_install_writes_three_launchers`, renamed `test_s1_1_install_writes_four_launchers`: expected set gains `harnessed-acp-claude-claude_time-host`.
+- `tests/test_launcher_install.py::TestUninstallRemovesGlobalLaunchers::test_s5_1_only_the_named_pair_is_removed`, `test_s5_2_referencing_rows_are_named`, `test_only_removed_launchers_are_looked_up`: sets gain the host ACP launcher.
+- `tests/test_adhoc_launch_is_not_persisted.py`: `_HOSTSPIKE_LAUNCHERS` and `test_s1_6_container_run_writes_them_without_a_build` gain the host ACP launcher.
+- `tests/test_launcher_build.py::TestBuildWritesGlobalLaunchers::test_s1_4_build_writes_them`: expected set gains `harnessed-acp-claude-default-host`.
+
+### Gauntlet (final fresh run)
+| Layer | Command | Status + result | Log |
+|---|---|---|---|
+| tests | `mise exec -- tools/run-tests.sh` | PASSED — 4220 passed, 80 skipped, 0 failed | work/tests.log |
+| coverage | `mise exec -- uv run --extra dev pytest -q --cov=src --cov-branch --cov-fail-under=80` | PASSED — 85.83% total (80% required); `acprelay.py` 93%, `launchscript.py` 99% | work/coverage.log |
+| types | pyright, as `tools/gauntlet-layers.json` declares | PASSED — 0 errors, 0 warnings | work/types.log |
+| lint | `mise exec -- uv run --extra dev ruff check src tests tools` | PASSED — 0 findings | work/lint.log |
+| shellcheck | `mise exec -- sh -c 'shellcheck $(git ls-files "*.sh")'` | PASSED — 0 findings | work/shellcheck.log |
+| secrets | `mise exec -- gitleaks detect --no-banner --redact` | PASSED — no leaks | work/secrets.log |
+| property | hypothesis inside the tests layer: S3.5 and S3.6, 200 examples each | PASSED | work/tests.log |
+| adversarial review | `spec-evidence-adversary`, 2 rounds | PASSED for 087249a — round 1: 0 findings, 4 hunches, all fixed in 087249a with tests seen failing; round 2 (on 087249a): 0 findings, 2 hunches declined with evidence. supplementary round 3 (engineer-approved, on the diff 087249a..38b9121): 0 findings, 5 hunches — 2 fixed in 91e5202 with tests seen failing first, 3 checked clean by the author; blocked from `launcher.py` (see below) | findings-code-round1.md, findings-code.md, findings-code-round3.md |
+| real execution | `tools/acp-smoke.py --verb host-acp` on 91e5202: claude on `gortex-ghissues`, omp on `hostspike` | PASSED — 10 `ok` lines and `PASS` each; `initialize` in 2.4 s and 2.1 s | smoke-host-acp-claude.log, smoke-host-acp-omp.log |
+
+### Layers not run as specified
+- N-A: none.
+- UNAVAILABLE: none.
+- SUBSTITUTED: none. (The omp half of S2.1 runs on `hostspike` by SPEC Revision 7, which the engineer ruled: `gortex-ghissues` is not built for omp on this machine.)
+- NOT RUN: adversarial review of the middle of `_launch_host`, and of 91e5202. Every adversary round was blocked from opening `src/harnessed/launcher.py` by the Gortex PreToolUse hook, and the adversary's toolset has no Gortex tools. Supplementary round 3 therefore read only the diff hunks of 087249a..38b9121. A rerun with plain-text source snapshots was refused by the session's safety classifier as a way around the hook. It could catch a per-stack step that project-only mode reaches; the author's own check found none (hunch 1 in findings-code-round3.md), and S4.6 checks that the host home is never created.
+- NOT RUN: mutation (`mutmut run "harnessed.acprelay.x_*" "harnessed.launchscript.x_global_verbs*"`). Started, then stopped by the engineer during mutant generation, before any mutant was scored. It would catch assertions too weak to kill a changed relay branch.
+- NOT RUN YET: live (`live.yml`, both jobs). It triggers on `src/harnessed/launcher.py` and runs on the pull request.
+
+### Defect classes closed
+- Generator: a daemon thread blocked on a buffered read at interpreter shutdown.
+- Enumerated by: `rg -n 'daemon=True' src tools`
+- Sites: 4 — `src/harnessed/acprelay.py:129` `from_editor`: fixed (host-acp ends with `os._exit`; test `HA::TestTheAgentExitsFirst`); `src/harnessed/acprelay.py:127` `from_agent`: not applicable (it reads the agent's stdout to EOF, and `run` joins it); `tools/acp-smoke.py:141` `_reader`: not applicable (it reads to EOF, and the script waits for EOF before exit); `src/harnessed/proc.py:154` `_pump` (pre-existing): not applicable (it reads a child's stdout to EOF and is joined after the child exits).
+
+- Generator: a child process the relay starts outlives the relay (PR #572 review).
+- Enumerated by: `rg -n 'subprocess\.(Popen|run)' src/harnessed/acprelay.py`
+- Sites: 2 — `src/harnessed/acprelay.py` `_intercept` (the project-setup child): fixed (own session, process group stopped by `run`, and no new setup once the relay is ending; tests `HA::TestPrReview572::test_a_setup_still_running_when_the_relay_ends_is_stopped_with_its_children` and `HA::TestPrReview572Round2::test_no_setup_starts_once_the_relay_is_ending`); `src/harnessed/acprelay.py` `run` (the agent): already correct (`run` waits for it, and kills it when the editor's channel is gone).
+
+- Generator: a source-text test pins a call site or an order in `_launch_host`, so moving a call out of `_launch_host` breaks it even when the behavior holds.
+- Enumerated by: the full tests layer, which failed `test_lock_spans_the_installs_not_just_the_rebuild`, `test_the_host_sequencer_really_prints_the_gap` and `test_no_unexplained_container_only_capability` when the calls moved.
+- Sites: 3 — all already correct once `host-run` kept every per-project call at its original site (Revisions 3 and 4); none of these tests changed.
+
+### Not reached by review
+- Round 1: calls 3/10; hunts not reached: 1 (merge-gate argument comparison: I did not open the workflows or tools/gauntlet-layers.json), 2 (call sites of changed functions beyond _launch_host and provision_tools), 4 (property-test and parser inputs in the second half of tests/test_host_acp.py), 8 (EVIDENCE report orientation against its tables), 10 (docs: README documents host-acp, so I expect no finding); sites not opened: /home/mcrowe/Programming/Personal/harnessed/3-3-gh-571-host-acp/spec-evidence/2026-10-10-GH-571/work/diff.txt lines 938-1901 (rest of tests/test_host_acp.py, tools/acp-smoke.py, remaining test and catalog diffs), /home/mcrowe/Programming/Personal/harnessed/3-3-gh-571-host-acp/.github/workflows/test.yml, /home/mcrowe/Programming/Personal/harnessed/3-3-gh-571-host-acp/.github/workflows/lint.yml, /home/mcrowe/Programming/Personal/harnessed/3-3-gh-571-host-acp/tools/gauntlet-layers.json, /home/mcrowe/Programming/Personal/harnessed/3-3-gh-571-host-acp/src/harnessed/launcher.py:3002 wire_services body, /home/mcrowe/Programming/Personal/harnessed/3-3-gh-571-host-acp/src/harnessed/launcher.py:4825-4930 uninstall path for the new host-acp launcher
+- Round 2: calls 3/10; hunts not reached: 1 (workflows test.yml, lint.yml and live.yml not opened, so I did not compare their argument lists with the layer commands), 2 (call sites of project_setup, _launch_host's other callers, and the uninstall path), 4 (property tests and parser inputs in tests/test_host_acp.py past line 915), 8 (no EVIDENCE report in the diff head I read), 10 (README documents host-acp, so I expect no finding); sites not opened: /home/mcrowe/Programming/Personal/harnessed/3-3-gh-571-host-acp/spec-evidence/2026-10-10-GH-571/work/diff.txt lines 916-1980, /home/mcrowe/Programming/Personal/harnessed/3-3-gh-571-host-acp/.github/workflows/test.yml, /home/mcrowe/Programming/Personal/harnessed/3-3-gh-571-host-acp/.github/workflows/lint.yml, /home/mcrowe/Programming/Personal/harnessed/3-3-gh-571-host-acp/.github/workflows/live.yml, /home/mcrowe/Programming/Personal/harnessed/3-3-gh-571-host-acp/tools/acp-smoke.py
+
+- Round 3 (supplementary): calls 3/10; hunts not reached: 1 (merge-gate argument comparison), 2 (call sites of _launch_host, _intercept and run outside the diff), 3 (full enumeration of per-stack steps against project_only), 6, 7, 8, 9, 10; sites not opened: src/harnessed/launcher.py:3128-3300 (the middle of _launch_host, blocked), src/harnessed/launcher.py:3319-3330 (merge_settings gating, seen only in the diff), src/harnessed/launcher.py:3361-3500 (wire_mcp, exec, and what follows the project_only return), src/harnessed/acprelay.py:run emit and flush, tools/acp-smoke.py:launch_dir definition, tools/gauntlet-layers.json and .github/workflows/*.yml, Reason for the gaps: the Gortex PreToolUse hook blocked Read and Grep on src/harnessed/launcher.py. The Gortex MCP tools are not callable from my toolset. This is a Gortex MCP integration failure; I did not use a shell fallback.
+
+### Agent rounds
+| Agent | Round | Model | Tokens |
+|---|---|---|---|
+| context-pack | 1 | claude-sonnet-5-5 | 125472/1283 |
+| spec-evidence-intent | 1 | claude-sonnet-5-5 | 63539/238 |
+| spec-evidence-intent | 2 | claude-sonnet-5-5 | 64561/238 |
+| spec-evidence-adversary | 1 | claude-sonnet-5-5 | 237603/1439 |
+| spec-evidence-adversary | 2 | claude-sonnet-5-5 | 148960/990 |
+
+### Honest notes
+- A pre-build spike (`omp acp` driven directly, two sessions) confirmed that omp honours the `session/new` cwd before any code was written.
+- Gauntlet run 1 (on 2ad839f) failed two existing source-text tests. Gauntlet run 2 (on 53686a6) failed six tests, because I edited `launcher.py` while it ran and `inspect.getsource` read line numbers that no longer matched; all six passed on the unchanged tree. The final run (on 087249a) was started with a clean tree, and nothing was edited while it ran.
+- The claude smoke run found two defects that the unit tests had not: adapter detection failed on the pnpm and mise layouts (Revision 5), and `host-acp` aborted at shutdown when the agent exited first. Both were fixed with tests seen failing first.
+- The first claude smoke run also failed because the test command set `XDG_DATA_HOME` to a scratch folder, which hid mise's own installs. The final runs set `MISE_DATA_DIR` to the real mise data folder. That was a fault of the test command, not of the product.
+- The claude adapter was installed by the engineer's instruction with `mise use -g npm:@agentclientprotocol/claude-agent-acp@0.85.1`, which wrote the user's global mise config.
+- `src/harnessed/__main__.py` shows 0% coverage: only the `python -m harnessed` subprocess in S4.6 runs it, and coverage does not follow subprocesses. S4.6 passing is its proof.
+- AC-4 says `host-run` "runs the same verb". Gate 2 pass 1 ruled it unproven while the two verbs ran the same steps through separate code. Since e8cdfd9, `project-setup` calls `_launch_host(..., project_only=True)`, so both verbs run the same per-project lines at their existing call sites (Revision 6).
+- Gauntlet run 4 (on e8cdfd9) failed one timing test, `tests/test_launcher_timeouts.py::TestRunTaggedAcceptsATimeout::test_a_success_is_never_reported_as_a_timeout` (0.05 s sleep, 0.35 s limit), while two smoke runs loaded the machine. This branch changes neither that test nor `proc.py`; it passed 5 of 5 alone, and in the final run.
+- The session running this build was killed once during a gauntlet rerun; the gauntlet was rerun from a clean tree at e8cdfd9.
+- PR #572's automated reviewer raised four comments on e8cdfd9, all fixed in 59dc1d5, each with a test seen failing first: a project-setup still running when the relay ends is now stopped with its process group (medium); `from_agent` also catches `ValueError` from a closed stream (low); `acp-smoke --check-cwd` matches a whole path, not a substring (low); `acp-smoke` removes its launch folder (low). The automated reviewer's second run, on 95cee58, raised three more, fixed in 38b9121 (Revision 8): `host-acp --no-strict-mcp-config` now reaches `project-setup` (medium; test `HA::TestPrReview572Round2::test_project_setup_gets_the_no_strict_choice_host_acp_was_given`); setups start and stop under one lock, so none can start after the relay has stopped them (low; test `HA::TestPrReview572Round2::test_no_setup_starts_once_the_relay_is_ending`); and the editor's output stream is no longer closed while its thread may still write (low; no test: it removes a close in an exit race no test can pin). A supplementary adversary round 3 on 087249a..38b9121 (engineer-approved) raised five hunches and no findings. Two were real and are fixed in 91e5202: `_stop` now always sends SIGKILL to the setup's process group after the SIGTERM wait, since a child that ignores SIGTERM outlived a leader that obeyed it (test `HA::TestAdversaryRound3::test_a_setup_child_that_ignores_term_is_still_stopped`); and `acp-smoke --check-cwd` now matches a folder whose path has a space (test `tests/test_acp_smoke.py::test_round3_the_cwd_check_matches_a_path_with_a_space`). The other three (project-only state writes, `project-setup`'s input checks, flushing on exit) were checked clean by the author against the code, not by an independent reviewer. The final gauntlet and both smoke runs read 91e5202.

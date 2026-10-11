@@ -1221,13 +1221,14 @@ def test_global_name_round_trips(stack, harness, verb):
 class TestWriteGlobals:
     """S1 — `write_globals` leaves one launcher per backend, and nothing it did not write is touched."""
 
-    def test_s1_1_three_launchers_for_claude(self, gbin):
+    def test_s1_1_four_launchers_for_claude(self, gbin):
         refused = launchscript.write_globals("default", "claude", gbin)
         assert refused == []
         expected = {
             "harnessed-claude-default-host": 'exec harnessed host-run claude --stack default "$@"',
             "harnessed-claude-default-container": 'exec harnessed container-run claude --stack default "$@"',
             "harnessed-acp-claude-default-container": 'exec harnessed container-acp claude --stack default "$@"',
+            "harnessed-acp-claude-default-host": 'exec harnessed host-acp claude --stack default "$@"',
         }
         assert sorted(p.name for p in gbin.iterdir()) == sorted(expected)
         for name, line in expected.items():
@@ -1237,10 +1238,13 @@ class TestWriteGlobals:
             assert lines[1] == launchscript.SENTINEL
             assert _exec_line(path) == line
 
-    def test_s1_12_no_host_acp_launcher_is_written(self, gbin):
-        """`-host` is reserved for `host-acp`, which this change does not build."""
-        launchscript.write_globals("default", "claude", gbin)
-        assert not (gbin / "harnessed-acp-claude-default-host").exists()
+    @pytest.mark.parametrize("harness", ["omp", "claude"])
+    def test_gh571_s7_1_a_host_acp_launcher_is_written(self, gbin, harness):
+        """GH-571 AC-7 reverses GH-565 S1.12: `host-acp` exists now, so its launcher is written."""
+        launchscript.write_globals("default", harness, gbin)
+        path = gbin / f"harnessed-acp-{harness}-default-host"
+        assert _exec_line(path) == f'exec harnessed host-acp {harness} --stack default "$@"'
+        assert stat.S_IMODE(path.stat().st_mode) == 0o755
 
     def test_s1_2_no_acp_launcher_for_codex(self, gbin):
         launchscript.write_globals("default", "codex", gbin)
@@ -1259,7 +1263,7 @@ class TestWriteGlobals:
         for path in gbin.iterdir():
             tokens = shlex.split(_exec_line(path)[len("exec "):])
             assert tokens[:2] in (["harnessed", "host-run"], ["harnessed", "container-run"],
-                                  ["harnessed", "container-acp"])
+                                  ["harnessed", "container-acp"], ["harnessed", "host-acp"])
             assert tokens[2:] == ["claude", "--stack", "default", "$@"]
 
     def test_s1_7_identical_launcher_is_not_rewritten(self, gbin):
@@ -1306,7 +1310,7 @@ class TestWriteGlobals:
         target = tmp_path / "not-a-dir"
         target.write_text("file", encoding="utf-8")
         refused = launchscript.write_globals("default", "claude", target)
-        assert len(refused) == 3
+        assert len(refused) == 4
 
     def test_a_stack_that_is_not_one_path_component_writes_nothing(self, gbin):
         assert launchscript.write_globals("x/../../evil", "claude", gbin) != []
@@ -1396,13 +1400,14 @@ class TestRemoveGlobals:
         launchscript.write_globals("default", "codex", gbin)
         removed, refused = launchscript.remove_globals("default", "claude", gbin)
         assert sorted(p.name for p in removed) == [
-            "harnessed-acp-claude-default-container", "harnessed-claude-default-container",
-            "harnessed-claude-default-host",
+            "harnessed-acp-claude-default-container", "harnessed-acp-claude-default-host",
+            "harnessed-claude-default-container", "harnessed-claude-default-host",
         ]
         assert refused == []
         assert sorted(p.name for p in gbin.iterdir()) == [
-            "harnessed-acp-claude-default.x-container", "harnessed-claude-default.x-container",
-            "harnessed-claude-default.x-host", "harnessed-codex-default-container",
+            "harnessed-acp-claude-default.x-container", "harnessed-acp-claude-default.x-host",
+            "harnessed-claude-default.x-container", "harnessed-claude-default.x-host",
+            "harnessed-codex-default-container",
             "harnessed-codex-default-host",
         ]
 
@@ -1473,7 +1478,8 @@ class TestGlobalWriterMutationGaps:
         (gbin / "harnessed-claude-default-host").unlink()
         removed, refused = launchscript.remove_globals("default", "claude", gbin)
         assert sorted(p.name for p in removed) == [
-            "harnessed-acp-claude-default-container", "harnessed-claude-default-container",
+            "harnessed-acp-claude-default-container", "harnessed-acp-claude-default-host",
+            "harnessed-claude-default-container",
         ]
         assert refused == []
 
@@ -1484,7 +1490,8 @@ class TestGlobalWriterMutationGaps:
         removed, refused = launchscript.remove_globals("default", "claude", gbin)
         assert refused == [foreign]
         assert sorted(p.name for p in removed) == [
-            "harnessed-acp-claude-default-container", "harnessed-claude-default-container",
+            "harnessed-acp-claude-default-container", "harnessed-acp-claude-default-host",
+            "harnessed-claude-default-container",
         ]
 
     @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")

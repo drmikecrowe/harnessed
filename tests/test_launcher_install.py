@@ -54,15 +54,15 @@ class TestInstallWritesGlobalLaunchers:
       * an unknown stack writes nothing — KEPT, S1.10.
     """
 
-    def test_s1_1_install_writes_three_launchers(self, monkeypatch, tmp_path):
+    def test_s1_1_install_writes_four_launchers(self, monkeypatch, tmp_path):
         _stub_catalog(monkeypatch, tmp_path, exists=True)
         home = _home_in(monkeypatch, tmp_path)
         result = CliRunner().invoke(launcher.app, ["install", "claude_time", "claude"])
         assert result.exit_code == 0, result.output
         bin_dir = home / ".local" / "bin"
         assert sorted(p.name for p in bin_dir.iterdir()) == [
-            "harnessed-acp-claude-claude_time-container", "harnessed-claude-claude_time-container",
-            "harnessed-claude-claude_time-host",
+            "harnessed-acp-claude-claude_time-container", "harnessed-acp-claude-claude_time-host",
+            "harnessed-claude-claude_time-container", "harnessed-claude-claude_time-host",
         ]
         assert (bin_dir / "harnessed-claude-claude_time-container").stat().st_mode & 0o111
 
@@ -138,7 +138,8 @@ class TestUninstallRemovesGlobalLaunchers:
         result = CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
         assert result.exit_code == 0, result.output
         assert sorted(p.name for p in bin_dir.iterdir()) == [
-            "harnessed-acp-claude-claude_time.x-container", "harnessed-claude-claude_time.x-container",
+            "harnessed-acp-claude-claude_time.x-container", "harnessed-acp-claude-claude_time.x-host",
+            "harnessed-claude-claude_time.x-container",
             "harnessed-claude-claude_time.x-host", "harnessed-codex-claude_time-container",
             "harnessed-codex-claude_time-host",
         ]
@@ -155,8 +156,8 @@ class TestUninstallRemovesGlobalLaunchers:
         assert result.exit_code == 0, result.output
         assert _names("/proj/claude-claude_time-container", result.output)
         assert asked == [{
-            "harnessed-acp-claude-claude_time-container", "harnessed-claude-claude_time-container",
-            "harnessed-claude-claude_time-host",
+            "harnessed-acp-claude-claude_time-container", "harnessed-acp-claude-claude_time-host",
+            "harnessed-claude-claude_time-container", "harnessed-claude-claude_time-host",
         }]
 
     def test_s5_3_a_foreign_launcher_is_named_and_kept(self, monkeypatch, tmp_path):
@@ -179,7 +180,7 @@ class TestUninstallRemovesGlobalLaunchers:
             launcher.aoe, "rows_referencing", lambda names: (asked.append(set(names)), [])[1]
         )
         CliRunner().invoke(launcher.app, ["uninstall", "claude_time", "claude"])
-        assert asked == [{"harnessed-claude-claude_time-container"}]
+        assert asked == [{"harnessed-acp-claude-claude_time-host", "harnessed-claude-claude_time-container"}]
 
     def test_nothing_removed_looks_nothing_up(self, monkeypatch, tmp_path):
         _home, _bin_dir = self._install(monkeypatch, tmp_path)

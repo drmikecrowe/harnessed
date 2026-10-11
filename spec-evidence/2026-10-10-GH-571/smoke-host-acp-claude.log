@@ -1,0 +1,65 @@
+run: /home/mcrowe/.local/share/harnessed/venvs/GH-571/.venv/bin/harnessed host-acp claude --stack gortex-ghissues (in /tmp/acp-smoke-launch-6w4hal1u)
+[INFO] Assembling 'gortex-ghissues' (claude) host-native (no container) ...
+[INFO] egress (gh-issue-tracker): the declared egress allowlist is NOT enforced 
+on the host backend — it has no network boundary to apply it to (isolation: 
+none). The agent can reach anything this machine can. Run this stack in a 
+container to get the allowlist enforced.
+[INFO] egress (spec-evidence-aisdlc): the declared egress allowlist is NOT 
+enforced on the host backend — it has no network boundary to apply it to 
+(isolation: none). The agent can reach anything this machine can. Run this stack
+in a container to get the allowlist enforced.
+[INFO] Stack unchanged — reusing 
+/home/mcrowe/.local/share/harnessed/home/gortex-ghissues/claude (installs 
+skipped)
+host-native: 
+CLAUDE_CONFIG_DIR=/home/mcrowe/.local/share/harnessed/home/gortex-ghissues/claud
+e cwd=/tmp/acp-smoke-launch-6w4hal1u — no container
+ok: initialize
+ok: initialize answered in 2.4s
+[INFO] egress (gh-issue-tracker): the declared egress allowlist is NOT enforced 
+on the host backend — it has no network boundary to apply it to (isolation: 
+none). The agent can reach anything this machine can. Run this stack in a 
+container to get the allowlist enforced.
+[INFO] egress (spec-evidence-aisdlc): the declared egress allowlist is NOT 
+enforced on the host backend — it has no network boundary to apply it to 
+(isolation: none). The agent can reach anything this machine can. Run this stack
+in a container to get the allowlist enforced.
+[INFO] init (gh-issue-tracker): host
+[INFO] init (gortex): host
+[session/create] sessionId=e3cd1695-7116-48a0-9d06-c1b7881fdf46 phase=validate-cwd durationMs=1 totalMs=1
+[session/create] sessionId=e3cd1695-7116-48a0-9d06-c1b7881fdf46 phase=settings durationMs=38 totalMs=39
+[session/query] sessionId=e3cd1695-7116-48a0-9d06-c1b7881fdf46 resume=none apiType=native baseUrl=native
+[session/create] sessionId=e3cd1695-7116-48a0-9d06-c1b7881fdf46 phase=prepare-query durationMs=10 totalMs=49
+[session/create] sessionId=e3cd1695-7116-48a0-9d06-c1b7881fdf46 phase=sdk-initialize durationMs=980 totalMs=1029
+[session/models] sessionId=e3cd1695-7116-48a0-9d06-c1b7881fdf46 phase=set-model durationMs=6 model=opus outcome=success
+[session/create] sessionId=e3cd1695-7116-48a0-9d06-c1b7881fdf46 phase=models durationMs=9 totalMs=1038
+[session/create] sessionId=e3cd1695-7116-48a0-9d06-c1b7881fdf46 phase=modes durationMs=1 totalMs=1039
+[session/create] sessionId=e3cd1695-7116-48a0-9d06-c1b7881fdf46 phase=register durationMs=2 totalMs=1041
+ok: session/new
+ok: session/prompt
+ok: stopReason=end_turn
+[INFO] egress (gh-issue-tracker): the declared egress allowlist is NOT enforced 
+on the host backend — it has no network boundary to apply it to (isolation: 
+none). The agent can reach anything this machine can. Run this stack in a 
+container to get the allowlist enforced.
+[INFO] egress (spec-evidence-aisdlc): the declared egress allowlist is NOT 
+enforced on the host backend — it has no network boundary to apply it to 
+(isolation: none). The agent can reach anything this machine can. Run this stack
+in a container to get the allowlist enforced.
+[INFO] init (gh-issue-tracker): host
+[INFO] init (gortex): host
+[session/create] sessionId=1da1d913-af11-458c-835f-27e642e3bb19 phase=validate-cwd durationMs=0 totalMs=0
+[session/create] sessionId=1da1d913-af11-458c-835f-27e642e3bb19 phase=settings durationMs=10 totalMs=11
+[session/query] sessionId=1da1d913-af11-458c-835f-27e642e3bb19 resume=none apiType=native baseUrl=native
+[session/create] sessionId=1da1d913-af11-458c-835f-27e642e3bb19 phase=prepare-query durationMs=6 totalMs=17
+[session/create] sessionId=1da1d913-af11-458c-835f-27e642e3bb19 phase=sdk-initialize durationMs=1418 totalMs=1435
+[session/models] sessionId=1da1d913-af11-458c-835f-27e642e3bb19 phase=set-model durationMs=4 model=opus outcome=success
+[session/create] sessionId=1da1d913-af11-458c-835f-27e642e3bb19 phase=models durationMs=5 totalMs=1440
+[session/create] sessionId=1da1d913-af11-458c-835f-27e642e3bb19 phase=modes durationMs=0 totalMs=1440
+[session/create] sessionId=1da1d913-af11-458c-835f-27e642e3bb19 phase=register durationMs=1 totalMs=1441
+ok: session/new
+ok: session/prompt
+ok: the session in /tmp/claude-1000/-home-mcrowe-Programming-Personal-harnessed-3-3-gh-571-host-acp/3fbde74c-0821-4111-82c2-87cd815dc820/scratchpad/smokeA reported '/tmp/claude-1000/-home-mcrowe-Programming-Personal-harnessed-3-3-gh-571-host-acp/3fbde74c-0821-4111-82c2-87cd815dc820/scratchpad/smokeA'
+ok: session/prompt
+ok: the session in /tmp/claude-1000/-home-mcrowe-Programming-Personal-harnessed-3-3-gh-571-host-acp/3fbde74c-0821-4111-82c2-87cd815dc820/scratchpad/smokeB reported '/tmp/claude-1000/-home-mcrowe-Programming-Personal-harnessed-3-3-gh-571-host-acp/3fbde74c-0821-4111-82c2-87cd815dc820/scratchpad/smokeB'
+PASS: every stdout byte parsed as JSON-RPC
