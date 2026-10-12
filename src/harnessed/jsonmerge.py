@@ -60,6 +60,59 @@ def carry_live_permissions(merged: dict, live: object) -> dict:
     return {**merged, "permissions": out}
 
 
+#: Per-project keys harnessed seeds for the launch's project: folder trust and external-import
+#: approval. Names confirmed on Claude Code 2.1.289 (GH-594).
+CLAUDE_PROJECT_TRUST_KEYS = (
+    "hasTrustDialogAccepted",
+    "hasClaudeMdExternalIncludesApproved",
+    "hasClaudeMdExternalIncludesWarningShown",
+)
+_IDENTITY_DEFAULTS: dict[str, object] = {"oauthAccount": {}, "userID": ""}
+
+
+def seed_claude_project(data: dict, project: str) -> dict:
+    """`data` with the trust keys set true under `projects[project]`; every other key unchanged."""
+    projects = data.get("projects")
+    projects = dict(projects) if isinstance(projects, dict) else {}
+    entry = projects.get(project)
+    entry = dict(entry) if isinstance(entry, dict) else {}
+    entry.update(dict.fromkeys(CLAUDE_PROJECT_TRUST_KEYS, True))
+    projects[project] = entry
+    return {**data, "projects": projects}
+
+
+def merge_claude_json(
+    live: object, host: object, project: str | None, *, isolated_auth: bool, now: str
+) -> dict:
+    """A stack's `.claude.json`: its LIVE file, with only the keys harnessed owns laid over it (GH-594).
+
+    Both launch paths used to overwrite the file on every launch, so folder trust, import approval,
+    the API key answer and MCP approvals never persisted. The live file is the base. harnessed owns
+    the onboarding flag (forced true), the start counters (seeded only when absent), the identity
+    pair, and the trust keys for `project`. The host file contributes the identity pair and nothing
+    else: its `projects`, `mcpServers` and API key answers are the host's, not the stack's.
+
+    Identity: shared, the host wins, as it always has. Under `isolated_auth` the stack runs as
+    someone else, so the live value stays (that is the client's own login) unless it is exactly the
+    host's, which a launch from before the stack was isolated left behind.
+    """
+    base = dict(live) if isinstance(live, dict) else {}
+    host_obj = host if isinstance(host, dict) else {}
+    out = {**base, "hasCompletedOnboarding": True}
+    out.setdefault("firstStartTime", now)
+    out.setdefault("numStartups", 1)
+    for key, default in _IDENTITY_DEFAULTS.items():
+        if not isolated_auth and key in host_obj:
+            out[key] = host_obj[key]
+        elif isolated_auth and key in host_obj and out.get(key) == host_obj[key]:
+            out[key] = default
+        else:
+            out.setdefault(key, default)
+    if project is not None:
+        out = seed_claude_project(out, project)
+    return out
+
+
 def _merge_host_claude_settings(prof: Path, required: dict, harness: str = "") -> None:
     """Apply host ~/.claude/settings.json into the profile settings for launch-time parity.
 
