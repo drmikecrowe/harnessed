@@ -3251,7 +3251,7 @@ def _launch_host(
     # Inert as a reordering: `assemble(..., strict=True)` above already resolved and validated every
     # recipe this reads, so there is no failure left here for the sidecars to have preceded.
     host_stk, host_recipes = load_stack_with_recipes(None, stack)
-    backend = HostBackend(host_recipes, isolated_auth=host_stk.isolated_auth, acp=acp)
+    backend = HostBackend(host_recipes, acp=acp)
     # Before anything is materialized: a declaration this backend cannot honor is worth knowing
     # about while there is still a choice to make (rerun under `container-run`), not after the
     # agent is already up.
@@ -3357,6 +3357,9 @@ def _launch_host(
                 )
                 _host_fresh_wipe(stack, harness)
             backend.materialize_config(spec)
+            # Read here, beside the stack's other launch-time fields, not at construction: nothing
+            # before the sidecars reads the stack (GH-594 Decide 1).
+            backend.isolated_auth = host_stk.isolated_auth
             backend.seed_auth(spec)
             # `install:` — the host half of the derived image's `RUN bash install.sh`, i.e. the
             # content a Dockerfile RUN used to deliver to containers only.

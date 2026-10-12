@@ -2113,7 +2113,9 @@ class TestHostClaudeJsonMerge:
         """Structural: `_launch_host` is the only constructor, and running it end to end for an
         isolated stack needs a catalog stack this suite does not carry."""
         src = inspect.getsource(launcher._launch_host)
-        assert "HostBackend(host_recipes, isolated_auth=host_stk.isolated_auth, acp=acp)" in src
+        assert "HostBackend(host_recipes, acp=acp)" in src
+        wired = src.index("backend.isolated_auth = host_stk.isolated_auth")
+        assert wired < src.index("backend.seed_auth(spec)")
 
     def test_s3_5_a_rebuild_keeps_the_claude_json(self, tmp_path):
         prof, home = tmp_path / "prof", tmp_path / "home"
