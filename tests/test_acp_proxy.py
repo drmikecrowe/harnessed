@@ -38,13 +38,22 @@ name = os.environ["FAKE_NAME"]
 if os.environ.get("FAKE_DIE"):
     sys.exit(int(os.environ["FAKE_DIE"]))
 sessions = 0
+noisy = os.environ.get("FAKE_NOISE", "").split(",")
 for line in sys.stdin:
     m = json.loads(line)
     meth = m.get("method")
+    hang = meth is not None and os.environ.get("FAKE_HANG_UP") == meth
+    if hang:
+        os.close(0)  # stop reading before answering, so a later write to us fails at once
+    if meth in noisy:
+        print("noise: not json", flush=True)
     if meth == "initialize":
         time.sleep(float(os.environ.get("FAKE_INIT_DELAY", "0")))
+        for extra in json.loads(os.environ.get("FAKE_PRELUDE", "[]")):
+            print(json.dumps(extra), flush=True)
         print(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": init}), flush=True)
         print(json.dumps({"jsonrpc": "2.0", "method": "_auth/status_update", "params": {}}), flush=True)
+        print(json.dumps({"jsonrpc": "2.0", "method": "_fake/initialized", "params": {"line": m}}), flush=True)
     elif meth == "session/new":
         sessions += 1
         print(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": {
@@ -63,7 +72,11 @@ for line in sys.stdin:
         if os.environ.get("FAKE_QUIT") == meth:
             sys.exit(int(os.environ.get("FAKE_EXIT", "0")))
     else:
-        print(json.dumps({"jsonrpc": "2.0", "method": "echo", "params": {"agent": name, "line": m}}), flush=True)
+        print(json.dumps({"jsonrpc": "2.0", "method": "echo",
+                          "params": {"agent": name, "line": m, "raw": line.rstrip("\n")}}), flush=True)
+    if hang:
+        time.sleep(3)
+        sys.exit(0)
 sys.exit(int(os.environ.get("FAKE_EXIT", "0")))
 '''
 
@@ -649,3 +662,205 @@ def test_routing_keeps_each_sessions_lines_with_its_agent_in_order(tmp_path_fact
     assert got == sent
     perms = [m["id"] for m in msgs if m.get("method") == "session/request_permission"]
     assert len(perms) == len(set(perms))
+
+
+class TestMutantCoverage:
+    """Additional assertions to kill mutants that survive the broader behavior tests.
+
+    Each test pins one invariant that is correct by the SPEC but not yet asserted: error message
+    strings are non-None, specific id values cannot register sessions, and session/new's own
+    params.sessionId is not pre-registered for routing.
+    """
+
+    def test_parse_error_has_a_string_message(self, tmp_path, project):
+        # handle__mutmut_4: the parse-error response carries a non-None string message.
+        # The code is checked by TestHostileInput; this pins the message field.
+        fake = _Fake(tmp_path, init=_real("omp"))
+        _, msgs, _ = _serve("omp", [_init(), _new(2, project), b"not json at all", _prompt(3, "proj-s1")], fake)
+        parse_errs = [m for m in msgs if m.get("error", {}).get("code") == -32700]
+        assert [m["error"]["message"] for m in parse_errs] == ["not JSON"]
+
+    def test_no_session_yet_error_has_a_string_message(self, tmp_path):
+        # route__mutmut_35: the "no session yet" error carries a non-None string message.
+        fake = _Fake(tmp_path, init=_real("omp"))
+        _, msgs, _ = _serve("omp", [_init(), _req(2, "authenticate")], fake)
+        err = _reply(msgs, 2)["error"]
+        assert err["code"] == -32600
+        assert isinstance(err["message"], str) and err["message"]
+
+    def test_relative_cwd_error_has_a_string_message(self, tmp_path):
+        # requested_project__mutmut_14: the error for a relative cwd carries a non-None string message.
+        fake = _Fake(tmp_path, init=_real("omp"))
+        _, msgs, _ = _serve("omp", [_init(), _req(2, "session/new", {"cwd": "relative/dir"})], fake)
+        err = _reply(msgs, 2)["error"]
+        assert err["code"] == -32602
+        assert isinstance(err["message"], str) and err["message"]
+
+    def test_bool_id_does_not_register_a_session(self, tmp_path, project):
+        # x__key__mutmut_1: _key rejects booleans. A session/new with id=True is treated as a
+        # notification (no valid id), so the agent either never starts or its session reply is
+        # never matched back to an opening entry. "proj-s1" is not registered for routing.
+        fake = _Fake(tmp_path, init=_real("omp"))
+        live = _Live("omp", fake)
+        live.send(_init())
+        live.send({"jsonrpc": "2.0", "id": True, "method": "session/new",
+                   "params": {"cwd": str(project), "mcpServers": []}})
+        time.sleep(1.0)  # give any agent time to start and reply
+        live.send(_prompt(2, "proj-s1"))
+        assert "error" in live.reply(2)
+        live.close()
+
+    def test_session_new_params_session_id_is_not_pre_registered_for_routing(self, tmp_path, project):
+        # open__mutmut_24-30: session/new's params.sessionId must NOT be stored in sessions before
+        # the agent assigns its own id. Only the agent-assigned id (from the reply) is valid.
+        # A mutation that changes `!= "session/new" and isinstance(sid, str)` to use `or` would
+        # pre-register the params.sessionId, letting callers route with an id they supplied.
+        fake = _Fake(tmp_path, init=_real("omp"))
+        _, msgs, _ = _serve("omp", [
+            _init(),
+            _req(2, "session/new", {"cwd": str(project), "sessionId": "pre-picked", "mcpServers": []}),
+            _prompt(3, "pre-picked"),  # must fail: only "proj-s1" (agent-assigned) is valid
+        ], fake)
+        assert "result" in _reply(msgs, 2)   # session/new itself succeeds
+        assert "error" in _reply(msgs, 3)    # "pre-picked" was not registered
+
+
+class TestTheMutationRun:
+    """Tier 3: tests the mutation run on acpproxy.py showed missing. Each names what it pins."""
+
+    def test_a_non_object_line_names_why(self, tmp_path):  # hostile input, exact message
+        fake = _Fake(tmp_path, init=_real("omp"))
+        _, msgs, _ = _serve("omp", [_init(), b"[1]"], fake)
+        assert [m["error"] for m in msgs if "error" in m] == [{"code": -32600, "message": "not a JSON-RPC message"}]
+
+    def test_the_agent_gets_the_clients_own_initialize(self, tmp_path, project):  # S4.1
+        init = _req(1, "initialize", {"protocolVersion": 1, "clientCapabilities": {"fs": {"readTextFile": True}}})
+        fake = _Fake(tmp_path, init=_real("omp"))
+        _, msgs, _ = _serve("omp", [init, _new(2, project)], fake)
+        seen = [m["params"]["line"] for m in msgs if m.get("method") == "_fake/initialized"]
+        assert seen == [init]
+
+    def test_with_no_initialize_the_agent_gets_a_well_formed_one(self, tmp_path, project):  # S4.1
+        fake = _Fake(tmp_path, init=_real("omp"))
+        _, msgs, _ = _serve("omp", [_new(2, project)], fake)
+        seen = [m["params"]["line"] for m in msgs if m.get("method") == "_fake/initialized"]
+        assert seen == [{"jsonrpc": "2.0", "id": "harnessed-initialize", "method": "initialize",
+                         "params": {"protocolVersion": 1}}]
+
+    def test_a_stray_reply_before_the_init_reply_is_not_taken_for_it(self, tmp_path, project):  # S4.1, S5.2
+        stray = {"jsonrpc": "2.0", "id": "zz", "result": {}}
+        fake = _Fake(tmp_path, init=_real("omp"), FAKE_PRELUDE=json.dumps([stray]))
+        _, msgs, err = _serve("omp", [_init(), _new(2, project)], fake)
+        assert _reply(msgs, 1)["result"] == _real("omp")  # exactly one id-1 reply: the canned one
+        assert stray in msgs
+        assert "drift" not in err
+
+    def test_an_agent_request_before_the_init_reply_is_renumbered(self, tmp_path, project):  # S4.2, S9.4
+        early = [{"jsonrpc": "2.0", "id": 1, "method": "x/ask", "params": {}},
+                 {"jsonrpc": "2.0", "method": "x/note", "params": {}}]
+        fake = _Fake(tmp_path, init=_real("omp"), FAKE_PRELUDE=json.dumps(early))
+        live = _Live("omp", fake)
+        live.send(_init())
+        live.send(_new(2, project))
+        ask = live.wait_for(lambda m: m.get("method") == "x/ask")
+        live.wait_for(lambda m: m.get("method") == "x/note")
+        live.reply(2)
+        assert ask["id"] == 0
+        live.send({"jsonrpc": "2.0", "id": 0, "result": {"ok": True}})
+        echo = live.wait_for(lambda m: m.get("method") == "echo")
+        assert echo["params"]["line"] == {"jsonrpc": "2.0", "id": 1, "result": {"ok": True}}
+        live.close()
+        assert len([m for m in live.seen if m.get("id") == 1 and "method" not in m]) == 1
+
+    def test_a_non_json_line_from_the_agent_passes_and_the_session_goes_on(self, tmp_path, project):  # S4.2
+        fake = _Fake(tmp_path, init=_real("omp"), FAKE_NOISE="initialize,authenticate")
+        lines = [_init(), _new(2, project), _req(3, "authenticate"), _req(4, "authenticate")]
+        stdin = io.BytesIO(b"".join(json.dumps(m).encode() + b"\n" for m in lines))
+        stdout = io.BytesIO()
+        acpproxy.serve("omp", path=None, launch=fake, stdin=stdin, stdout=stdout, stderr=io.StringIO())
+        out = stdout.getvalue().decode().splitlines()
+        assert out.count("noise: not json") == 3
+        msgs = [json.loads(raw) for raw in out if raw != "noise: not json"]
+        assert all("result" in _reply(msgs, i) for i in (2, 3, 4))
+
+    def test_a_raw_line_reaches_the_agent_byte_for_byte(self, tmp_path, project):  # S4.2
+        fake = _Fake(tmp_path, init=_real("omp"))
+        live = _Live("omp", fake)
+        live.send(_init())
+        live.send(_new(2, project))
+        live.reply(2)
+        raw = b'{"method":"session/cancel",  "params":{"sessionId":"proj-s1"},"jsonrpc":"2.0"}'
+        live.send(raw)
+        echo = live.wait_for(lambda m: m.get("method") == "echo")
+        assert echo["params"]["raw"] == raw.decode()
+        live.close()
+
+    def test_a_session_request_with_no_cwd_gets_the_path_projects_cwd(self, tmp_path, project):  # S3.1
+        fake = _Fake(tmp_path, init=_real("omp"))
+        _, msgs, _ = _serve("omp", [_init(), _req(2, "session/new", {"mcpServers": []})], fake, path=project)
+        assert _reply(msgs, 2)["result"]["params"]["cwd"] == str(paths.container_project_path(project))
+
+    def test_session_list_cwd_becomes_the_start_folder(self, tmp_path, project):  # S10.2, S3.2
+        sub = project / "sub"
+        sub.mkdir()
+        fake = _Fake(tmp_path, init=_real("omp"), start_dir=sub)
+        _, msgs, _ = _serve("omp", [
+            _init(), _new(2, project), _req(3, "session/list", {"cwd": str(project)}),
+        ], fake, path=project)
+        assert _reply(msgs, 3)["result"]["params"]["cwd"] == str(paths.container_project_path(sub))
+
+    def test_a_launch_without_an_output_pipe_answers_and_says_why(self, tmp_path, project):  # S6.1
+        procs: list = []
+
+        def no_stdout(p):
+            proc = subprocess.Popen([sys.executable, "-c", "import sys; sys.stdin.read()"], stdin=subprocess.PIPE)
+            procs.append(proc)
+            return proc, p
+
+        try:
+            _, msgs, err = _serve("omp", [_init(), _new(2, project)], no_stdout)
+        finally:
+            for proc in procs:
+                proc.kill()
+                proc.wait()
+        assert _reply(msgs, 2)["error"] == {
+            "code": -32603,
+            "message": "launch failed (ValueError: the launch must pipe the agent's stdin and stdout); see stderr",
+        }
+        assert f"harnessed: launch for {project} failed: ValueError(" in err
+
+    def test_an_agent_whose_input_is_closed_at_launch_fails_the_launch(self, tmp_path, project):  # S6.1
+        fake = _Fake(tmp_path, init=_real("omp"))
+
+        def closed_input(p):
+            proc, start = fake(p)
+            proc.stdin.close()
+            return proc, start
+
+        _, msgs, _ = _serve("omp", [_init(), _new(2, project)], closed_input)
+        assert _reply(msgs, 2)["error"] == {"code": -32603, "message": "launch failed (exit 0); see stderr"}
+
+    def test_an_agent_that_stops_reading_after_initialize_refuses_the_waiting_request(self, tmp_path, project):  # S6.1
+        fake = _Fake(tmp_path, init=_real("omp"), FAKE_HANG_UP="initialize")
+        _, msgs, _ = _serve("omp", [_init(), _new(2, project)], fake)
+        assert _reply(msgs, 2)["error"] == {"code": -32603, "message": f"agent for {project} exited"}
+
+    def test_a_write_to_an_agent_that_stopped_reading_is_refused(self, tmp_path, project):  # S4.5
+        fake = _Fake(tmp_path, init=_real("omp"), FAKE_HANG_UP="session/prompt")
+        live = _Live("omp", fake)
+        live.send(_init())
+        live.send(_new(2, project))
+        live.reply(2)
+        live.send(_prompt(3, "proj-s1"))
+        live.reply(3)
+        live.send(_prompt(4, "proj-s1"))
+        assert live.reply(4)["error"] == {"code": -32603, "message": f"agent for {project} exited"}
+        live.close()
+
+    def test_a_dropped_notification_is_named_on_stderr(self, tmp_path, project):  # S9.6
+        fake = _Fake(tmp_path, init=_real("omp"))
+        _, _, err = _serve("omp", [
+            _init(), _new(2, project),
+            {"jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": "nobody"}},
+        ], fake)
+        assert "harnessed: dropped a notification: unknown session: nobody" in err
