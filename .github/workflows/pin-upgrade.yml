@@ -43,6 +43,9 @@ jobs:
       # Pinned to commit SHAs, as in test.yml: a tag is mutable.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
         with:
+          # No git credential is left behind while `update` runs third-party resolvers. The
+          # script's `git fetch` of an existing upgrade branch is anonymous, which works only
+          # because this repository is public.
           persist-credentials: false
 
       - name: Setup uv (+ Python 3.12)

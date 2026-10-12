@@ -56,8 +56,14 @@ STUB_GH = textwrap.dedent('''\
         if opt("--state") == "open":
             print(json.dumps(prs("open-prs", "OPEN")))
         else:  # --state all
+            # merged-later-prs appears from the second `--state all` query on: a PR merged by a
+            # person while the run was busy in `harnessed update`.
+            seen = d / "state-all-calls"
+            n = int(seen.read_text()) + 1 if seen.exists() else 1
+            seen.write_text(str(n))
+            later = prs("merged-later-prs", "MERGED") if n > 1 else []
             print(json.dumps(prs("open-prs", "OPEN") + prs("merged-prs", "MERGED")
-                             + prs("closed-prs", "CLOSED")))
+                             + prs("closed-prs", "CLOSED") + later))
     elif args[:2] == ["workflow", "run"] and (d / "fail-workflow-run").exists():
         print("HTTP 500", file=sys.stderr)
         sys.exit(1)
@@ -251,6 +257,15 @@ class TestOneSignedCommitPR:
         text = SCRIPT.read_text()
         assert "git push" not in text and "git commit" not in text
 
+    def test_a_large_change_is_not_limited_by_argument_length(self, r):
+        """PR #593 review: Linux caps one argv string at 128 KiB; 300 KB of contents (400 KB
+        as base64) must still reach the API commit intact."""
+        big = "".join(f"line {i:06d} {'x' * 50}\n" for i in range(5000))
+        r.write("catalog/recipes/pulumi/mise.lock", big)
+        assert r.run().returncode == 0, r.out
+        (add,) = r.graphql()["fileChanges"]["additions"]
+        assert base64.b64decode(add["contents"]).decode() == big
+
     def test_s2_4_two_files_one_commit(self, r):
         r.write("catalog/recipes/pulumi/recipe.yaml", "x: 1\n")
         r.write("mise.toml", '[tools]\njq = "1.8.3"\n')
@@ -336,6 +351,17 @@ class TestSameDayRerun:
         assert [c for c in r.calls() if c[0] == "harnessed"] == []
         assert r.gh("api", "graphql") == [] and r.gh("pr", "create") == []
         assert r.gh("workflow", "run") == []
+
+    def test_a_pr_finished_during_the_update_stops_the_commit(self, r):
+        """PR #593 review: re-check just before the commit, so a merge made while
+        `harnessed update` ran does not get a second same-date PR."""
+        (r.stub / "merged-later-prs").write_text('[{"number":6}]')
+        r.write("mise.toml", '[tools]\njq = "1.8.3"\n')
+        assert r.run().returncode == 0, r.out
+        assert f"{r.branch} already closed or merged today" in r.out
+        assert [c for c in r.calls() if c[0] == "harnessed"], "the first check passed"
+        assert r.gh("api", "graphql") == [] and _ref_posts(r) == []
+        assert r.gh("pr", "create") == []
 
     def test_an_open_pr_is_not_a_finished_one(self, r):
         r.remote_branch()

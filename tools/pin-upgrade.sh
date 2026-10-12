@@ -36,15 +36,23 @@ open_prs() {
 
 # Decide 5 (GH-582), widened by the PR #593 review: a PR for today was merged or closed. A second
 # PR would share its date, and reopening one would overrule whoever closed it. `--state all` plus
-# a filter on `state`, so this never rests on how gh maps the word "closed".
-finished_prs="$(gh pr list --repo "$repo" --head "$branch" --state all --json state \
-  | jq '[.[] | select(.state != "OPEN")] | length')"
-if [ "$finished_prs" -gt 0 ]; then
-  echo "$branch already closed or merged today; the next run picks up new bumps"
-  exit 0
-fi
+# a filter on `state`, so this never rests on how gh maps the word "closed". Checked again just
+# before the commit, because a person can merge or close during the long `update`.
+stop_if_finished() {
+  local finished
+  finished="$(gh pr list --repo "$repo" --head "$branch" --state all --json state \
+    | jq '[.[] | select(.state != "OPEN")] | length')"
+  if [ "$finished" -gt 0 ]; then
+    echo "$branch already closed or merged today; the next run picks up new bumps"
+    exit 0
+  fi
+}
+stop_if_finished
 
 if head="$(gh api "repos/$repo/git/ref/heads/$branch" 2>/dev/null | jq -er .object.sha)"; then
+  # Anonymous fetch: the workflow keeps no git credential (persist-credentials: false), so the
+  # write token is never in git config while `update` runs third-party resolvers. That works only
+  # because this repository is PUBLIC; a private fork must add a credential here.
   git fetch --quiet origin "$branch"
   git checkout --quiet --detach "origin/$branch"
   on_remote=true
@@ -80,36 +88,40 @@ if [ -n "$deleted" ]; then
 fi
 
 changed="$(git diff --cached --no-renames --name-only)"
-additions="$(
-  while IFS= read -r f; do
-    jq -n --arg path "$f" --arg contents "$(git show ":$f" | base64 -w0)" \
-      '{path: $path, contents: $contents}'
-  done <<< "$changed" | jq -s .
-)"
 
-payload="$(mktemp)"
+work="$(mktemp -d)"
 created_ref=false
 # A ref this run created and never committed to is removed on the way out, so a failed commit
 # leaves no empty `upgrade-<date>` on main's sha (PR #593 review). Best effort: a failed delete
 # must not hide the error that got us here, and the next run reuses the ref anyway (S3.4).
 cleanup() {
-  rm -f "$payload"
+  rm -r "$work"
   if [ "$created_ref" = true ]; then
     gh api -X DELETE "repos/$repo/git/refs/heads/$branch" > /dev/null || true
   fi
 }
 trap cleanup EXIT
+
+# File contents travel through files (--rawfile, --slurpfile), never argv: Linux caps one argument
+# at 128 KiB, and a catalog-wide bump with a lockfile passes that as base64 (PR #593 review).
+while IFS= read -r f; do
+  git show ":$f" | base64 -w0 > "$work/blob"
+  jq -n --arg path "$f" --rawfile contents "$work/blob" '{path: $path, contents: $contents}'
+done <<< "$changed" | jq -s . > "$work/additions.json"
+
+payload="$work/payload.json"
 jq -n --arg repo "$repo" --arg branch "$branch" --arg oid "$head" --arg headline "$title" \
-  --argjson additions "$additions" '{
+  --slurpfile additions "$work/additions.json" '{
     query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
     variables: {input: {
       branch: {repositoryNameWithOwner: $repo, branchName: $branch},
       expectedHeadOid: $oid,
       message: {headline: $headline},
-      fileChanges: {additions: $additions}
+      fileChanges: {additions: $additions[0]}
     }}
   }' > "$payload"
 
+stop_if_finished
 if [ "$on_remote" = false ]; then
   gh api -X POST "repos/$repo/git/refs" -f "ref=refs/heads/$branch" -f "sha=$head" > /dev/null
   created_ref=true
