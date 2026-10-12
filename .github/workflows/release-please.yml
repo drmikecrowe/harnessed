@@ -31,8 +31,10 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      # Branch name goes through env, never interpolated into the script.
-      - if: steps.release.outputs.prs_created == 'true'
+      # Branch name goes through env, never interpolated into the script. Guarded on `pr` itself,
+      # not `prs_created`: on 49d5fa4 the latter was 'true' with no Release PR and `pr` empty, so
+      # fromJSON failed the run.
+      - if: steps.release.outputs.pr != ''
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
