@@ -71,7 +71,7 @@ Tier 3 (Decide 5, mcrowe, 2026-10-12). One line per way the change can hurt, and
 ### S5. Drift in the canned reply is reported
 - S5.1 Given a child whose `initialize` reply differs from the canned one in `protocolVersion` or `agentCapabilities`, when the proxy reads it, then it writes one stderr line `harnessed: ACP initialize drift: <harness>: <field>` per differing field.
 - S5.2 (negative) Given a child whose reply equals the canned one in those two fields and differs only in `authMethods`, when the proxy reads it, then it writes no drift line. The story's AC-5 names only `protocolVersion` and `agentCapabilities`: in the 2026-10-10 Atlas run, claude's `authMethods` inside a pod differed from its host reply, because the field follows the agent's login state.
-- S5.3 Given `tools/acp-smoke.py`, when the launched process's stderr carries a line that starts `harnessed: ACP initialize drift`, then the run fails, so a live run on both harnesses proves AC-5.
+- S5.3 Given `tools/acp-smoke.py`, when the launched process's stderr carries a line that starts `harnessed: ACP initialize drift`, then the run fails, so a live run on both harnesses proves AC-5. This is the guard against a stale table: when a pin moves and the harness's reply changes, the next live smoke run fails until the table is updated. No unit test can see the real reply.
 
 ### S6. A launch that fails answers the request
 - S6.1 (negative) Given a launch that raises `typer.Exit(1)`, or a relaunch child that exits 1 before it answers `initialize`, for example for an unknown stack, when `session/new` arrives, then the reply is a JSON-RPC error with code -32603 and the message `launch failed (exit 1); see stderr`, no agent runs for that project, and sessions in other projects go on working. The child is a relaunch of the same `container-acp` command, so a failed launch can start a child that exits before `initialize`.
@@ -85,7 +85,7 @@ Tier 3 (Decide 5, mcrowe, 2026-10-12). One line per way the change can hurt, and
 ### S8. Atlas (manual)
 - S8.1 Given an Atlas agent entry `harnessed container-acp claude --stack gortex-ghissues` with no project path, when the engineer, in one Atlas run, opens project A and prompts "print your working directory", then opens project B without quitting Atlas and prompts the same, then the replies name A's and B's container paths, and `ps --ppid <proxy pid> -o pid,args` taken while both sessions are open lists two relaunch children, one per project, under one proxy process.
 - S8.2 (negative) Given an Atlas entry with path `/a` in its args, when Atlas sends `session/new` with `cwd` = `/b`, then the agent reports `/a`.
-- S8.3 Given any session request that starts a child, when the child starts, then the proxy writes one stderr line `harnessed: ACP proxy <pid>: <project>`, so the Atlas log shows which process served each project.
+- S8.3 (serves AC-4: its boundary needs proof that one agent process served both projects) Given any session request that starts a child, when the child starts, then the proxy writes one stderr line `harnessed: ACP proxy <pid>: <project>`, so the Atlas log shows which process served each project.
 
 ### S9. Several projects in one process
 - S9.1 Given a session in P on child C1, when `session/new` names `cwd` = Q, then a second child C2 is launched for Q, the request reaches C2 only, and C2's reply reaches stdout (Decide 2, mcrowe, 2026-10-10).
@@ -99,7 +99,7 @@ Tier 3 (Decide 5, mcrowe, 2026-10-12). One line per way the change can hurt, and
 ### S10. `session/list`
 - S10.1 Given no child for project P, when the client sends `session/list` with `cwd` = P, for example `/home/mcrowe/Programming/Personal/harnessed/main` before any `session/new`, then the reply is `{"sessions": []}` and no launch runs, even when P's pod is up from an earlier launch (Decide 4, mcrowe, 2026-10-12).
 - S10.2 Given a child for P, when the client sends `session/list` with `cwd` = P, then the request reaches that child and its reply reaches stdout unchanged.
-- S10.3 (boundary) Given a `session/list` with no `cwd`, when a path argument A was given, then it is handled as S10.1 or S10.2 for A; with no path argument, the reply is `{"sessions": []}`.
+- S10.3 (boundary; serves AC-6, whose negative fails any error reply to `session/list`, and `cwd` is optional in ACP) Given a `session/list` with no `cwd`, when a path argument A was given, then it is handled as S10.1 or S10.2 for A; with no path argument, the reply is `{"sessions": []}`.
 - S10.4 (negative) Given any `session/list`, when the proxy answers it itself, then the reply is never a JSON-RPC error.
 
 ## Must NOT
@@ -126,7 +126,7 @@ Tier 3 (Decide 5, mcrowe, 2026-10-12). One line per way the change can hurt, and
 ## Known limits
 - A request other than `initialize`, a session request or `session/list` before the first session, for example `authenticate`, gets a JSON-RPC error: no agent runs yet to answer it. With two or more children, such a request gets S9.7's error.
 - The `initialize` reply's `authMethods` is the table's entry for the harness, recorded from its own reply at the pinned version (omp: the one `agent` method; claude: an empty list). It can differ from the agent's own, which depends on its login state, so a logged-out user can see the wrong login options until a session starts.
-- These rules are this SPEC's choices, not the story's: S5 (the drift line), S8.3 (the per-child stderr line) and S10.3 (`session/list` with no `cwd`). S4.5 and S9.7 serve AC-4 (mcrowe, 2026-10-12).
+- The drift line (S5) is this SPEC's choice, not the story's; it is how the live run proves AC-5. S4.5, S8.3 and S9.7 serve AC-4, and S10.3 serves AC-6 (mcrowe, 2026-10-12).
 - A cold launch that must build the image can exceed Atlas's 120 s `session/new` limit. The story puts it out of scope.
 - Each project costs one relaunch child and one pod, for as long as the editor keeps the process.
 - Whether omp under `container-acp` connects the stack's MCP servers, which `host-acp` needed GH-580 for, is not checked here.

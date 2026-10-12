@@ -96,6 +96,12 @@ Changes: Orientation `Tier:` line; the Failure model section; Verification contr
 - Gap 3 (S5 and S8.3 add behavior no criterion asks for): declined. S5.3 is how the live run proves AC-5 against each harness's own reply at its pinned version, which a unit test against a fake cannot. S8.3 is the one-process proof the engineer asked for on 2026-10-12, and Known limits marks both as the SPEC's choices.
 - Gap 4 (S2.1 asserts equality with P instead of `paths.container_project_path`): accepted. S2.1 asserts the function's value.
 
+## Intent review, Revision 6
+- Gap 1 (AC-6 narrowed): declined, as in the Revision 5 review. Decide 4 is ruled (mcrowe, 2026-10-12).
+- Gap 2 (S5 and S10.3 are inventions): S10.3 accepted in part: it serves AC-6's negative, since ACP makes `cwd` optional and any error reply fails AC-6; it now says so. S5 declined: it is the live proof of AC-5.
+- Gap 3 (Tier 3 is larger than the story): declined. Decide 5 ruled Tier 3 deliberately (mcrowe, 2026-10-12).
+- Gap 4 (nothing fails when a pin moves and the table goes stale): accepted. S5.3 now states it is that guard.
+
 ## Revisions
 ### Revision 1. Gate 1a round 1, PR-REFERENT
 S3.2 and Touches now say `--agent-start-folder` is an existing `container_run` option, resolved by `_resolve_start_dir`. Citation only; no scenario's meaning changed.
@@ -107,3 +113,5 @@ Found in the manual Atlas run, 2026-10-10. Atlas does not start a new agent proc
 The story was revised and graded `ready` again on 2026-10-12: its out-of-scope line is gone, AC-4 names one Atlas run, AC-5 drops `authMethods`, and AC-6 is new. The SPEC follows: Decide 2 takes ruling C, S9 becomes routing by session id, S10 answers `session/list`, S5 drops `authMethods` from the drift check, S2.2 and S3.3 cover `session/resume` and a path argument with a second `cwd`, S8.1 and S8.3 add the one-process proof the engineer asked for, and the smoke script's container checks dropped in the rebase are re-added on top of main's script: `--no-path` reuses the `host-acp` launch, the 60 s deadline is the existing `--launch-timeout`, the two-project check is the existing `--check-cwd`, and the drift-line failure is new (S7). `/spec-evidence:plan` does not run at `aisdlc-in-progress`, so its steps ran by hand with no label move, per loop.md's rule that the SPEC is revised visibly during the task.
 ### Revision 5. Gate 1a round 1 on Revision 4: PR-REFERENT ×2, PR-SCOPE ×2
 S5.2 and S6.1 cited "Revision 3" and "Revision 2", which the SPEC never defines; each now states its reason inline. S4.5 (a child that exits, and its relaunch) and S9.7 (a request that names no session) named no criterion; the engineer kept both and ties them to AC-4 (mcrowe, 2026-10-12), and Known limits no longer lists them as the SPEC's own choices.
+### Revision 6. Gate 1a round 2 on Revision 5: PR-SCOPE on S8.3
+S8.3 (the per-child stderr line) named no criterion. The engineer ties it to AC-4, whose boundary needs proof that one agent process served both projects (mcrowe, 2026-10-12). A new run of the Gate 1a step follows.
