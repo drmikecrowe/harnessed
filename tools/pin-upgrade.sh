@@ -8,7 +8,8 @@
 # GITHUB_TOKEN, and the main ruleset requires signed commits (see release-please.yml, #577).
 # A PR opened with GITHUB_TOKEN starts no workflows, so the checks are dispatched here.
 #
-# Needs: GH_TOKEN, GITHUB_REPOSITORY, gh, jq, git. HARNESSED_CMD overrides how harnessed runs.
+# Needs: GH_TOKEN, GITHUB_REPOSITORY, gh, jq, git. HARNESSED_CMD overrides how harnessed runs; it
+# is split on whitespace only, with no shell quoting, so no single argument in it may hold a space.
 set -euo pipefail
 trap 'echo "pin-upgrade: failed: $BASH_COMMAND" >&2' ERR
 
@@ -55,6 +56,15 @@ fi
 "${harnessed[@]}" update --yes --no-rebuild < /dev/null
 
 git add catalog mise.toml
+# `update` writes pins only under catalog/ and mise.toml. A tracked file changed anywhere else
+# means that stopped being true, and committing part of its output is worse than failing
+# (PR #593 review). Untracked files are left out: tooling on the runner may create some.
+stray="$(git status --porcelain --untracked-files=no -- . ':!catalog' ':!mise.toml')"
+if [ -n "$stray" ]; then
+  echo "pin-upgrade: harnessed update changed files outside catalog/ and mise.toml:" >&2
+  echo "$stray" >&2
+  exit 1
+fi
 if git diff --cached --quiet; then
   echo "no pin changed; nothing to do"
   exit 0

@@ -274,6 +274,20 @@ class TestOneSignedCommitPR:
         assert "pin-upgrade: refusing a deletion: mise.toml" in r.out
 
 
+    def test_a_tracked_file_changed_outside_the_pin_paths_fails_the_run(self, r):
+        """PR #593 review: committing part of `update`'s output is worse than failing."""
+        (r.work / "uv.lock").write_text("version = 1\n")
+        _git(r.work, "add", "uv.lock")
+        _git(r.work, "commit", "-qm", "lock")
+        _git(r.work, "push", "-q", "origin", "main")
+        r.write("catalog/recipes/pulumi/recipe.yaml", "x: 1\n")
+        r.write("uv.lock", "version = 2\n")
+        assert r.run().returncode == 1
+        assert "pin-upgrade: harnessed update changed files outside catalog/ and mise.toml:" in r.out
+        assert "uv.lock" in r.out
+        assert r.gh("api", "graphql") == []
+
+
 class TestSameDayRerun:
     """S3: AC-3, and Decide 5 B."""
 
