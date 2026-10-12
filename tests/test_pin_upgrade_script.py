@@ -36,6 +36,9 @@ STUB_GH = textwrap.dedent('''\
     if args[:2] == ["api", "graphql"]:
         n = len(list(d.glob("graphql-*.json"))) + 1
         (d / f"graphql-{n}.json").write_text(pathlib.Path(opt("--input")).read_text())
+        if (d / "fail-graphql").exists():
+            print("GraphQL: expected head oid did not match", file=sys.stderr)
+            sys.exit(1)
         print(json.dumps({"data": {"createCommitOnBranch": {"commit": {"oid": "c" * 40}}}}))
     elif args[:1] == ["api"] and "-X" in args:
         print("{}")
@@ -46,8 +49,15 @@ STUB_GH = textwrap.dedent('''\
             print("gh: Not Found (HTTP 404)", file=sys.stderr)
             sys.exit(1)
     elif args[:2] == ["pr", "list"]:
-        f = d / ("open-prs" if opt("--state") == "open" else "merged-prs")
-        print(f.read_text() if f.exists() else "[]")
+        # open-prs / merged-prs / closed-prs each hold a JSON list of {"number": n}.
+        def prs(name, state):
+            f = d / name
+            return [{**p, "state": state} for p in json.loads(f.read_text())] if f.exists() else []
+        if opt("--state") == "open":
+            print(json.dumps(prs("open-prs", "OPEN")))
+        else:  # --state all
+            print(json.dumps(prs("open-prs", "OPEN") + prs("merged-prs", "MERGED")
+                             + prs("closed-prs", "CLOSED")))
     elif args[:2] == ["workflow", "run"] and (d / "fail-workflow-run").exists():
         print("HTTP 500", file=sys.stderr)
         sys.exit(1)
@@ -301,14 +311,50 @@ class TestSameDayRerun:
         assert _ref_posts(r) == []
         assert len(r.gh("pr", "create")) == 1
 
-    def test_s3_5_a_merged_pr_today_skips_the_run(self, r):
-        (r.stub / "merged-prs").write_text('[{"number":6}]')
+    @pytest.mark.parametrize("done", ["merged-prs", "closed-prs"])
+    def test_s3_5_a_merged_or_closed_pr_today_skips_the_run(self, r, done):
+        """Decide 5 B, widened after PR #593 review: a closed PR is someone's decision about
+        today's bumps too, and must not be reopened or answered with a second PR."""
+        (r.stub / done).write_text('[{"number":6}]')
         r.write("mise.toml", '[tools]\njq = "1.8.3"\n')
         assert r.run().returncode == 0, r.out
-        assert f"{r.branch} already merged today; the next run picks up new bumps" in r.out
+        assert f"{r.branch} already closed or merged today; the next run picks up new bumps" in r.out
         assert [c for c in r.calls() if c[0] == "harnessed"] == []
         assert r.gh("api", "graphql") == [] and r.gh("pr", "create") == []
         assert r.gh("workflow", "run") == []
+
+    def test_an_open_pr_is_not_a_finished_one(self, r):
+        r.remote_branch()
+        (r.stub / "open-prs").write_text('[{"number":7}]')
+        r.write("mise.toml", '[tools]\njq = "1.8.3"\n')
+        assert r.run().returncode == 0, r.out
+        assert len(r.gh("api", "graphql")) == 1
+
+
+class TestFailedCommit:
+    """PR #593 review: a failed API commit must not leave a ref this run created."""
+
+    def _deletes(self, r):
+        return [c for c in r.gh("api") if "DELETE" in c]
+
+    def test_a_ref_this_run_created_is_removed(self, r):
+        r.write("mise.toml", '[tools]\njq = "1.8.3"\n')
+        (r.stub / "fail-graphql").write_text("")
+        assert r.run().returncode != 0
+        assert self._deletes(r) == [["gh", "api", "-X", "DELETE", f"repos/{REPO}/git/refs/heads/{r.branch}"]]
+        assert r.gh("pr", "create") == []
+
+    def test_a_branch_that_already_existed_is_kept(self, r):
+        r.remote_branch()
+        r.write("mise.toml", '[tools]\njq = "1.8.3"\n')
+        (r.stub / "fail-graphql").write_text("")
+        assert r.run().returncode != 0
+        assert self._deletes(r) == []
+
+    def test_a_good_commit_keeps_its_ref(self, r):
+        r.write("mise.toml", '[tools]\njq = "1.8.3"\n')
+        assert r.run().returncode == 0, r.out
+        assert self._deletes(r) == []
 
 
 class TestChecksStart:

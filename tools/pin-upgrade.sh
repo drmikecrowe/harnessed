@@ -29,13 +29,17 @@ LIVE_TRIGGERS=(
   '.github/workflows/live.yml'
 )
 
-prs() {
-  gh pr list --repo "$repo" --head "$branch" --state "$1" --json number | jq length
+open_prs() {
+  gh pr list --repo "$repo" --head "$branch" --state open --json number | jq length
 }
 
-# Decide 5 (GH-582): a PR for today already merged, so a second one would share its date.
-if [ "$(prs merged)" -gt 0 ]; then
-  echo "$branch already merged today; the next run picks up new bumps"
+# Decide 5 (GH-582), widened by the PR #593 review: a PR for today was merged or closed. A second
+# PR would share its date, and reopening one would overrule whoever closed it. `--state all` plus
+# a filter on `state`, so this never rests on how gh maps the word "closed".
+finished_prs="$(gh pr list --repo "$repo" --head "$branch" --state all --json state \
+  | jq '[.[] | select(.state != "OPEN")] | length')"
+if [ "$finished_prs" -gt 0 ]; then
+  echo "$branch already closed or merged today; the next run picks up new bumps"
   exit 0
 fi
 
@@ -74,7 +78,17 @@ additions="$(
 )"
 
 payload="$(mktemp)"
-trap 'rm -f "$payload"' EXIT
+created_ref=false
+# A ref this run created and never committed to is removed on the way out, so a failed commit
+# leaves no empty `upgrade-<date>` on main's sha (PR #593 review). Best effort: a failed delete
+# must not hide the error that got us here, and the next run reuses the ref anyway (S3.4).
+cleanup() {
+  rm -f "$payload"
+  if [ "$created_ref" = true ]; then
+    gh api -X DELETE "repos/$repo/git/refs/heads/$branch" > /dev/null || true
+  fi
+}
+trap cleanup EXIT
 jq -n --arg repo "$repo" --arg branch "$branch" --arg oid "$head" --arg headline "$title" \
   --argjson additions "$additions" '{
     query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
@@ -88,10 +102,12 @@ jq -n --arg repo "$repo" --arg branch "$branch" --arg oid "$head" --arg headline
 
 if [ "$on_remote" = false ]; then
   gh api -X POST "repos/$repo/git/refs" -f "ref=refs/heads/$branch" -f "sha=$head" > /dev/null
+  created_ref=true
 fi
 gh api graphql --input "$payload" | jq -er .data.createCommitOnBranch.commit.oid
+created_ref=false
 
-if [ "$(prs open)" -eq 0 ]; then
+if [ "$(open_prs)" -eq 0 ]; then
   gh pr create --repo "$repo" --base main --head "$branch" --title "$title" \
     --body "Automated pin upgrade for $day (\`harnessed update --yes --no-rebuild\`). Opened by .github/workflows/pin-upgrade.yml."
 fi
