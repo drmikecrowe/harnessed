@@ -32,7 +32,7 @@ from harnessed import acpproxy, paths
 from harnessed.attachcmd import _ACP_HARNESSES
 
 _FAKE_AGENT = r'''
-import json, os, sys
+import json, os, sys, time
 init = json.loads(os.environ["FAKE_INIT"])
 name = os.environ["FAKE_NAME"]
 if os.environ.get("FAKE_DIE"):
@@ -42,6 +42,7 @@ for line in sys.stdin:
     m = json.loads(line)
     meth = m.get("method")
     if meth == "initialize":
+        time.sleep(float(os.environ.get("FAKE_INIT_DELAY", "0")))
         print(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": init}), flush=True)
         print(json.dumps({"jsonrpc": "2.0", "method": "_auth/status_update", "params": {}}), flush=True)
     elif meth == "session/new":
@@ -341,6 +342,17 @@ class TestForwarding:
         fake = _Fake(tmp_path, init=_real("omp"))
         code, _, _ = _serve("omp", [_init(), _new(2, project), _new(3, other)], fake)
         assert code == 0
+
+    def test_a_client_that_closes_at_once_still_gets_its_session(self, tmp_path, project):  # S4.4, adversary 2
+        # stdin closes while the agent is still in its handshake: the queued session/new must still
+        # reach it, and its reply must still reach the client.
+        fake = _Fake(tmp_path, init=_real("omp"), FAKE_INIT_DELAY="1")
+        live = _Live("omp", fake)
+        live.send(_init())
+        live.send(_new(2, project))
+        time.sleep(0.3)  # the launch has returned; the handshake waits on the agent
+        assert live.close() == 0
+        assert live.reply(2)["result"]["sessionId"] == "proj-s1"
 
     def test_one_agent_exiting_leaves_the_others_working(self, tmp_path, project, other):  # S4.5
         fake = _Fake(tmp_path, init=_real("omp"), per={"proj": {"FAKE_QUIT": "session/prompt", "FAKE_EXIT": "6"}})

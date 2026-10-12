@@ -442,7 +442,12 @@ class _Proxy:
             self.closing = True
             started, threads = list(self.started), list(self.threads)
         for child in started:
-            child.close()
+            # Only a ready agent: one still starting has lines waiting for it, and its own thread
+            # closes it after sending them (adversary round 2).
+            with child.lock:
+                ready = child.state == _READY
+            if ready:
+                child.close()
         for thread in threads:
             thread.join()
         with self.lock:
