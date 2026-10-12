@@ -39,7 +39,16 @@ STUB_GH = textwrap.dedent('''\
         if (d / "fail-graphql").exists():
             print("GraphQL: expected head oid did not match", file=sys.stderr)
             sys.exit(1)
+        if (d / "lose-graphql-response").exists():
+            # The commit landed on the server, but the reply never arrived.
+            (d / "branch-sha").write_text("c" * 40)
+            print("connection reset by peer", file=sys.stderr)
+            sys.exit(1)
         print(json.dumps({"data": {"createCommitOnBranch": {"commit": {"oid": "c" * 40}}}}))
+    elif args[:1] == ["api"] and "POST" in args and args[3].endswith("/git/refs"):
+        # The ref now exists at the sha the script asked for, as GitHub would record it.
+        (d / "branch-sha").write_text([a for a in args if a.startswith("sha=")][0][4:])
+        print("{}")
     elif args[:1] == ["api"] and "-X" in args:
         print("{}")
     elif args[:1] == ["api"] and "/git/ref/heads/" in args[1]:
@@ -383,6 +392,13 @@ class TestFailedCommit:
         assert r.run().returncode != 0
         assert self._deletes(r) == [["gh", "api", "-X", "DELETE", f"repos/{REPO}/git/refs/heads/{r.branch}"]]
         assert r.gh("pr", "create") == []
+
+    def test_a_commit_that_landed_without_a_reply_is_kept(self, r):
+        """PR #593 review: the ref moved off the sha we created it at, so the commit is real."""
+        r.write("mise.toml", '[tools]\njq = "1.8.3"\n')
+        (r.stub / "lose-graphql-response").write_text("")
+        assert r.run().returncode != 0
+        assert self._deletes(r) == []
 
     def test_a_branch_that_already_existed_is_kept(self, r):
         r.remote_branch()

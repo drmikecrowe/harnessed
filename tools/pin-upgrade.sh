@@ -95,8 +95,13 @@ created_ref=false
 # leaves no empty `upgrade-<date>` on main's sha (PR #593 review). Best effort: a failed delete
 # must not hide the error that got us here, and the next run reuses the ref anyway (S3.4).
 cleanup() {
+  local sha
   rm -r "$work"
-  if [ "$created_ref" = true ]; then
+  # Only while the ref is still the bare one we made: a commit can land and its reply be lost,
+  # and then the ref has moved and must survive (PR #593 review).
+  if [ "$created_ref" = true ] \
+    && sha="$(gh api "repos/$repo/git/ref/heads/$branch" 2>/dev/null | jq -er .object.sha)" \
+    && [ "$sha" = "$head" ]; then
     gh api -X DELETE "repos/$repo/git/refs/heads/$branch" > /dev/null || true
   fi
 }
