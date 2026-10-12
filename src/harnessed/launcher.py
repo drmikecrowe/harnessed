@@ -3788,6 +3788,7 @@ class ContainerBackend(ExecutionBackend):
             # account's email/uuid/organization, which have no business in a container that
             # authenticates as someone else.
             isolated_auth=self.stk.isolated_auth and spec.harness == "claude",
+            project_path=str(spec.project_path),
         )
         # NB: the Claude credential fallback mount is appended AFTER secrets resolve (see seed_auth)
         # — whether it is needed at all depends on a CLAUDE_CODE_OAUTH_TOKEN that may arrive via

@@ -40,6 +40,7 @@ from .credmounts import (
 )
 from .broker import Broker
 from .hosthome import _OAUTH_TOKEN_VAR
+from .jsonmerge import merge_claude_json
 from .launchenv import _plain_env_values, _varlock_resolve
 from .layout import _catalog_base
 from .setupenv import _ensure_gitignore_entry
@@ -146,8 +147,10 @@ def _build_mount_args(
     return args
 
 
-def _claude_config_seed_mount(harness: str, inst: str, isolated_auth: bool = False) -> list[str]:
-    """Mount a minimal, token-free ~/.claude.json stub so Claude Code skips first-run onboarding.
+def _claude_config_seed_mount(
+    harness: str, inst: str, isolated_auth: bool = False, project_path: str | None = None
+) -> list[str]:
+    """Mount a token-free ~/.claude.json, MERGED over its live copy, so Claude Code skips onboarding.
 
     The real OAuth token lives in the rw ~/.claude/.credentials.json mount (see
     _claude_creds_seed_mount). But Claude Code *also* gates its onboarding (the "Select login
@@ -165,36 +168,36 @@ def _claude_config_seed_mount(harness: str, inst: str, isolated_auth: bool = Fal
     omp is NOT included: nothing it does needs this file. It reads ~/.claude.json only to DISCOVER
     MCP servers, and harnessed already wires omp's MCP layer through `_omp_mcp_seed_mount`. The
     claude-hooks-bridge is an ~/.omp/plugins module and never opens it (#314).
+
+    GH-594: the stub is per instance, so per project, yet it was rewritten on every launch and
+    every answer given inside the stack (folder trust, import approval, the API key, MCP approvals)
+    was lost. `merge_claude_json` now keeps the live stub and lays only harnessed's keys over it,
+    including trust for `project_path`. The container mirrors the project at the same path, so
+    the host path string is the key Claude uses inside it.
     """
     if harness != "claude":
         return []
-
-    oauth_account: object = {}
-    user_id: object = ""
-    host_json = Path.home() / ".claude.json"
-    if host_json.is_file() and not isolated_auth:
-        try:
-            data = json.loads(host_json.read_text(encoding="utf-8"))
-            oauth_account = data.get("oauthAccount", {})
-            user_id = data.get("userID", "")
-        except (ValueError, OSError):
-            pass  # missing/malformed host config → seed the onboarding flag only
 
     state_root = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state"))
     state_dir = state_root / "harnessed" / inst
     state_dir.mkdir(parents=True, exist_ok=True)
     stub = state_dir / "claude.json"
-    stub.write_text(
-        json.dumps({
-            "hasCompletedOnboarding": True,
-            "firstStartTime": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "numStartups": 1,
-            "oauthAccount": oauth_account,
-            "userID": user_id,
-        }),
-        encoding="utf-8",
+    merged = merge_claude_json(
+        _read_json_or_empty(stub), _read_json_or_empty(Path.home() / ".claude.json"), project_path,
+        isolated_auth=isolated_auth,
+        now=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
     )
+    stub.write_text(json.dumps(merged), encoding="utf-8")
     return ["-v", f"{stub}:{_CONTAINER_HOME_STR}/.claude.json:rw"]
+
+
+def _read_json_or_empty(path: Path) -> object:
+    """`path` parsed as JSON, or `{}` when it is missing or malformed: either way there is nothing
+    to keep, and a launch must not die on a file Claude Code itself may have half-written."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return {}
 
 
 def _claude_oauth_token_args(harness: str, env_files: Sequence[Path] = ()) -> list[str]:
