@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
+# Recipe: mattpocock-skills (upstream: Matt Pocock, MIT) — "Skills for Real Engineers": small,
+# composable engineering and productivity skills (grilling, spec/ticket flows, TDD, code review,
+# domain modelling).
+#
+# Same shape as superpowers: clone the pinned release tag and copy the published skills into
+# <config>/skills/. Upstream nests skills by category (skills/<category>/<name>/), and only
+# `engineering` and `productivity` are published — they are exactly the 27 paths in upstream's
+# .claude-plugin/plugin.json. `in-progress` and `misc` are not in the plugin and are skipped.
+name: mattpocock-skills
+description: mattpocock-skills — Matt Pocock's "Skills for Real Engineers" (grilling, spec/ticket flows, TDD, code review, domain modelling, handoff). 27 Claude-canonical skills.
+setup:
+  summary: >-
+    Run `/setup-matt-pocock-skills` once per repo to choose the issue tracker, triage labels,
+    and docs location the other skills use.
+  reference: https://github.com/mattpocock/skills
+
+# No `system:` — pure Markdown under the agent config dir, so a host launch equals a container build.
+install:
+  script: install.sh
+  refs:
+    mattpocock:
+      repo: mattpocock/skills
+      ref: v1.3.1
+
+# A stable handful across both categories is enough to prove the install worked.
+expect:
+  skills:
+    - setup-matt-pocock-skills
+    - grill-with-docs
+    - to-spec
+    - to-tickets
+    - code-review
+    - diagnosing-bugs
+    - grill-me
+    - handoff
+    - writing-for-agents
