@@ -328,6 +328,17 @@ import subprocess
 from harnessed import hostrun, launcher, paths, setupenv
 from harnessed.assemble import assemble
 
+
+def _pin() -> str:
+    """The adapter version the catalog pins, read as the code reads it: a pin bump must never
+    fail these tests (#595 failed eight of them on a literal 0.85.1)."""
+    return launcher._acp_adapter_pin()[1]
+
+
+def _install_cmd() -> bytes:
+    package, version = launcher._acp_adapter_pin()
+    return f"npm i -g {package}@{version}".encode()
+
 _DRIVER = r"""
 import json, sys
 from harnessed import launcher as L
@@ -438,7 +449,7 @@ class TestStdoutIsJsonRpcOnly:
         host.build(harness)
         a = tmp_path / "projA"
         a.mkdir()
-        prefix = host.adapter("0.85.1") if harness == "claude" else None
+        prefix = host.adapter(_pin()) if harness == "claude" else None
         proc = host.run(harness, path_prefix=prefix, msgs=[
             _rpc(1, "initialize", {"protocolVersion": 1}),
             _rpc(2, "session/new", {"cwd": str(a), "mcpServers": []}),
@@ -574,7 +585,7 @@ class TestHostRunSharesTheSetup:
 class TestClaudeMcpAndEnv:
     def test_s5_1_the_adapter_gets_the_stack_mcp_file_and_strict(self, host):
         host.build("claude")
-        proc = host.run("claude", path_prefix=host.adapter("0.85.1"), msgs=[_rpc(1, "initialize", {})])
+        proc = host.run("claude", path_prefix=host.adapter(_pin()), msgs=[_rpc(1, "initialize", {})])
         assert proc.returncode == 0, proc.stderr.decode()
         env = host.agent_start()["env"]
         home = paths.host_home(_STACK, "claude")
@@ -586,7 +597,7 @@ class TestClaudeMcpAndEnv:
 
     def test_s5_2_no_strict_keeps_the_file_and_drops_strict(self, host):
         host.build("claude")
-        proc = host.run("claude", "--no-strict-mcp-config", path_prefix=host.adapter("0.85.1"),
+        proc = host.run("claude", "--no-strict-mcp-config", path_prefix=host.adapter(_pin()),
                         msgs=[_rpc(1, "initialize", {})])
         assert proc.returncode == 0, proc.stderr.decode()
         env = host.agent_start()["env"]
@@ -602,7 +613,7 @@ class TestClaudeMcpAndEnv:
         host.env["MISE_DATA_DIR"] = "/users/own/mise"
         a = tmp_path / "projA"
         a.mkdir()
-        prefix = host.adapter("0.85.1") if harness == "claude" else None
+        prefix = host.adapter(_pin()) if harness == "claude" else None
         proc = host.run(harness, path_prefix=prefix, msgs=[_rpc(1, "session/new", {"cwd": str(a), "mcpServers": []})])
         assert proc.returncode == 0, proc.stderr.decode()
         start = host.agent_start()
@@ -629,14 +640,14 @@ class TestTheAdapterAtLaunch:
         proc = host.run("claude", msgs=[_rpc(1, "initialize", {})])
         assert proc.returncode == 1
         assert proc.stdout == b""
-        assert b"npm i -g @agentclientprotocol/claude-agent-acp@0.85.1" in proc.stderr
+        assert _install_cmd() in proc.stderr
         assert not host.started.exists()
 
     def test_s6_10_another_version_runs_with_a_warning(self, host):
         host.build("claude")
         proc = host.run("claude", path_prefix=host.adapter("0.84.0"), msgs=[_rpc(1, "initialize", {})])
         assert proc.returncode == 0, proc.stderr.decode()
-        assert b"0.84.0" in proc.stderr and b"0.85.1" in proc.stderr
+        assert b"0.84.0" in proc.stderr and _pin().encode() in proc.stderr
         assert host.started.exists()
         _stdout_messages(proc)
 
