@@ -30,7 +30,7 @@ description: >-
 # 2026-09-24). Static binary, zero runtime deps, no post-install downloads — the only fetch is
 # this one, at install time.
 tools:
-  - github:zzet/gortex@v0.64.5
+  - github:zzet/gortex@v0.64.7
 
 # --- MCP layer --------------------------------------------------------------------------------------
 # hatago spawns this as a child exactly like the `time` tracer bullet; the child proxies to the
