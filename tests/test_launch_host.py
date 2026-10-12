@@ -2182,6 +2182,14 @@ class TestHostClaudeJsonMerge:
         }
         assert replaced and Path(replaced[0][1]) == home / ".claude.json"
 
+    def test_s3_10_a_legacy_copy_loses_the_users_mcp_servers(self, monkeypatch, tmp_path):
+        """Adversary round 1: a stack launched before GH-594 holds a whole copy of the user's file,
+        and the merge keeps the live file, so the user's servers would stay in it forever."""
+        home = self._user(monkeypatch, tmp_path, self.USER)
+        (home / ".claude.json").write_text(json.dumps(dict(self.USER)))
+        launcher._seed_host_claude_json(home, self.P, isolated_auth=False)
+        assert "mcpServers" not in self._read(home)
+
     def test_s3_9_project_setup_writes_no_file_that_is_not_there(self, tmp_path):
         home = tmp_path / "home"
         home.mkdir()

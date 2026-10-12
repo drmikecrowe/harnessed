@@ -491,6 +491,9 @@ def _seed_host_claude_json(home: Path, project: str | None, *, isolated_auth: bo
         isolated_auth=isolated_auth,
         now=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
     )
+    # A stack launched before GH-594 holds a whole copy of the user's file, servers included. The
+    # stack's own servers come from `<home>/.mcp.json`, so this key is never the stack's.
+    merged.pop("mcpServers", None)
     _write_json_atomic(target, merged)
 
 

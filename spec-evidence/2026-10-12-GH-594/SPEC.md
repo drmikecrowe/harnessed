@@ -12,7 +12,7 @@
 - AC-2: once answered, the API key question does not come back, and a "no" stays a "no" (S1.2, S2.2, S3.2).
 - AC-3: any other answer given in the stack survives a relaunch, and harnessed still forces its own onboarding flag (S1.2, S1.3, S2.2, S3.2, S3.5).
 - AC-4: under `isolated_auth`, the host's `oauthAccount`/`userID` never reach the stack; without it, the host path still copies them (S1.6 to S1.9, S3.4).
-- AC-5: the host's global `mcpServers` never reach the stack file, and the stack's own servers still load (S1.5, S3.1, S3.8).
+- AC-5: the host's global `mcpServers` never reach the stack file, even one left by an older launch, and the stack's own servers still load (S1.5, S3.1, S3.8, S3.10).
 - AC-6: an ACP session loads the external import, under `container-acp` and under `host-acp` in a new folder (S3.9, S4.2).
 
 **What must not change.** The host's own `~/.claude.json` is never written. No API key fragment is written by harnessed. `--strict-mcp-config` stays. omp still gets no stub. Credential symlinking is unchanged.
@@ -65,6 +65,7 @@
 - S3.6 Given a `host-acp` launch (`acp=True`), when the home is seeded, then onboarding and identity are merged and no `projects` entry is added for the launch folder, which is the editor's, not a project.
 - S3.9 Given a stack home whose `.claude.json` holds `customApiKeyResponses` and `projects["/other"]`, when `project-setup` runs for session folder `P` (`project_only=True`), then `projects[P]` holds the three project keys as true, every other key is unchanged, and the write goes through a temp file and `os.replace`. Given no `.claude.json` in the home, it writes none. Per Decide 2 = A (mcrowe, 2026-10-12): this is the only home write `project-setup` makes.
 - S3.7 (boundary) Given no user `~/.claude.json` at all, when the home is seeded, then the stack file still holds `hasCompletedOnboarding: true` and the three project keys for `P`. Today this case copied nothing.
+- S3.10 (negative) Given a stack `.claude.json` left by a launch before this change, holding the user's `mcpServers: {"leak": {}}` and `projects: {"/secret": {}}`, when the home is seeded, then the stack file has no top-level `mcpServers`. The host path always drops that key: the stack's servers come from `<home>/.mcp.json`. Added by Revision 3 (mcrowe, 2026-10-12).
 - S3.8 (negative) Given a stack with one MCP server `srv` and a user file holding `mcpServers: {"leak": {}}`, when the host launch plans its argv, then `<home>/.mcp.json` holds `srv` and not `leak`, and the argv still ends with `--mcp-config <home>/.mcp.json --strict-mcp-config`. The stack's own servers still load.
 
 ### S4. Manual runs on this machine
@@ -101,6 +102,9 @@
 - Trust is seeded for the launch's project path only. A session that later changes into another folder is asked as before.
 - Under `host-acp`, a different live session that rewrites `.claude.json` from a stale copy can drop the S3.9 seed for a new folder. That session then behaves as today. The atomic write keeps the window small but cannot close it.
 - S3.9 assumes claude-agent-acp starts a fresh claude CLI per session, so the new session reads the seed. The build confirms this first, with the `host-acp` run of S4.2.
+- A host stack launched before this change keeps the old copy's other `projects` entries (for example `/secret`) after S3.10. They name the user's own folders on the user's own machine, and nothing reads them unless a session starts there. Revision 3.
+- On the host path, a server added in the stack with `claude mcp add -s user` is dropped at each launch (S3.10). It was already inert under `--strict-mcp-config`. Revision 3.
+- Two launches of one stack in different projects share one host home, and the agent writes `.claude.json` without harnessed's lock, so a concurrent answer can be lost. The old whole-file copy lost it always. The container stub is still written in place, because a bind mount needs the same inode.
 - Key names are confirmed on Claude Code 2.1.289 only. A later rename would quietly bring the questions back. No test can catch that; S4.1 is the check.
 
 ## Verification contract
