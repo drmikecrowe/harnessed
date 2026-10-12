@@ -73,7 +73,7 @@ class TestTheJob:
     def test_s8_4_the_script_runs_with_the_workflow_token(self, workflow):
         _, steps = _steps(workflow)
         (step,) = [s for s in steps if "tools/pin-upgrade.sh" in s.get("run", "")]
-        assert step["env"]["GH_TOKEN"] == "${{ github.token }}"
+        assert step["env"]["GH_TOKEN"] == "${{ github.token }}"  # noqa: S105 — an expression, not a secret
 
     def test_s8_5_pin_check_is_gone_and_tests_still_gate_prs(self):
         assert not (WORKFLOWS / "pin-check.yml").exists()

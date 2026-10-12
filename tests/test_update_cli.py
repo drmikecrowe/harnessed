@@ -465,7 +465,7 @@ class TestUnattendedRun:
         assert not re.search(r"Left \d+ pin\(s\) unchanged", _plain(result.output))
 
     def test_s6_4_a_one_day_old_harness_release_is_applied(self, harness_major):
-        catalog, agent, ages = harness_major
+        _catalog, agent, ages = harness_major
         ages["cx"] = ("1.5.0", 1)
         result = runner.invoke(launcher.app, ["update", "--yes", "--no-rebuild"])
         assert result.exit_code == 0, result.output
