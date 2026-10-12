@@ -92,6 +92,8 @@
 - `tests/test_claude_config_seed.py` — S2 added.
 - `tests/test_launch_host.py` — S3 added. The nested-launch and decoy tests (around lines 314 to 349 and 460 to 471) compare the whole file to the user's file. They change to compare `oauthAccount`, the allowlisted key, with the same fixtures and intent.
 - `ARCHITECTURE.md` — the "token-free `~/.claude.json` onboarding stub" sentence (line 536) says the file is now merged, not overwritten.
+- `tools/acp-smoke.py` — `--prompt` prints the agent's reply, which S4.2 reads. Added by Revision 4.
+- `tests/test_acp_smoke.py` — pins that reply line. Added by Revision 4.
 
 ## Documentation
 - `ARCHITECTURE.md`, line 536, as above.
