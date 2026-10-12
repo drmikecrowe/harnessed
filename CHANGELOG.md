@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/drmikecrowe/harnessed/compare/v0.2.0...v0.2.1) (2026-10-12)
+
+
+### Bug Fixes
+
+* **ci:** guard the release test dispatch on the pr output ([#578](https://github.com/drmikecrowe/harnessed/issues/578)) ([5145911](https://github.com/drmikecrowe/harnessed/commit/51459116c23de233cc692d4da3e5de964e246655))
+
 ## [0.2.0](https://github.com/drmikecrowe/harnessed/compare/v0.1.0...v0.2.0) (2026-10-11)
 
 
