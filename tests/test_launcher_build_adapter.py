@@ -18,11 +18,12 @@ from support import patch_all
 
 runner = CliRunner()
 
-_QUESTION = (
-    "I need to install `npm i -g @agentclientprotocol/claude-agent-acp@0.85.1` to support ACP "
-    "-- is that OK? (y/n/c)"
-)
-_NPM = ["npm", "i", "-g", "@agentclientprotocol/claude-agent-acp@0.85.1"]
+# Read from the catalog as the code reads it: a pin bump must never fail these tests (#595 failed
+# six of them on a literal 0.85.1).
+_PACKAGE, _PIN = launcher._acp_adapter_pin()
+_NPM = ["npm", "i", "-g", f"{_PACKAGE}@{_PIN}"]
+_INSTALL = " ".join(_NPM)
+_QUESTION = f"I need to install `{_INSTALL}` to support ACP -- is that OK? (y/n/c)"
 
 
 def _adapter(tmp: Path, version: str) -> Path:
@@ -78,7 +79,7 @@ class TestTheOffer:
 
     def test_s6_3_c_runs_the_typed_command_through_bash(self, build_env):
         ran, _ = build_env
-        typed = "pnpm add -g @agentclientprotocol/claude-agent-acp@0.85.1"
+        typed = f"pnpm add -g {_PACKAGE}@{_PIN}"
         result = runner.invoke(launcher.app, ["build", "s", "claude"], input=f"c\n{typed}\n")
         assert result.exit_code == 0, result.output
         assert ran == [["bash", "-c", typed]]
@@ -91,7 +92,7 @@ class TestTheOffer:
 
     def test_s6_5_the_pinned_version_asks_nothing(self, build_env, monkeypatch, tmp_path):
         ran, _ = build_env
-        monkeypatch.setenv("PATH", str(_adapter(tmp_path, "0.85.1")))
+        monkeypatch.setenv("PATH", str(_adapter(tmp_path, _PIN)))
         result = runner.invoke(launcher.app, ["build", "s", "claude"], input="")
         assert result.exit_code == 0, result.output
         assert "to support ACP" not in result.output
@@ -102,7 +103,7 @@ class TestTheOffer:
         state["rc"] = 7
         result = runner.invoke(launcher.app, ["build", "s", "claude"], input="y\n")
         assert result.exit_code == 0, result.output
-        assert "npm i -g @agentclientprotocol/claude-agent-acp@0.85.1" in result.output
+        assert _INSTALL in result.output
         assert "warning" in result.output.lower()
 
     def test_s6_7_no_terminal_asks_nothing_and_names_the_command(self, build_env, monkeypatch):
@@ -111,7 +112,7 @@ class TestTheOffer:
         result = runner.invoke(launcher.app, ["build", "s", "claude"], input="")
         assert result.exit_code == 0, result.output
         assert "is that OK?" not in result.output
-        assert "npm i -g @agentclientprotocol/claude-agent-acp@0.85.1" in result.output
+        assert _INSTALL in result.output
         assert ran == []
 
     def test_s6_9_omp_never_checks_the_adapter(self, build_env, monkeypatch):
