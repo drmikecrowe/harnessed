@@ -84,7 +84,16 @@
 - Default: B, because it keeps the story's negative literally true.
 - Ruling: B, skip until the next run (mcrowe, 2026-10-12)
 
+## Intent review, round 2
+- Accepted: S6.4 adds a harness release 1 day old, so the Decide 2 reading is tested.
+- Accepted: Known limits cite the release-please precedent for a dispatched `pytest` check.
+- Declined: an end-to-end edge test in the script. The script does not choose bumps; `update` does, and S1.2 pins `update`'s edge.
+- Declined: S2.5 and S3.5 as unapproved scope. mcrowe is the story author and ruled Decide 5 B; S2.5 is marked as a safety guard for AC-2.
+- Declined: a Summary note on `live.yml`. The Summary already says `live.yml` runs because `launcher.py` changes.
+
 ## Revision log
 - Revision 1 (2026-10-12): first draft.
 - Revision 2 (2026-10-12): intent review folded in; Decide 5 added.
 - Revision 3 (2026-10-12): Decides 1 to 5 ruled; S3.5 added for Decide 5; the merged-same-day Known limit removed.
+- Revision 4 (2026-10-12): Gate 1a round 1 PR-REFERENT fixed: the stub `harnessed` gains `$STUB_DIR/deletes` (S2.5). Judge gaps closed: the stub logs `git rev-parse HEAD` so S3.1 observes the checkout order; Terms states how Decide 2 reads the story's 2-day constraint.
+- Revision 5 (2026-10-12): intent review round 2 folded in (S6.4, Known limits).

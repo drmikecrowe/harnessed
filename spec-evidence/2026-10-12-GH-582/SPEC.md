@@ -43,12 +43,12 @@ Failure model (Tier 2):
 - **The run**: one execution of `tools/pin-upgrade.sh` from the repository root, with `GH_TOKEN` and `GITHUB_REPOSITORY` set.
 - **`<date>`**: the UTC date when the run starts, from `date -u +%F`, for example `2026-10-13`.
 - **The branch**: `upgrade-<date>`.
-- **Eligible bump**: a finding in `report.stale` of `harnessed update`, as `src/harnessed/update.py` `_select` decides. A non-harness release is eligible when its age in days is `>= 7.0` (the default 10080 minutes). A harness release is eligible at any age: when every newer harness release is younger than 2 days, the newest is offered with `fresh = True`, and `--yes` applies it, as `update` does today (Decide 2 A, mcrowe, 2026-10-12).
+- **Eligible bump**: a finding in `report.stale` of `harnessed update`, as `src/harnessed/update.py` `_select` decides. A non-harness release is eligible when its age in days is `>= 7.0` (the default 10080 minutes). A harness release is eligible at any age: when every newer harness release is younger than 2 days, the newest is offered with `fresh = True`, and `--yes` applies it, as `update` does today (Decide 2 A, mcrowe, 2026-10-12). This is how the plan reads the story constraint "Harness pins keep their 2-day window": the window stays the preference it is today, not a gate.
 - **Changed files**: the output of `git diff --cached --name-only` after `git add catalog mise.toml`.
 - **Live trigger file**: a path that matches one of these patterns, the same list as the `case` in `.github/workflows/live.yml` job `changes`: `catalog/base/Dockerfile.harnessed-*`, `catalog/base/harnessed-start`, `src/harnessed/volumes.py`, `src/harnessed/launcher.py`, `src/harnessed/paths.py`, `.github/workflows/live.yml`.
 - **API commit**: one call of the GitHub GraphQL mutation `createCommitOnBranch`, made with `GITHUB_TOKEN`. GitHub signs such a commit as github-actions[bot]. Its input holds `branch.repositoryNameWithOwner`, `branch.branchName`, `expectedHeadOid`, `message.headline`, and `fileChanges.additions`, one entry per changed file with the path and the base64 of its staged content.
 - **Stub `gh`**: a test program on `PATH` that appends its argv, one JSON array per line, to `$STUB_LOG`. It answers from files the test writes: `gh api repos/<repo>/git/ref/heads/<branch>` prints `{"object":{"sha":"<sha>"}}` when `$STUB_DIR/branch-sha` exists, or else exits 1 with `HTTP 404`. `gh pr list --head <branch> --state open --json number` prints `$STUB_DIR/open-prs`, or `[]` when that file is absent. `gh pr list --head <branch> --state merged --json number` prints `$STUB_DIR/merged-prs`, or `[]` when that file is absent. `gh api graphql` saves the request body it reads from `--input` to `$STUB_DIR/graphql-<n>.json` and prints `{"data":{"createCommitOnBranch":{"commit":{"oid":"<40 hex>"}}}}`. `gh workflow run` exits 1 when `$STUB_DIR/fail-workflow-run` exists. Every other call prints nothing and exits 0.
-- **Stub `harnessed`**: a test program on `PATH` that appends its argv to `$STUB_LOG`, reads its stdin to the end, and then copies each file under `$STUB_DIR/writes/` over the file at the same relative path in the working tree. With no `writes/` directory, it changes nothing.
+- **Stub `harnessed`**: a test program on `PATH` that appends to `$STUB_LOG` one JSON array of `"harnessed"`, its arguments, and the output of `git rev-parse HEAD` in the working tree. It reads its stdin to the end. Then it copies each file under `$STUB_DIR/writes/` over the file at the same relative path in the working tree, and removes each path listed in `$STUB_DIR/deletes`, one relative path per line. With neither, it changes nothing.
 - **Test repository**: a temporary git repository with one commit on `main`, holding `catalog/recipes/pulumi/recipe.yaml` and `mise.toml`. Its `origin` is a local bare repository with the same `main`.
 
 ## Scenarios
@@ -62,10 +62,10 @@ Failure model (Tier 2):
 - S2.2 Given S2.1, then the saved GraphQL body has `expectedHeadOid` equal to the `main` head, `branch.branchName` equal to `upgrade-<date>`, and one `additions` entry whose `path` is `catalog/recipes/pulumi/recipe.yaml` and whose `contents` decodes to the file the stub wrote.
 - S2.3 (negative) Given S2.1, when the run ends, then the bare `origin` holds no ref `upgrade-<date>`, which proves no `git push` ran. The script holds no `git push` and no `git commit` (asserted on its text).
 - S2.4 (boundary) Given `writes/` changes two files, `catalog/recipes/pulumi/recipe.yaml` and `mise.toml`, when the run runs, then the stub log holds exactly one `gh api graphql`, and its `additions` hold both paths.
-- S2.5 (negative, safety guard for AC-2: the API commit in Terms carries additions only, so a deletion would be dropped silently) Given a staged change that deletes a file under `catalog/`, when the run runs, then it exits 1, prints `pin-upgrade: refusing a deletion: <path>`, and calls no `gh api graphql`.
+- S2.5 (negative, safety guard for AC-2: the API commit in Terms carries additions only, so a deletion would be dropped silently) Given `$STUB_DIR/deletes` lists `catalog/recipes/pulumi/recipe.yaml`, so the stub `harnessed` removes it and `git add catalog mise.toml` stages the deletion, when the run runs, then it exits 1, prints `pin-upgrade: refusing a deletion: <path>`, and calls no `gh api graphql`.
 
 ### S3. A same-day rerun adds to the open PR (AC-3)
-- S3.1 Given `upgrade-<date>` exists on the bare `origin` at commit B (one commit after `main`), `branch-sha` holds B, `open-prs` holds `[{"number":7}]`, and `writes/` changes a file, when the run runs, then it checks out `origin/upgrade-<date>` before it runs `harnessed`, the saved GraphQL body has `expectedHeadOid` = B, and the stub log holds no `git/refs` POST and no `gh pr create`.
+- S3.1 Given `upgrade-<date>` exists on the bare `origin` at commit B (one commit after `main`), `branch-sha` holds B, `open-prs` holds `[{"number":7}]`, and `writes/` changes a file, when the run runs, then the stub log's `harnessed` line ends with B, which proves the run checked out `origin/upgrade-<date>` before it ran `harnessed`; the saved GraphQL body has `expectedHeadOid` = B, and the stub log holds no `git/refs` POST and no `gh pr create`.
 - S3.2 (boundary) Given S3.1 but with no `writes/`, when the run runs, then it exits 0, prints `no pin changed; nothing to do`, and the stub log holds no `gh api graphql`, no `gh pr create` and no `gh workflow run`.
 - S3.3 (negative) Given S3.1, when the run ends, then the bare `origin` still has `upgrade-<date>` at B, so the earlier commit was not rewritten.
 - S3.5 (negative) Given `merged-prs` holds `[{"number":6}]` and `writes/` changes a file, when the run runs, then it exits 0, prints `upgrade-<date> already merged today; the next run picks up new bumps`, and the stub log holds no `harnessed` line, no `gh api graphql`, no `gh pr create` and no `gh workflow run` (Decide 5 B, mcrowe, 2026-10-12).
@@ -87,6 +87,7 @@ Failure model (Tier 2):
 ### S6. Major bumps are applied (AC-6)
 - S6.1 Given a catalog with a harness agent pin at `1.4.0` whose resolver offers `2.0.0` published 3 days ago, and a recipe pin `npm:x@1.0.0` whose resolver offers `1.5.0` published 10 days ago, when `harnessed update --yes --no-rebuild` runs, then both files hold the new versions, `2.0.0` and `1.5.0`.
 - S6.2 (negative) Given S6.1, then stdout holds no line `Left N pin(s) unchanged`.
+- S6.4 (boundary) Given a harness agent pin at `1.4.0` whose resolver offers `1.5.0` published 1 day ago, when `harnessed update --yes --no-rebuild` runs, then the agent file holds `1.5.0` (Decide 2 A, mcrowe, 2026-10-12).
 - S6.3 (negative) The script passes no flag that filters majors: S5.4 pins its `harnessed` arguments to exactly `update --yes --no-rebuild`, so no `--fail-on` or other filter can reach the run.
 
 ### S7. The PR is a feat (AC-7)
@@ -125,6 +126,7 @@ Failure model (Tier 2):
 
 ## Known limits
 - The workflow cannot be dispatched before it is on `main`, because `workflow_dispatch` needs the file on the default branch. The first real run is after merge; its log and PR go into a follow-up comment on GH-582.
+- A dispatched `test.yml` reports the `pytest` check on the branch head. `release-please.yml` relies on the same dispatch for its Release PR, which has merged under the same ruleset (v0.2.1). The first upgrade PR confirms it for this workflow.
 - `lint.yml` and `pr-title.yml` do not run on the upgrade PR, because a PR opened with `GITHUB_TOKEN` starts no workflows. Only `pytest` is a required check on `main`, and S4 dispatches it.
 - S7.3 proves the release-please setting, not a release. The 0.3.0 proposal is seen after the first upgrade PR merges.
 
