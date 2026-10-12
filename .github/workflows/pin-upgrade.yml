@@ -1,0 +1,56 @@
+name: pin upgrade
+
+# Every other day: `harnessed update --yes --no-rebuild` over the catalog. When a pin moved, one PR
+# from `upgrade-<date>` titled `feat(catalog): upgrade pins <date>`, so merging it makes the next
+# Release PR a minor bump. When nothing moved, no branch and no PR. All of it lives in
+# tools/pin-upgrade.sh (GH-582). Replaces pin-check.yml, which only reported (#469).
+#
+# DELIBERATELY NOT `pull_request` or `push`. The run resolves LIVE registries, so its result
+# depends on what npm/PyPI/GitHub published today, not on any diff (bd harnessed-4xu).
+# tests/test_ci_pin_upgrade_workflow.py fails if either trigger is added.
+#
+# GITHUB_TOKEN, not a PAT, for the reason release-please.yml gives: GitHub signs API commits made
+# by github-actions[bot], and the main ruleset requires signed commits. The token cannot start
+# workflows on the PR it opens, so the script dispatches test.yml (the required `pytest` check)
+# itself, and live.yml when a live trigger file changed.
+on:
+  schedule:
+    # 06:00 UTC on odd days of the month. Across a 31-day month's end it runs two days in a row,
+    # each on its own `upgrade-<date>` branch.
+    - cron: "0 6 */2 * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    # Nothing in the run waits on input, but a hung registry call must not hold a runner for 6h.
+    timeout-minutes: 30
+    steps:
+      # Pinned to commit SHAs, as in test.yml: a tag is mutable.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          persist-credentials: false
+
+      - name: Setup uv (+ Python 3.12)
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+        with:
+          python-version: "3.12"
+
+      # `tools:` entries with no backend prefix (currently `pulumi`) resolve through `mise registry`
+      # to find the aqua:owner/repo backing them. Without mise on the runner those pins degrade to
+      # "unresolved" and are never bumped.
+      - name: Setup mise
+        uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654  # v4.2.4
+        with:
+          version: 2026.8.2
+          install: false
+
+      - name: Upgrade pins and open the PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/pin-upgrade.sh

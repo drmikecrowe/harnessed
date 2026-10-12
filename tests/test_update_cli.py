@@ -393,3 +393,80 @@ class TestUpgradeAlias:
         result = runner.invoke(launcher.app, ["upgrade", "--yes"])
         assert result.exit_code == 0
         assert "npm:x@1.5.0" in (catalog / "stale" / "recipe.yaml").read_text()
+
+
+class TestUnattendedRun:
+    """GH-582: the scheduled pin-upgrade workflow runs `update --yes --no-rebuild` with no one at
+    it. `--no-rebuild` keeps apply mode off the container runtime entirely; majors ride the same
+    commit as everything else; nothing waits on stdin. Scenario ids are from
+    spec-evidence/2026-10-12-GH-582/SPEC.md."""
+
+    @pytest.fixture
+    def unpinnable(self, catalog, monkeypatch):
+        agent_dir = catalog.parent / "agents" / "cx"
+        agent_dir.mkdir(parents=True)
+        (agent_dir / "agent.yaml").write_text(
+            "type: agent\nharness: cx\nimage: harnessed-cx\n"
+            "dockerfile: catalog/base/Dockerfile.harnessed-cx\n"
+            "unpinnable:\n  CX_VERSION: unqueryable upstream\n"
+        )
+        monkeypatch.setattr(launcher, "HARNESS_CONFIG_DIR", {"cx": ".claude"})
+        # Recorded, not raised: `_offer_unpinnable_refresh` turns any exception from the runtime
+        # into a warning, so a raising stub would let a reached runtime pass unseen.
+        touched = []
+        for name in ("_runtime", "_built_pairs_for", "_refresh_unpinnable_harness"):
+            monkeypatch.setattr(launcher, name, lambda *a, _n=name, **kw: touched.append(_n) or [])
+        return catalog, touched
+
+    def test_s5_1_no_rebuild_never_reaches_the_runtime(self, unpinnable):
+        unpinnable, touched = unpinnable
+        result = runner.invoke(launcher.app, ["update", "--yes", "--no-rebuild"])
+        assert result.exit_code == 0, result.output
+        assert touched == []
+        assert "npm:x@1.5.0" in (unpinnable / "stale" / "recipe.yaml").read_text()
+        assert "skipped the unpinnable-harness rebuild (--no-rebuild)" in _plain(result.output)
+
+    def test_s5_3_a_prompt_with_no_input_fails_instead_of_waiting(self, catalog):
+        result = runner.invoke(launcher.app, ["update"], input="")
+        assert result.exit_code != 0
+        assert "npm:x@1.0.0" in (catalog / "stale" / "recipe.yaml").read_text()
+
+    @pytest.fixture
+    def harness_major(self, catalog, monkeypatch):
+        from datetime import datetime, timedelta, timezone
+        agent_dir = catalog.parent / "agents" / "cx"
+        agent_dir.mkdir(parents=True)
+        (agent_dir / "agent.yaml").write_text(
+            "type: agent\nharness: cx\nimage: harnessed-cx\n"
+            "dockerfile: catalog/base/Dockerfile.harnessed-cx\n"
+            'build_args:\n  CX_VERSION: { value: "1.4.0", spec: "npm:cx" }\n'
+        )
+        now = datetime.now(timezone.utc)
+        ages = {"x": ("1.5.0", 10), "cx": ("2.0.0", 3)}
+
+        def resolve(backend, name, **kw):
+            if name not in ages:
+                return []
+            version, days = ages[name]
+            return [update.Release(version=version, published=now - timedelta(days=days))]
+
+        monkeypatch.setattr(update, "resolve_releases", resolve)
+        return catalog, agent_dir / "agent.yaml", ages
+
+    def test_s6_1_a_harness_major_lands_with_a_minor(self, harness_major):
+        catalog, agent, _ = harness_major
+        result = runner.invoke(launcher.app, ["update", "--yes", "--no-rebuild"])
+        assert result.exit_code == 0, result.output
+        assert '"2.0.0"' in agent.read_text()
+        assert "npm:x@1.5.0" in (catalog / "stale" / "recipe.yaml").read_text()
+
+    def test_s6_2_no_pin_is_left_behind(self, harness_major):
+        result = runner.invoke(launcher.app, ["update", "--yes", "--no-rebuild"])
+        assert not re.search(r"Left \d+ pin\(s\) unchanged", _plain(result.output))
+
+    def test_s6_4_a_one_day_old_harness_release_is_applied(self, harness_major):
+        catalog, agent, ages = harness_major
+        ages["cx"] = ("1.5.0", 1)
+        result = runner.invoke(launcher.app, ["update", "--yes", "--no-rebuild"])
+        assert result.exit_code == 0, result.output
+        assert '"1.5.0"' in agent.read_text()
