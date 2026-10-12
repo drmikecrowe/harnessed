@@ -1,0 +1,68 @@
+# Gate 1, story readiness
+
+verdict: ready
+story: GH-594
+process: spec-evidence 0.0.1
+model: claude-sonnet-5-5
+tokens: 62304/237
+rubric: rubric.md 4c2886dd973af290e392b5da5cdeb6f654611d2e87b0d02ee37757bab0a040af
+record: /tmp/claude-1000/-home-mcrowe-Programming-Personal-harnessed-gh-594-merge-claude-json/6c6f7777-a69e-4046-8322-986c551c950a/scratchpad/GH-594/story-record.json
+graded: 2026-10-12T17:45:00.156Z
+
+## Reasons
+
+none
+
+## Record
+
+```json
+{"input":"Story","type":"bug","missing":[],"gaps":["prompt 2: the Constraints name 'a short allowlist from the host file' for the host path but never list its keys, so a reader has to guess which host keys are carried over; AC-4 and AC-5 name only oauthAccount, userID and mcpServers.","prompt 2: AC-1 and AC-2 say 'the three prompts' by reference to the Description steps; a reader of the criteria alone has to look back to know which three.","prompt 3: an implementation could satisfy AC-1 to AC-6 and still leave the API key prompt appearing on every launch, because AC-1 says it is not required to be absent and the apiKeyHelper alternative is only a 'candidate'. If the author wants the key prompt gone on first launch, no criterion says so.","prompt 1: the author wants trust and import approval seeded for the launch's project path only; AC-6 covers that for ACP, but no criterion states it for the interactive paths (no other project path marked approved)."],"fields":[{"name":"steps","state":"present"},{"name":"actual","state":"present"},{"name":"expected","state":"present"},{"name":"where","state":"present"}],"readings":[],"findings":[],"deferred":[{"ac":"AC-6","why":"whether headless mode treats an unapproved external import as declined needs the installed Claude Code behaviour; the plan review takes it. The criterion is still checkable on what the Story says."},{"ac":"AC-2","why":"whether the API key prompt answer persists and whether apiKeyHelper avoids the prompt needs the installed Claude Code version; the plan review takes it."},{"ac":"AC-1","why":"the exact key names (hasTrustDialogAccepted, hasClaudeMdExternalIncludesApproved) come from recall per the author's notes; engineering confirms them against the installed version at the plan review."}],"items":[{"ac":"AC-1","status":"proven","evidence":"On 8451 with an empty host ~/.claude.json, launch stack S on project P on the container path and again on the host path. Open the stack's .claude.json and check projects[P].hasTrustDialogAccepted and projects[P].hasClaudeMdExternalIncludesApproved. Either value not true, or a trust or import prompt appearing, falsifies it."},{"ac":"AC-2","status":"proven","evidence":"Launch S on P, answer the API key prompt with approve, exit, relaunch on both paths. Any of the three prompts appearing falsifies it. Then repeat answering decline. A relaunch that records or shows the key as approved falsifies the negative."},{"ac":"AC-3","status":"proven","evidence":"Launch S on P, approve a project MCP server, relaunch on both paths. The approval missing from the stack's .claude.json, or the prompt reappearing, falsifies it. Set hasCompletedOnboarding to a different value in the live file, relaunch. If it is not reset to harnessed's value, the negative is falsified."},{"ac":"AC-4","status":"proven","evidence":"Put oauthAccount and userID in the host ~/.claude.json, set isolated_auth on, launch on both paths, and inspect the stack's .claude.json. Either host value present falsifies it. With isolated_auth off on the host path, either value absent falsifies the negative."},{"ac":"AC-5","status":"proven","evidence":"Add a global mcpServers entry to the host ~/.claude.json, launch on the host path, and inspect the stack's .claude.json. The entry present falsifies it. A stack MCP server from its profile failing to load falsifies the negative."},{"ac":"AC-6","status":"proven","evidence":"With no earlier interactive launch, start an ACP session (claude-agent-acp) in S on P, whose CLAUDE.md imports active.md, and ask it to quote the heading 'MANDATORY: Use Gortex MCP tools instead of Read/Grep/Glob'. If it cannot quote it, the criterion is falsified. If any project path other than P has the trust or import approval flags true in the stack's .claude.json, the negative is falsified."}]}
+```
+
+## Story
+
+````
+---
+id: GH-594
+type: bug
+source:
+  tracker: github
+  external_id: GH-594
+  url: https://github.com/drmikecrowe/harnessed/issues/594
+  version: 2026-10-12T15:26:54Z
+---
+# Merge ~/.claude.json like settings.json so trust, import, and API-key answers persist
+
+## Description
+Steps:
+  1. On 8451, a machine with an API-key-only login and an empty host ~/.claude.json, launch stack S on project P.
+  2. Answer the three prompts: trust this folder; allow the external import of ~/.local/share/gortex/instructions/active.md; use this API key.
+  3. Exit, then launch the same stack S on the same project P.
+Actual: All three prompts appear again on every launch.
+  Container path: `_claude_config_seed_mount` (src/harnessed/mounts.py) writes a fresh stub on every launch, and its `write_text` is unconditional. The stub holds only hasCompletedOnboarding, firstStartTime, numStartups, oauthAccount and userID.
+  Host path: `_share_host_claude_state` (src/harnessed/hosthome.py) runs `shutil.copy2` from the host ~/.claude.json onto the stack copy on every launch. A fresh host file holds none of the three answers.
+Expected: An answer given in a stack persists across launches. harnessed seeds trust and import approval for the launch's project path, so those two prompts do not appear on the first launch either.
+Where: src/harnessed/mounts.py `_claude_config_seed_mount` (container path) and src/harnessed/hosthome.py `_share_host_claude_state` (host path).
+Drafted by the assistant from the author's text; approved by the author 2026-10-12.
+
+## Acceptance criteria
+- AC-1: Launch stack S on project P for the first time on 8451. No trust prompt and no external-import prompt appear; boundary: both the container and host paths; negative: the API key prompt is not required to be absent on the first launch, because harnessed writes no key fragment.
+    Example: after that launch, the stack's .claude.json holds projects["<P>"].hasTrustDialogAccepted = true and projects["<P>"].hasClaudeMdExternalIncludesApproved = true.
+- AC-2: After the user answers the API key prompt in stack S, the next launch of S on P shows none of the three prompts; boundary: both paths, with the same stack and project; negative: when the user declined the key, the relaunch does not turn that answer into an approval.
+- AC-3: An answer given inside a stack (for example, approval of a project MCP server) is still in the stack's .claude.json after a relaunch, and the prompt does not appear again; boundary: both paths; negative: a key that harnessed owns (hasCompletedOnboarding) is reset to harnessed's value, because the profile wins.
+- AC-4: With isolated_auth on, and a host ~/.claude.json that holds oauthAccount and userID, the stack's .claude.json holds neither of the host's values; boundary: both paths; negative: with isolated_auth off, the host path copies oauthAccount and userID as it does today.
+- AC-5: A global mcpServers entry in the host ~/.claude.json does not appear in the stack's .claude.json; boundary: the host path; negative: the stack's own MCP servers from its profile still load.
+- AC-6: In an ACP session (claude-agent-acp) in stack S on project P, where the CLAUDE.md imports ~/.local/share/gortex/instructions/active.md, the import loads; boundary: an ACP session with no earlier interactive launch; negative: no project path other than P is marked as approved.
+    Example: the session can quote the heading "MANDATORY: Use Gortex MCP tools instead of Read/Grep/Glob" from active.md.
+
+## Constraints
+- Merge `.claude.json` the way `settings.json` is merged (src/harnessed/jsonmerge.py: the profile wins, and `carry_live_permissions` keeps live answers). The base is the stack's live .claude.json. The overlay is only the keys that harnessed owns: the onboarding fields; for the launch's project path, hasTrustDialogAccepted, hasClaudeMdExternalIncludesApproved and hasClaudeMdExternalIncludesWarningShown; and on the host path only, a short allowlist from the host file.
+- Never merge the host file wholesale. It is mostly runtime state: oauthAccount/userID are dropped under isolated_auth so a client stack does not carry the host account's identity; launcher.py (~2991) already keeps global mcpServers out of a stack; the host projects{} is per-path history, trust and MCP approvals for every host repo.
+- harnessed writes no API key fragment to disk. Claude Code records approval as customApiKeyResponses.approved holding the last 20 characters of the key, and seeding it conflicts with "credentials referenced, never replicated". A candidate alternative is an apiKeyHelper in settings.json that prints the env var.
+- ACP: claude-agent-acp runs claude headless through the Agent SDK, so none of the three prompts can block it. The open risk is that headless mode treats an unapproved external import as declined, so the gortex active.md instructions silently fail to load. Seeding the approval makes interactive and ACP behaviour the same.
+
+## Author notes
+- SR-DEFER: "The key names above come from recall, not from the installed Claude Code version". engineering checks at the plan review
+- SR-DEFER: "Whether apiKeyHelper avoids the API key prompt". engineering checks at the plan review
+- SR-DEFER: "if headless mode treats an unapproved external import as declined". engineering checks at the plan review
+````
