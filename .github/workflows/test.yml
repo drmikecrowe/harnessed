@@ -7,6 +7,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  # release-please.yml dispatches this on its Release PR branch: a PR opened with GITHUB_TOKEN
+  # starts no workflows, so without it the required `pytest` check never reports there.
+  workflow_dispatch:
 
 jobs:
   pytest:

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "harnessed"
-version = "0.2.0"
+dynamic = ["version"]
 description = "harnessed: composable, on-demand configuration for agentic harnesses (host Python CLI driving podman)"
 requires-python = ">=3.12"
 dependencies = [
@@ -137,6 +137,11 @@ typeCheckingMode = "basic"
 # from pyright's walk so those 5 findings never appear. In pyright, exclude overrides include, so
 # listing a subpath here correctly narrows the src/ include without any wider side-effect.
 exclude = ["src/harnessed/catalog"]
+
+# One version, written by release-please into __init__.py. Dynamic so uv.lock records none and
+# cannot go stale on a release.
+[tool.setuptools.dynamic]
+version = {attr = "harnessed.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -306,7 +306,6 @@ wheels = [
 
 [[package]]
 name = "harnessed"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "pip-audit" },
