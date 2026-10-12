@@ -17,7 +17,7 @@
 
 **What must not change.** The host's own `~/.claude.json` is never written. No API key fragment is written by harnessed. `--strict-mcp-config` stays. omp still gets no stub. Credential symlinking is unchanged.
 
-**How it is proven.** Unit tests on the pure merge (with a hypothesis property), unit tests on both call sites, the full suite, `live.yml` because `launcher.py` changes, and two manual runs on this machine: a container relaunch, and `tools/acp-smoke.py` on `container-acp`.
+**How it is proven.** Unit tests on the pure merge (with a hypothesis property), unit tests on both call sites, the full suite, `live.yml` because `launcher.py` changes, and manual runs on this machine: a relaunch on `container-run` and on `host-run` (S4.1), and `tools/acp-smoke.py` on `container-acp` and `host-acp` (S4.2).
 
 **Open decisions.** None. The engineer ruled on 2026-10-12: the host path honours `isolated_auth` (Decide 1), and `host-acp` seeds each new session folder through `project-setup` (Decide 2).
 
