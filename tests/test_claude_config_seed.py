@@ -8,6 +8,8 @@ a token, and must be written per-instance (not into the host ~/.claude.json).
 import json
 from pathlib import Path
 
+import pytest
+
 from harnessed import launcher
 
 CONTAINER_HOME = launcher._CONTAINER_HOME_STR
@@ -157,3 +159,28 @@ class TestStubMergesOverTheLiveFile:
         except _Stop:
             pass
         assert seen == {"harness": "claude", "inst": "inst-d", "isolated_auth": True, "project": str(project)}
+
+
+def test_gh594_container_first_start_time_is_now_in_utc_iso(monkeypatch, tmp_path, utc_plus_14):
+    """The container twin of the host test: same `now` expression, same unpinned value."""
+    import re
+    from datetime import datetime, timezone
+
+    _host(monkeypatch, tmp_path, None)
+    stamp = _stub_from_mount(launcher._claude_config_seed_mount("claude", "inst-t"))["firstStartTime"]
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.000Z", stamp)
+    seeded = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%S.000Z").replace(tzinfo=timezone.utc)
+    assert abs((datetime.now(timezone.utc) - seeded).total_seconds()) < 120
+
+
+@pytest.fixture
+def utc_plus_14(monkeypatch):
+    """Run the test 14 hours ahead of UTC, so a local-time clock cannot pass for a UTC one. `TZ`
+    alone changes nothing in a running process; `time.tzset()` re-reads it, both ways."""
+    import time
+
+    monkeypatch.setenv("TZ", "Pacific/Kiritimati")
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()

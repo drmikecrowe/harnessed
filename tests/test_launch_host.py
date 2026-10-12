@@ -2193,3 +2193,35 @@ class TestHostClaudeJsonMerge:
         suite does not start; the behaviour itself is pinned by the two tests above."""
         src = inspect.getsource(launcher._launch_host)
         assert "_seed_host_claude_project(paths.host_home(stack, harness), str(project_path))" in src
+
+
+def test_gh594_host_first_start_time_is_now_in_utc_iso(monkeypatch, tmp_path, utc_plus_14):
+    """Mutation round 1: nothing pinned the `now` the host seed passes, so `None`, a local-time
+    clock or a mangled format all survived. Claude Code writes `firstStartTime` in this shape."""
+    import re
+    from datetime import datetime, timezone
+
+    userhome = tmp_path / "userhome"
+    (userhome / ".claude").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(userhome))
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    home = tmp_path / "stackhome"
+    home.mkdir()
+    launcher._seed_host_claude_json(home, None, isolated_auth=False)
+    stamp = json.loads((home / ".claude.json").read_text())["firstStartTime"]
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.000Z", stamp)
+    seeded = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%S.000Z").replace(tzinfo=timezone.utc)
+    assert abs((datetime.now(timezone.utc) - seeded).total_seconds()) < 120
+
+
+@pytest.fixture
+def utc_plus_14(monkeypatch):
+    """Run the test 14 hours ahead of UTC, so a local-time clock cannot pass for a UTC one. `TZ`
+    alone changes nothing in a running process; `time.tzset()` re-reads it, both ways."""
+    import time
+
+    monkeypatch.setenv("TZ", "Pacific/Kiritimati")
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()
