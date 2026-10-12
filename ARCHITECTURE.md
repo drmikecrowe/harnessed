@@ -535,7 +535,9 @@ stack is the point, and those files are not subject to the replace-on-refresh ha
    by `claude setup-token` (~1-year lifetime). Forwarded from the host environment or a resolved
    `--env-file` (varlock / 1Password). When present, no credential file is mounted at all — the
    copy-divergence problem does not arise. Also mounted in all cases: a token-free `~/.claude.json`
-   onboarding stub so Claude skips the interactive setup screen.
+   so Claude skips the interactive setup screen. It is merged over its live copy on each launch,
+   never rewritten, so answers given in the stack persist, and it seeds folder trust and import
+   approval for the launch's project (GH-594).
    **A token from an `--env-file` outranks one exported in the shell**, in both backends: `podman
    run -e` beats `--env-file`, so the launcher withholds the host forward when a resolved env-file
    already declares the variable. Without that, a stale export outranks every declared source and a

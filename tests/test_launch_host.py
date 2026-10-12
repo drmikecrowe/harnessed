@@ -9,6 +9,7 @@ import inspect
 import json
 import os
 from pathlib import Path
+from types import MappingProxyType
 
 import pytest
 from typer.testing import CliRunner
@@ -318,15 +319,16 @@ class TestHostClaudeSource:
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
         monkeypatch.setenv("HOME", str(tmp_path / "userhome"))
         (tmp_path / "userhome" / ".claude").mkdir(parents=True)
-        (tmp_path / "userhome" / ".claude.json").write_text('{"account":"mine"}')
+        (tmp_path / "userhome" / ".claude.json").write_text('{"oauthAccount":"mine"}')
         home = paths.host_home("same-stack", "claude")
         home.mkdir(parents=True)
-        (home / ".claude.json").write_text('{"account":"the stack\'s stale copy"}')
+        (home / ".claude.json").write_text('{"oauthAccount":"the stack\'s stale copy"}')
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(home))
 
         launcher._share_host_claude_state(home)
+        launcher._seed_host_claude_json(home, None, isolated_auth=False)
 
-        assert (home / ".claude.json").read_text() == '{"account":"mine"}'
+        assert json.loads((home / ".claude.json").read_text())["oauthAccount"] == "mine"
 
     def test_a_nested_launch_snapshots_the_users_account_not_the_parent_stacks(
         self, monkeypatch, tmp_path
@@ -336,17 +338,18 @@ class TestHostClaudeSource:
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
         monkeypatch.setenv("HOME", str(tmp_path / "userhome"))
         (tmp_path / "userhome" / ".claude").mkdir(parents=True)
-        (tmp_path / "userhome" / ".claude.json").write_text('{"account":"mine"}')
+        (tmp_path / "userhome" / ".claude.json").write_text('{"oauthAccount":"mine"}')
         parent_home = paths.host_home("parent-stack", "claude")
         parent_home.mkdir(parents=True)
-        (parent_home / ".claude.json").write_text('{"account":"the parent stack"}')
+        (parent_home / ".claude.json").write_text('{"oauthAccount":"the parent stack"}')
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(parent_home))
         child_home = paths.host_home("child-stack", "claude")
         child_home.mkdir(parents=True)
 
         launcher._share_host_claude_state(child_home)
+        launcher._seed_host_claude_json(child_home, None, isolated_auth=False)
 
-        assert (child_home / ".claude.json").read_text() == '{"account":"mine"}'
+        assert json.loads((child_home / ".claude.json").read_text())["oauthAccount"] == "mine"
 
 
 class TestShareClaudeState:
@@ -362,6 +365,7 @@ class TestShareClaudeState:
         home.mkdir()
 
         launcher._share_host_claude_state(home)
+        launcher._seed_host_claude_json(home, None, isolated_auth=False)
 
         # session state: symlinked to the real ~/.claude (shared, resumable)
         assert (home / "projects").is_symlink()
@@ -371,7 +375,7 @@ class TestShareClaudeState:
         # auth token: symlinked (live refresh propagates)
         assert (home / ".credentials.json").is_symlink()
         assert (home / ".credentials.json").read_text() == '{"token":"x"}'
-        # account: COPIED (isolated writes), not a symlink
+        # account: MERGED into the stack's own file (isolated writes), not a symlink (GH-594)
         assert (home / ".claude.json").is_file()
         assert not (home / ".claude.json").is_symlink()
 
@@ -460,15 +464,16 @@ class TestShareClaudeState:
         # The account file is $HOME/.claude.json — NOT ~/.claude/.claude.json. Seed from the right one.
         fake_home = tmp_path / "home"
         (fake_home / ".claude").mkdir(parents=True)
-        (fake_home / ".claude.json").write_text('{"account":"real"}')            # HOME-level (correct)
-        (fake_home / ".claude" / ".claude.json").write_text('{"account":"WRONG"}')  # decoy inside dir
+        (fake_home / ".claude.json").write_text('{"oauthAccount":"real"}')            # HOME-level (correct)
+        (fake_home / ".claude" / ".claude.json").write_text('{"oauthAccount":"WRONG"}')  # decoy inside dir
         (fake_home / ".claude" / ".credentials.json").write_text('{"t":"x"}')
         monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
         monkeypatch.setenv("HOME", str(fake_home))
         home = tmp_path / "stackhome"
         home.mkdir()
         launcher._share_host_claude_state(home)
-        assert (home / ".claude.json").read_text() == '{"account":"real"}'
+        launcher._seed_host_claude_json(home, None, isolated_auth=False)
+        assert json.loads((home / ".claude.json").read_text())["oauthAccount"] == "real"
 
     @staticmethod
     def _cred(marker: str) -> str:
@@ -2031,3 +2036,158 @@ class TestHostFreshWipe:
         lock_at = src.index("with _host_home_lock(")
         assert lock_at < src.index("_host_fresh_wipe(")
         assert src.index("_host_fresh_wipe(") < src.index("backend.materialize_config(")
+
+
+class TestHostClaudeJsonMerge:
+    """GH-594 S3. The host path copied the user's whole ~/.claude.json over the stack's copy on
+    every launch, and a rebuild deleted the file. So no in-stack answer persisted, and the stack
+    carried the user's `projects` and `mcpServers` besides."""
+
+    P = "/work/proj"
+    TRUST = (
+        "hasTrustDialogAccepted",
+        "hasClaudeMdExternalIncludesApproved",
+        "hasClaudeMdExternalIncludesWarningShown",
+    )
+    USER = MappingProxyType({
+        "oauthAccount": {"emailAddress": "me@example.com"},
+        "userID": "host-id",
+        "projects": {"/secret": {}},
+        "mcpServers": {"leak": {}},
+    })
+
+    def _user(self, monkeypatch, tmp_path, data):
+        userhome = tmp_path / "userhome"
+        (userhome / ".claude").mkdir(parents=True)
+        if data is not None:
+            (userhome / ".claude.json").write_text(json.dumps(dict(data)))
+        monkeypatch.setenv("HOME", str(userhome))
+        monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+        home = tmp_path / "stackhome"
+        home.mkdir()
+        return home
+
+    @staticmethod
+    def _read(home):
+        return json.loads((home / ".claude.json").read_text())
+
+    def test_s3_1_first_launch_takes_identity_and_trust_but_not_host_state(self, monkeypatch, tmp_path):
+        home = self._user(monkeypatch, tmp_path, self.USER)
+        launcher._seed_host_claude_json(home, self.P, isolated_auth=False)
+        out = self._read(home)
+        assert out["oauthAccount"] == {"emailAddress": "me@example.com"}
+        assert out["userID"] == "host-id"
+        assert out["projects"] == {self.P: dict.fromkeys(self.TRUST, True)}
+        assert "mcpServers" not in out
+        assert not (home / ".claude.json").is_symlink()
+
+    def test_s3_2_in_stack_answers_survive_a_relaunch(self, monkeypatch, tmp_path):
+        home = self._user(monkeypatch, tmp_path, self.USER)
+        (home / ".claude.json").write_text(json.dumps({
+            "customApiKeyResponses": {"approved": [], "rejected": ["def"]},
+            "projects": {self.P: {"enabledMcpjsonServers": ["srv"]}},
+        }))
+        launcher._seed_host_claude_json(home, self.P, isolated_auth=False)
+        out = self._read(home)
+        assert out["customApiKeyResponses"] == {"approved": [], "rejected": ["def"]}
+        assert out["projects"][self.P]["enabledMcpjsonServers"] == ["srv"]
+
+    def test_s3_4_isolated_auth_keeps_host_identity_out(self, monkeypatch, tmp_path):
+        home = self._user(monkeypatch, tmp_path, self.USER)
+        launcher._seed_host_claude_json(home, self.P, isolated_auth=True)
+        text = (home / ".claude.json").read_text()
+        assert "me@example.com" not in text and "host-id" not in text
+
+    def test_s3_4_host_backend_carries_isolated_auth_into_the_seed(self, monkeypatch, tmp_path):
+        home = self._user(monkeypatch, tmp_path, self.USER)
+        from harnessed.backend import LaunchSpec
+
+        b = launcher.HostBackend([], isolated_auth=True)
+        b.home = home
+        b.seed_auth(LaunchSpec(stack="s", harness="claude", project_path=Path(self.P)))
+        out = self._read(home)
+        assert out["oauthAccount"] == {} and out["userID"] == ""
+        assert out["projects"][self.P]["hasTrustDialogAccepted"] is True
+
+    def test_s3_4_launch_host_builds_the_backend_from_the_stack(self):
+        """Structural: `_launch_host` is the only constructor, and running it end to end for an
+        isolated stack needs a catalog stack this suite does not carry."""
+        src = inspect.getsource(launcher._launch_host)
+        assert "HostBackend(host_recipes, isolated_auth=host_stk.isolated_auth, acp=acp)" in src
+
+    def test_s3_5_a_rebuild_keeps_the_claude_json(self, tmp_path):
+        prof, home = tmp_path / "prof", tmp_path / "home"
+        prof.mkdir()
+        _fake_profile(prof)
+        launcher._materialize_host_home(prof, home, fingerprint="fp-1")
+        launcher._stamp_host_home(home, "fp-1")
+        (home / ".claude.json").write_text('{"projects": {"/p": {"x": 1}}}')
+        (home / "stale-recipe-leftover.md").write_text("gone after a rebuild")
+        assert launcher._materialize_host_home(prof, home, fingerprint="fp-2") is True
+        assert (home / ".claude.json").read_text() == '{"projects": {"/p": {"x": 1}}}'
+        assert not (home / "stale-recipe-leftover.md").exists()
+
+    def test_s3_6_host_acp_seeds_no_project_for_the_launch_folder(self, monkeypatch, tmp_path):
+        home = self._user(monkeypatch, tmp_path, self.USER)
+        from harnessed.backend import LaunchSpec
+
+        b = launcher.HostBackend([], acp=True)
+        b.home = home
+        b.seed_auth(LaunchSpec(stack="s", harness="claude", project_path=Path(self.P)))
+        out = self._read(home)
+        assert out["hasCompletedOnboarding"] is True
+        assert out["oauthAccount"] == {"emailAddress": "me@example.com"}
+        assert "projects" not in out
+
+    def test_s3_7_no_user_file_still_seeds_onboarding_and_trust(self, monkeypatch, tmp_path):
+        home = self._user(monkeypatch, tmp_path, None)
+        launcher._seed_host_claude_json(home, self.P, isolated_auth=False)
+        out = self._read(home)
+        assert out["hasCompletedOnboarding"] is True
+        assert out["projects"][self.P] == dict.fromkeys(self.TRUST, True)
+
+    def test_s3_8_the_stacks_servers_load_and_the_users_do_not(self, monkeypatch, tmp_path):
+        home = self._user(monkeypatch, tmp_path, self.USER)
+        from harnessed.backend import LaunchSpec
+
+        monkeypatch.setattr(launcher, "_host_native_mcp", lambda _s: {"srv": {"command": "srv"}})
+        b = launcher.HostBackend([])
+        b.home = home
+        spec = LaunchSpec(stack="s", harness="claude", project_path=Path(self.P))
+        b.seed_auth(spec)
+        b.wire_mcp(spec)
+        assert json.loads((home / ".mcp.json").read_text()) == {"mcpServers": {"srv": {"command": "srv"}}}
+        assert b.argv[-3:] == ["--mcp-config", str(home / ".mcp.json"), "--strict-mcp-config"]
+        assert "mcpServers" not in self._read(home)
+
+    def test_s3_9_project_setup_seeds_only_the_session_folder(self, monkeypatch, tmp_path):
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / ".claude.json").write_text(json.dumps({
+            "customApiKeyResponses": {"approved": ["abc"]},
+            "projects": {"/other": {"x": 1}},
+            "oauthAccount": {"emailAddress": "me@example.com"},
+        }))
+        replaced = []
+        real_replace = os.replace
+        monkeypatch.setattr(hosthome.os, "replace", lambda s, d: (replaced.append((s, d)), real_replace(s, d)))
+        launcher._seed_host_claude_project(home, self.P)
+        out = self._read(home)
+        assert out == {
+            "customApiKeyResponses": {"approved": ["abc"]},
+            "projects": {"/other": {"x": 1}, self.P: dict.fromkeys(self.TRUST, True)},
+            "oauthAccount": {"emailAddress": "me@example.com"},
+        }
+        assert replaced and Path(replaced[0][1]) == home / ".claude.json"
+
+    def test_s3_9_project_setup_writes_no_file_that_is_not_there(self, tmp_path):
+        home = tmp_path / "home"
+        home.mkdir()
+        launcher._seed_host_claude_project(home, self.P)
+        assert not (home / ".claude.json").exists()
+
+    def test_s3_9_project_setup_calls_the_seed_and_nothing_else_in_the_home(self):
+        """Structural: the project_only branch is driven by the relay's subprocess, which this
+        suite does not start; the behaviour itself is pinned by the two tests above."""
+        src = inspect.getsource(launcher._launch_host)
+        assert "_seed_host_claude_project(paths.host_home(stack, harness), str(project_path))" in src

@@ -70,6 +70,15 @@ CLAUDE_PROJECT_TRUST_KEYS = (
 _IDENTITY_DEFAULTS: dict[str, object] = {"oauthAccount": {}, "userID": ""}
 
 
+def read_json_or_empty(path: Path) -> object:
+    """`path` parsed as JSON, or `{}` when it is missing or malformed: either way there is nothing
+    to keep, and a launch must not die on a file Claude Code itself may have half-written."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return {}
+
+
 def seed_claude_project(data: dict, project: str) -> dict:
     """`data` with the trust keys set true under `projects[project]`; every other key unchanged."""
     projects = data.get("projects")

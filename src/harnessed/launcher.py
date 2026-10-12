@@ -92,6 +92,8 @@ from .hosthome import (
     _propagate_host_settings,
     _rescue_host_credentials,
     _scrub_host_home,
+    _seed_host_claude_json,
+    _seed_host_claude_project,
     _share_host_claude_state,
     _share_host_omp_state,
     _stamp_host_home,
@@ -2889,9 +2891,13 @@ class HostBackend(ExecutionBackend):
     name = "host"
     isolation = ISOLATION_NONE
 
-    def __init__(self, recipes: list) -> None:
+    def __init__(self, recipes: list, *, isolated_auth: bool = False, acp: bool = False) -> None:
         #: This stack's resolved recipe closure — the fingerprint gate reads it.
         self.recipes = recipes
+        #: The stack's `isolated_auth`: keeps the host identity out of `.claude.json` (GH-594 Decide 1).
+        self.isolated_auth = isolated_auth
+        #: `host-acp`: the launch folder is the editor's, not a project, so no trust is seeded for it.
+        self.acp = acp
         self.home: Path | None = None
         self.cwd: Path | None = None
         self.rebuilt = False
@@ -2922,6 +2928,11 @@ class HostBackend(ExecutionBackend):
         """
         assert self.home is not None, "seed_auth before materialize_config"  # noqa: S101  # type-narrowing: ordering enforced by caller
         _HOST_HARNESSES[spec.harness].share_state(self.home)
+        if spec.harness == "claude":
+            _seed_host_claude_json(
+                self.home, None if self.acp else str(spec.project_path),
+                isolated_auth=self.isolated_auth,
+            )
 
     def provision_tools(self, spec: LaunchSpec, phase: ProvisionPhase) -> None:
         """`tools:` + `install:` on first start; each recipe's `setup.script` at attach.
@@ -3240,7 +3251,7 @@ def _launch_host(
     # Inert as a reordering: `assemble(..., strict=True)` above already resolved and validated every
     # recipe this reads, so there is no failure left here for the sidecars to have preceded.
     host_stk, host_recipes = load_stack_with_recipes(None, stack)
-    backend = HostBackend(host_recipes)
+    backend = HostBackend(host_recipes, isolated_auth=host_stk.isolated_auth, acp=acp)
     # Before anything is materialized: a declaration this backend cannot honor is worth knowing
     # about while there is still a choice to make (rerun under `container-run`), not after the
     # agent is already up.
@@ -3350,6 +3361,10 @@ def _launch_host(
             # `install:` — the host half of the derived image's `RUN bash install.sh`, i.e. the
             # content a Dockerfile RUN used to deliver to containers only.
             backend.provision_tools(spec, FIRST_START)
+    elif harness == "claude":
+        # The one home write `project_only` makes: trust for a `host-acp` session folder, keys only
+        # and atomic, since the agent may be running on this home (GH-594 Decide 2).
+        _seed_host_claude_project(paths.host_home(stack, harness), str(project_path))
     # setup.script — outside the lock, because a setup can prompt (see provision_tools).
     if not acp:
         backend.provision_tools(spec, ATTACH)

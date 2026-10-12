@@ -62,3 +62,5 @@ Changes: S3.6 rewritten, S3.9 added, S4.2 adds a `host-acp` run, the `project_on
 ## Revisions
 ### Revision 1. Decide 1 and Decide 2 ruled A
 The engineer ruled both on 2026-10-12, before Gate 1a. Decide 2 went against its default after the discussion above.
+### Revision 2. Touches missed one existing test, and S1 needed two helpers
+Found during RED for S3, after approval. `tests/test_launch_host.py::TestShareClaudeState::test_symlinks_session_state_and_live_auth` (line 375) also asserts that `_share_host_claude_state` leaves a real `.claude.json`. That function no longer writes the file, so the test now calls `_seed_host_claude_json` after it, and its "not a symlink" assertion stands unchanged. The S3.3 tests changed their fixture key from `account` to `oauthAccount`, because only the identity pair crosses from the user's file now. `jsonmerge.py` also gained `seed_claude_project` (shared by S1 and S3.9) and `read_json_or_empty` (shared by both paths). No scenario, Must NOT line or criterion changed.

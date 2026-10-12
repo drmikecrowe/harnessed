@@ -40,7 +40,7 @@ from .credmounts import (
 )
 from .broker import Broker
 from .hosthome import _OAUTH_TOKEN_VAR
-from .jsonmerge import merge_claude_json
+from .jsonmerge import merge_claude_json, read_json_or_empty
 from .launchenv import _plain_env_values, _varlock_resolve
 from .layout import _catalog_base
 from .setupenv import _ensure_gitignore_entry
@@ -183,21 +183,12 @@ def _claude_config_seed_mount(
     state_dir.mkdir(parents=True, exist_ok=True)
     stub = state_dir / "claude.json"
     merged = merge_claude_json(
-        _read_json_or_empty(stub), _read_json_or_empty(Path.home() / ".claude.json"), project_path,
+        read_json_or_empty(stub), read_json_or_empty(Path.home() / ".claude.json"), project_path,
         isolated_auth=isolated_auth,
         now=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
     )
     stub.write_text(json.dumps(merged), encoding="utf-8")
     return ["-v", f"{stub}:{_CONTAINER_HOME_STR}/.claude.json:rw"]
-
-
-def _read_json_or_empty(path: Path) -> object:
-    """`path` parsed as JSON, or `{}` when it is missing or malformed: either way there is nothing
-    to keep, and a launch must not die on a file Claude Code itself may have half-written."""
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (ValueError, OSError):
-        return {}
 
 
 def _claude_oauth_token_args(harness: str, env_files: Sequence[Path] = ()) -> list[str]:
