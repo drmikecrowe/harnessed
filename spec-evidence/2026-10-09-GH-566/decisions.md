@@ -14,9 +14,13 @@
 3. In ACP mode, `_attach` exec's `podman exec -i … bash -l -c <shell>` with the real stdout restored, or runs it as a child under `--rm` — `src/harnessed/launcher.py`, `_attach`.
 4. `set_acp_mode` swaps fd 1 to stderr and saves the real fd; `acp_stdout()` returns it — `src/harnessed/console.py`.
 5. `_ACP_HARNESSES = ("omp", "claude")` — `src/harnessed/attachcmd.py:60`.
-6. `tools/acp-smoke.py` waits `--launch-timeout` 900 s for `initialize` today, because the reply waits for the pod; it sends `session/new` with `cwd` = the project — `tools/acp-smoke.py`.
+6. `tools/acp-smoke.py` waits `--launch-timeout` 900 s for `initialize` today, because the reply waits for the pod; it sends `session/new` with `cwd` = the project — `tools/acp-smoke.py`. Since the rebase onto main (GH-571), it also has `--verb host-acp`, which launches pathless from a `mkdtemp` folder (`main()`), and `--check-cwd <B>`, which opens a second session in one process and checks each session's reported folder (`_check_cwd`). `_launch_argv` always passes the path for `container-acp`, and stderr is inherited, not read.
 7. Two tests in `tests/test_acp_verb.py` encode the ACP exec handoff: `test_stdout_is_restored_before_the_exec` and `test_the_rm_child_gets_the_clients_channel`. The story's proxy replaces that handoff in ACP mode, so they change with it; this is the story's decision, not a loosening.
 8. No Markdown file in the repository names `container-acp`.
+9. ACP `session/list` takes an optional `cwd` and `cursor`, and replies `{"sessions": [...], "nextCursor"?}` — `@agentclientprotocol/sdk` 0.12.0, `dist/schema/types.gen.d.ts`, `ListSessionsRequest` and `ListSessionsResponse`.
+10. Both canned replies advertise `sessionCapabilities.list`, and the proxy refuses `session/list` before a session with `no session yet` — `src/harnessed/acpproxy.py`, `INITIALIZE_RESULTS` and `before_session`. Atlas calls it at startup (story comment, 2026-10-10).
+11. `host-acp`'s relay already serves several projects from one agent and sends every stdout write through one lock — `src/harnessed/acprelay.py`, `run`. It does not change here; the proxy follows its stdout rule.
+12. Agent sessions persist on disk in the stack's home whether a pod runs or not, so a pod being up says nothing about whether sessions exist to list. Inference from Revision 3's Atlas run and the persisted-home design (ARCHITECTURE.md); not tested here.
 
 ## Decide calls
 
@@ -38,6 +42,11 @@ The story puts one process serving more than one project out of scope.
 Default: A. Ruling: A, a JSON-RPC error (mcrowe, 2026-10-09).
 Changes: Orientation `Decided:` line; S9.1 states the error.
 
+- C. One relaunch child and pod per project, each line routed by session id. Cost: a child table, a session-id table, an id rewrite for agent-to-client requests, and one pod per project for the process's life.
+
+Ruling, replacing A: C, one child per project routed by session id (mcrowe, 2026-10-10; Revision 3). Atlas reuses one process across projects, so A fails AC-4.
+Changes: Orientation `Decided:` line; S9 rewritten; S4.4, S4.5 and S6.1 name several children.
+
 ### Decide 3. Tier 2 or Tier 3?
 The proxy adds a two-thread pump (concurrency) and a stdin reader shared between the handshake and the pump.
 
@@ -46,6 +55,24 @@ The proxy adds a two-thread pump (concurrency) and a stdin reader shared between
 
 Default: A. Ruling: A, Tier 2 (mcrowe, 2026-10-09).
 Changes: Orientation `Tier:` line.
+
+### Decide 4. What does `session/list` get when the project's pod is up but this process runs no agent for it?
+AC-6 says a project "with no pod running" gets an empty list and one "with that project's pod running" gets the agent's reply. A pod can be up from an earlier launch while this proxy has no child for it, for example right after Atlas restarts. Fact 12: the pod's state does not decide whether sessions exist.
+
+- A. Read "the pod is running" as "this process runs an agent for the project". No child: `{"sessions": []}`. Cost: after an editor restart, past sessions do not list until a session opens in that project; the SPEC reads AC-6's words this way, and Gate 1a may call it a reading.
+- B. Ask podman whether the project's pod is up; if it is, launch a child (an attach, about 49 s in the Atlas run) and forward. Cost: an editor's startup `session/list` starts an agent per project with a pod up, and can outlast the editor's wait for that reply.
+
+Default: A. Ruling: A, an empty list when this process runs no agent for the project (mcrowe, 2026-10-12).
+Changes: S10.1.
+
+### Decide 5. Does the routing change move the work to Tier 3?
+Decide 3 chose Tier 2 for one child and two threads. Routing adds a thread per child, a launch thread, two shared tables and an id rewrite (S9).
+
+- A. Stay Tier 2: the full loop and the adversary. Cost: no property or mutation run on the routing.
+- B. Tier 3: add a failure model, property tests on routing (random interleavings of two children's lines keep each session's order and ids), and mutation testing on `acpproxy.py`. Cost: about two more hours; `mutmut` is not in the layer manifest and runs by hand.
+
+Default: B. Ruling: B, Tier 3 (mcrowe, 2026-10-12). `hypothesis` and `mutmut` are already dev dependencies in `pyproject.toml`, so no dependency is added.
+Changes: Orientation `Tier:` line; the Failure model section; Verification contract.
 
 ## Intent review
 - Gap 1 (path argument and a third working directory): accepted. S3.1 now names a process working directory C different from both.
@@ -56,6 +83,13 @@ Changes: Orientation `Tier:` line.
 - Gap 1 (S2.1 host path or container path): accepted. S2.1 now says the child gets P's container path, equal to P under path mirroring (Fact 2).
 - Gap 2 (S2.4 is extra behavior): declined. A missing or relative `cwd` names no project, and the proxy must answer the request somehow. The alternative is to fall back to the process's own working directory, which is the very behavior the story removes. An error is the smallest answer that launches nothing.
 
+## Intent review, Revision 4
+- Gap 1 (which `authMethods` the canned reply holds): accepted. Known limits names the table's entry per harness.
+- Gap 2 (rules the story never asked for): accepted. Known limits marks S4.5, S5, S9.7 and S10.3 as this SPEC's choices.
+- Gap 3 (AC-6 narrowed to "a child in this process"): left to Decide 4, asked in this round.
+- Gap 4 (a pod already up from another process): accepted. S4.6 states that the child's existing launch attaches.
+- Gap 5 (two spellings of one project): accepted. S9.5 keys children by `Path(cwd).resolve()` and names a trailing slash and a symlink.
+
 ## Revisions
 ### Revision 1. Gate 1a round 1, PR-REFERENT
 S3.2 and Touches now say `--agent-start-folder` is an existing `container_run` option, resolved by `_resolve_start_dir`. Citation only; no scenario's meaning changed.
@@ -63,3 +97,5 @@ S3.2 and Touches now say `--agent-start-folder` is an existing `container_run` o
 Found at RED, after approval. The approved Touches split `container_run`'s body into a callback and changed `_attach` to return a piped child in ACP mode. Starting the same `container-acp` argv again as a child, with the project in `HARNESSED_ACP_PROJECT` and `HARNESSED_ACP_DIRECT=1`, reaches the same scenarios and leaves `container_run`'s 260-line body, the exec handoff, the `--rm` teardown and their tests unchanged. No scenario's Given, When or Then changed; S6.1 now also names the child that exits before `initialize`, and "no child starts" became "no agent runs", because a relaunch child does start and exits. Touches for `launcher.py` and `tests/test_acp_verb.py` changed to match.
 ### Revision 3. Parked: Atlas reuses one process per entry, so Decide 2 fails AC-4
 Found in the manual Atlas run, 2026-10-10. Atlas does not start a new agent process per project: a second project's `session/new` reached the running `harnessed-gh566` process and got `one project per process` (Atlas log, 12:41:21 and 12:42:52 UTC). Decide 2's error therefore fails AC-4's boundary, and the story's constraint "one process serving more than one project is out of scope" contradicts AC-4 for Atlas. The engineer chose to serve several projects per process (one relaunch child and pod per project, routed by session id), which reopens the story (Gate 1) and the plan (Gate 1a). Also found: inside the `gortex-ghissues` pod, claude-agent-acp's `authMethods` differ from the canned table, so that field depends on login state and a fixed table cannot hold it. Parked at `aisdlc-in-progress` while a host-mode ACP story ships first.
+### Revision 4. Several projects per process, after the story's second Gate 1
+The story was revised and graded `ready` again on 2026-10-12: its out-of-scope line is gone, AC-4 names one Atlas run, AC-5 drops `authMethods`, and AC-6 is new. The SPEC follows: Decide 2 takes ruling C, S9 becomes routing by session id, S10 answers `session/list`, S5 drops `authMethods` from the drift check, S2.2 and S3.3 cover `session/resume` and a path argument with a second `cwd`, S8.1 and S8.3 add the one-process proof the engineer asked for, and the smoke script's container checks dropped in the rebase are re-added on top of main's script: `--no-path` reuses the `host-acp` launch, the 60 s deadline is the existing `--launch-timeout`, the two-project check is the existing `--check-cwd`, and the drift-line failure is new (S7). `/spec-evidence:plan` does not run at `aisdlc-in-progress`, so its steps ran by hand with no label move, per loop.md's rule that the SPEC is revised visibly during the task.
