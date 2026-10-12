@@ -835,6 +835,7 @@ class TestTheMutationRun:
 
         def closed_input(p):
             proc, start = fake(p)
+            assert proc.stdin is not None
             proc.stdin.close()
             return proc, start
 
