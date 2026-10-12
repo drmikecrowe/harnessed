@@ -97,3 +97,4 @@
 - Revision 3 (2026-10-12): Decides 1 to 5 ruled; S3.5 added for Decide 5; the merged-same-day Known limit removed.
 - Revision 4 (2026-10-12): Gate 1a round 1 PR-REFERENT fixed: the stub `harnessed` gains `$STUB_DIR/deletes` (S2.5). Judge gaps closed: the stub logs `git rev-parse HEAD` so S3.1 observes the checkout order; Terms states how Decide 2 reads the story's 2-day constraint.
 - Revision 5 (2026-10-12): intent review round 2 folded in (S6.4, Known limits).
+- Revision 6 (2026-10-12, after PR #593 review): the workflow gains `concurrency: {group: pin-upgrade, cancel-in-progress: false}` and a job guard `if: github.ref == 'refs/heads/main'`, each with a test in `tests/test_ci_pin_upgrade_workflow.py`. Both close adversary hunches the bot review raised again. EVIDENCE.md describes 04d6cea and is not rewritten; the gates graded it. The review fix and its gauntlet run are recorded here and in the PR threads.

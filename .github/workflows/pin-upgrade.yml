@@ -25,8 +25,17 @@ permissions:
   contents: write
   pull-requests: write
 
+# One run at a time: overlapping runs race on the same `upgrade-<date>` ref, and the loser's
+# `createCommitOnBranch` fails after it may have created the ref (PR #593 review). Queue, never
+# cancel: a cancelled run can stop between creating the ref and making the commit.
+concurrency:
+  group: pin-upgrade
+  cancel-in-progress: false
+
 jobs:
   upgrade:
+    # A dispatch from any other ref would base the day's PR on that ref, not on main.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     # Nothing in the run waits on input, but a hung registry call must not hold a runner for 6h.
     timeout-minutes: 30

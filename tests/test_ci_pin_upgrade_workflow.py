@@ -70,6 +70,16 @@ class TestTheJob:
         _, steps = _steps(workflow)
         assert any("mise" in s.get("uses", "") for s in steps)
 
+    def test_runs_queue_instead_of_overlapping(self, workflow):
+        """PR #593 review: two overlapping runs race on one upgrade-<date> ref. Queue, never
+        cancel: a cancelled run can stop between creating the ref and making the commit."""
+        assert workflow["concurrency"] == {"group": "pin-upgrade", "cancel-in-progress": False}
+
+    def test_only_main_is_upgraded(self, workflow):
+        """PR #593 review: a dispatch from another ref would base the day's PR on that ref."""
+        job, _ = _steps(workflow)
+        assert job["if"] == "github.ref == 'refs/heads/main'"
+
     def test_s8_4_the_script_runs_with_the_workflow_token(self, workflow):
         _, steps = _steps(workflow)
         (step,) = [s for s in steps if "tools/pin-upgrade.sh" in s.get("run", "")]
