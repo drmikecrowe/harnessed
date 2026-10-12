@@ -27,9 +27,14 @@ else
 fi
 
 # Flatten skills/<category>/<name>/ to <config>/skills/<name>/. Only the two categories upstream's
-# plugin.json publishes; the trailing `*/` skips each category's README.md.
+# plugin.json publishes; the trailing `*/` skips each category's README.md. A missing category fails
+# loudly: skipping it would ship a silently partial install.
 mkdir -p "$HARNESSED_CONFIG_DIR/skills"
 for category in engineering productivity; do
+    if [ ! -d "$src/skills/$category" ]; then
+        echo "install.sh: upstream $HARNESSED_REF_MATTPOCOCK has no skills/$category; its layout changed" >&2
+        exit 1
+    fi
     for skill in "$src/skills/$category"/*/; do
         cp -r "${skill%/}" "$HARNESSED_CONFIG_DIR/skills/"
     done
