@@ -256,6 +256,14 @@ class TestOneSignedCommitPR:
         assert r.gh("api", "graphql") == []
 
 
+    def test_every_refused_deletion_is_named(self, r):
+        """PR #593 review: the refusal names each deleted path, not only the first."""
+        (r.stub / "deletes").write_text("catalog/recipes/pulumi/recipe.yaml\nmise.toml\n")
+        assert r.run().returncode == 1
+        assert "pin-upgrade: refusing a deletion: catalog/recipes/pulumi/recipe.yaml" in r.out
+        assert "pin-upgrade: refusing a deletion: mise.toml" in r.out
+
+
 class TestSameDayRerun:
     """S3: AC-3, and Decide 5 B."""
 

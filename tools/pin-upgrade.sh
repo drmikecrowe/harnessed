@@ -59,7 +59,9 @@ fi
 # An API commit here carries additions only, so a deletion would vanish without a word.
 deleted="$(git diff --cached --no-renames --name-only --diff-filter=D)"
 if [ -n "$deleted" ]; then
-  echo "pin-upgrade: refusing a deletion: ${deleted%%$'\n'*}" >&2
+  while IFS= read -r f; do
+    echo "pin-upgrade: refusing a deletion: $f" >&2
+  done <<< "$deleted"
   exit 1
 fi
 
