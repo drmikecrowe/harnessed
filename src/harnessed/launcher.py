@@ -5324,6 +5324,11 @@ def update_pins(
         help="What `--check` fails on: `any` outdated pin (default), or only bumps that cross a "
              "major version boundary — drift short of a major is still reported, just not fatal.",
     ),
+    no_rebuild: bool = typer.Option(
+        False, "--no-rebuild",
+        help="Skip the unpinnable-harness image rebuild that apply mode offers; bump pins only. "
+             "For the scheduled pin-upgrade workflow (GH-582), which must not build images.",
+    ),
 ) -> None:
     """Find outdated pins across the catalog and offer to bump them.
 
@@ -5346,7 +5351,8 @@ def update_pins(
     Unpinnable harnesses (claude, antigravity) are apply mode's other action: they have no pin
     to bump, so `update` offers to rebuild their images instead — the agent image and every
     previously-built stack image on that harness, cache bypassed so the vendor install actually
-    re-runs (see `_refresh_unpinnable_harness`). `--yes` accepts; `--check` never rebuilds.
+    re-runs (see `_refresh_unpinnable_harness`). `--yes` accepts; `--check` never rebuilds;
+    `--no-rebuild` skips the offer without touching the container runtime.
     """
     if fail_on not in ("any", "major"):
         raise typer.BadParameter("--fail-on must be 'any' or 'major'")
@@ -5402,7 +5408,10 @@ def update_pins(
     # update should UPGRADE claude (and every unpinnable harness), not merely report that it
     # tracks upstream — and its upgrade is a cache-bypassed image rebuild, not a manifest edit.
     if report.unpinnable:
-        _offer_unpinnable_refresh(report, yes)
+        if no_rebuild:
+            _out.print("skipped the unpinnable-harness rebuild (--no-rebuild)")
+        else:
+            _offer_unpinnable_refresh(report, yes)
 
     if not report.stale:
         _out.print("[green]All resolvable pins are up to date.[/green]")

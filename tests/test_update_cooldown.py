@@ -70,6 +70,14 @@ class TestCooldownWithholdsFreshReleases:
         )
         assert len(getattr(report, expected_bucket)) == 1
 
+    def test_a_release_exactly_at_the_window_edge_is_offered(self, tmp_path):
+        """GH-582 S1.2: the story says a release exactly 7.0 days old counts as eligible."""
+        d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.0.0\n")
+        report = update.build_report(
+            [d], resolve=_resolver("2.0.0", _ago(7)), now=NOW,
+        )
+        assert len(report.stale) == 1 and not report.cooling
+
     def test_the_window_is_configurable(self, tmp_path):
         d = _recipe_dir(tmp_path, "r", "name: r\ntools:\n  - npm:x@1.0.0\n")
         report = update.build_report(

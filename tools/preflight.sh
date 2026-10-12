@@ -10,7 +10,7 @@
 #
 #   .github/workflows/test.yml       pytest (3.12 and 3.13)
 #   .github/workflows/lint.yml       ruff -> pyright -> shellcheck
-#   .github/workflows/pin-check.yml  harnessed update --check
+#   .github/workflows/pin-upgrade.yml  harnessed update --yes --no-rebuild (scheduled, not per PR)
 #
 # ORDER MATTERS, and not for cosmetic reasons. lint.yml has no `continue-on-error` and ruff is its
 # first step, so on CI a ruff finding means pyright and shellcheck NEVER RAN — a red lint job
