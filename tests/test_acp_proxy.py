@@ -392,6 +392,28 @@ class TestALaunchThatFails:
         _, msgs, _ = _serve("omp", [_init(), _new(2, project)], fake)
         assert _reply(msgs, 2)["error"] == {"code": -32603, "message": "launch failed (exit 1); see stderr"}
 
+    @pytest.mark.parametrize("exc", [OSError(24, "Too many open files"), ValueError("no pipes"), RuntimeError("x")])
+    def test_a_launch_that_raises_anything_answers_and_can_retry(self, tmp_path, project, exc):  # S6.1, adversary
+        attempts = {"n": 0}
+        fake = _Fake(tmp_path, init=_real("omp"))
+
+        def broken_once(p):
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise exc
+            return fake(p)
+
+        _, msgs, _ = _serve("omp", [_init(), _new(2, project), _new(3, project)], broken_once)
+        assert _reply(msgs, 2)["error"] == {
+            "code": -32603, "message": f"launch failed ({type(exc).__name__}: {exc}); see stderr",
+        }
+        assert _reply(msgs, 3)["result"]["sessionId"] == "proj-s1"
+
+    def test_a_child_that_dies_before_initialize_sets_the_exit_code(self, tmp_path, project):  # S4.4, adversary
+        fake = _Fake(tmp_path, init=_real("omp"), FAKE_DIE="7")
+        code, _, _ = _serve("omp", [_init(), _new(2, project)], fake)
+        assert code == 7
+
     def test_a_failed_project_leaves_the_others_working(self, tmp_path, project, other):  # S6.1
         fake = _Fake(tmp_path, init=_real("omp"), fail={"other": typer.Exit(1)})
         _, msgs, _ = _serve("omp", [_init(), _new(2, project), _new(3, other), _prompt(4, "proj-s1")], fake)

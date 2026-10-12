@@ -251,12 +251,11 @@ class _Proxy:
         msg = line.msg or {}
         with self.lock:
             child = self.children.get(key)
-            start = child is None or child.state == _GONE
-            if start:
-                child = _Child(key)
+            start = False
+            if child is None or child.state == _GONE:
+                child, start = _Child(key), True
                 self.children[key] = child
                 self.started.append(child)
-            assert child is not None
             sid = _params(msg).get("sessionId")
             if msg.get("method") != "session/new" and isinstance(sid, str):
                 self.sessions[sid] = child
@@ -334,15 +333,22 @@ class _Proxy:
         """Start `child`'s agent, initialize it, release the lines that waited, then carry its stdout."""
         try:
             proc, start_dir = self.launch(child.project)
+            if proc.stdin is None or proc.stdout is None:
+                raise ValueError("the launch must pipe the agent's stdin and stdout")
         except typer.Exit as exc:
             self.fail(child, f"launch failed (exit {exc.exit_code}); see stderr")
             return
-        if proc.stdin is None or proc.stdout is None:
-            raise ValueError("the launch must pipe the agent's stdin and stdout")
+        except Exception as exc:  # noqa: BLE001 - the editor waits on this request; any failure must answer it
+            self.note(f"launch for {child.project} failed: {exc!r}")
+            self.fail(child, f"launch failed ({type(exc).__name__}: {exc}); see stderr")
+            return
         child.proc, child.stdin, child.start_dir = proc, proc.stdin, start_dir
         self.note(f"ACP proxy {os.getpid()}: {child.project}")
-        if not self.handshake(child):
-            self.fail(child, f"launch failed (exit {proc.wait()}); see stderr")
+        if not self.handshake(child, proc.stdout):
+            code = proc.wait()
+            with self.lock:
+                self.codes.append(code)
+            self.fail(child, f"launch failed (exit {code}); see stderr")
             return
         with child.lock:
             for line in child.pending:
@@ -352,11 +358,10 @@ class _Proxy:
             child.state = _READY
             if self.closing:
                 proc.stdin.close()
-        self.pump(child)
+        self.pump(child, proc, proc.stdout)
 
-    def handshake(self, child: _Child) -> bool:
+    def handshake(self, child: _Child, out: IO[bytes]) -> bool:
         """Replay `initialize` to the agent and consume its reply. False when it exits first."""
-        assert child.proc is not None and child.proc.stdout is not None
         init = self.init_request or {
             "jsonrpc": "2.0", "id": _SYNTHETIC_INIT_ID, "method": "initialize",
             "params": {"protocolVersion": 1},
@@ -364,7 +369,7 @@ class _Proxy:
         with child.lock:
             if not child.write(json.dumps(init).encode()):
                 return False
-        for raw in child.proc.stdout:
+        for raw in out:
             try:
                 msg = json.loads(raw)
             except ValueError:
@@ -394,16 +399,15 @@ class _Proxy:
         for line in waiting:
             self.refuse(line, _INTERNAL_ERROR, message)
 
-    def pump(self, child: _Child) -> None:
-        assert child.proc is not None and child.proc.stdout is not None
-        for raw in child.proc.stdout:
+    def pump(self, child: _Child, proc: subprocess.Popen[bytes], out: IO[bytes]) -> None:
+        for raw in out:
             try:
                 msg = json.loads(raw)
             except ValueError:
                 self.write(raw)
                 continue
             self.from_agent(child, raw, msg)
-        code = child.proc.wait()
+        code = proc.wait()
         with child.lock:
             child.state = _GONE
         with self.lock:
