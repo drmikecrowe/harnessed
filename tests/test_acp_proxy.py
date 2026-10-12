@@ -340,10 +340,11 @@ class TestForwarding:
             {"jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": "proj-s1"}},
         ]
 
-    def test_the_exit_code_is_the_agents(self, tmp_path, project):  # S4.4, stdin closes first
-        fake = _Fake(tmp_path, init=_real("omp"), FAKE_EXIT="3")
+    @pytest.mark.parametrize("exit_code", [1, 3])
+    def test_the_exit_code_is_the_agents(self, tmp_path, project, exit_code):  # S4.4, stdin closes first
+        fake = _Fake(tmp_path, init=_real("omp"), FAKE_EXIT=str(exit_code))
         code, _, _ = _serve("omp", [_init(), _new(2, project)], fake)
-        assert code == 3
+        assert code == exit_code
 
     def test_every_agent_ends_and_the_first_nonzero_code_wins(self, tmp_path, project, other):  # S4.4
         fake = _Fake(tmp_path, init=_real("omp"), per={"other": {"FAKE_EXIT": "4"}})
