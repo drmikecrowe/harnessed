@@ -80,7 +80,10 @@ sys.exit(rc)
 class _Relay:
     """`acprelay.run` on a thread, with the editor's two pipes in the test's hands."""
 
-    def __init__(self, tmp: Path, *, setup_rc: int = 0, setup_cmd: list[str] | None = None) -> None:
+    def __init__(
+        self, tmp: Path, *, setup_rc: int = 0, setup_cmd: list[str] | None = None,
+        mcp_servers: list[dict] | None = None,
+    ) -> None:
         self.tmp = tmp
         self.log = tmp / "agent.log"
         self.events = tmp / "events.log"
@@ -113,7 +116,7 @@ class _Relay:
                 self.code = acprelay.run(
                     [sys.executable, str(agent), str(self.log), str(self.events)],
                     dict(os.environ), setup_argv, cwd=launch,
-                    stdin=self._stdin, stdout=self._stdout,
+                    stdin=self._stdin, stdout=self._stdout, mcp_servers=mcp_servers or [],
                 )
             finally:
                 self._stdout.close()
@@ -923,3 +926,134 @@ class TestAdversaryRound3:
         setup_pid, child_pid = (int(x) for x in pids.read_text().split())
         assert _gone(setup_pid), "the project-setup process outlived the relay"
         assert _gone(child_pid), "a setup child that ignores SIGTERM outlived the relay"
+
+
+_STDIO_SPEC = {"command": sys.executable, "args": ["-V"], "env": {"K": "v"}}
+
+
+class TestOmpGetsTheStackMcp:
+    """omp in ACP mode connects only the MCP servers `session/new` names and never reads its agent
+    dir's `mcp.json`, so a stack's servers never reached it from Zed. The relay adds them."""
+
+    def test_stdio_and_http_entries_take_the_acp_shape(self):
+        got = acprelay.acp_mcp_servers(
+            {"cm": _STDIO_SPEC, "ob": {"type": "http", "url": "https://x/mcp", "headers": {"H": "1"}}},
+            {"PATH": os.environ["PATH"]},
+        )
+        assert got == [
+            {"name": "cm", "command": sys.executable, "args": ["-V"], "env": [{"name": "K", "value": "v"}]},
+            {"type": "http", "name": "ob", "url": "https://x/mcp", "headers": [{"name": "H", "value": "1"}]},
+        ]
+
+    def test_a_placeholder_is_filled_from_the_agent_env(self):
+        got = acprelay.acp_mcp_servers(
+            {"ob": {"type": "http", "url": "${OB_URL}", "headers": {"A": "Bearer ${TOK}"}}},
+            {"OB_URL": "https://secret/mcp", "TOK": "t"},
+        )
+        assert got[0]["url"] == "https://secret/mcp"
+        assert got[0]["headers"] == [{"name": "A", "value": "Bearer t"}]
+
+    def test_a_server_known_to_fail_is_dropped_with_a_warning(self, capsys):
+        """omp fails the whole session when one server fails to connect, so a server that cannot
+        start for a reason known here must not reach it."""
+        got = acprelay.acp_mcp_servers(
+            {
+                "unset": {"type": "http", "url": "${NOT_SET_ANYWHERE}"},
+                "nocmd": {"command": "no-such-binary-xyz", "args": []},
+                "ok": _STDIO_SPEC,
+            },
+            {"PATH": os.environ["PATH"]},
+        )
+        assert [s["name"] for s in got] == ["ok"]
+        err = capsys.readouterr().err
+        assert "unset" in err and "NOT_SET_ANYWHERE" in err
+        assert "nocmd" in err and "no-such-binary-xyz" in err
+
+    def test_session_new_reaches_the_agent_with_the_stack_servers(self, tmp_path):
+        a, _ = _dirs(tmp_path)
+        stack = [{"name": "cm", "command": "cm", "args": [], "env": []}]
+        r = _Relay(tmp_path, mcp_servers=stack)
+        try:
+            editor = {"name": "ed", "command": "ed", "args": [], "env": []}
+            r.request(1, "session/new", {"cwd": str(a), "mcpServers": [editor]})
+        finally:
+            r.close()
+        sent = json.loads(r.log.read_bytes().splitlines()[0])
+        assert sent["params"]["mcpServers"] == [editor, *stack]
+
+    def test_the_editor_entry_wins_a_name_clash(self, tmp_path):
+        a, _ = _dirs(tmp_path)
+        r = _Relay(tmp_path, mcp_servers=[{"name": "cm", "command": "stack", "args": [], "env": []}])
+        try:
+            editor = {"name": "cm", "command": "editor", "args": [], "env": []}
+            r.request(1, "session/new", {"cwd": str(a), "mcpServers": [editor]})
+        finally:
+            r.close()
+        assert json.loads(r.log.read_bytes().splitlines()[0])["params"]["mcpServers"] == [editor]
+
+    @pytest.mark.parametrize("method", ["session/load", "session/resume"])
+    def test_a_reopened_session_gets_them_too(self, tmp_path, method):
+        """Both carry `mcpServers`, and omp reconfigures a session's MCP from each."""
+        stack = [{"name": "cm", "command": "cm", "args": [], "env": []}]
+        r = _Relay(tmp_path, mcp_servers=stack)
+        try:
+            r.request(1, method, {"sessionId": "s0", "cwd": str(tmp_path), "mcpServers": []})
+        finally:
+            r.close()
+        assert json.loads(r.log.read_bytes().splitlines()[0])["params"]["mcpServers"] == stack
+
+    def test_other_lines_stay_byte_for_byte(self, tmp_path):
+        r = _Relay(tmp_path, mcp_servers=[{"name": "cm", "command": "cm", "args": [], "env": []}])
+        line = b'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1, "x":  2}}\n'
+        try:
+            r.send_raw(line)
+            r.until_id(1)
+        finally:
+            r.close()
+        assert r.log.read_bytes() == line
+
+    @pytest.mark.parametrize("harness", ["omp", "claude"])
+    def test_relay_acp_hands_omp_its_agent_dir_servers(self, monkeypatch, tmp_path, harness):
+        from harnessed import launcher
+
+        (tmp_path / "mcp.json").write_text(json.dumps({"mcpServers": {"cm": _STDIO_SPEC}}))
+        seen: dict = {}
+
+        def fake_run(agent_argv, agent_env, setup_argv, **kw):
+            seen["mcp"] = kw.get("mcp_servers")
+            return 0
+
+        class _Exited(Exception):
+            pass
+
+        def fake_exit(code):
+            raise _Exited(code)
+
+        monkeypatch.setattr(launcher.acprelay, "run", fake_run)
+        monkeypatch.setattr(launcher, "acp_stdout", lambda: os.open(os.devnull, os.O_WRONLY))
+        monkeypatch.setattr(launcher.os, "_exit", fake_exit)
+        with pytest.raises(_Exited):
+            launcher._relay_acp("s", harness, tmp_path, dict(os.environ), tmp_path, no_strict_mcp=False)
+        if harness == "omp":
+            assert [s["name"] for s in seen["mcp"]] == ["cm"]
+        else:  # claude reads the stack's file through its own wrapper
+            assert not seen["mcp"]
+
+    def test_an_omp_stack_without_mcp_json_relays_none(self, monkeypatch, tmp_path):
+        from harnessed import launcher
+
+        seen: dict = {}
+
+        def fake_run(agent_argv, agent_env, setup_argv, **kw):
+            seen["mcp"] = kw.get("mcp_servers")
+            return 0
+
+        def fake_exit(code):
+            raise SystemExit(code)
+
+        monkeypatch.setattr(launcher.acprelay, "run", fake_run)
+        monkeypatch.setattr(launcher, "acp_stdout", lambda: os.open(os.devnull, os.O_WRONLY))
+        monkeypatch.setattr(launcher.os, "_exit", fake_exit)
+        with pytest.raises(SystemExit):
+            launcher._relay_acp("s", "omp", tmp_path, dict(os.environ), tmp_path, no_strict_mcp=False)
+        assert not seen["mcp"]
