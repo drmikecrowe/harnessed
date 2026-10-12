@@ -6,6 +6,9 @@ per-project half of a `host-run` launch (recipe setup and init scripts, the proj
 so the relay runs `project-setup` for a folder the first time a `session/new` names it, and only then
 hands the request to the agent.
 
+Given the stack's MCP servers, the relay also adds them to the `mcpServers` of every `session/new`,
+`session/load` and `session/resume`: omp in ACP mode connects only the servers those requests name.
+
 Everything else is forwarded byte for byte. Stdout is the editor's JSON-RPC channel, so every write
 to it goes through one lock: the agent's lines and the relay's own error replies would otherwise
 interleave inside a line once a message outgrows the pipe's atomic write size.
@@ -14,16 +17,95 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import signal
 import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import BinaryIO, Callable, Optional
+from typing import BinaryIO, Callable, Optional, Sequence
 
 # JSON-RPC 2.0: -32602 is "invalid params"; -32000..-32099 is reserved for implementation errors.
 _INVALID_PARAMS = -32602
 _SETUP_FAILED = -32000
+
+# The ACP requests that carry the session's `mcpServers`.
+_MCP_METHODS = frozenset({"session/new", "session/load", "session/resume"})
+_PLACEHOLDER = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+class _Filler:
+    """Fills `${VAR}` placeholders from `env`, noting in `missing` each name `env` lacks."""
+
+    def __init__(self, env: dict[str, str], missing: list[str]) -> None:
+        self._env = env
+        self._missing = missing
+
+    def _sub(self, m: re.Match) -> str:
+        if m.group(1) not in self._env:
+            self._missing.append(m.group(1))
+            return m.group(0)
+        return self._env[m.group(1)]
+
+    def __call__(self, value: str) -> str:
+        return _PLACEHOLDER.sub(self._sub, value)
+
+    def pairs(self, mapping: Optional[dict]) -> list[dict]:
+        """A `{name: value}` map as ACP's `[{name, value}]` list, filled."""
+        return [{"name": k, "value": self(str(v))} for k, v in (mapping or {}).items()]
+
+
+def acp_mcp_servers(mcp_servers: dict, env: dict[str, str]) -> list[dict]:
+    """The stack's `mcpServers` (the `.mcp.json` shape `wire_mcp` writes) as ACP `McpServer` entries.
+
+    `${VAR}` placeholders are filled from `env`, the agent's own environment, so a secret URL
+    travels only over the agent's pipe and never to disk. omp fails the whole session when one
+    server fails to connect, so a server that cannot start for a reason known here (an unset
+    variable, a stdio command not on PATH) is dropped with a warning on stderr instead.
+    """
+    out: list[dict] = []
+    for name, spec in mcp_servers.items():
+        missing: list[str] = []
+        fill = _Filler(env, missing)
+        if "command" in spec:
+            entry = {"name": name, "command": fill(spec["command"]),
+                     "args": [fill(str(a)) for a in spec.get("args", [])], "env": fill.pairs(spec.get("env"))}
+            if not missing and shutil.which(entry["command"], path=env.get("PATH")) is None:
+                print(f"harnessed: MCP server '{name}' skipped: '{entry['command']}' is not on PATH",
+                      file=sys.stderr)
+                continue
+        else:
+            entry = {"type": spec.get("type", "http"), "name": name, "url": fill(spec["url"]),
+                     "headers": fill.pairs(spec.get("headers"))}
+        if missing:
+            print(f"harnessed: MCP server '{name}' skipped: {', '.join(sorted(set(missing)))} not set",
+                  file=sys.stderr)
+            continue
+        out.append(entry)
+    return out
+
+
+def _add_mcp(line: bytes, servers: Sequence[dict]) -> bytes:
+    """`line` with `servers` added to its `mcpServers` when it is a request that carries them.
+
+    An entry the editor already names wins: it is the editor user's own choice for that session.
+    Any other line comes back unchanged, byte for byte.
+    """
+    try:
+        msg = json.loads(line)
+    except ValueError:
+        return line
+    if not isinstance(msg, dict) or msg.get("method") not in _MCP_METHODS:
+        return line
+    params = msg.get("params")
+    if not isinstance(params, dict):
+        return line
+    editor = params.get("mcpServers")
+    editor = editor if isinstance(editor, list) else []
+    named = {s.get("name") for s in editor if isinstance(s, dict)}
+    params["mcpServers"] = editor + [s for s in servers if s["name"] not in named]
+    return json.dumps(msg, separators=(",", ":")).encode() + b"\n"
 
 
 def _error(rid, code: int, message: str) -> bytes:
@@ -138,8 +220,12 @@ def run(
     cwd: Path,
     stdin: BinaryIO,
     stdout: BinaryIO,
+    mcp_servers: Sequence[dict] = (),
 ) -> int:
     """Start the agent in `cwd` and relay until it exits. Returns the agent's exit code.
+
+    `mcp_servers` (ACP `McpServer` entries, see `acp_mcp_servers`) are added to every request that
+    carries the session's MCP servers.
 
     The editor's stdin is read on a daemon thread: when the agent exits first, nothing can unblock
     a read on the editor's pipe, and the process must still end. Closing the editor's stdin closes
@@ -179,6 +265,8 @@ def run(
                 if reply is not None:
                     emit(reply)
                     continue
+                if mcp_servers:
+                    line = _add_mcp(line, mcp_servers)
                 agent_in.write(line)
                 agent_in.flush()
         except (BrokenPipeError, ValueError):

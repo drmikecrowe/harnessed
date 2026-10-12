@@ -3060,8 +3060,15 @@ def _relay_acp(
     claude-agent-acp takes no `--mcp-config`, so the stack's MCP file reaches claude the way it does
     under `container-acp`: the adapter spawns the wrapper as its claude CLI, and the wrapper adds the
     file and, unless `--no-strict-mcp-config`, strict. The wrapper ships in the catalog.
+
+    omp in ACP mode never reads the agent dir's `mcp.json` that `wire_mcp` wrote: it connects only
+    the servers each `session/new` names. So the relay adds the stack's servers to those requests.
     """
     agent_env = dict(env)
+    mcp_servers: list[dict] = []
+    if harness == "omp" and (home / "mcp.json").is_file():
+        stack_mcp = json.loads((home / "mcp.json").read_text(encoding="utf-8"))
+        mcp_servers = acprelay.acp_mcp_servers(stack_mcp.get("mcpServers") or {}, agent_env)
     if harness == "claude":
         agent_env["CLAUDE_CODE_EXECUTABLE"] = str(
             paths.harnessed_home() / "catalog" / "base" / "harnessed-claude-acp-cli"
@@ -3079,7 +3086,7 @@ def _relay_acp(
     code = acprelay.run(
         _host_acp_agent_argv(harness, home, no_strict_mcp), agent_env,
         lambda project: _project_setup_argv(harness, stack, project, no_strict_mcp=no_strict_mcp),
-        cwd=launch, stdin=sys.stdin.buffer, stdout=out,
+        cwd=launch, stdin=sys.stdin.buffer, stdout=out, mcp_servers=mcp_servers,
     )
     # os._exit, not typer.Exit: when the agent exits while the editor is still connected, the
     # relay's reader thread is blocked in a read on stdin that nothing can interrupt, and a normal
