@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/drmikecrowe/harnessed/compare/v0.2.1...v0.2.2) (2026-10-12)
+
+
+### Bug Fixes
+
+* **acprelay:** give omp the stack's MCP servers over ACP (GH-580) ([#581](https://github.com/drmikecrowe/harnessed/issues/581)) ([6f26582](https://github.com/drmikecrowe/harnessed/commit/6f26582e6cdedd08a321dee6ca1431b910b4fd32))
+
 ## [0.2.1](https://github.com/drmikecrowe/harnessed/compare/v0.2.0...v0.2.1) (2026-10-12)
 
 
