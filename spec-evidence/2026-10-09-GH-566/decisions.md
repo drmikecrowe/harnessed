@@ -90,6 +90,12 @@ Changes: Orientation `Tier:` line; the Failure model section; Verification contr
 - Gap 4 (a pod already up from another process): accepted. S4.6 states that the child's existing launch attaches.
 - Gap 5 (two spellings of one project): accepted. S9.5 keys children by `Path(cwd).resolve()` and names a trailing slash and a symlink.
 
+## Intent review, Revision 5
+- Gap 1 (AC-6's "pod running" read as "a child in this process"): declined. The story's author and the engineer are one person, and they ruled this reading in Decide 4 (mcrowe, 2026-10-12) after the cost was put to them.
+- Gap 2 (S7.3's two folders could be one project): accepted. S7.3 requires two distinct projects, neither inside the other.
+- Gap 3 (S5 and S8.3 add behavior no criterion asks for): declined. S5.3 is how the live run proves AC-5 against each harness's own reply at its pinned version, which a unit test against a fake cannot. S8.3 is the one-process proof the engineer asked for on 2026-10-12, and Known limits marks both as the SPEC's choices.
+- Gap 4 (S2.1 asserts equality with P instead of `paths.container_project_path`): accepted. S2.1 asserts the function's value.
+
 ## Revisions
 ### Revision 1. Gate 1a round 1, PR-REFERENT
 S3.2 and Touches now say `--agent-start-folder` is an existing `container_run` option, resolved by `_resolve_start_dir`. Citation only; no scenario's meaning changed.
@@ -99,3 +105,5 @@ Found at RED, after approval. The approved Touches split `container_run`'s body 
 Found in the manual Atlas run, 2026-10-10. Atlas does not start a new agent process per project: a second project's `session/new` reached the running `harnessed-gh566` process and got `one project per process` (Atlas log, 12:41:21 and 12:42:52 UTC). Decide 2's error therefore fails AC-4's boundary, and the story's constraint "one process serving more than one project is out of scope" contradicts AC-4 for Atlas. The engineer chose to serve several projects per process (one relaunch child and pod per project, routed by session id), which reopens the story (Gate 1) and the plan (Gate 1a). Also found: inside the `gortex-ghissues` pod, claude-agent-acp's `authMethods` differ from the canned table, so that field depends on login state and a fixed table cannot hold it. Parked at `aisdlc-in-progress` while a host-mode ACP story ships first.
 ### Revision 4. Several projects per process, after the story's second Gate 1
 The story was revised and graded `ready` again on 2026-10-12: its out-of-scope line is gone, AC-4 names one Atlas run, AC-5 drops `authMethods`, and AC-6 is new. The SPEC follows: Decide 2 takes ruling C, S9 becomes routing by session id, S10 answers `session/list`, S5 drops `authMethods` from the drift check, S2.2 and S3.3 cover `session/resume` and a path argument with a second `cwd`, S8.1 and S8.3 add the one-process proof the engineer asked for, and the smoke script's container checks dropped in the rebase are re-added on top of main's script: `--no-path` reuses the `host-acp` launch, the 60 s deadline is the existing `--launch-timeout`, the two-project check is the existing `--check-cwd`, and the drift-line failure is new (S7). `/spec-evidence:plan` does not run at `aisdlc-in-progress`, so its steps ran by hand with no label move, per loop.md's rule that the SPEC is revised visibly during the task.
+### Revision 5. Gate 1a round 1 on Revision 4: PR-REFERENT ×2, PR-SCOPE ×2
+S5.2 and S6.1 cited "Revision 3" and "Revision 2", which the SPEC never defines; each now states its reason inline. S4.5 (a child that exits, and its relaunch) and S9.7 (a request that names no session) named no criterion; the engineer kept both and ties them to AC-4 (mcrowe, 2026-10-12), and Known limits no longer lists them as the SPEC's own choices.
