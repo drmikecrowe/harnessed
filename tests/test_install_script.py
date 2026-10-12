@@ -1220,17 +1220,18 @@ class TestPhase3ClosesAC2AcrossTheCatalog:
                 out.extend((r.name, key, ref) for key, ref in r.install.refs.items())
         return out
 
-    def test_the_catalog_declares_exactly_the_five_refs_phase_3_migrated(self):
+    def test_the_catalog_declares_exactly_the_six_install_refs(self):
         """A guard on the sweep, not a target.
 
         A sweep that silently found zero refs would satisfy every other assertion in this class
         vacuously. Six is what §1 Family B measured after REVISION 14 struck hyperpowers: caveman,
         superpowers, gstack, and mikes-universal-setup's three. Five since 2026-09-09, when
-        mikes-universal-setup dropped blader/humanizer into its vendored mikes-voice skill.
+        mikes-universal-setup dropped blader/humanizer into its vendored mikes-voice skill. Six
+        since mattpocock-skills arrived, born on `install.refs`.
         """
         refs = self._all_refs()
-        assert len(refs) == 5, (
-            f"expected Family B's six refs less humanizer, found {[(n, k) for n, k, _ in refs]}"
+        assert len(refs) == 6, (
+            f"expected Family B's five refs plus mattpocock-skills, found {[(n, k) for n, k, _ in refs]}"
         )
 
     def test_every_declared_ref_is_pinned_immutably(self):
