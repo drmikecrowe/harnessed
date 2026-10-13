@@ -2102,8 +2102,9 @@ class TestHostClaudeJsonMerge:
         home = self._user(monkeypatch, tmp_path, self.USER)
         from harnessed.backend import LaunchSpec
 
-        b = launcher.HostBackend([], isolated_auth=True)
+        b = launcher.HostBackend([])
         b.home = home
+        b.isolated_auth = True  # as `_launch_host` sets it, beside `seed_auth`
         b.seed_auth(LaunchSpec(stack="s", harness="claude", project_path=Path(self.P)))
         out = self._read(home)
         assert out["oauthAccount"] == {} and out["userID"] == ""
@@ -2189,6 +2190,15 @@ class TestHostClaudeJsonMerge:
         (home / ".claude.json").write_text(json.dumps(dict(self.USER)))
         launcher._seed_host_claude_json(home, self.P, isolated_auth=False)
         assert "mcpServers" not in self._read(home)
+
+    def test_s3_9_project_setup_leaves_an_unreadable_file_alone(self, tmp_path):
+        """PR #601 review: `read_json_or_empty` turns a parse error into `{}`, so the seed replaced a
+        half-written file with only `projects`. The running agent owns that file; leave it."""
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / ".claude.json").write_text('{"customApiKeyResponses": {"appro')
+        launcher._seed_host_claude_project(home, self.P)
+        assert (home / ".claude.json").read_text() == '{"customApiKeyResponses": {"appro'
 
     def test_s3_9_project_setup_writes_no_file_that_is_not_there(self, tmp_path):
         home = tmp_path / "home"

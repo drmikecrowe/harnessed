@@ -505,8 +505,12 @@ def _seed_host_claude_project(home: Path, project: str) -> None:
     unreadable file is left alone, since only the launch writes the whole file.
     """
     target = home / ".claude.json"
-    data = read_json_or_empty(target)
-    if not isinstance(data, dict) or not target.is_file():
+    # Not `read_json_or_empty`: it turns a half-written file into `{}`, which would then replace it.
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return
+    if not isinstance(data, dict):
         return
     _write_json_atomic(target, seed_claude_project(data, project))
 

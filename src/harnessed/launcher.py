@@ -2892,11 +2892,12 @@ class HostBackend(ExecutionBackend):
     name = "host"
     isolation = ISOLATION_NONE
 
-    def __init__(self, recipes: list, *, isolated_auth: bool = False, acp: bool = False) -> None:
+    def __init__(self, recipes: list, *, acp: bool = False) -> None:
         #: This stack's resolved recipe closure — the fingerprint gate reads it.
         self.recipes = recipes
         #: The stack's `isolated_auth`: keeps the host identity out of `.claude.json` (GH-594 Decide 1).
-        self.isolated_auth = isolated_auth
+        #: Set by `_launch_host` beside `seed_auth`, where the stack is already read.
+        self.isolated_auth = False
         #: `host-acp`: the launch folder is the editor's, not a project, so no trust is seeded for it.
         self.acp = acp
         self.home: Path | None = None
