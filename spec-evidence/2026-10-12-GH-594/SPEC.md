@@ -13,11 +13,11 @@
 - AC-3: any other answer given in the stack survives a relaunch, and harnessed still forces its own onboarding flag (S1.2, S1.3, S2.2, S3.2, S3.5).
 - AC-4: under `isolated_auth`, the host's `oauthAccount`/`userID` never reach the stack; without it, the host path still copies them (S1.6 to S1.9, S3.4).
 - AC-5: the host's global `mcpServers` never reach the stack file, even one left by an older launch, and the stack's own servers still load (S1.5, S3.1, S3.8, S3.10).
-- AC-6: an ACP session loads the external import, under `container-acp` and under `host-acp` in a new folder (S3.9, S4.2).
+- AC-6: removed from the story on 2026-10-13 and moved to #600: headless ACP sessions expand no `@`-imports, so seeding cannot load one (Revision 5). `host-acp` folder trust is still seeded (S3.9).
 
 **What must not change.** The host's own `~/.claude.json` is never written. No API key fragment is written by harnessed. `--strict-mcp-config` stays. omp still gets no stub. Credential symlinking is unchanged.
 
-**How it is proven.** Unit tests on the pure merge (with a hypothesis property), unit tests on both call sites, the full suite, `live.yml` because `launcher.py` changes, and manual runs on this machine: a relaunch on `container-run` and on `host-run` (S4.1), and `tools/acp-smoke.py` on `container-acp` and `host-acp` (S4.2).
+**How it is proven.** Unit tests on the pure merge (with a hypothesis property), unit tests on both call sites, the full suite, `live.yml` because `launcher.py` changes, and manual runs on this machine: a relaunch on `container-run` and on `host-run` (S4.1), and `tools/acp-smoke.py` read-backs of the `host-acp` seed (S3.9).
 
 **Open decisions.** None. The engineer ruled on 2026-10-12: the host path honours `isolated_auth` (Decide 1), and `host-acp` seeds each new session folder through `project-setup` (Decide 2).
 
@@ -26,7 +26,7 @@
 - Why: both paths overwrite the file on every launch, so no answer persists.
 - Touches: `src/harnessed/jsonmerge.py`, `src/harnessed/mounts.py`, `src/harnessed/hosthome.py`, `src/harnessed/launcher.py`, tests, `ARCHITECTURE.md`.
 - Decide: Decide 1, host path and `isolated_auth`. Decide 2, `host-acp` trust seeding.
-- Decided: Decide 1 = A, the host path honours `isolated_auth` (S3.4). Decide 2 = A, `project-setup` seeds each new `host-acp` session folder (S3.6, S3.9, S4.2).
+- Decided: Decide 1 = A, the host path honours `isolated_auth` (S3.4). Decide 2 = A, `project-setup` seeds each new `host-acp` session folder (S3.6, S3.9).
 
 - Tier: 2 — a bug fix. It touches identity metadata (`oauthAccount`/`userID`) but no credential, so the pure merge also gets a property test and a hand-run mutation pass.
 - Issue: GH-594
@@ -70,7 +70,8 @@
 
 ### S4. Manual runs on this machine
 - S4.1 The engineer runs `harnessed container-run claude <throwaway project> --stack <throwaway stack>` twice, and then `harnessed host-run claude` on the same project and stack twice. On every launch, neither the trust question nor the import question appears. The API key question may appear on the first launch of each path and is expected there; it must not appear on the second. An agent never runs `container-run` or `host-run` (AGENTS.md); the engineer records the result in the evidence.
-- S4.2 `tools/acp-smoke.py`, against `container-acp` and again against `host-acp` with a session folder this stack has never seen, on a stack whose CLAUDE.md imports `~/.local/share/gortex/instructions/active.md`, with a prompt asking for that file's first heading, returns `MANDATORY: Use Gortex MCP tools instead of Read/Grep/Glob`.
+
+Scenario S4.2 (the ACP session returns the imported active.md heading) was removed by Revision 5 (mcrowe, 2026-10-13), with story AC-6. It failed live: headless ACP sessions expand no `@`-imports. The work is #600.
 
 ## Must NOT
 - Write the host's own `~/.claude.json`, on either path.
@@ -92,7 +93,7 @@
 - `tests/test_claude_config_seed.py` — S2 added.
 - `tests/test_launch_host.py` — S3 added. The nested-launch and decoy tests (around lines 314 to 349 and 460 to 471) compare the whole file to the user's file. They change to compare `oauthAccount`, the allowlisted key, with the same fixtures and intent.
 - `ARCHITECTURE.md` — the "token-free `~/.claude.json` onboarding stub" sentence (line 536) says the file is now merged, not overwritten.
-- `tools/acp-smoke.py` — `--prompt` prints the agent's reply, which S4.2 reads. Added by Revision 4.
+- `tools/acp-smoke.py` — `--prompt` prints the agent's reply, which the S4.1 and Revision 4 runs read. Added by Revision 4.
 - `tests/test_acp_smoke.py` — pins that reply line. Added by Revision 4.
 
 ## Documentation
@@ -103,7 +104,7 @@
 - The API key question still appears once per stack on the first launch. Story AC-1 allows this. `apiKeyHelper` is not built, because nobody has shown it skips the question.
 - Trust is seeded for the launch's project path only. A session that later changes into another folder is asked as before.
 - Under `host-acp`, a different live session that rewrites `.claude.json` from a stale copy can drop the S3.9 seed for a new folder. That session then behaves as today. The atomic write keeps the window small but cannot close it.
-- S3.9 assumes claude-agent-acp starts a fresh claude CLI per session, so the new session reads the seed. The build confirms this first, with the `host-acp` run of S4.2.
+- An ACP session expands no `@`-imports, so a seeded import approval has no effect there. The import itself is #600 (Revision 5).
 - A host stack launched before this change keeps the old copy's other `projects` entries (for example `/secret`) after S3.10. They name the user's own folders on the user's own machine, and nothing reads them unless a session starts there. Revision 3.
 - On the host path, a server added in the stack with `claude mcp add -s user` is dropped at each launch (S3.10). It was already inert under `--strict-mcp-config`. Revision 3.
 - Two launches of one stack in different projects share one host home, and the agent writes `.claude.json` without harnessed's lock, so a concurrent answer can be lost. The old whole-file copy lost it always. The container stub is still written in place, because a bind mount needs the same inode.
@@ -121,4 +122,4 @@
 | property | S1.12 | hypothesis, 200 examples |
 | mutation | weak assertions in `merge_claude_json` | no surviving mutant without a stated reason |
 | live | container path (`launcher.py` touched) | `live.yml` both jobs green on the PR |
-| manual | S4.1, S4.2 | transcripts in the evidence |
+| manual | S4.1 | transcripts in the evidence |

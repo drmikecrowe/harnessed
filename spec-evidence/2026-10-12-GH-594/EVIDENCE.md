@@ -9,17 +9,17 @@
 - AC-3, other in-stack answers survive and harnessed's onboarding flag still wins: unit tests on both paths, and the live container stub kept Claude's own session keys beside the seeded ones.
 - AC-4, no host identity under `isolated_auth`: unit tests on the merge, the container stub and the host backend, including a stack switched to isolated after a shared launch.
 - AC-5, no host `mcpServers` in the stack file, while the stack's own servers still load: unit tests, including a legacy copy left by an older launch.
-- AC-6, an ACP session loads the external import: **not proven.** The seeding works live, but a headless ACP session expands no `@`-imports at all, approved or not.
+- AC-6 (an ACP session loads the external import) was removed from the story and moved to #600 (Revision 5). The `host-acp` folder-trust seeding it relied on is built and proven (S3.9); the import itself cannot load, because a headless ACP session expands no `@`-imports.
 
-**Not proven.** AC-6 and its boundary clause, and S4.2. The adversary review is not clean either: in both rounds, a hook blocked its source reads, so its caller and gate hunts did not run, and the last commit (`7f638b2`, the smoke script) came after round 2.
+**Not proven.** No story criterion. The adversary review is not clean: in both rounds, a hook blocked its source reads, so its caller and gate hunts did not run, and the last commit (`7f638b2`, the smoke script) came after round 2.
 
-**Judgment calls.** Five, all ruled by the engineer or recorded as revisions. The host path honours `isolated_auth` (Decide 1). `host-acp` seeds each new session folder (Decide 2, against its default). The host path always drops top-level `mcpServers` (Revision 3, from adversary round 1). The smoke script now prints the agent's reply (Revision 4). AC-6 is reported unproven, with a follow-up issue drafted (Revision 4). A real regression was also caught and fixed during mutation testing: reading `isolated_auth` at `HostBackend` construction broke a capability-warning test. The flag is now read inside the home lock.
+**Judgment calls.** Five, all ruled by the engineer or recorded as revisions. The host path honours `isolated_auth` (Decide 1). `host-acp` seeds each new session folder (Decide 2, against its default). The host path always drops top-level `mcpServers` (Revision 3, from adversary round 1). The smoke script now prints the agent's reply (Revision 4). AC-6 and S4.2 left this story for #600 after the evidence gates (Revision 5), once marker tests showed what does reach an ACP session. A real regression was also caught and fixed during mutation testing: reading `isolated_auth` at `HostBackend` construction broke a capability-warning test. The flag is now read inside the home lock.
 
 ## Orientation
-- Verdict: PASSED WITH LIMITS
+- Verdict: PASSED WITH LIMITS (the substituted layers below)
 - Delivered: both launch paths merge `.claude.json` over its live copy, seed trust and import approval for the project, and keep host identity and host MCP servers out.
-- Proven: 27 of 28 scenarios pass; S4.2 fails.
-- Not proven: AC-6 (condition and boundary), S4.2 (`host-acp` FAILED, `container-acp` unverified), live layer UNAVAILABLE until the PR, adversarial review SUBSTITUTED (both rounds blocked from source reads; `7f638b2` after round 2), mutation SUBSTITUTED (narrowed tests; 8 equivalent survivors named).
+- Proven: 27 of 27 scenarios pass (S4.2 removed by Revision 5).
+- Not proven: live layer UNAVAILABLE until the PR, adversarial review SUBSTITUTED (both rounds blocked from source reads; `7f638b2` after round 2), mutation SUBSTITUTED (narrowed tests; 8 equivalent survivors named).
 
 - Process: spec-evidence 0.0.1
 - Spec: spec-evidence/2026-10-12-GH-594/SPEC.md (committed)
@@ -96,8 +96,6 @@ Test ids are relative to `tests/`. `TestHostClaudeJsonMerge` is in `test_launch_
 | S3.10 | `TestHostClaudeJsonMerge::test_s3_10_a_legacy_copy_loses_the_users_mcp_servers` | pass |
 | S4.1 (trust and import) | manual, engineer, 2026-10-12: `container-run` and `host-run` twice each in `/home/mcrowe/scratch-gh-594-v4`, stack `hostspike`; no question on any launch. The container stub held Claude's own `lastSessionId` and the seeded keys under the same project key. | pass |
 | S4.1 (API key) | manual, engineer, 2026-10-13, in `/home/mcrowe/scratch-gh-594-apikey`, with a dummy `ANTHROPIC_API_KEY` (`sk-ant-dummy-gh594-` plus 20 zeros: in the project `.env` for the container path, exported for the host path). Run 1: asked on each path's first launch, answered Yes, not asked on the second. The second container launch then was an attach, so run 2 put `harnessed rm hostspike` before each `container-run`: 4 launches, no question on any. Read-back: the container stub `~/.local/state/harnessed/harnessed-claude-hostspike-02deba0b/claude.json` and the host file `~/.local/share/harnessed/home/hostspike/claude/.claude.json` both hold `customApiKeyResponses.approved = ["00000000000000000000"]` and the trust keys after the relaunch | pass |
-| S4.2 (`host-acp`) | `tools/acp-smoke.py`, `decisions.md` Revision 4, runs 1, 2 and 4: reply `NOT LOADED` | fail |
-| S4.2 (`container-acp`) | not run; see `decisions.md` Revision 4 | unverified |
 
 Story criteria, by clause:
 
@@ -118,9 +116,6 @@ Story criteria, by clause:
 | AC-5 condition: host `mcpServers` absent from the stack file | `test_s1_5_host_contributes_nothing_but_identity`, `test_s3_1_first_launch_takes_identity_and_trust_but_not_host_state`, `test_s3_10_a_legacy_copy_loses_the_users_mcp_servers` | pass |
 | AC-5 boundary: the host path | S3.1 and S3.10 tests above | pass |
 | AC-5 negative: the stack's own servers still load | `test_s3_8_the_stacks_servers_load_and_the_users_do_not` | pass |
-| AC-6 condition: an ACP session loads the import | S4.2 `host-acp`: `NOT LOADED` | fail |
-| AC-6 boundary: no earlier interactive launch | S4.2 ran in never-seen folders; same result | fail |
-| AC-6 negative: no project other than P is marked approved | `test_s3_9_project_setup_seeds_only_the_session_folder`; live: Revision 4 read-back shows one entry per session folder | pass |
 
 ### Gauntlet (final fresh run)
 | Layer | Command | Status + result | Log |
@@ -134,14 +129,13 @@ Story criteria, by clause:
 | property | inside tests: S1.12 | PASSED — 200 examples | tests layer |
 | mutation | `HARNESSED_DIR=$PWD mise exec -- uv run --extra dev mutmut run` on `jsonmerge.x_merge_claude_json*`, `x_seed_claude_project*`, `x_read_json_or_empty*`, `hosthome.x__seed_host_claude_json*`, `x__seed_host_claude_project*`, `x__write_json_atomic*`; `tests_dir` narrowed | SUBSTITUTED — run 1 (`dd4bcde` code): 131 mutants, 118 killed, 13 survived. Re-run of `_seed_host_claude_json` at `e903746` code: 37 of 37 killed (the 5 `now` survivors and the new `mcpServers` drop). 8 survivors remain, all named exclusions: `_write_json_atomic` mutants 4, 6, 13 and `read_json_or_empty` mutants 2, 4 change only the `encoding` argument, equivalent on this UTF-8 host with ASCII fixtures; `_write_json_atomic` mutants 8, 10, 11 change only `indent`, whitespace no reader depends on. `merge_claude_json` and `seed_claude_project`: 0 survivors. | scratchpad `mutmut-results.log`, `mutmut-r2-results.log` |
 | live | `live.yml` on the PR (`launcher.py` touched) | not yet run: it runs when the PR opens | — |
-| manual | S4.1, S4.2 | S4.1 trust/import PASSED; S4.2 `host-acp` FAILED (`NOT LOADED`) | `decisions.md` Revision 4 |
+| manual | S4.1 | PASSED — trust, import and API key, both paths, including a real container relaunch | `decisions.md` Revision 4, this table's S4.1 rows |
 | adversarial review | `spec-evidence-adversary`, 2 rounds | round 1: 1 finding (fixed, `e903746`), 4 hunches (checked, none a defect); round 2: 0 findings, 3 hunches (checked, none a defect) | `findings-code-round1.md`, `findings-code.md` |
 
 ### Layers not run as specified
 - UNAVAILABLE: live — `live.yml` runs on `pull_request` and no PR exists yet; it gates the merge.
 - SUBSTITUTED: adversarial review — both rounds ran, but a Gortex hook blocked the reviewer's Read and Grep on `src/`, so its caller-set and gate-comparison hunts did not run. The author enumerated callers of the changed functions by `rg` instead (`HostBackend.seed_auth`: one production caller, `launcher.py:3363`); that is not independent review. `7f638b2` (the smoke script's reply line) came after round 2 and was not reviewed.
 - SUBSTITUTED: mutation — not a declared layer; run by hand with `tests_dir` narrowed to the covering test files, the remedy `pyproject.toml` documents for mutmut's symlink limitation. It cannot see a mutant only a test outside those files would kill.
-- N-A: S4.2 `container-acp` — not run, see `decisions.md` Revision 4.
 
 ### Defect classes closed
 - Generator: a key that the old wholesale host copy put in the stack file and that the live-file merge now keeps.
