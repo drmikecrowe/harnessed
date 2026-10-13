@@ -57,6 +57,8 @@ CONTAINER_ONLY: dict[str, str] = {
     # A decision, not a nature (#529): the ACP verb ships for the container backend only, because
     # that is what the issue scoped. A `host-acp` would wire this into `_launch_host` too.
     "set_acp_mode": "only `container-acp` exists; there is no host ACP verb",
+    "acp_stdout": "only `container-acp` exists; there is no host ACP verb",
+    "_acp_relaunch": "the `container-acp` proxy's launch (#566); there is no host ACP verb",
     "_stopped_leftover": "removes a dead container",
     "_pod_teardown": "tears down a pod",
     # --- the varlock secrets broker (#437, epic #388 Topology B) ---
