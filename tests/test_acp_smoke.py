@@ -190,3 +190,30 @@ def test_s5_3_a_drift_line_fails_the_run(tmp_path):
 def test_s5_3_stderr_still_reaches_the_terminal(tmp_path):
     proc, _, _ = _run_smoke(tmp_path, "--no-path")
     assert "PASS" in proc.stderr
+
+
+_FAKE_LINGERING_STDERR = r"""
+import json, subprocess, sys
+# A grandchild that keeps the inherited stderr open after this process exits.
+subprocess.Popen([sys.executable, "-c", "import time; time.sleep(5)"], stdin=subprocess.DEVNULL,
+                 stdout=subprocess.DEVNULL)
+for raw in sys.stdin:
+    m = json.loads(raw)
+    result = {"sessionId": "s0"} if m["method"] == "session/new" else {"protocolVersion": 1}
+    sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": result}) + "\n")
+    sys.stdout.flush()
+"""
+
+
+def test_pr599_stderr_still_open_after_the_wait_fails_the_run(tmp_path, monkeypatch):
+    """PR #599 review: a drift check on a stderr stream that is still open can miss a late drift line."""
+    fake = tmp_path / "fake_lingering.py"
+    fake.write_text(_FAKE_LINGERING_STDERR)
+    project = tmp_path / "proj"
+    project.mkdir()
+    monkeypatch.setattr(smoke, "_STDERR_WAIT", 1)
+    monkeypatch.setattr(sys, "argv", ["acp-smoke.py", str(project), "--stack", "s", "--no-path",
+                                      "--harnessed", f"{sys.executable} {fake} --"])
+    with pytest.raises(SystemExit) as exc:
+        smoke.main()
+    assert "stderr still open" in str(exc.value)

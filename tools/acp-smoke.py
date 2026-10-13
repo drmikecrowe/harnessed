@@ -126,6 +126,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 _DRIFT = "harnessed: ACP initialize drift"
+_STDERR_WAIT = 30  # seconds to wait for the launched process's stderr to close
 
 
 def _watch_stderr(stream, drift: list[str]) -> None:
@@ -237,7 +238,10 @@ def main() -> int:
         raise SystemExit("FAIL: stdout did not close within 30s") from None
     if proc.returncode != 0:
         raise SystemExit(f"FAIL: harnessed exited with {proc.returncode}")
-    errs.join(timeout=30)
+    errs.join(timeout=_STDERR_WAIT)
+    if errs.is_alive():
+        # Something still holds stderr, so a drift line may yet arrive (PR #599).
+        raise SystemExit(f"FAIL: stderr still open after {_STDERR_WAIT}s; the drift check would be incomplete")
     if drift:
         raise SystemExit("FAIL: the canned initialize reply drifted from the agent's own: " + "; ".join(drift))
     print("PASS: every stdout byte parsed as JSON-RPC", file=sys.stderr)
