@@ -2200,6 +2200,19 @@ class TestHostClaudeJsonMerge:
         launcher._seed_host_claude_project(home, self.P)
         assert (home / ".claude.json").read_text() == '{"customApiKeyResponses": {"appro'
 
+    def test_pr601_a_failed_atomic_write_leaves_no_temp_file(self, monkeypatch, tmp_path):
+        """PR #601 review: a write that raised left `.claude.json.<pid>.tmp` in the home."""
+        home = tmp_path / "home"
+        home.mkdir()
+
+        def _boom(_src, _dst):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(hosthome.os, "replace", _boom)
+        with pytest.raises(OSError, match="disk full"):
+            hosthome._write_json_atomic(home / ".claude.json", {"a": 1})
+        assert list(home.iterdir()) == []
+
     def test_s3_9_project_setup_writes_no_file_that_is_not_there(self, tmp_path):
         home = tmp_path / "home"
         home.mkdir()

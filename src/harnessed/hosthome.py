@@ -518,8 +518,12 @@ def _seed_host_claude_project(home: Path, project: str) -> None:
 def _write_json_atomic(path: Path, data: dict) -> None:
     """Write through a temp file and `os.replace`, so a reader never sees half a file."""
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
+    try:
+        tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 # --- omp (#307) ----------------------------------------------------------------
