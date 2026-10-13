@@ -10,11 +10,11 @@
 - AC-3 (smoke passes for omp and claude, outside the project, no path, no pod and pod up): four live smoke runs passed.
 - AC-4 (Atlas, one global entry, two projects through one process; a path argument wins): manual Atlas run. One proxy process (PID 3125599) served the GH-566 worktree and `<second project, outside this repo>`, each agent reporting its own folder; the pinned entry reported `.../harnessed/main` while Atlas sent the worktree as `cwd`. Also the live smoke two-project check on claude, and unit tests.
 - AC-5 (`protocolVersion` and `agentCapabilities` match the harness's own): no drift line in any of the live runs on omp or claude; the smoke script fails on one (tested).
-- AC-6 (`session/list` empty before a session, the agent's reply after): unit tests.
+- AC-6 (`session/list` empty for a project this process runs no agent for, including after an editor restart; once it runs that project's agent, the agent's own reply): unit tests, each starting a fresh proxy process, which is what an Atlas restart starts.
 
 **Not proven.** The `live` and `live-docker` CI jobs: they run on the pull request, which is not open yet.
 
-**Judgment calls.** `session/list` reads "the project's pod is running" as "this process runs an agent for the project" (Decide 4). Routing moved the work to Tier 3 (Decide 5). A GH-565 test was pointed at the relaunch child, where the launch now runs (engineer's choice). Two stale `gortex-ghissues` pods with dead credential copies were removed so Atlas could log in; the credential design defect is epic #597, outside this story. The live smoke used stack `default`, rebuilt for omp and claude with the engineer's yes.
+**Judgment calls.** `session/list` answers for the agents this process runs, not for pods left up by earlier launches (Decide 4). Gate 2's first pass held AC-6 unproven because the story then said "pod running"; the engineer reworded AC-6 to match the ruling, and Gate 1 graded the reworded story `ready` (2026-10-13). Routing moved the work to Tier 3 (Decide 5). A GH-565 test was pointed at the relaunch child, where the launch now runs (engineer's choice). Two stale `gortex-ghissues` pods with dead credential copies were removed so Atlas could log in; the credential design defect is epic #597, outside this story. The live smoke used stack `default`, rebuilt for omp and claude with the engineer's yes.
 
 ## Orientation
 - Verdict: PASSED WITH LIMITS
@@ -138,8 +138,9 @@ Story criteria, clause by clause:
 | AC-5 condition: `protocolVersion` and `agentCapabilities` match the harness's own | Live runs L1–L4 (no drift line, which fails the run) | pass |
 | AC-5 boundary: omp and claude at their pinned versions | Live runs L1, L2 (claude-agent-acp 0.85.1), L3, L4 (omp 18.6.1) | pass |
 | AC-5 negative: a reply that differs fails | test_acp_smoke.py::test_s5_3_a_drift_line_fails_the_run; test_acp_proxy.py::TestDrift::test_a_differing_reply_is_reported_per_field | pass |
-| AC-6 condition: no agent for the project → empty list; agent running → its reply | test_acp_proxy.py::TestSessionList::test_before_any_session_the_list_is_empty; ::test_with_the_projects_agent_running_it_answers | pass |
-| AC-6 boundary: Atlas's startup call, before any `session/new`, `cwd` = `.../harnessed/main` | test_acp_proxy.py::TestSessionList::test_before_any_session_the_list_is_empty (sends `session/list` before any `session/new`) | pass |
+| AC-6 condition: this process runs no agent for the project → empty list; once it runs that project's agent → that agent's own reply | test_acp_proxy.py::TestSessionList::test_before_any_session_the_list_is_empty; ::test_with_the_projects_agent_running_it_answers (the reply's `agent` is the project's own); TestTheMutationRun::test_session_list_cwd_becomes_the_start_folder | pass |
+| AC-6 boundary: Atlas's startup call, before any `session/new`, `cwd` = `.../harnessed/main` | test_acp_proxy.py::TestSessionList::test_before_any_session_the_list_is_empty (sends `session/list` with an existing project's `cwd` before any `session/new`; no launch runs) | pass |
+| AC-6 boundary: after an Atlas restart the list stays empty until a session opens in that project | test_acp_proxy.py::TestSessionList::test_before_any_session_the_list_is_empty (each test is a fresh `serve`, the new process a restart starts; the launch is asserted never called, so no earlier pod is consulted); ::test_with_the_projects_agent_running_it_answers (after `session/new` the request reaches the agent) | pass |
 | AC-6 negative: an error reply to `session/list` fails | test_acp_proxy.py::TestSessionList::test_a_bad_cwd_is_never_an_error | pass |
 
 ### Live runs (2026-10-12, stack `default`, from the worktree with `uv run`)
