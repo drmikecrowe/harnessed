@@ -184,3 +184,15 @@ def utc_plus_14(monkeypatch):
     yield
     monkeypatch.undo()
     time.tzset()
+
+
+def test_pr601_container_reads_the_account_file_beside_claude_config_dir(monkeypatch, tmp_path):
+    """PR #601 review: the host path reads `$CLAUDE_CONFIG_DIR/.claude.json` when that is set; the
+    container stub read only `~/.claude.json`, so the two paths seeded different identities."""
+    _host(monkeypatch, tmp_path, None)
+    cfg = tmp_path / "custom-claude"
+    cfg.mkdir()
+    (cfg / ".claude.json").write_text(json.dumps({"oauthAccount": {"emailAddress": "cfg@example.com"}}))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+    stub = _stub_from_mount(launcher._claude_config_seed_mount("claude", "inst-cfg"))
+    assert stub["oauthAccount"] == {"emailAddress": "cfg@example.com"}

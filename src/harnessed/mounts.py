@@ -39,7 +39,7 @@ from .credmounts import (
     _yubikey_device_args,
 )
 from .broker import Broker
-from .hosthome import _OAUTH_TOKEN_VAR
+from .hosthome import _OAUTH_TOKEN_VAR, _host_claude_config_override
 from .jsonmerge import merge_claude_json, read_json_or_empty
 from .launchenv import _plain_env_values, _varlock_resolve
 from .layout import _catalog_base
@@ -183,7 +183,10 @@ def _claude_config_seed_mount(
     state_dir.mkdir(parents=True, exist_ok=True)
     stub = state_dir / "claude.json"
     merged = merge_claude_json(
-        read_json_or_empty(stub), read_json_or_empty(Path.home() / ".claude.json"), project_path,
+        read_json_or_empty(stub),
+        # The same account file the host path reads (`_seed_host_claude_json`), so both seed one identity.
+        read_json_or_empty((_host_claude_config_override() or Path.home()) / ".claude.json"),
+        project_path,
         isolated_auth=isolated_auth,
         now=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
     )
