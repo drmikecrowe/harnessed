@@ -4,28 +4,28 @@
 **What was delivered, and why.** A stack's `.claude.json` is no longer thrown away on every launch. One pure function, `merge_claude_json`, keeps the stack's live file and lays only harnessed's own keys over it: the onboarding flag, the start counters, the identity pair, and folder trust and import approval for the launch's project. The container stub and the host home both use it. A host rebuild keeps the file, the host path drops a legacy copy's `mcpServers`, and under `host-acp`, `project-setup` seeds trust for each new session folder. Before this, both paths overwrote the file, so no answer persisted.
 
 **Each criterion and how it was proven.**
-- AC-1, no trust or import question on the first launch: unit tests on both paths, plus a live run of each path twice in a new folder by the engineer, with no question shown. The API key half cannot appear on this machine's subscription login.
-- AC-2, the API key answer persists and a "no" stays a "no": unit tests on both paths keep `customApiKeyResponses`, including a `rejected` entry, unchanged across a relaunch. No live API key prompt was observed, for the same reason.
+- AC-1, no trust or import question on the first launch: unit tests on both paths, plus a live run of each path twice in a new folder by the engineer, with no question shown. The API key question appeared on each path's first launch, which the criterion allows.
+- AC-2, the API key answer persists and a "no" stays a "no": unit tests on both paths keep `customApiKeyResponses`, including a `rejected` entry, unchanged across a relaunch. Live, with a dummy API key: answered once per path, then not asked again, including after the container was removed and relaunched.
 - AC-3, other in-stack answers survive and harnessed's onboarding flag still wins: unit tests on both paths, and the live container stub kept Claude's own session keys beside the seeded ones.
 - AC-4, no host identity under `isolated_auth`: unit tests on the merge, the container stub and the host backend, including a stack switched to isolated after a shared launch.
 - AC-5, no host `mcpServers` in the stack file, while the stack's own servers still load: unit tests, including a legacy copy left by an older launch.
 - AC-6, an ACP session loads the external import: **not proven.** The seeding works live, but a headless ACP session expands no `@`-imports at all, approved or not.
 
-**Not proven.** AC-6 and its boundary clause, S4.2, and the live API key half of AC-1 and AC-2 (it needs an API-key login like 8451). The adversary review is not clean either: in both rounds, a hook blocked its source reads, so its caller and gate hunts did not run, and the last commit (`7f638b2`, the smoke script) came after round 2.
+**Not proven.** AC-6 and its boundary clause, and S4.2. The adversary review is not clean either: in both rounds, a hook blocked its source reads, so its caller and gate hunts did not run, and the last commit (`7f638b2`, the smoke script) came after round 2.
 
 **Judgment calls.** Five, all ruled by the engineer or recorded as revisions. The host path honours `isolated_auth` (Decide 1). `host-acp` seeds each new session folder (Decide 2, against its default). The host path always drops top-level `mcpServers` (Revision 3, from adversary round 1). The smoke script now prints the agent's reply (Revision 4). AC-6 is reported unproven, with a follow-up issue drafted (Revision 4). A real regression was also caught and fixed during mutation testing: reading `isolated_auth` at `HostBackend` construction broke a capability-warning test. The flag is now read inside the home lock.
 
 ## Orientation
 - Verdict: PASSED WITH LIMITS
 - Delivered: both launch paths merge `.claude.json` over its live copy, seed trust and import approval for the project, and keep host identity and host MCP servers out.
-- Proven: 26 of 28 scenarios pass in full; S4.1 passes for trust and import with its API key half unverified; S4.2 fails.
-- Not proven: AC-6 (condition and boundary), S4.2 (`host-acp` FAILED, `container-acp` unverified), the live API key halves of AC-1, AC-2 and S4.1 (unverified), live layer UNAVAILABLE until the PR, adversarial review SUBSTITUTED (both rounds blocked from source reads; `7f638b2` after round 2), mutation SUBSTITUTED (narrowed tests; 8 equivalent survivors named).
+- Proven: 27 of 28 scenarios pass; S4.2 fails.
+- Not proven: AC-6 (condition and boundary), S4.2 (`host-acp` FAILED, `container-acp` unverified), live layer UNAVAILABLE until the PR, adversarial review SUBSTITUTED (both rounds blocked from source reads; `7f638b2` after round 2), mutation SUBSTITUTED (narrowed tests; 8 equivalent survivors named).
 
 - Process: spec-evidence 0.0.1
 - Spec: spec-evidence/2026-10-12-GH-594/SPEC.md (committed)
 - Spec approval: obtained from mcrowe, commit `fdea3f8`
 - Intent review: S1.7 names the empty-placeholder choice; S3.2 carries a `rejected` entry; S3.5 states that AC-2 and AC-3 need it; S3.8 added for AC-5's negative; S4.1 runs `host-run` as well and expects the API key question on the first launch only; Known limits name the `host-acp` limit. One gap declined (host identity wins when shared), see `decisions.md`.
-- Source state: commit `7f638b27aa95bfe2413cc9092009f1a818d7594a` — the commit the final run read. The adversary's last round read `14c93f5`.
+- Source state: commit `b738c362e44727f9b2fb5d1d10ffc7c061135f18` — the commit the final run read. Its last code commit is `7f638b2`; the commits after it touch only the story directory. The adversary's last round read `14c93f5`.
 - Stamp:
 ```json
 {
@@ -47,18 +47,18 @@
     "secrets"
   ],
   "layer_seconds": {
-    "tests": 267.043,
-    "coverage": 324.512,
-    "types": 18.388,
-    "lint": 0.111,
-    "shellcheck": 1.527,
-    "secrets": 2.706
+    "tests": 239.162,
+    "coverage": 349.902,
+    "types": 18.992,
+    "lint": 0.187,
+    "shellcheck": 1.82,
+    "secrets": 3.181
   },
   "failed": null,
   "exit_code": 0,
-  "commit": "7f638b27aa95bfe2413cc9092009f1a818d7594a",
+  "commit": "b738c362e44727f9b2fb5d1d10ffc7c061135f18",
   "dirty": false,
-  "written": "2026-10-12T20:17:30.980Z"
+  "written": "2026-10-13T16:09:40.454Z"
 }
 ```
 - Baseline: baseline-stamp.json at commit `fdea3f8d80fc36c99c2b34ada4ae05e716a618ac`, green; 4329 tests collected.
@@ -95,7 +95,7 @@ Test ids are relative to `tests/`. `TestHostClaudeJsonMerge` is in `test_launch_
 | S3.9 | `TestHostClaudeJsonMerge::test_s3_9_project_setup_seeds_only_the_session_folder`, `::test_s3_9_project_setup_writes_no_file_that_is_not_there`, `::test_s3_9_project_setup_calls_the_seed_and_nothing_else_in_the_home` (structural); live: `decisions.md` Revision 4, runs 1 to 3, keys read back | pass |
 | S3.10 | `TestHostClaudeJsonMerge::test_s3_10_a_legacy_copy_loses_the_users_mcp_servers` | pass |
 | S4.1 (trust and import) | manual, engineer, 2026-10-12: `container-run` and `host-run` twice each in `/home/mcrowe/scratch-gh-594-v4`, stack `hostspike`; no question on any launch. The container stub held Claude's own `lastSessionId` and the seeded keys under the same project key. | pass |
-| S4.1 (API key) | manual: the login on this machine is a subscription, not an API key, so the question cannot appear here | unverified |
+| S4.1 (API key) | manual, engineer, 2026-10-13, in `/home/mcrowe/scratch-gh-594-apikey`, with a dummy `ANTHROPIC_API_KEY` (`sk-ant-dummy-gh594-` plus 20 zeros: in the project `.env` for the container path, exported for the host path). Run 1: asked on each path's first launch, answered Yes, not asked on the second. The second container launch then was an attach, so run 2 put `harnessed rm hostspike` before each `container-run`: 4 launches, no question on any. Read-back: the container stub `~/.local/state/harnessed/harnessed-claude-hostspike-02deba0b/claude.json` and the host file `~/.local/share/harnessed/home/hostspike/claude/.claude.json` both hold `customApiKeyResponses.approved = ["00000000000000000000"]` and the trust keys after the relaunch | pass |
 | S4.2 (`host-acp`) | `tools/acp-smoke.py`, `decisions.md` Revision 4, runs 1, 2 and 4: reply `NOT LOADED` | fail |
 | S4.2 (`container-acp`) | not run; see `decisions.md` Revision 4 | unverified |
 
@@ -106,7 +106,7 @@ Story criteria, by clause:
 | AC-1 condition: no trust or import question on the first launch | `test_s2_1_first_launch_seeds_trust_for_the_project`, `test_s3_1_first_launch_takes_identity_and_trust_but_not_host_state`, `test_s3_7_no_user_file_still_seeds_onboarding_and_trust`; S4.1 manual | pass |
 | AC-1 boundary: both paths | S2.1 (container) and S3.1 (host) tests above; S4.1 ran both | pass |
 | AC-1 negative: the API key question may stay, since harnessed writes no key fragment | `test_s1_1_empty_inputs_give_exactly_the_owned_shape` (no `customApiKeyResponses` in the exact shape), `test_s1_5_host_contributes_nothing_but_identity` | pass |
-| AC-2 condition: once answered, the API key question does not return | `test_s1_2_live_answers_survive_and_the_project_gains_its_keys`, `test_s2_2_answers_in_the_stub_survive_a_relaunch`, `test_s3_2_in_stack_answers_survive_a_relaunch`; no live API key prompt observed | pass (unit); live unverified |
+| AC-2 condition: once answered, the API key question does not return | `test_s1_2_live_answers_survive_and_the_project_gains_its_keys`, `test_s2_2_answers_in_the_stub_survive_a_relaunch`, `test_s3_2_in_stack_answers_survive_a_relaunch`; S4.1 (API key) manual, both paths, across a real container relaunch | pass |
 | AC-2 boundary: both paths, same stack and project | S2.2 and S3.2 tests above | pass |
 | AC-2 negative: a declined key stays declined | S1.2, S2.2 and S3.2 tests keep `rejected: ["def"]` unchanged | pass |
 | AC-3 condition: an in-stack answer survives a relaunch | `test_s2_2_answers_in_the_stub_survive_a_relaunch`, `test_s3_2_in_stack_answers_survive_a_relaunch` | pass |
@@ -125,12 +125,12 @@ Story criteria, by clause:
 ### Gauntlet (final fresh run)
 | Layer | Command | Status + result | Log |
 |---|---|---|---|
-| tests | `mise exec -- tools/run-tests.sh` | PASSED — 4361 collected (baseline 4329, +32), 0 failures, 267.0 s | gauntlet stdout, scratchpad `gauntlet-final.log` |
+| tests | `mise exec -- tools/run-tests.sh` | PASSED — 4361 collected (baseline 4329, +32), 0 failures, 239.2 s | gauntlet stdout, scratchpad `gauntlet-pass2.log` |
 | coverage | `mise exec -- uv run --extra dev pytest -q --cov=src --cov-branch --cov-fail-under=80` | PASSED — 86% total, branch on, threshold 80 | `.coverage` from this run |
-| types | pyright (manifest command) | PASSED — 0 errors | `gauntlet-final.log` |
-| lint | `mise exec -- uv run --extra dev ruff check src tests tools` | PASSED — 0 findings | `gauntlet-final.log` |
-| shellcheck | `mise exec -- sh -c 'shellcheck $(git ls-files "*.sh")'` | PASSED — 0 findings | `gauntlet-final.log` |
-| secrets | `mise exec -- gitleaks detect --no-banner --redact` | PASSED — 0 leaks | `gauntlet-final.log` |
+| types | pyright (manifest command) | PASSED — 0 errors | `gauntlet-pass2.log` |
+| lint | `mise exec -- uv run --extra dev ruff check src tests tools` | PASSED — 0 findings | `gauntlet-pass2.log` |
+| shellcheck | `mise exec -- sh -c 'shellcheck $(git ls-files "*.sh")'` | PASSED — 0 findings | `gauntlet-pass2.log` |
+| secrets | `mise exec -- gitleaks detect --no-banner --redact` | PASSED — 0 leaks | `gauntlet-pass2.log` |
 | property | inside tests: S1.12 | PASSED — 200 examples | tests layer |
 | mutation | `HARNESSED_DIR=$PWD mise exec -- uv run --extra dev mutmut run` on `jsonmerge.x_merge_claude_json*`, `x_seed_claude_project*`, `x_read_json_or_empty*`, `hosthome.x__seed_host_claude_json*`, `x__seed_host_claude_project*`, `x__write_json_atomic*`; `tests_dir` narrowed | SUBSTITUTED — run 1 (`dd4bcde` code): 131 mutants, 118 killed, 13 survived. Re-run of `_seed_host_claude_json` at `e903746` code: 37 of 37 killed (the 5 `now` survivors and the new `mcpServers` drop). 8 survivors remain, all named exclusions: `_write_json_atomic` mutants 4, 6, 13 and `read_json_or_empty` mutants 2, 4 change only the `encoding` argument, equivalent on this UTF-8 host with ASCII fixtures; `_write_json_atomic` mutants 8, 10, 11 change only `indent`, whitespace no reader depends on. `merge_claude_json` and `seed_claude_project`: 0 survivors. | scratchpad `mutmut-results.log`, `mutmut-r2-results.log` |
 | live | `live.yml` on the PR (`launcher.py` touched) | not yet run: it runs when the PR opens | — |
