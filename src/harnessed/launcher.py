@@ -31,6 +31,7 @@ from typing import Callable, Optional, TypeVar
 import typer
 from rich.markup import escape
 
+from . import acpproxy
 from . import acprelay
 from . import aoe
 from . import broker
@@ -4278,6 +4279,26 @@ def _prune_unlaunchable_omp_blocks(harness: str) -> None:
         )
 
 
+_ACP_DIRECT_ENV = "HARNESSED_ACP_DIRECT"
+"""Set on the proxy's relaunch child (#566): run the launch itself, never another proxy."""
+_ACP_PROJECT_ENV = "HARNESSED_ACP_PROJECT"
+"""The project the proxy chose for its relaunch child, used when no path argument was given."""
+
+
+def _acp_relaunch(project: Path, agent_start_folder: Optional[str]) -> tuple[subprocess.Popen[bytes], Path]:
+    """The proxy's launch: this same `container-acp` invocation again, as a child on pipes, with the
+    project in the env. The child runs the ordinary launch and exec handoff, `--rm` teardown included.
+    Returns the child and the directory the agent starts in, which the proxy puts in `cwd`."""
+    start_dir = _resolve_start_dir(project, agent_start_folder)
+    env = {**os.environ, _ACP_DIRECT_ENV: "1", _ACP_PROJECT_ENV: str(project)}
+    # unbounded: Popen returns at once, and the child IS the ACP session, alive as long as the client.
+    proc = subprocess.Popen(
+        [sys.executable, sys.argv[0], *sys.argv[1:]],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env,
+    )
+    return proc, start_dir
+
+
 @app.command("container-run")
 def container_run(
     ctx: typer.Context,
@@ -4360,6 +4381,20 @@ def container_run(
             f"{', '.join(_ACP_HARNESSES)}"
         )
         raise typer.Exit(2)
+    if acp_mode and not os.environ.get(_ACP_DIRECT_ENV):
+        # The proxy (#566) answers `initialize` before any of the work below, and runs it on the
+        # first session request by relaunching this very command with the project in the env.
+        code = acpproxy.serve(
+            harness,
+            path=Path(path).resolve() if path else None,
+            launch=lambda project: _acp_relaunch(project, agent_start_folder),
+            stdin=sys.stdin.buffer,
+            stdout=os.fdopen(acp_stdout() or 1, "wb", closefd=False),
+            stderr=sys.stderr,
+        )
+        raise typer.Exit(code)
+    if acp_mode and path is None:
+        path = os.environ.get(_ACP_PROJECT_ENV)
     stack, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
 
     if recipe:
@@ -4833,8 +4868,12 @@ app.command(
     help=(
         "Run a stack as an ACP agent on stdio, for an ACP client such as an editor (container "
         "backend).\n\n"
-        "    harnessed container-acp omp <path> --stack <name>\n\n"
-        "Same flags and grammar as `container-exec`, and the same non-interactive launch. Stdout "
+        "    harnessed container-acp omp [path] --stack <name>\n\n"
+        "Same flags and grammar as `container-exec`, and the same non-interactive launch. With no "
+        "path, each session's project is the `cwd` of its `session/new`, `session/load` or "
+        "`session/resume`, and each project gets its own agent, so one editor entry serves every "
+        "project; a path, when given, wins over that `cwd`. "
+        "`initialize` is answered at once, before the pod starts. Stdout "
         "carries only the harness's JSON-RPC: every launch message, and every line the attach "
         "shell prints before the harness starts, goes to stderr. Supported harnesses: "
         f"{', '.join(_ACP_HARNESSES)}."
@@ -5343,6 +5382,11 @@ def update_pins(
         help="What `--check` fails on: `any` outdated pin (default), or only bumps that cross a "
              "major version boundary — drift short of a major is still reported, just not fatal.",
     ),
+    no_rebuild: bool = typer.Option(
+        False, "--no-rebuild",
+        help="Skip the unpinnable-harness image rebuild that apply mode offers; bump pins only. "
+             "For the scheduled pin-upgrade workflow (GH-582), which must not build images.",
+    ),
 ) -> None:
     """Find outdated pins across the catalog and offer to bump them.
 
@@ -5365,7 +5409,8 @@ def update_pins(
     Unpinnable harnesses (claude, antigravity) are apply mode's other action: they have no pin
     to bump, so `update` offers to rebuild their images instead — the agent image and every
     previously-built stack image on that harness, cache bypassed so the vendor install actually
-    re-runs (see `_refresh_unpinnable_harness`). `--yes` accepts; `--check` never rebuilds.
+    re-runs (see `_refresh_unpinnable_harness`). `--yes` accepts; `--check` never rebuilds;
+    `--no-rebuild` skips the offer without touching the container runtime.
     """
     if fail_on not in ("any", "major"):
         raise typer.BadParameter("--fail-on must be 'any' or 'major'")
@@ -5421,7 +5466,10 @@ def update_pins(
     # update should UPGRADE claude (and every unpinnable harness), not merely report that it
     # tracks upstream — and its upgrade is a cache-bypassed image rebuild, not a manifest edit.
     if report.unpinnable:
-        _offer_unpinnable_refresh(report, yes)
+        if no_rebuild:
+            _out.print("skipped the unpinnable-harness rebuild (--no-rebuild)")
+        else:
+            _offer_unpinnable_refresh(report, yes)
 
     if not report.stale:
         _out.print("[green]All resolvable pins are up to date.[/green]")

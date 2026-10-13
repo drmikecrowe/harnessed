@@ -3,11 +3,17 @@
 
     tools/acp-smoke.py <project> --stack <name> [--prompt "Reply with OK"] [--harnessed CMD]
     tools/acp-smoke.py <project> --stack <name> --verb host-acp [--check-cwd <B>]
+    tools/acp-smoke.py <project> --stack <name> --no-path [--launch-timeout 60] [--check-cwd <B>]
 
 `--verb host-acp` (GH-571) runs `host-acp`, which takes no project path: it starts in a new empty
 folder, as an editor starts it, and the project reaches it only as the `session/new` cwd.
 `--check-cwd <B>` opens a second session in B, asks each session for its working directory, and
 fails when a reply does not name that session's folder. It needs agent credentials.
+`--no-path` (GH-566) runs `container-acp` the way `host-acp` runs: from a new empty folder, with no
+project path, so the project reaches it only as the `session/new` cwd. With `--launch-timeout 60` it
+holds `initialize` to Atlas's 60 s limit. Stderr is read as it passes through, and a line starting
+`harnessed: ACP initialize drift` fails the run: the proxy's canned `initialize` reply no longer
+matches the agent's own.
 
 Sends `initialize` and `session/new`, and with `--prompt` one `session/prompt` turn. Fails when any
 byte on stdout is not a JSON-RPC 2.0 message, when a request gets no result, or on timeout. Stderr
@@ -95,9 +101,11 @@ def _request(
 _CWD_QUESTION = "What is your current working directory? Reply with only the absolute path, nothing else."
 
 
-def _launch_argv(harnessed: str, verb: str, harness: str, project: Path, stack: str) -> list[str]:
-    """`container-acp` takes the project as its path; `host-acp` takes none (GH-571)."""
-    where = [str(project)] if verb == "container-acp" else []
+def _launch_argv(harnessed: str, verb: str, harness: str, project: Path, stack: str,
+                 no_path: bool = False) -> list[str]:
+    """`container-acp` takes the project as its path unless `no_path` (GH-566); `host-acp` takes
+    none (GH-571)."""
+    where = [str(project)] if verb == "container-acp" and not no_path else []
     return [*shlex.split(harnessed), verb, harness, *where, "--stack", stack]
 
 
@@ -112,7 +120,22 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--timeout", type=float, default=300, help="seconds to wait for later replies")
     ap.add_argument("--verb", choices=["container-acp", "host-acp"], default="container-acp")
     ap.add_argument("--check-cwd", type=Path, help="open a second session here and check both cwds")
+    ap.add_argument("--no-path", action="store_true",
+                    help="start container-acp with no project path, in a new empty folder (GH-566)")
     return ap
+
+
+_DRIFT = "harnessed: ACP initialize drift"
+_STDERR_WAIT = 30  # seconds to wait for the launched process's stderr to close
+
+
+def _watch_stderr(stream, drift: list[str]) -> None:
+    """Pass the launched process's stderr through, and keep every drift line (GH-566 S5.3)."""
+    for line in stream:
+        sys.stderr.write(line)
+        sys.stderr.flush()
+        if line.startswith(_DRIFT):
+            drift.append(line.strip())
 
 
 def _cwd_matches(reply: str, folder: Path) -> bool:
@@ -138,16 +161,22 @@ def _check_cwd(proc, lines: queue.Queue, sessions: list[tuple[str, Path]], timeo
 
 
 def main() -> int:
-    args = _parser().parse_args()
+    ap = _parser()
+    args = ap.parse_args()
+    if args.no_path and args.verb != "container-acp":
+        ap.error("--no-path applies to container-acp only; host-acp never takes a path")
 
     project = args.project.resolve()
-    argv = _launch_argv(args.harnessed, args.verb, args.harness, project, args.stack)
-    # host-acp starts where the editor starts it, never in the project.
-    launch_dir = tempfile.mkdtemp(prefix="acp-smoke-launch-") if args.verb == "host-acp" else None
+    argv = _launch_argv(args.harnessed, args.verb, args.harness, project, args.stack, args.no_path)
+    # host-acp, and container-acp with --no-path, start where the editor starts them, never in the
+    # project.
+    pathless = args.verb == "host-acp" or args.no_path
+    launch_dir = tempfile.mkdtemp(prefix="acp-smoke-launch-") if pathless else None
     print(f"run: {shlex.join(argv)}" + (f" (in {launch_dir})" if launch_dir else ""), file=sys.stderr)
     try:
         proc = subprocess.Popen(
-            argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1, cwd=launch_dir,
+            argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            bufsize=1, cwd=launch_dir,
         )
     except OSError as exc:
         # Before the `try` whose `finally` removes the launch folder, so remove it here (PR #572).
@@ -158,6 +187,9 @@ def main() -> int:
         raise SystemExit("FAIL: could not open pipes to harnessed")
     lines: queue.Queue = queue.Queue()
     threading.Thread(target=_reader, args=(proc.stdout, lines), daemon=True).start()
+    drift: list[str] = []
+    errs = threading.Thread(target=_watch_stderr, args=(proc.stderr, drift), daemon=True)
+    errs.start()
     started = time.monotonic()
     try:
         _request(proc, lines, 1, "initialize", {
@@ -208,6 +240,12 @@ def main() -> int:
         raise SystemExit("FAIL: stdout did not close within 30s") from None
     if proc.returncode != 0:
         raise SystemExit(f"FAIL: harnessed exited with {proc.returncode}")
+    errs.join(timeout=_STDERR_WAIT)
+    if errs.is_alive():
+        # Something still holds stderr, so a drift line may yet arrive (PR #599).
+        raise SystemExit(f"FAIL: stderr still open after {_STDERR_WAIT}s; the drift check would be incomplete")
+    if drift:
+        raise SystemExit("FAIL: the canned initialize reply drifted from the agent's own: " + "; ".join(drift))
     print("PASS: every stdout byte parsed as JSON-RPC", file=sys.stderr)
     return 0
 

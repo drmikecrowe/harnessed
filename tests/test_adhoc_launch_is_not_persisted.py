@@ -444,6 +444,9 @@ class TestGlobalLaunchersAtLaunch:
         assert len(seen) == 1, "the launch still reached the harness exec"
 
     def test_s3_3_container_acp_writes_no_local_launcher(self, tmp_path, monkeypatch):
+        # GH-566: the proxy launches only when a session opens, in a relaunch child that runs with
+        # HARNESSED_ACP_DIRECT=1. This test drives that child, which is where the launch now runs.
+        monkeypatch.setenv("HARNESSED_ACP_DIRECT", "1")
         result, bin_dir, project, rows = self._container(tmp_path, monkeypatch, "container-acp")
         assert result.exit_code == 0, result.output
         assert list(project.iterdir()) == []

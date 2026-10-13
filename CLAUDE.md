@@ -166,8 +166,9 @@ merged four defects because nobody ran it. Push the branch, open the PR, read bo
 (`gh workflow run live.yml --ref <your-branch>`) is now only for evidence on a change the list does
 not cover, or before a branch has a PR.
 
-**Keep this table and the `changes` job in sync.** They are one filter written twice; the job is
-what actually runs.
+**Keep this table and the `changes` job in sync.** They are one filter written three times: this
+table, the job, and `LIVE_TRIGGERS` in `tools/pin-upgrade.sh`, which
+`tests/test_ci_pin_upgrade_workflow.py` holds equal to the job. The job is what actually runs.
 
 | Trigger | Why the suite cannot see it |
 | --- | --- |
