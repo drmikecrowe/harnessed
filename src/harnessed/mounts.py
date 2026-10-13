@@ -187,6 +187,7 @@ def _claude_config_seed_mount(
         isolated_auth=isolated_auth,
         now=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
     )
+    # In place, never os.replace: the container bind-mounts this inode; a new one orphans it (GH-594).
     stub.write_text(json.dumps(merged), encoding="utf-8")
     return ["-v", f"{stub}:{_CONTAINER_HOME_STR}/.claude.json:rw"]
 
