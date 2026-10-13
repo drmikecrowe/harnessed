@@ -741,6 +741,15 @@ class TestTheMutationRun:
         seen = [m["params"]["line"] for m in msgs if m.get("method") == "_fake/initialized"]
         assert seen == [init]
 
+    def test_an_initialize_notification_is_replayed_as_a_request(self, tmp_path, project):  # S4.1, PR #599
+        # A notification is owed no reply; replayed as is, the handshake would wait for the agent to exit.
+        note = {"jsonrpc": "2.0", "method": "initialize", "params": {"protocolVersion": 1}}
+        fake = _Fake(tmp_path, init=_real("omp"))
+        _, msgs, _ = _serve("omp", [note, _new(2, project)], fake)
+        assert _reply(msgs, 2)["result"]["sessionId"] == "proj-s1"
+        seen = [m["params"]["line"] for m in msgs if m.get("method") == "_fake/initialized"]
+        assert seen == [{**note, "id": "harnessed-initialize"}]
+
     def test_with_no_initialize_the_agent_gets_a_well_formed_one(self, tmp_path, project):  # S4.1
         fake = _Fake(tmp_path, init=_real("omp"))
         _, msgs, _ = _serve("omp", [_new(2, project)], fake)

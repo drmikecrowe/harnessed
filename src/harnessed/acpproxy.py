@@ -366,6 +366,8 @@ class _Proxy:
             "jsonrpc": "2.0", "id": _SYNTHETIC_INIT_ID, "method": "initialize",
             "params": {"protocolVersion": 1},
         }
+        if "id" not in init:  # a notification is owed no reply; ask as a request (PR #599)
+            init = {**init, "id": _SYNTHETIC_INIT_ID}
         with child.lock:
             if not child.write(json.dumps(init).encode()):
                 return False
