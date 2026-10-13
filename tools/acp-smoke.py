@@ -199,11 +199,13 @@ def main() -> int:
         print(f"ok: initialize answered in {time.monotonic() - started:.1f}s", file=sys.stderr)
         session = _request(proc, lines, 2, "session/new", {"cwd": str(project), "mcpServers": []}, args.timeout)
         if args.prompt:
+            reply: list = []
             result = _request(proc, lines, 3, "session/prompt", {
                 "sessionId": session["sessionId"],
                 "prompt": [{"type": "text", "text": args.prompt}],
-            }, args.timeout)
+            }, args.timeout, reply)
             print(f"ok: stopReason={result.get('stopReason')}", file=sys.stderr)
+            print(f"reply: {''.join(reply)}", file=sys.stderr)
         if args.check_cwd:
             second = args.check_cwd.resolve()
             other = _request(proc, lines, 4, "session/new", {"cwd": str(second), "mcpServers": []}, args.timeout)

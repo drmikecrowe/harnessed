@@ -18,6 +18,7 @@ import shutil
 
 from collections.abc import Generator
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from io import StringIO
 from pathlib import Path
 
@@ -28,7 +29,7 @@ from . import paths
 from .__init__ import __version__
 from .assemble import compute_recipe_hash
 from .console import _err
-from .jsonmerge import carry_live_permissions
+from .jsonmerge import carry_live_permissions, merge_claude_json, read_json_or_empty, seed_claude_project
 from .setupenv import _stack_tools_dirs
 
 
@@ -193,7 +194,8 @@ def _materialize_host_home(prof: Path, home: Path, *, fingerprint: str | None = 
     # BEFORE the rmtree: it would delete a legacy per-project dir without scrubbing its credential.
     _migrate_legacy_host_homes(home)
     if home.exists():
-        _clear_host_home_except_runtime(home)
+        # `.claude.json` is Claude Code's live answer store, not recipe content (GH-594).
+        _clear_host_home_except_runtime(home, keep=(".claude.json",))
     home.mkdir(parents=True, exist_ok=True)
     src_claude = prof / ".claude"
     if src_claude.is_dir():
@@ -439,8 +441,8 @@ def _share_host_claude_state(home: Path) -> None:
         transcripts, todos, and resumable sessions persist and also show up in your normal claude;
       * the auth token (.credentials.json) → SYMLINKED, so a refresh in either place propagates —
         one login everywhere, no stale copy.
-    The account snapshot (.claude.json) is COPIED (skips onboarding) so the stack's own writes don't
-    leak back into your global claude state. Config (skills/commands/rules/agents/CLAUDE.md/settings/
+    The account file (.claude.json) is the stack's own, merged by `_seed_host_claude_json`, so the
+    stack's writes don't leak back into your global claude state. Config (skills/commands/rules/agents/CLAUDE.md/settings/
     .mcp.json) stays isolated per-stack (copied from the profile by _materialize_host_home)."""
     real = _host_claude_source()
     if real.resolve() == home.resolve():
@@ -466,17 +468,62 @@ def _share_host_claude_state(home: Path) -> None:
             stack_cred.unlink(missing_ok=True)
     elif cred.exists():
         _relink(stack_cred, cred)  # live token, shared
-    # .claude.json (account/onboarding) lives NEXT TO the config dir, not inside it: at
-    # $CLAUDE_CONFIG_DIR/.claude.json when that's set, else $HOME/.claude.json — NOT ~/.claude/.claude.json.
-    #
-    # Through `_host_claude_config_override`, so a nested launch reads the USER's account snapshot
-    # and not the parent stack's. Launch a stack from inside ITSELF and the unguarded read made
-    # src and dst the same path — `shutil.copy2` raises `SameFileError` and the launch dies. That
-    # was unreachable until the guard above stopped `_share_host_claude_state` returning early on
-    # the identity check, so the first fix for the nesting bug is what exposed this half of it.
+    # .claude.json is not shared: `_seed_host_claude_json` merges it, with the project and the
+    # stack's isolated_auth this function does not receive (GH-594).
+
+
+def _seed_host_claude_json(home: Path, project: str | None, *, isolated_auth: bool) -> None:
+    """Merge the stack's own `.claude.json` over its live copy (GH-594).
+
+    It used to be a fresh `shutil.copy2` of the user's whole file on every launch, so no answer
+    given in the stack persisted, and the stack carried the user's `projects` and `mcpServers`.
+    `merge_claude_json` keeps the live file and takes only the identity pair from the user's.
+
+    The user's file lives NEXT TO the config dir, not inside it: at $CLAUDE_CONFIG_DIR/.claude.json
+    when that's set, else $HOME/.claude.json — NOT ~/.claude/.claude.json. Through
+    `_host_claude_config_override`, so a nested launch reads the USER's account and not the parent
+    stack's.
+    """
     acct = (_host_claude_config_override() or Path.home()) / ".claude.json"
-    if acct.is_file():
-        shutil.copy2(acct, home / ".claude.json")  # snapshot account → skips onboarding, isolated writes
+    target = home / ".claude.json"
+    merged = merge_claude_json(
+        read_json_or_empty(target), read_json_or_empty(acct), project,
+        isolated_auth=isolated_auth,
+        now=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+    )
+    # A stack launched before GH-594 holds a whole copy of the user's file, servers included. The
+    # stack's own servers come from `<home>/.mcp.json`, so this key is never the stack's.
+    merged.pop("mcpServers", None)
+    _write_json_atomic(target, merged)
+
+
+def _seed_host_claude_project(home: Path, project: str) -> None:
+    """Seed folder trust for a `host-acp` session folder, from `project-setup` (GH-594 Decide 2).
+
+    An agent may be running on this home, so this is the only write `project-setup` makes to it:
+    the trust keys under `projects[project]`, re-read just before an atomic replace. A missing or
+    unreadable file is left alone, since only the launch writes the whole file.
+    """
+    target = home / ".claude.json"
+    # Not `read_json_or_empty`: it turns a half-written file into `{}`, which would then replace it.
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return
+    if not isinstance(data, dict):
+        return
+    _write_json_atomic(target, seed_claude_project(data, project))
+
+
+def _write_json_atomic(path: Path, data: dict) -> None:
+    """Write through a temp file and `os.replace`, so a reader never sees half a file."""
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 # --- omp (#307) ----------------------------------------------------------------

@@ -131,6 +131,39 @@ def test_pr572_a_launch_that_fails_to_start_leaves_no_launch_folder(tmp_path):
     assert list(temp.iterdir()) == [], "the failed launch left its launch folder behind"
 
 
+_FAKE_REPLYING = r"""
+import json, sys
+for raw in sys.stdin:
+    m = json.loads(raw)
+    if m["method"] == "session/prompt":
+        sys.stdout.write(json.dumps({"jsonrpc": "2.0", "method": "session/update", "params": {
+            "sessionId": "s0", "update": {"sessionUpdate": "agent_message_chunk",
+                                          "content": {"type": "text", "text": "GH-594 reply"}}}}) + "\n")
+        result = {"stopReason": "end_turn"}
+    elif m["method"] == "session/new":
+        result = {"sessionId": "s0"}
+    else:
+        result = {"protocolVersion": 1}
+    sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": result}) + "\n")
+    sys.stdout.flush()
+"""
+
+
+def test_gh594_a_prompt_turn_prints_the_agents_reply(tmp_path):
+    """GH-594 S4.2 asks what the agent answered; `--prompt` checked only that a turn ended."""
+    fake = tmp_path / "fake_harnessed.py"
+    fake.write_text(_FAKE_REPLYING)
+    project = tmp_path / "proj"
+    project.mkdir()
+    proc = subprocess.run(
+        [sys.executable, str(_SCRIPT), str(project), "--stack", "s", "--verb", "host-acp",
+         "--prompt", "say it", "--harnessed", f"{sys.executable} {fake} --"],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "reply: GH-594 reply" in proc.stderr
+
+
 # GH-566 S7: `--no-path` runs container-acp the way an editor does, and a drift line fails the run.
 
 _FAKE_PROXY = r"""

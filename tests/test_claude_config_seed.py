@@ -8,6 +8,8 @@ a token, and must be written per-instance (not into the host ~/.claude.json).
 import json
 from pathlib import Path
 
+import pytest
+
 from harnessed import launcher
 
 CONTAINER_HOME = launcher._CONTAINER_HOME_STR
@@ -80,3 +82,117 @@ class TestSeedStub:
         shadows nothing it wants (#314)."""
         _host(monkeypatch, tmp_path, {"oauthAccount": {"x": 1}, "userID": "u"})
         assert launcher._claude_config_seed_mount("omp", "inst-omp") == []
+
+
+class TestStubMergesOverTheLiveFile:
+    """GH-594 S2. The stub path is per instance (stack, harness, project), but it was rewritten on
+    every launch, so every answer given inside the stack was lost on the next one."""
+
+    P = "/work/proj"
+    TRUST = (
+        "hasTrustDialogAccepted",
+        "hasClaudeMdExternalIncludesApproved",
+        "hasClaudeMdExternalIncludesWarningShown",
+    )
+
+    def _stub_path(self, tmp_path, inst):
+        return tmp_path / "state" / "harnessed" / inst / "claude.json"
+
+    def test_s2_1_first_launch_seeds_trust_for_the_project(self, monkeypatch, tmp_path):
+        _host(monkeypatch, tmp_path, None)
+        mount = launcher._claude_config_seed_mount("claude", "inst-a", project_path=self.P)
+        stub = _stub_from_mount(mount)
+        assert stub["projects"] == {self.P: dict.fromkeys(self.TRUST, True)}
+        assert stub["hasCompletedOnboarding"] is True
+        assert mount[1].endswith(f":{CONTAINER_HOME}/.claude.json:rw")
+
+    def test_s2_2_answers_in_the_stub_survive_a_relaunch(self, monkeypatch, tmp_path):
+        _host(monkeypatch, tmp_path, None)
+        stub_path = self._stub_path(tmp_path, "inst-b")
+        stub_path.parent.mkdir(parents=True)
+        stub_path.write_text(json.dumps({
+            "customApiKeyResponses": {"approved": [], "rejected": ["def"]},
+            "projects": {self.P: {"enabledMcpjsonServers": ["srv"]}},
+        }))
+        stub = _stub_from_mount(
+            launcher._claude_config_seed_mount("claude", "inst-b", project_path=self.P)
+        )
+        assert stub["customApiKeyResponses"] == {"approved": [], "rejected": ["def"]}
+        assert stub["projects"][self.P]["enabledMcpjsonServers"] == ["srv"]
+        assert stub["projects"][self.P]["hasTrustDialogAccepted"] is True
+
+    def test_s2_3_an_unreadable_stub_is_rebuilt(self, monkeypatch, tmp_path):
+        _host(monkeypatch, tmp_path, None)
+        stub_path = self._stub_path(tmp_path, "inst-c")
+        stub_path.parent.mkdir(parents=True)
+        stub_path.write_text("{not json")
+        stub = _stub_from_mount(
+            launcher._claude_config_seed_mount("claude", "inst-c", project_path=self.P)
+        )
+        assert stub["hasCompletedOnboarding"] is True
+        assert stub["projects"][self.P]["hasTrustDialogAccepted"] is True
+
+    def test_s2_4_the_container_backend_passes_the_project(self, monkeypatch, tmp_path):
+        from types import SimpleNamespace
+
+        from harnessed.backend import LaunchSpec
+
+        seen = {}
+
+        class _Stop(Exception):
+            pass
+
+        def _capture(harness, inst, *, isolated_auth=False, project_path=None):
+            seen.update(harness=harness, inst=inst, isolated_auth=isolated_auth, project=project_path)
+            raise _Stop
+
+        monkeypatch.setattr(launcher, "_build_mount_args", lambda *a, **k: [])
+        monkeypatch.setattr(launcher, "_claude_config_seed_mount", _capture)
+        b = launcher.ContainerBackend(
+            "podman", "inst-d", "pod-d", tmp_path, "img", tmp_path, [], [],
+            SimpleNamespace(isolated_auth=True), stack_from_overlay=False, headless=True,
+        )
+        b.config_volume, b.tools_volume = "cfg", "tools"
+        project = tmp_path / "proj"
+        try:
+            b.materialize_config(LaunchSpec(stack="s", harness="claude", project_path=project))
+        except _Stop:
+            pass
+        assert seen == {"harness": "claude", "inst": "inst-d", "isolated_auth": True, "project": str(project)}
+
+
+def test_gh594_container_first_start_time_is_now_in_utc_iso(monkeypatch, tmp_path, utc_plus_14):
+    """The container twin of the host test: same `now` expression, same unpinned value."""
+    import re
+    from datetime import datetime, timezone
+
+    _host(monkeypatch, tmp_path, None)
+    stamp = _stub_from_mount(launcher._claude_config_seed_mount("claude", "inst-t"))["firstStartTime"]
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.000Z", stamp)
+    seeded = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%S.000Z").replace(tzinfo=timezone.utc)
+    assert abs((datetime.now(timezone.utc) - seeded).total_seconds()) < 120
+
+
+@pytest.fixture
+def utc_plus_14(monkeypatch):
+    """Run the test 14 hours ahead of UTC, so a local-time clock cannot pass for a UTC one. `TZ`
+    alone changes nothing in a running process; `time.tzset()` re-reads it, both ways."""
+    import time
+
+    monkeypatch.setenv("TZ", "Pacific/Kiritimati")
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()
+
+
+def test_pr601_container_reads_the_account_file_beside_claude_config_dir(monkeypatch, tmp_path):
+    """PR #601 review: the host path reads `$CLAUDE_CONFIG_DIR/.claude.json` when that is set; the
+    container stub read only `~/.claude.json`, so the two paths seeded different identities."""
+    _host(monkeypatch, tmp_path, None)
+    cfg = tmp_path / "custom-claude"
+    cfg.mkdir()
+    (cfg / ".claude.json").write_text(json.dumps({"oauthAccount": {"emailAddress": "cfg@example.com"}}))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+    stub = _stub_from_mount(launcher._claude_config_seed_mount("claude", "inst-cfg"))
+    assert stub["oauthAccount"] == {"emailAddress": "cfg@example.com"}
