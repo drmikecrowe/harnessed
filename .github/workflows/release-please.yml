@@ -42,5 +42,10 @@ jobs:
           PR: ${{ steps.release.outputs.pr }}
         run: |
           BRANCH=$(jq -r '.headBranchName // empty' <<<"$PR")
-          [ -n "$BRANCH" ] || exit 0
+          if [ -z "$BRANCH" ]; then
+            if [ -n "${PR//[[:space:]]/}" ]; then
+              echo "::warning::release-please pr output has no headBranchName; test.yml not dispatched"
+            fi
+            exit 0
+          fi
           gh workflow run test.yml --ref "$BRANCH"
