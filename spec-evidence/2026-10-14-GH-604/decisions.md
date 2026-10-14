@@ -48,3 +48,6 @@ Changes: S5.3 cites the ruling; no scenario changed.
 ## Revisions
 ### Revision 1. Decide 1 B and Decide 2 A ruled
 mcrowe ruled both on 2026-10-14; SPEC.md updated in place as listed under each Decide call.
+### Revision 2. Gate 1a round 1 fixes
+Intent review, round 2. Accepted: S5 now says the shadow warning fires only on a version other than the pin; new S1.5 covers the no-terminal INFO line for a mise adapter. Declined: "drop the mise carve-out" (mcrowe ruled Decide 2 A with that cost in view, and AC-4's negative names only an unrecognised location). Declined: "say why the `pnpm bin -g` spawn is acceptable on host-acp" (mcrowe ruled Decide 1 B with that cost stated; it runs only on host-acp's off-pin warning path, and Known limits records it).
+PR-SCOPE on S5.6: kept, and it now cites the AC-4 clause it serves (the positive clause for the no-adapter case); a citation, so no question. PR-REFERENT on S5.5: quoted the failed-install warning's text and named `test_s6_6_a_failed_install_warns_and_builds_on`.

@@ -40,6 +40,7 @@ Terms. *Pin*: `(package, version)` from `_acp_adapter_pin()`, today `@agentclien
 - S1.2 Given the same stub, when `host-acp claude --stack <s>` runs, then the warning on stderr names the mise command and does not contain `npm i -g`, and stdout is empty.
 - S1.3 (boundary) Given a stub reporting 0.85.1 at `<mise data dir>/shims/claude-agent-acp`, when `build` and `host-acp claude` run, then the offer and the warning each name the mise command.
 - S1.4 (boundary) Given `MISE_DATA_DIR` unset and `XDG_DATA_HOME=<tmp>/data`, and a stub at `<tmp>/data/mise/installs/npm-agentclientprotocol-claude-agent-acp/0.85.1/bin/claude-agent-acp`, when `build` runs, then the offer names the mise command.
+- S1.5 Given the S1.1 stub and no terminal, when `build <stack> claude` runs, then the INFO line names the mise command and nothing is run.
 
 ### S2. No adapter gets the pnpm command
 - S2.1 Given no `claude-agent-acp` on PATH, when `build <stack> claude` runs with a terminal, then the offer names the pnpm command; answering `y` runs exactly `["pnpm", "add", "-g", "<package>@<pin version>"]`.
@@ -56,12 +57,13 @@ Terms. *Pin*: `(package, version)` from `_acp_adapter_pin()`, today `@agentclien
 - S4.1 Given a stub reporting 0.85.1 at `<tmp>/npm/bin/claude-agent-acp`, outside the mise data dir and the pnpm dir, when `build` and `host-acp claude` run, then the offer and the warning each name the pnpm command.
 
 ### S5. After an install, the version is checked again
+The shadow warning fires only when the re-checked version is not the pin version; a re-check that reads the pin prints nothing.
 - S5.1 Given the S2, S3 or S4 setup, when the user answers `y`, the install exits 0, and the stub on PATH now reports the pin version, then `build` prints no shadow warning and exits 0; a second `build` makes no offer.
 - S5.2 (negative) Given the S4 setup with the stub reporting 0.80.0, when the user answers `y`, the install exits 0, and the stub still reports 0.80.0, then `build` prints one yellow warning on stderr naming `<tmp>/npm/bin/claude-agent-acp` and `0.80.0` and exits 0.
 - S5.3 (boundary) Given the S1.1 setup, when the user answers `y` and the mise command exits 0, then `build` runs no `--version` check after the install and prints no shadow warning (Decide 2 A, mcrowe, 2026-10-14). A second `build`, with a stub reporting the pin version first on PATH, makes no offer.
 - S5.4 (boundary) Given the S4 setup, when the user answers `c`, types a command, and it exits 0 while the stub still reports 0.85.1, then `build` prints the same shadow warning as S5.2.
-- S5.5 (negative) Given any setup, when the install exits nonzero, then `build` prints the existing failed-install warning, prints no shadow warning, and exits 0.
-- S5.6 (negative) Given the S4 setup, when the install exits 0 and no `claude-agent-acp` is on PATH afterward, then `build` prints one warning that says the adapter is not on PATH, and exits 0.
+- S5.5 (negative) Given any setup, when the install exits nonzero, then `build` prints the existing failed-install warning, `warning: the ACP adapter install failed (<exit N or the OS error>): <command>` (pinned today by `test_s6_6_a_failed_install_warns_and_builds_on`), prints no shadow warning, and exits 0.
+- S5.6 (negative) Given the S4 setup, when the install exits 0 and no `claude-agent-acp` is on PATH afterward, then `build` prints one warning that says the adapter is not on PATH, and exits 0. This serves AC-4's positive clause for the no-adapter case ("the next build makes no offer"): when `pnpm add -g` puts the adapter in a dir that is not on PATH, that clause cannot hold, and this warning is what tells the user why.
 
 ## Must NOT
 - A failed or shadowed install never fails `build`: it exits 0 (existing `test_s6_6_a_failed_install_warns_and_builds_on`; S5.2, S5.5, S5.6).
