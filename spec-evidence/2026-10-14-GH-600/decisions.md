@@ -20,10 +20,14 @@
 7. `container-acp`, `container-run` and `container-exec` are one function, `container_run`, split by `ctx.info_name` (`launcher.py:4367`). `host-exec` is an alias of `host_run` (`launcher.py:6406`). `install` is `install_stack(stack, harness)` at `launcher.py:5616`.
 8. Marker results from 2026-10-13 (story, GH-594 Revision 4 and 5): a regular file in the stack home `rules/` reaches a `host-acp` session; an `@`-import and a symlinked rule do not.
 9. `catalog/agents/claude/agent.yaml:10` pins `claude-agent-acp` at 0.89.1. The issue's runs observed 0.85.1.
+10. Step 0, run 2026-10-14 on `hostspike`, `host-acp`, claude-agent-acp 0.89.1. The host was moved from 0.85.1 to the pin with `mise use -g`, with the engineer's yes. Logs are in `work/probe-a.log` and `work/probe-b.log`.
+    - Probe A asked for the sentence just before "Approved coordinator-backed", which is in `active.md` only. The reply was `NOT LOADED`, so 0.89.1 still expands no `@`-import and the work goes ahead.
+    - Probe B used a random marker in `<host home>/rules/harnessed-imports/probe.md`. The reply was the exact marker `GH600-03f20cca27c7`, so a rules subdirectory is loaded and Decide 1 A stands.
+    - Probe B's control line from the main body of `~/.claude/CLAUDE.md` ("Switch guidance depth with ...") came back verbatim. The file is loaded, so probe A's negative is real. The probe file was removed afterwards.
 
 ## Gate 1 deferred items
 - SR-DEFER "Whether `container-acp` loads the stack's rules from the config volume the same way": fact 3 answers how the rules reach the container (the volume plus the ro mount). S2.4 proves loading live.
-- SR-DEFER "Whether a newer `claude-agent-acp` ... expands imports": step 0 of the setup plan checks it on the pin in fact 9.
+- SR-DEFER "Whether a newer `claude-agent-acp` ... expands imports": step 0 checked it on the pin in fact 9, and 0.89.1 does not expand imports (fact 10). The upstream note is drafted in `work/upstream-note.md`. Filing it waits for the engineer's yes.
 
 ## Intent review
 - Gap 1 (no container refresh step): accepted. S3.4 names `ContainerBackend.materialize_config` as the step that refreshes and prunes the copies dir, and Touches says so.
@@ -70,3 +74,5 @@ Changes: Known limits state claude only; Touches names no omp site.
 The engineer ruled all three Decide calls A on 2026-10-14 (mcrowe), after the intent review. SPEC.md's Orientation and Summary now state the rulings.
 ### Revision 2. Gate 1a round 1: S6.5 output defined
 Gate 1a round 1 found S6.5 read two ways (PR-READINGS): `build --reask-imports` with no terminal could print the warning or nothing. The engineer ruled on 2026-10-14 (mcrowe): build prints its own warning on stderr and exits 0. S6.5 now gives the text and the stream. Two judge gaps were folded in as rewording: the Scenarios terms now define `y`, `n` and `i`, and setup step 0 drafts the upstream note the story's author note asks for.
+### Revision 3. Touches missed the module-boundaries ledger
+The new module prints through the shared console, so `tests/test_module_boundaries.py::test_the_ledger_lists_every_extracted_module` requires it in `EXTRACTED`. It is listed there, and it imports nothing from launcher. SPEC.md's Touches now names the file. This was found when the first baseline run picked up the new module from the working tree. That baseline was discarded and rerun in a detached worktree of the approval commit.

@@ -100,6 +100,7 @@ Terms. *Import file*: `~/.claude/CLAUDE.md`, resolved from `$HOME` at call time.
 - `src/harnessed/launcher.py`: `build` gains `--reask-imports` and the ask; `install_stack`, `host_run` and `container_run` (non-ACP verbs) ask; `_host_launch_plan` syncs the owned dir after the settings propagation; `host_acp` warns; `ContainerBackend.materialize_config` refreshes the copies dir, then adds the ro directory mount.
 - `tests/test_claude_imports.py` (new): S1, S3.1, S3.3, S3.4, S4, S5, S6, S7, S2.1, S2.2, S2.5.
 - `tests/test_launch_host.py`: S2.1 and S3.1 through `_host_launch_plan`.
+- `tests/test_module_boundaries.py`: `claude_imports.py` joins the ledger of modules that share launcher's console and must never import launcher (added in build; decisions Revision 3).
 
 ## Documentation
 - `--reask-imports` help text in `build`. The `harnessed-catalog` skill and the wiki guides need no change in this PR. A wiki note in `docs/guides/troubleshooting.md` is a separate delivery, and it is named in the PR body.
