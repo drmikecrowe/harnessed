@@ -2256,3 +2256,54 @@ def utc_plus_14(monkeypatch):
     yield
     monkeypatch.undo()
     time.tzset()
+
+
+class TestClaudeImportsOnTheHostPlan:
+    """GH-600 S2.1, S3.1: the host plan syncs `rules/harnessed-imports/` on EVERY launch, after the
+    materialize that may rmtree the home, and even when the fingerprint gate skipped the rebuild."""
+
+    def _setup(self, monkeypatch, tmp_path):
+        from harnessed import claude_imports
+
+        for var, sub in (("HOME", "home"), ("XDG_STATE_HOME", "state")):
+            (tmp_path / sub).mkdir()
+            monkeypatch.setenv(var, str(tmp_path / sub))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+        monkeypatch.setattr(launcher, "_host_stack_fingerprint", lambda stack, recipes: "fp-fixed")
+        prof = paths.profile_dir("s", "claude")
+        prof.mkdir(parents=True)
+        _fake_profile(prof)
+        target = tmp_path / "home" / "active.md"
+        target.write_text("MARKER-old\n")
+        (tmp_path / "home" / ".claude").mkdir()
+        (tmp_path / "home" / ".claude" / "CLAUDE.md").write_text("@~/active.md\n")
+        claude_imports.write_answer("s", "y")
+        return target
+
+    def _owned(self) -> dict:
+        owned = paths.host_home("s", "claude") / "rules" / "harnessed-imports"
+        return {p.name: p.read_text() for p in owned.iterdir()}
+
+    def test_s2_1_the_plan_writes_a_regular_copy(self, monkeypatch, tmp_path):
+        self._setup(monkeypatch, tmp_path)
+        home, _argv, _cwd, _rebuilt = launcher._host_launch_plan("s", "claude", tmp_path, recipes=[])
+        files = list((home / "rules" / "harnessed-imports").iterdir())
+        assert len(files) == 1 and files[0].is_file() and not files[0].is_symlink()
+        assert files[0].read_text() == "MARKER-old\n"
+
+    def test_s3_1_an_unchanged_stack_still_gets_the_new_content(self, monkeypatch, tmp_path):
+        target = self._setup(monkeypatch, tmp_path)
+        home, _argv, _cwd, _rebuilt = launcher._host_launch_plan("s", "claude", tmp_path, recipes=[])
+        hosthome._stamp_host_home(home, "fp-fixed")  # what a completed launch records
+        target.write_text("MARKER-new\n")
+        _home, _argv, _cwd, rebuilt = launcher._host_launch_plan("s", "claude", tmp_path, recipes=[])
+        assert rebuilt is False  # the fingerprint gate held; the sync ran anyway
+        assert list(self._owned().values()) == ["MARKER-new\n"]
+
+    def test_imports_never_enter_the_fingerprint(self, monkeypatch, tmp_path):
+        """Must NOT: a `gortex instructions switch` must not rebuild the stack."""
+        import inspect as _inspect
+
+        src = _inspect.getsource(launcher._host_stack_fingerprint)
+        assert "claude_imports" not in src and "CLAUDE.md" not in src

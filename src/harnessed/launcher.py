@@ -35,6 +35,7 @@ from . import acpproxy
 from . import acprelay
 from . import aoe
 from . import broker
+from . import claude_imports
 from . import dynstack
 from . import emit
 from . import launchscript
@@ -2635,6 +2636,9 @@ def _host_launch_plan(
     settings = prof / "settings.json"
     if settings.is_file():
         _propagate_host_settings(settings, home / "settings.json")
+    # Every launch, after the materialize that may rmtree `home` (GH-600): the import targets change
+    # with no stack change, so the fingerprint gate cannot cover them.
+    claude_imports.sync_owned_dir(stack, home / "rules")
     # Content-only: no --mcp-config / --strict-mcp-config — that flag wires the (absent) hub.
     argv = ["claude"]
     return home, argv, project_path, rebuilt
@@ -3630,6 +3634,9 @@ def host_run(
     """
     _require_supported_harness(harness)
     stack_name, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
+    # Not under `host-exec`: nobody is at it, and `_launch_host` only declares exec mode later.
+    if harness == "claude" and ctx.info_name != "host-exec":
+        claude_imports.ask(stack_name)
     try:
         _launch_host(
             stack_name, harness, path, rm=rm, extra=_passthrough,
@@ -3690,6 +3697,7 @@ def host_acp(
         raise typer.Exit(1)
     if harness == "claude":
         _require_acp_adapter()
+        claude_imports.acp_warning(stack)
     _launch_host(
         stack, harness, None, exec_mode=True, no_strict_mcp=no_strict_mcp_config, acp=True,
     )
@@ -3801,6 +3809,12 @@ class ContainerBackend(ExecutionBackend):
         self.mount_args = _build_mount_args(
             spec.harness, self.prof, self.mount_path, self.config_volume, self.tools_volume
         )
+        # Over the config volume, not into it: the volume only ever gains files, so a copy whose
+        # import was removed would outlive it there (GH-600).
+        if spec.harness == "claude":
+            self.mount_args += claude_imports.mount_args(
+                spec.stack, f"{_CONTAINER_HOME_STR}/.claude/rules/{claude_imports.OWNED_DIR}"
+            )
         # Seed a token-free ~/.claude.json stub so Claude skips onboarding (auth = the token/credential).
         self.mount_args += _claude_config_seed_mount(
             spec.harness, self.inst,
@@ -4397,6 +4411,8 @@ def container_run(
     if acp_mode and path is None:
         path = os.environ.get(_ACP_PROJECT_ENV)
     stack, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
+    if harness == "claude":
+        claude_imports.ask(stack)
 
     if recipe:
         # A freshly minted stack has no assembled profile, and everything below hard-errors without
@@ -5017,6 +5033,11 @@ def build(
             "coloured stack(harness) tag. Use -j1 for one build at a time with plain output."
         ),
     ),
+    reask_imports: bool = typer.Option(
+        False, "--reask-imports",
+        help="Forget this stack's answer about copying ~/.claude/CLAUDE.md @-imports into its "
+             "rules, and ask again (claude harness only)",
+    ),
     corp_proxy_ca_crt: Optional[Path] = typer.Option(
         None,
         "--corp-proxy-ca-crt",
@@ -5111,6 +5132,7 @@ def build(
                     _write_global_launchers(stack, target, "container-run")
                 if target == "claude":
                     _offer_acp_adapter()
+                    claude_imports.ask(stack, reask=reask_imports)
         else:
             _build_images_cmd(rt, force=force)
             _reconcile_stacks(rt, root_path, strict=not no_strict, jobs=jobs, force=force)
@@ -5623,6 +5645,8 @@ def install_stack(
         _err.print(f"[bold red]error:[/bold red] no such stack '{stack}' (see `harnessed list`)")
         raise typer.Exit(1)
     _require_supported_harness(harness)
+    if harness == "claude":
+        claude_imports.ask(stack)
     bin_dir = paths.user_bin_dir()
     refused = launchscript.write_globals(stack, harness, bin_dir)
     for verb in launchscript.global_verbs(harness):
