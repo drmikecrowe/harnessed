@@ -33,10 +33,14 @@ jobs:
 
       # Branch name goes through env, never interpolated into the script. Guarded on `pr` itself,
       # not `prs_created`: on 49d5fa4 the latter was 'true' with no Release PR and `pr` empty, so
-      # fromJSON failed the run.
+      # fromJSON failed the run. The `if` alone did not stop it: an expression `fromJSON` in `env:`
+      # still failed on f98963a, 3e09c64, 621c282 and 211666e, so the JSON is parsed in the shell.
       - if: steps.release.outputs.pr != ''
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
-        run: gh workflow run test.yml --ref "$BRANCH"
+          PR: ${{ steps.release.outputs.pr }}
+        run: |
+          BRANCH=$(jq -r '.headBranchName // empty' <<<"$PR")
+          [ -n "$BRANCH" ] || exit 0
+          gh workflow run test.yml --ref "$BRANCH"
