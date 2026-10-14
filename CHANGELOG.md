@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/drmikecrowe/harnessed/compare/v0.3.0...v0.3.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* **ci:** parse the release-please pr output in the shell, not in env ([#602](https://github.com/drmikecrowe/harnessed/issues/602)) ([948cd06](https://github.com/drmikecrowe/harnessed/commit/948cd06ee96fb7c92be869e9658ed3d5c17b01cc))
+
 ## [0.3.0](https://github.com/drmikecrowe/harnessed/compare/v0.2.2...v0.3.0) (2026-10-13)
 
 
