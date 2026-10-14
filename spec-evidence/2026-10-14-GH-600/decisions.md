@@ -82,3 +82,9 @@ Round 1 (`findings-code.md`) reported no findings and three hunches. Each was tr
 - A write error failed the launch. Confirmed against the Must NOT line. `refresh` and `sync_owned_dir` now warn and carry on. Generator: a filesystem write on the copy path that is not guarded. Sites: `refresh` (mkdir, prune, write) and `sync_owned_dir` (remove, mkdir, copy) are fixed. The answer file write is not applicable: it lives in harnessed's state dir, which every launch already needs. Test: `test_must_not_an_unwritable_copies_dir_warns_and_does_not_raise`, seen failing first.
 - An `@path` line in a code fence is an import. This is not a defect: Decide 2 rules whole lines. It is now a Known limits line in SPEC.md.
 
+### Revision 5. Adversary round 2: no findings, four hunches, none a defect
+- `sync_owned_dir` in `_host_launch_plan` has no harness guard. Already correct: the omp branch returns before that line, and `_launch_host` rejects every other non-claude harness.
+- `ctx.info_name` in `host_run`: `ctx` is `host_run`'s own first parameter, and the function already read `ctx.info_name` for `exec_mode`.
+- The unguarded answer-file unlink: the same class Revision 4 ruled not applicable (the state dir).
+- A whole-line `@word` counts as an import: Decide 2, and Known limits.
+Round 2 confirmed nothing, so no round 3 runs. Round 1's record is kept as `findings-code-round1.md`.
