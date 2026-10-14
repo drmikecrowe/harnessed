@@ -214,6 +214,23 @@ class TestS1TheFourCommandsAsk:
         assert isinstance(result.exception, _Stop), result.output
         assert calls == [("s", False)]
 
+    def test_s1_5_host_exec_never_reaches_the_question(self, env, monkeypatch):
+        """Adversary round 1: `_launch_host` sets exec mode, so `host_run` must not ask before it.
+        A real terminal is on stdin here, and nobody is at it."""
+        env.claude_md("@~/.local/share/gortex/instructions/active.md\n")
+        from harnessed import console
+
+        # CliRunner swaps sys.stdin, so stand in for a terminal: only exec mode can say no.
+        monkeypatch.setattr(claude_imports, "_can_prompt", lambda: not console.in_exec_mode())
+        monkeypatch.setattr(claude_imports.typer, "prompt", lambda *a, **k: pytest.fail("prompted"))
+        monkeypatch.setattr(launcher, "_resolve_stack", lambda *a, **k: ("s", None))
+        launched: list = []
+        monkeypatch.setattr(launcher, "_launch_host", lambda *a, **k: launched.append(k["exec_mode"]))
+        result = runner.invoke(launcher.app, ["host-exec", "claude", "--stack", "s"])
+        assert result.exit_code == 0, result.output
+        assert launched == [True]
+        assert not _answer_file("s").exists()
+
     def test_s1_1_container_run(self, calls, monkeypatch):
         monkeypatch.setattr(launcher, "_resolve_stack", lambda *a, **k: ("s", None))
         result = runner.invoke(launcher.app, ["container-run", "claude", "--stack", "s"])
@@ -580,6 +597,19 @@ class TestS7MissingAndNested:
             f"notes-{_hash8(a)}.md": "A\n",
             f"notes-{_hash8(b)}.md": "B\n",
         }
+
+    def test_must_not_an_unwritable_copies_dir_warns_and_does_not_raise(self, env, capsys):
+        """Adversary round 1: a launch never fails because of an import, writes included."""
+        env.claude_md("@~/.local/share/gortex/instructions/active.md\n")
+        claude_imports.write_answer("s", "y")
+        _copies("s").parent.mkdir(parents=True)
+        _copies("s").write_text("a file where the dir belongs")
+        rules = env.tmp / "cfg" / "rules"
+        claude_imports.sync_owned_dir("s", rules)
+        assert claude_imports.mount_args("s", "/ctr") == []
+        assert not (rules / "harnessed-imports").exists()
+        err = capsys.readouterr().err
+        assert "warning: could not update the @-import copies for s" in err
 
     @pytest.mark.parametrize("answer", [None, "n", "i"])
     def test_s7_4_without_a_yes_no_target_is_read_and_nothing_warns(self, env, capsys, answer):

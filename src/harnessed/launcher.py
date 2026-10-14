@@ -3634,7 +3634,8 @@ def host_run(
     """
     _require_supported_harness(harness)
     stack_name, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
-    if harness == "claude":
+    # Not under `host-exec`: nobody is at it, and `_launch_host` only declares exec mode later.
+    if harness == "claude" and ctx.info_name != "host-exec":
         claude_imports.ask(stack_name)
     try:
         _launch_host(

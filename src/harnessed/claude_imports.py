@@ -130,13 +130,26 @@ def _remove(p: Path) -> None:
         p.unlink()
 
 
+def _write_failed(stack: str, exc: OSError) -> None:
+    _warn(f"could not update the @-import copies for {stack}: {exc}")
+
+
 def refresh(stack: str) -> Path | None:
     """Rewrite the stack's copies dir from the import targets; None when the answer is not `y`.
 
     The directory itself is kept and only its contents change, so a running container's bind mount
-    of it sees the new files. Without a `y` no target is even read. A missing or unreadable target
-    is a warning, never a failure: a launch must not break over an import.
+    of it sees the new files. Without a `y` no target is even read. A missing or unreadable target,
+    or a copies dir that cannot be written, is a warning, never a failure: a launch must not break
+    over an import.
     """
+    try:
+        return _refresh(stack)
+    except OSError as exc:
+        _write_failed(stack, exc)
+        return None
+
+
+def _refresh(stack: str) -> Path | None:
     d = paths.claude_imports_dir(stack)
     if read_answer(stack) != "y":
         if d.is_dir():
@@ -168,13 +181,16 @@ def sync_owned_dir(stack: str, rules_dir: Path) -> None:
     """
     src = refresh(stack)
     owned = rules_dir / OWNED_DIR
-    if owned.exists() or owned.is_symlink():
-        _remove(owned)
-    if src is None:
-        return
-    owned.mkdir(parents=True)
-    for f in sorted(src.iterdir()):
-        shutil.copyfile(f, owned / f.name)
+    try:
+        if owned.exists() or owned.is_symlink():
+            _remove(owned)
+        if src is None:
+            return
+        owned.mkdir(parents=True)
+        for f in sorted(src.iterdir()):
+            shutil.copyfile(f, owned / f.name)
+    except OSError as exc:
+        _write_failed(stack, exc)
 
 
 def mount_args(stack: str, container_dir: str) -> list[str]:
