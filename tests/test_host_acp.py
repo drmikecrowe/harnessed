@@ -337,7 +337,27 @@ def _pin() -> str:
 
 def _install_cmd() -> bytes:
     package, version = launcher._acp_adapter_pin()
-    return f"npm i -g {package}@{version}".encode()
+    return f"pnpm add -g {package}@{version}".encode()
+
+
+def _mise_cmd() -> bytes:
+    package, version = launcher._acp_adapter_pin()
+    return f"mise use -g npm:{package}@{version}".encode()
+
+
+def _adapter_line(stderr: bytes) -> bytes:
+    """The one stderr line about the adapter: the refusal or the off-pin warning (GH-604)."""
+    lines = [ln for ln in stderr.splitlines() if b"claude-agent-acp" in ln]
+    assert len(lines) == 1, stderr.decode()
+    return lines[0]
+
+
+def _stub_adapter(bindir: Path, version: str) -> Path:
+    bindir.mkdir(parents=True, exist_ok=True)
+    entry = bindir / "claude-agent-acp"
+    entry.write_text(f'#!/bin/sh\n[ "$1" = --version ] && echo {version}\nexit 0\n')
+    entry.chmod(0o755)
+    return bindir
 
 _DRIVER = r"""
 import json, sys
@@ -650,6 +670,67 @@ class TestTheAdapterAtLaunch:
         assert b"0.84.0" in proc.stderr and _pin().encode() in proc.stderr
         assert host.started.exists()
         _stdout_messages(proc)
+
+
+class TestTheAdapterCommandFollowsTheOwner:
+    """GH-604: host-acp names the install command of the tool that owns the adapter on PATH."""
+
+    _MISE_BIN = Path("installs/npm-agentclientprotocol-claude-agent-acp/0.85.1/bin")
+
+    def _place(self, host, kind: str) -> Path:
+        host.env["MISE_DATA_DIR"] = str(host.tmp / "mise")
+        if kind == "mise":
+            return _stub_adapter(host.tmp / "mise" / self._MISE_BIN, "0.85.1")
+        if kind == "shim":
+            return _stub_adapter(host.tmp / "mise" / "shims", "0.85.1")
+        if kind == "pnpm":
+            bindir = _stub_adapter(host.tmp / "pnpm" / "bin", "0.85.1")
+            pnpm = bindir / "pnpm"
+            pnpm.write_text(f'#!/bin/sh\n[ "$1 $2" = "bin -g" ] && echo {bindir}\nexit 0\n')
+            pnpm.chmod(0o755)
+            return bindir
+        return host.adapter("0.85.1")
+
+    def test_s1_2_a_mise_adapter_warns_with_mise_use(self, host):
+        host.build("claude")
+        proc = host.run("claude", path_prefix=self._place(host, "mise"))
+        assert proc.returncode == 0, proc.stderr.decode()
+        line = _adapter_line(proc.stderr)
+        assert _mise_cmd() in line and b"npm i -g" not in line
+        assert proc.stdout == b""
+
+    def test_s1_3_a_mise_shim_warns_with_mise_use(self, host):
+        host.build("claude")
+        proc = host.run("claude", path_prefix=self._place(host, "shim"))
+        assert proc.returncode == 0, proc.stderr.decode()
+        assert _mise_cmd() in _adapter_line(proc.stderr)
+
+    def test_s3_1_a_pnpm_adapter_warns_with_pnpm_add(self, host):
+        host.build("claude")
+        proc = host.run("claude", path_prefix=self._place(host, "pnpm"))
+        assert proc.returncode == 0, proc.stderr.decode()
+        line = _adapter_line(proc.stderr)
+        assert _install_cmd() in line and b"mise" not in line and b"npm i -g" not in line
+
+    def test_s4_1_an_unrecognised_adapter_warns_with_pnpm_add(self, host):
+        host.build("claude")
+        proc = host.run("claude", path_prefix=self._place(host, "other"))
+        assert proc.returncode == 0, proc.stderr.decode()
+        assert _install_cmd() in _adapter_line(proc.stderr)
+
+    @pytest.mark.parametrize("kind", ["mise", "shim", "pnpm", "other", "none"])
+    def test_s2_3_no_adapter_line_names_raw_npm(self, host, kind):
+        host.build("claude")
+        if kind == "none":
+            host.env["PATH"] = os.pathsep.join(
+                d for d in host.env["PATH"].split(os.pathsep) if not (Path(d) / "claude-agent-acp").exists()
+            )
+            proc = host.run("claude")
+        else:
+            proc = host.run("claude", path_prefix=self._place(host, kind))
+        package = launcher._acp_adapter_pin()[0]
+        rest = _adapter_line(proc.stderr).replace(f"npm:{package}".encode(), b"")
+        assert b"npm" not in rest and b"npx" not in rest, proc.stderr.decode()
 
 
 class TestTheAgentExitsFirst:
