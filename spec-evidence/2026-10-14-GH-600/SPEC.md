@@ -108,6 +108,7 @@ Terms. *Import file*: `~/.claude/CLAUDE.md`, resolved from `$HOME` at call time.
 ## Known limits
 - Only whole-line imports count (ruled by mcrowe, 2026-10-14). An inline `@path` in prose is not copied.
 - Nested imports are not followed (story AC-7). Their text arrives literally.
+- An `@path` line inside a fenced code block in `~/.claude/CLAUDE.md` counts as an import, because the rule reads whole lines only (ruled by mcrowe, 2026-10-14; raised by adversary round 1).
 - `claude` harness only (ruled by mcrowe, 2026-10-14). The omp stack's nested Claude config dir gets no copies.
 - A container started before an import was added, and still running, sees the new file because the mount is a directory (ruled by mcrowe, 2026-10-14). A brand-new mount needs a new container.
 - An interactive session loads the content twice, by the import and as the rule. The story accepts this.
