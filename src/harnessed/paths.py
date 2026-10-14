@@ -676,6 +676,20 @@ def setup_dismissed_flag(stack: str, harness: str, project_path: str | Path) -> 
     )
 
 
+def claude_imports_answer_file(stack: str) -> Path:
+    """The stack's stored y/n/i answer to "copy ~/.claude/CLAUDE.md @-imports into rules?" (GH-600).
+
+    XDG STATE, per stack, beside `setup_dismissed_flag`: a remembered choice, not content.
+    """
+    return xdg_state_home() / "harnessed" / "claude-imports" / stack
+
+
+def claude_imports_dir(stack: str) -> Path:
+    """The stack's copies of its imported files (GH-600) — the one source the host sync and the
+    container's ro mount both read. Harnessed owns every file in it."""
+    return xdg_data_home() / "harnessed" / "claude-imports" / stack
+
+
 def svc_ports_file() -> Path:
     """Registry of every `publish: stable` host port harnessed has handed out (XDG DATA).
 
