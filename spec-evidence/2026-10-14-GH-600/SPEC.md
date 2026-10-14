@@ -36,7 +36,7 @@
 
 ## Scenarios
 
-Terms. *Import file*: `~/.claude/CLAUDE.md`, resolved from `$HOME` at call time. *Import*: a line of that file whose stripped text is `@<path>`, where `<path>` begins with `/`, `~/` or neither (relative to `~/.claude/`). *Answer file*: `$XDG_STATE_HOME/harnessed/claude-imports/<stack>`, one byte `y`, `n` or `i`. *Copies dir*: `$XDG_DATA_HOME/harnessed/claude-imports/<stack>/`. *Copy name*: `<target stem>-<first 8 hex of sha256 of the resolved target path>.md`. *Owned dir*: `rules/harnessed-imports/` in the stack's Claude config (`paths.host_home(stack, "claude")` on the host, `/home/harnessed/.claude` in the container).
+Terms. *Import file*: `~/.claude/CLAUDE.md`, resolved from `$HOME` at call time. *Import*: a line of that file whose stripped text is `@<path>`, where `<path>` begins with `/`, `~/` or neither (relative to `~/.claude/`). *Answer file*: `$XDG_STATE_HOME/harnessed/claude-imports/<stack>`, one byte `y`, `n` or `i`. *Answers*: `y` (yes) copies; `n` (no) copies nothing, and `host-acp` still warns; `i` (ignore) copies nothing and silences the warning. The prompt shows them as `[y/n/i]`, as the story quotes. *Copies dir*: `$XDG_DATA_HOME/harnessed/claude-imports/<stack>/`. *Copy name*: `<target stem>-<first 8 hex of sha256 of the resolved target path>.md`. *Owned dir*: `rules/harnessed-imports/` in the stack's Claude config (`paths.host_home(stack, "claude")` on the host, `/home/harnessed/.claude` in the container).
 
 ### S1. Who asks, and when
 - S1.1 Given an import file holding the line `@~/.local/share/gortex/instructions/active.md`, no answer file for stack `s`, and a terminal that can prompt (`console._can_prompt()` true), when `harnessed build s claude` runs, then it prints `Your ~/.claude/CLAUDE.md uses @import syntax that ACP sessions do not expand. Copy the imported files into this stack's rules? [y/n/i]`. The same holds for `harnessed install s claude`, `harnessed host-run claude --stack s` and `harnessed container-run claude --stack s`.
@@ -75,12 +75,13 @@ Terms. *Import file*: `~/.claude/CLAUDE.md`, resolved from `$HOME` at call time.
 - S6.2 Given the answer `y` and a copy, when `harnessed build s claude --reask-imports` runs and the user answers `n` (in a second run, `i`), then the answer file holds the new letter, and after the next launch the copies dir and the owned dir hold no file.
 - S6.3 (negative) Given the answer `y` and a copy, when `build --reask-imports` is answered `y`, then no copy is deleted.
 - S6.4 (negative) Given a user file `rules/mine.md` in the stack's Claude config beside the owned dir, when any S6 deletion runs, then `rules/mine.md` is unchanged.
-- S6.5 (boundary) Given `build --reask-imports` where `_can_prompt()` is false, when it runs, then the answer file is removed and the S4.1 warning names the next step.
+- S6.5 (boundary) Given `build s claude --reask-imports` where `_can_prompt()` is false, when it runs, then the answer file for `s` is removed, stderr holds `warning: --reask-imports needs a terminal; the stored answer for s is cleared. Run: harnessed build s claude --reask-imports`, stdout gets no byte from this step, and build exits 0. Ruled by mcrowe, 2026-10-14.
 
 ### S7. Missing and nested imports
 - S7.1 Given the answer `y` and an import whose target does not exist, when `build` or a launch runs, then stderr holds `warning: @-import target not found, skipped: <path>`, the command exits 0, and every other import is still copied.
 - S7.2 (boundary) Given an imported file that itself holds the line `@other.md`, when it is copied, then the copy holds `@other.md` as literal text and `other.md` is not copied.
 - S7.3 (boundary) Given two imports with the same file name in different directories, or the same import listed twice, when they are copied, then the two distinct targets get two distinct copy names, and the duplicate line gets one copy.
+- S7.4 (negative) Given the answer `n`, `i` or none and an import whose target does not exist, when `build` or a launch runs, then no target is read, no `target not found` warning is printed, and the command exits 0. Only the S4 warning applies.
 
 ## Must NOT
 - Write to `~/.claude/CLAUDE.md` or to any import target.

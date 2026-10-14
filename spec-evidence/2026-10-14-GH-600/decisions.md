@@ -3,7 +3,7 @@
 ## Setup plan
 - Isolation: worktree — `6-3-gh-600-claude-md-imports-to-rules` on branch `GH-600`, cut from `main` at `74199d2`.
 - Git: commit per scenario group, signed, on `GH-600`. The queued label is `4bbd31e`.
-- Step 0 of the build, before RED: rerun the GH-594 marker probe (`tools/acp-smoke.py --verb host-acp --prompt`) against the current adapter pin. If an `@`-import marker comes back, imports are expanded upstream, and this work is not needed: stop and report to the engineer.
+- Step 0 of the build, before RED: rerun the GH-594 marker probe (`tools/acp-smoke.py --verb host-acp --prompt`) against the current adapter pin. If an `@`-import marker comes back, imports are expanded upstream, and this work is not needed: stop and report to the engineer. Either way, the engineer gets a drafted upstream note on whether the pin expands imports. Filing it is an outward action, and it waits for the engineer's yes.
 - Step 0 also checks Decide 1 live, before RED. Put a marker file by hand in `<host home>/rules/harnessed-imports/` on the throwaway stack and probe `host-acp`. If the marker does not come back, a nested rule is not loaded: stop, and bring Decide 1 back to the engineer with B.
 - New dependencies: none.
 - New files: `src/harnessed/claude_imports.py`, `tests/test_claude_imports.py`.
@@ -29,6 +29,12 @@
 - Gap 1 (no container refresh step): accepted. S3.4 names `ContainerBackend.materialize_config` as the step that refreshes and prunes the copies dir, and Touches says so.
 - Gap 2 (Decide 1 depends on nested-rule loading): accepted. Step 0 of the setup plan checks it live before RED, and falls back to B.
 - Gap 3 (S6.5 and S1.5 add behaviour): declined. S1.5 is the existing `_can_prompt()` contract (fact 5): a prompt with no terminal hangs a script, so the non-prompt branch is required, not added. S6.5 is the only meaning `--reask-imports` can have when no one can answer: it clears the answer, as AC-6 says, and the warning names the next step.
+
+- Round 2, gap 1 (S6.5 invents behaviour): declined. The engineer ruled S6.5 on 2026-10-14 (Revision 2).
+- Round 2, gap 2 (copies dir and ro mount): declined. Fact 3 shows that a copy written into the config volume outlives its import, which breaks AC-6. Decide 1 is ruled, and step 0 checks it live.
+- Round 2, gap 3 (missing target under `n`, `i` or none): accepted. S7.4 states that nothing is read, so no target warning is printed.
+- Round 2, gap 4 (no upstream report): declined. Setup step 0 drafts the upstream note in either outcome, and the engineer's yes files it.
+- Round 2, gap 5 (whole-line only is narrower than the story): declined. Decide 2 is ruled, and Known limits states it.
 
 ## Decide calls
 
@@ -62,3 +68,5 @@ Changes: Known limits state claude only; Touches names no omp site.
 ## Revisions
 ### Revision 1. Decide 1, 2 and 3 ruled A
 The engineer ruled all three Decide calls A on 2026-10-14 (mcrowe), after the intent review. SPEC.md's Orientation and Summary now state the rulings.
+### Revision 2. Gate 1a round 1: S6.5 output defined
+Gate 1a round 1 found S6.5 read two ways (PR-READINGS): `build --reask-imports` with no terminal could print the warning or nothing. The engineer ruled on 2026-10-14 (mcrowe): build prints its own warning on stderr and exits 0. S6.5 now gives the text and the stream. Two judge gaps were folded in as rewording: the Scenarios terms now define `y`, `n` and `i`, and setup step 0 drafts the upstream note the story's author note asks for.
