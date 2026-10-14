@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.0](https://github.com/drmikecrowe/harnessed/compare/v0.2.2...v0.3.0) (2026-10-13)
+
+
+### Features
+
+* **catalog:** add mattpocock-skills recipe ([#588](https://github.com/drmikecrowe/harnessed/issues/588)) ([a649823](https://github.com/drmikecrowe/harnessed/commit/a6498232c1a71faf5a54e6094f711dab7de18371))
+* **catalog:** upgrade pins 2026-10-12 ([#595](https://github.com/drmikecrowe/harnessed/issues/595)) ([444472a](https://github.com/drmikecrowe/harnessed/commit/444472a042d6c583785973af0d4ee6983b6a6d48))
+* **catalog:** upgrade pins 2026-10-13 ([#598](https://github.com/drmikecrowe/harnessed/issues/598)) ([0744aa5](https://github.com/drmikecrowe/harnessed/commit/0744aa5f4e6f5ef804610fe1ca39f1e08e2ca948))
+* **ci:** open a pin-upgrade PR every other day (GH-582) ([#593](https://github.com/drmikecrowe/harnessed/issues/593)) ([84e895f](https://github.com/drmikecrowe/harnessed/commit/84e895fc55940ce8e85e50b7325b4e644a050308))
+* **container-acp:** serve every project from one process and take each session's project from its cwd (GH-566) ([#599](https://github.com/drmikecrowe/harnessed/issues/599)) ([6f0527d](https://github.com/drmikecrowe/harnessed/commit/6f0527d7db981c1d94fb08de02fb7e13bd8b2e30))
+
+
+### Bug Fixes
+
+* **claude:** merge .claude.json over the live copy so trust, import and API-key answers persist (GH-594) ([#601](https://github.com/drmikecrowe/harnessed/issues/601)) ([74199d2](https://github.com/drmikecrowe/harnessed/commit/74199d2b66e13cd9090c13ebee2dce2eabe1fcc6))
+
 ## [0.2.2](https://github.com/drmikecrowe/harnessed/compare/v0.2.1...v0.2.2) (2026-10-12)
 
 
