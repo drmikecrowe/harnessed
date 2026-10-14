@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/drmikecrowe/harnessed/compare/v0.3.1...v0.4.0) (2026-10-14)
+
+
+### Features
+
+* **claude:** copy ~/.claude/CLAUDE.md @-imports into stack rules for ACP sessions (GH-600) ([#605](https://github.com/drmikecrowe/harnessed/issues/605)) ([42981bd](https://github.com/drmikecrowe/harnessed/commit/42981bda342f0bdc5809f23d4ccc27b3eab5d25f))
+
 ## [0.3.1](https://github.com/drmikecrowe/harnessed/compare/v0.3.0...v0.3.1) (2026-10-14)
 
 
