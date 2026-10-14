@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/drmikecrowe/harnessed/compare/v0.4.0...v0.4.1) (2026-10-14)
+
+
+### Documentation
+
+* **agents:** make AGENTS.md the source of truth for agent rules ([#608](https://github.com/drmikecrowe/harnessed/issues/608)) ([1d04c66](https://github.com/drmikecrowe/harnessed/commit/1d04c66d9507ad84fcc50a0150b4ceb73e03c29e))
+
 ## [0.4.0](https://github.com/drmikecrowe/harnessed/compare/v0.3.1...v0.4.0) (2026-10-14)
 
 
