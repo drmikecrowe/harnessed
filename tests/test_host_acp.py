@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import sys
 import threading
 import time
@@ -730,7 +731,8 @@ class TestTheAdapterCommandFollowsTheOwner:
             proc = host.run("claude", path_prefix=self._place(host, kind))
         package = launcher._acp_adapter_pin()[0]
         rest = _adapter_line(proc.stderr).replace(f"npm:{package}".encode(), b"")
-        assert b"npm" not in rest and b"npx" not in rest, proc.stderr.decode()
+        # Whole words: `pnpm` is the required command, not a mention of npm.
+        assert re.search(rb"\bnp[mx]\b", rest) is None, proc.stderr.decode()
 
 
 class TestTheAgentExitsFirst:

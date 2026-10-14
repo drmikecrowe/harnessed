@@ -7,6 +7,7 @@ the detection runs for real; only the install command and the image build are st
 """
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -166,9 +167,10 @@ def _setup(kind: str, tmp: Path, monkeypatch) -> tuple[list[str], Path | None]:
 
 
 def _no_npm(text: str) -> bool:
-    """S2.3: `npm`/`npx` appear nowhere except as the `npm:` prefix of the mise command's spec."""
+    """S2.3: the words `npm`/`npx` appear nowhere except as the `npm:` prefix of the mise command's
+    spec. Whole words: `pnpm` is the required command, not a mention of npm."""
     rest = text.replace(f"npm:{_PACKAGE}", "")
-    return "npm" not in rest and "npx" not in rest
+    return re.search(r"\bnp[mx]\b", rest) is None
 
 
 class TestS1MiseGetsTheMiseCommand:
