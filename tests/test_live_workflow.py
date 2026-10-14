@@ -23,7 +23,7 @@ from ruamel.yaml import YAML
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "live.yml"
-CLAUDE_MD = ROOT / "CLAUDE.md"
+AGENTS_MD = ROOT / "AGENTS.md"
 
 
 @pytest.fixture(scope="module")
@@ -53,11 +53,11 @@ def _as_list(value) -> list:
     return [value] if isinstance(value, str) else list(value)
 
 
-def _claude_md_live_paths() -> list[str]:
-    """The first column of CLAUDE.md's "Why the suite cannot see it" table."""
+def _agents_md_live_paths() -> list[str]:
+    """The first column of AGENTS.md's "Why the suite cannot see it" table."""
     marker = "| Trigger | Why the suite cannot see it |"
-    text = CLAUDE_MD.read_text()
-    assert marker in text, f"{CLAUDE_MD} no longer carries the live-trigger table"
+    text = AGENTS_MD.read_text()
+    assert marker in text, f"{AGENTS_MD} no longer carries the live-trigger table"
     paths: list[str] = []
     for line in text.split(marker, 1)[1].splitlines():
         if not line.startswith("|"):
@@ -275,13 +275,13 @@ class TestItGatesPullRequests:
         )
 
     def test_the_filter_covers_every_path_claude_md_names(self, workflow):
-        """CLAUDE.md's table and this job are one filter written twice. The table is what a
+        """AGENTS.md's table and this job are one filter written twice. The table is what a
         contributor reads; the job is what actually runs. Drift between them is how a file lands on
         the documented list and gets no live evidence anyway."""
         body = _run_bodies(workflow["jobs"]["changes"])
-        missing = [p for p in _claude_md_live_paths() if p not in body]
+        missing = [p for p in _agents_md_live_paths() if p not in body]
         assert not missing, (
-            f"CLAUDE.md names {missing} as needing live evidence, but the `changes` job does not "
+            f"AGENTS.md names {missing} as needing live evidence, but the `changes` job does not "
             "match them, so a PR touching only those files skips both container jobs"
         )
 
