@@ -7,8 +7,8 @@
 - In a container, the copies are mounted read-only.
 
 **The acceptance criteria, and how each was proven.**
-- **AC-1, who asks:** unit tests drive `build`, `install`, `host-run` and `container-run` through the CLI. Other tests show that a project or parent CLAUDE.md, or a file with no import, asks nothing.
-- **AC-2, the copy reaches the session:** proven for `host-acp`, live. With a stored `y`, a fresh session quoted text that exists only in `active.md`; without the change, the same probe returned `NOT LOADED`. Unit tests show the copy is a regular file, and that the container mount is composed. A live `container-acp` session was not run.
+- **AC-1, who asks:** unit tests drive `build`, `install`, `host-run` and `container-run` through the CLI. Other tests show that a project or parent CLAUDE.md, or a file with no import, asks nothing. Live, the engineer's `harnessed build hostspike claude` in a real terminal asked the exact prompt and stored `y`.
+- **AC-2, the copy reaches the session:** proven live in both modes. With a stored `y`, a fresh `host-acp` session and a fresh `container-acp` session (docker) each quoted text that exists only in `active.md`; without the change, the same probe returned `NOT LOADED`. Unit tests show the copy is a regular file, and that the container mount is composed. Inside the running container the mount is read-only and the copy is byte-identical to `active.md`.
 - **AC-3, the copy refreshes:** proven live. After `gortex instructions switch localization`, a new `host-acp` session quoted the localization-only line. A unit test shows the copy refreshes on a launch where the stack fingerprint is unchanged.
 - **AC-4, the warning:** a real `host-acp` process prints the warning on stderr, and its stdout parses as JSON-RPC only. Unit tests cover `n`, `y`, `i` and no import.
 - **AC-5, the answer is stored per stack:** unit tests.
@@ -16,25 +16,25 @@
 - **AC-7, bad imports:** unit tests show that a missing target warns and is skipped, and that a nested import is copied as text. Two imports with the same file name get distinct copies.
 
 **What is not proven.**
-- The live `container-acp` probe (S2.4) did not run, because this session has no podman. The CI `live.yml` jobs on the PR are the container evidence.
 - Changed-line coverage and mutation testing were substituted. Total branch coverage ran instead of a changed-line gate, and five hand-made mutants ran instead of a mutation tool.
 
 **Judgment calls made during the build.**
 - The host adapter was moved from 0.85.1 to the 0.89.1 pin with mise, with the engineer's yes, so step 0 tested the version the container ships.
+- The container probe ran on docker, not podman (this machine has no podman). Its first try failed with `Authentication required`: the container's copy of the Claude credentials was rejected, a harnessed credential problem outside this story. The engineer logged in inside the container by hand, and the rerun passed.
 - The first baseline was discarded. It ran in the working tree while the new module was being written. It was rerun in a detached worktree of the approval commit.
 - Adversary round 1 had two hunches confirmed and fixed: `host-exec` could prompt, and a write error could fail a launch. Round 2 confirmed nothing.
 
 ## Orientation
 - Verdict: PASSED WITH LIMITS
 - Delivered: whole-line `@`-imports in `~/.claude/CLAUDE.md` reach `host-acp` (proven live) and `container-acp` (mount proven by unit test) as real copies in a harnessed-owned `rules/harnessed-imports/`, behind a per-stack y/n/i answer.
-- Proven: 30 of 31 scenarios mapped and passing; S2.4 unverified.
-- Not proven: S2.4 (container-acp live probe, unverified); changed-line coverage (SUBSTITUTED by total branch coverage); mutation testing (SUBSTITUTED by 5 throwaway mutants); merge-gate `live.yml` (runs on the PR, not yet run).
+- Proven: 31 of 31 scenarios mapped and passing.
+- Not proven: changed-line coverage (SUBSTITUTED by total branch coverage); mutation testing (SUBSTITUTED by 5 throwaway mutants); merge-gate `live.yml` (runs on the PR, not yet run).
 
 - Process: spec-evidence 0.0.1
 - Spec: spec-evidence/2026-10-14-GH-600/SPEC.md (committed)
 - Spec approval: obtained from mcrowe (commit 267ff1d, `GH-600: spec approved`)
 - Intent review: round 1 added S3.4 (the container refresh step) and a step-0 live check that ACP loads a rules subdirectory; round 2 added S7.4 (no target is read without a `y`).
-- Source state: commit 1f5572c0bc55453ed4a8de3000e58b9211998ea9 — the commit the final run read; adversary round 2 read fe23b15, and 1f5572c adds only the round-2 record under `spec-evidence/`
+- Source state: commit 1f5572c0bc55453ed4a8de3000e58b9211998ea9 — the commit the final run read; adversary round 2 read fe23b15, and 1f5572c adds only the round-2 record under `spec-evidence/`. Every later commit changes only files under `spec-evidence/2026-10-14-GH-600/`, so no source changed after this run.
 - Stamp:
 
 ```json
@@ -67,7 +67,7 @@
 | S2.1 | CI::TestS2CopiesAndTheMount::test_s2_1_y_writes_a_regular_file_with_the_target_bytes; LH::TestClaudeImportsOnTheHostPlan::test_s2_1_the_plan_writes_a_regular_copy; CI::TestS4HostAcpProcess::test_s2_1_host_acp_with_yes_lands_the_copy_in_the_config_dir | pass |
 | S2.2 | CI::TestS2CopiesAndTheMount::test_s2_2_the_mount_is_composed_after_the_config_volume; ::test_s2_2_no_mount_without_a_yes (3 cases); ::test_s2_2_another_harness_gets_no_mount | pass |
 | S2.3 (live) | live: `tools/acp-smoke.py --verb host-acp --harness claude --stack hostspike --prompt …` with a stored `y`, claude-agent-acp 0.89.1 — log `work/s23.log` | pass |
-| S2.4 (live) | not run: no podman in this session; CI `live.yml` on the PR | unverified |
+| S2.4 (live) | live: `tools/acp-smoke.py --verb container-acp --harness claude --stack hostspike --prompt …` on docker, after `y` — log `work/s24.log`; mount check `work/s24-mount.log` | pass |
 | S2.5 (negative) | CI::TestS2CopiesAndTheMount::test_s2_5_no_answer_creates_no_owned_dir; live step-0 probe A (`work/probe-a.log`, reply `NOT LOADED`) | pass |
 | S3.1 | LH::TestClaudeImportsOnTheHostPlan::test_s3_1_an_unchanged_stack_still_gets_the_new_content | pass |
 | S3.2 (live) | live: `gortex instructions switch localization`, then the same probe for the localization-only line, then switch back to `core` — log `work/s32.log` | pass |
@@ -95,11 +95,11 @@ Story criteria, clause by clause:
 
 | Criterion clause | Test | Status |
 |---|---|---|
-| AC-1 condition: the four commands ask the quoted prompt | CI::TestS1WhoAsks::test_s1_1_ask_shows_the_story_prompt_and_stores_the_answer; CI::TestS1TheFourCommandsAsk::test_s1_1_build, ::test_s1_1_install, ::test_s1_1_host_run, ::test_s1_1_container_run | pass |
+| AC-1 condition: the four commands ask the quoted prompt | CI::TestS1WhoAsks::test_s1_1_ask_shows_the_story_prompt_and_stores_the_answer; CI::TestS1TheFourCommandsAsk::test_s1_1_build, ::test_s1_1_install, ::test_s1_1_host_run, ::test_s1_1_container_run; live `harnessed build hostspike claude` in a terminal printed the prompt (quoted in Honest notes) | pass |
 | AC-1 boundary: only `~/.claude/CLAUDE.md` imports count | CI::TestS1WhoAsks::test_s1_2_an_import_outside_the_user_claude_md_is_never_asked_about | pass |
 | AC-1 negative: no import, no question | CI::TestS1WhoAsks::test_s1_3_no_import_means_no_question_and_no_answer | pass |
 | AC-2 condition: host-acp returns the marker after `y` | live S2.3 (`work/s23.log`); CI::TestS4HostAcpProcess::test_s2_1_host_acp_with_yes_lands_the_copy_in_the_config_dir | pass |
-| AC-2 condition: container-acp returns the marker after `y` | S2.4 not run; mount composition: CI::TestS2CopiesAndTheMount::test_s2_2_the_mount_is_composed_after_the_config_volume | unverified |
+| AC-2 condition: container-acp returns the marker after `y` | live S2.4 (`work/s24.log`); CI::TestS2CopiesAndTheMount::test_s2_2_the_mount_is_composed_after_the_config_volume | pass |
 | AC-2 boundary: the copy is a regular file, not a symlink | CI::TestS2CopiesAndTheMount::test_s2_1_y_writes_a_regular_file_with_the_target_bytes; LH::TestClaudeImportsOnTheHostPlan::test_s2_1_the_plan_writes_a_regular_copy | pass |
 | AC-2 negative: before the answer, no marker | live step-0 probe A (`work/probe-a.log`); CI::TestS2CopiesAndTheMount::test_s2_5_no_answer_creates_no_owned_dir | pass |
 | AC-3 condition: after `gortex instructions switch`, the new marker | live S3.2 (`work/s32.log`); LH::TestClaudeImportsOnTheHostPlan::test_s3_1_an_unchanged_stack_still_gets_the_new_content | pass |
@@ -129,14 +129,13 @@ Must NOT lines: `~/.claude/CLAUDE.md` and targets never written — CI::TestImpo
 | lint | `mise exec -- uv run --extra dev ruff check src tests tools` | PASSED — All checks passed | work/lint.log |
 | shellcheck | `shellcheck $(git ls-files "*.sh")` | PASSED — exit 0 | work/shellcheck.log |
 | secrets | `gitleaks detect --no-banner --redact` | PASSED — no leaks found | work/secrets.log |
-| Real execution | `tools/acp-smoke.py --verb host-acp --harness claude --stack hostspike --prompt …` (S2.3, S3.2, step-0 probes A and B) | PASSED — 4 live runs, each reply as expected, stdout JSON-RPC only | story dir `work/*.log` |
+| Real execution | `tools/acp-smoke.py --harness claude --stack hostspike --prompt …`: `--verb host-acp` (S2.3, S3.2, step-0 probes A and B) and `--verb container-acp` on docker (S2.4); `harnessed build hostspike claude` in a terminal (AC-1) | PASSED — 6 live runs, each as expected, stdout JSON-RPC only | story dir `work/*.log` |
 | Adversarial review | `spec-evidence-adversary`, 2 rounds | PASSED — round 1: 0 findings, 2 hunches confirmed and fixed (784b089); round 2: 0 findings, 0 confirmed | findings-code-round1.md, findings-code.md |
 | Merge gate parity | lint.yml (ruff, pyright, shellcheck) and test.yml (pytest) map to lint, types, shellcheck, tests | PASSED for those; `live.yml` triggers on `launcher.py` and `paths.py` and runs on the PR | — |
 
 ### Layers not run as specified
 - SUBSTITUTED: Changed-line coverage — total branch coverage ran (`--cov-fail-under=80`); it cannot show that each changed line in `launcher.py` ran. The new module alone is at 97%.
 - SUBSTITUTED: Mutation testing — no mutation tool is a declared layer; 5 throwaway mutants ran by hand over `claude_imports.py` and `launcher.py` (`work/` script), all killed after one test input was added. It cannot detect what a tool's mutant set would.
-- UNAVAILABLE in this session: container real execution (S2.4) — no podman here; `live.yml` on the PR and a later run by the engineer.
 - N-A: Property-based tests — Tier 2; loop.md requires them at Tier 3.
 - N-A: Suite health, randomized order — not a declared layer; the suite ran in its default order twice (tests, coverage), both green.
 - Egress: new data paths — the copies carry the user's own imported instruction files into the stack's config dir and, read-only, into the stack's container. Source: files the user's own `~/.claude/CLAUDE.md` names. Bounded by the user's `y`. Nothing is logged except a missing path in a warning.
@@ -163,6 +162,10 @@ Must NOT lines: `~/.claude/CLAUDE.md` and targets never written — CI::TestImpo
 | spec-evidence-adversary | 2 | claude-sonnet-5-5 | 215291/2015 |
 
 ### Honest notes
+- S2.4, verbatim, from a `container-acp` session on docker: `Inactive ref/commit views are immutable committed structural/source snapshots: no working-copy LSP, \`search.text\`, or edits.` The agent added: `It comes from /home/harnessed/.claude/rules/harnessed-imports/active-44be1670.md, in the "Worktree and branch routing" section.` In the running container (`work/s24-mount.log`): the copies dir is mounted at `/home/harnessed/.claude/rules/harnessed-imports` with `rw=false`, a write fails with `Read-only file system`, the copy's sha256 equals `active.md`'s (`3bb59790…`), and the adapter is 0.89.1. The run used docker; podman is not installed here.
+- AC-1 live: the engineer's `harnessed build hostspike claude` in a real terminal printed `Your ~/.claude/CLAUDE.md uses @import syntax that ACP sessions do not expand. Copy the imported files into this stack's rules? [y/n/i]`, answered `y`. The same build run through this session's `!` (no TTY) asked nothing, which is S1.5's designed behaviour.
+- The first container probe failed with `Authentication required`: the container's credentials copy carried `expiresAt` 0 and was refused, while the host's `~/.claude/.credentials.json` had expired at 04:57Z and this session's stack home held a newer regular-file copy. That is a harnessed credential defect outside GH-600, reported to the engineer. The engineer logged in inside the container by hand before the passing rerun.
+- The pass-2 gauntlet rerun was stopped at the engineer's direction: no source changed after 1f5572c, so the final run's numbers stand.
 - Live replies, verbatim. Step-0 probe A (0.89.1, before the change): `NOT LOADED`. Step-0 probe B (a random marker in `rules/harnessed-imports/probe.md`): `GH600-03f20cca27c7`, the exact marker, and the control line from `~/.claude/CLAUDE.md`. S2.3: `Inactive ref/commit views are immutable committed structural/source snapshots: no working-copy LSP, \`search.text\`, or edits.` S3.2: `- **Profiles:** active \`localization\`. …`. The instrument is the agent's report of its own context, not a loader trace; a sentence that exists in one file only is what makes a guess implausible.
 - The host adapter was 0.85.1 while the catalog pins 0.89.1. The engineer approved `mise use -g npm:@agentclientprotocol/claude-agent-acp@0.89.1`. This session's PATH still found 0.85.1, so the live runs put the 0.89.1 directory first. `harnessed build`'s adapter offer proposes `npm i -g`, which a mise-shimmed adapter may shadow; out of scope here and reported to the engineer.
 - The gortex profile was switched to `localization` for one probe and back to `core`; `active.md` was compared byte-for-byte with `core.md` afterwards. The `hostspike` answer file, copies and owned dir created for the live runs were removed.
