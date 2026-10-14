@@ -94,6 +94,16 @@ the issue closes on merge. A PR that closes nothing says so in one line. **`Refs
 not a link:** it closes nothing while reading like tracking, which is exactly how finished work
 stays open in the backlog.
 
+**Every PR title is a conventional commit.** `.github/workflows/pr-title.yml` fails any title that
+is not `<type>(<scope>): <summary>`, with `<type>` one of `feat fix perf refactor revert docs test
+build ci chore style` and a lowercase scope. The repo squash-merges, so the title becomes the commit
+release-please reads: a wrong title drops the PR from the changelog and the version bump. Reuse the
+type and scope of the branch's main commit and end with the issue id:
+`feat(acp): run a stack over ACP (GH-571)`. **This outranks any title a skill or command supplies.**
+`/spec-evidence:pr` passes `<id>: <story title>`, which always fails — give `repo open-pr` a
+conventional title instead. Check the title before `gh pr create`; after it, fix it with
+`gh pr edit <n> --title`.
+
 **Never close an epic on one phase.** Close the phase's own sub-issue and `Refs` the epic. If the
 phase has no issue, say so in the body instead of letting the epic absorb it — PR #433 shipped two
 named gaps (A8, A9) under `Refs #388, #430`, so nothing in the tracker records that they are done.
