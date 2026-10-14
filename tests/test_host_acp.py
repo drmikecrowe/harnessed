@@ -713,6 +713,15 @@ class TestTheAdapterCommandFollowsTheOwner:
         line = _adapter_line(proc.stderr)
         assert _install_cmd() in line and b"mise" not in line and b"npm i -g" not in line
 
+    def test_s3_3_a_failing_pnpm_bin_still_warns_with_pnpm_add(self, host):
+        host.build("claude")
+        bindir = self._place(host, "pnpm")
+        (bindir / "pnpm").write_text("#!/bin/sh\nexit 1\n")
+        proc = host.run("claude", path_prefix=bindir, msgs=[_rpc(1, "initialize", {})])
+        assert proc.returncode == 0, proc.stderr.decode()
+        assert _install_cmd() in _adapter_line(proc.stderr)
+        assert host.started.exists()
+
     def test_s4_1_an_unrecognised_adapter_warns_with_pnpm_add(self, host):
         host.build("claude")
         proc = host.run("claude", path_prefix=self._place(host, "other"))
