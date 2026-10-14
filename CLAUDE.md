@@ -81,7 +81,7 @@ silently, on upgrade.
 
 ## Git workflow (non-negotiable)
 
-**Never commit to `main`.** Worktree → full suite passing → PR. Sign every commit
+**Never commit to `main`.** Worktree → the tests the change needs (§Tests) → PR. Sign every commit
 (`.claude/rules/signed-commits`).
 
 **Open PRs ready for review, never `--draft`.** A draft PR does not request review and does not run
@@ -156,6 +156,21 @@ tools/run-tests.sh -k install -x          # filter, stop on first failure
 Run the script. Do not hand-compose `mise`/`uv`/`pytest`. It handles worktree setup, is idempotent,
 and absorbs three traps that fail locally while CI stays green. Record the baseline count before your
 change — a drop is a regression even if your new tests pass.
+
+### What a change must run
+
+Run what the change can break, not the whole suite by reflex.
+
+- **Code, catalog or build config** — anything under `src/`, `tests/`, `tools/` or `catalog/`
+  (Markdown included: `catalog/` ships in the wheel and the lints read it), or `pyproject.toml`,
+  `uv.lock`, `mise.toml`: the full suite, and the spec-evidence gauntlet when the change has a story.
+- **Everything else** — repo Markdown (`CLAUDE.md`, `AGENTS.md`, `ARCHITECTURE.md`, the `README.md`
+  files), `.agents/**`, `.claude/**`, `.github/workflows/**`: only the tests that name the changed
+  file. Find them with `rg -l '<file name>' tests` and run those files with `tools/run-tests.sh`. No
+  hit, no run. A hit means a test may pin that file's content — `test_live_workflow.py` reads
+  `live.yml` and parses this file's live-trigger table, and `test_ci_pin_upgrade_workflow.py` holds
+  the triggers equal to the job. A hit that only names a stack's generated `CLAUDE.md` is noise;
+  running it costs seconds. A workflow change also gets `actionlint`.
 
 The **run-tests skill** has the details: per-branch venvs, why `--extra dev` is mandatory, and why a
 plain-text-vs-ANSI assertion failure means the environment is wrong and must never be "fixed" by

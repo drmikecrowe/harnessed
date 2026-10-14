@@ -58,7 +58,9 @@ baseline carries it; a `--stack` launch or `--no-extends` that omits the recipe 
 **No commits to `main`. Every change flows through a worktree → passing tests → PR.**
 
 1. Start work in a **new git worktree** — never edit or commit on `main` directly.
-2. Get the **full test suite passing** in that worktree before proposing to merge.
+2. Get the **tests the change needs** passing in that worktree before proposing to merge: the full
+   suite for code, catalog or build config; for docs, agent or workflow files, only the tests that
+   name the changed file. CLAUDE.md §Tests, "What a change must run", has the rule.
 3. If the change touches the container path — any `Dockerfile.harnessed-*`, `harnessed-start`,
    `volumes.py`, `launcher.py`, or `paths.py` — also run the live layer against your branch
    (`gh workflow run live.yml --ref <branch>`). It is not on `pull_request`, and nothing else in
