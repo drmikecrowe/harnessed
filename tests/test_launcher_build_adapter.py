@@ -236,6 +236,7 @@ class TestS2NoAdapterGetsPnpm:
 class TestS3PnpmGetsPnpm:
     def test_s3_1_a_pnpm_global_bin_gets_pnpm_add(self, build_env, monkeypatch, tmp_path):
         _, bindir = _setup("pnpm", tmp_path, monkeypatch)
+        assert bindir is not None
         result = runner.invoke(launcher.app, ["build", "s", "claude"], input="n\n")
         assert result.exit_code == 0, result.output
         assert f"`{_INSTALL}`" in result.output
