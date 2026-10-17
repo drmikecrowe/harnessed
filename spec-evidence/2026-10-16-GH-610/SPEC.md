@@ -52,7 +52,7 @@ Open decisions: none.
 - Lower the test count: the full suite passes with at least the baseline count plus one.
 
 ## Touches
-- `catalog/recipes/gortex/recipe.yaml` — delete the `Stop:` and `SubagentStop:` entries (lines 228-229 and 232-233); reword the hooks comment at lines 189-194 (8 events → 6, upstream's two dropped and why, no "Stop runs post-task diagnostics"), and the event list at lines 213-214 (drop "Stop" and "Subagent*", name SubagentStart).
+- `catalog/recipes/gortex/recipe.yaml` — delete the `Stop:` and `SubagentStop:` entries (lines 228-229 and 232-233); reword the hooks comment at lines 189-194 (8 events → 6; say that upstream's two end-of-turn events are dropped and why, without the words `Stop` or `SubagentStop`, so S3.1 holds; no "post-task diagnostics" sentence), and the event list at lines 213-214 (drop "Stop" and "Subagent*", name SubagentStart). No comment line in either file may match `Stop\b` (mcrowe, 2026-10-17).
 - `catalog/recipes/gortex/README.md` — line 23: `8 events` → `6 events`.
 - `tests/test_recipes_integration.py` — add one test against the real gortex recipe for S1.1, S1.2, S1.3 and S2.2.
 

@@ -33,3 +33,5 @@ Default: A.
 Changes: SPEC.md Orientation `Decided:` line; scenario S1 removes both events with no opt-in path; Known limits names the overlay route.
 
 ## Revisions
+### Revision 1. The reworded comment names neither dropped event
+Gate 1a round 1 (PR-READINGS): the Touches line asked the comment to explain the two dropped events, which would make S3.1's `rg 'Stop\b'` fail on the plan's own wording. Ruled: the comment describes them as upstream's two end-of-turn events, without those words; S3.1 is unchanged (mcrowe, 2026-10-17). Changed: the `recipe.yaml` line under Touches in SPEC.md.
