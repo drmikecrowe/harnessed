@@ -170,6 +170,7 @@ CONTAINER_ONLY: dict[str, str] = {
     # --- called by the host VERB rather than by _launch_host ---
     "_require_supported_harness": "`host_run` calls it itself, before delegating",
     "_resolve_stack": "`host_run` calls it itself — shared --stack/--recipe resolution",
+    "_acp_terminal_login": "`host_acp` calls it itself — an ACP terminal login runs no launch",
 }
 
 
