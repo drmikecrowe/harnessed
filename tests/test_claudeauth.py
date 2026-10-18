@@ -112,6 +112,25 @@ class TestSync:
         data = json.loads(pod.read_text())
         assert data == {"claudeAiOauth": {"accessToken": "b"}, "mcpOAuth": {"new": 1}}
 
+    def test_a_host_view_merge_waits_for_another_writer(self, env):
+        """Host views are replaced, so they share one lock; keys stored meanwhile survive."""
+        _, stack, _, _ = env
+        stack.unlink()
+        stack.write_text(json.dumps({"claudeAiOauth": {"accessToken": "a"}}))
+        lock = claudeauth._state_root() / "claude-auth-views.lock"
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        with lock.open("w") as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+            writer = threading.Thread(
+                target=claudeauth.write_view, args=(stack, {"accessToken": "b"}), kwargs={"in_place": False}
+            )
+            writer.start()
+            writer.join(0.3)
+            assert writer.is_alive()
+            stack.write_text(json.dumps({"claudeAiOauth": {"accessToken": "a"}, "mcpOAuth": {"new": 1}}))
+        writer.join(5)
+        assert json.loads(stack.read_text()) == {"claudeAiOauth": {"accessToken": "b"}, "mcpOAuth": {"new": 1}}
+
     def test_a_configured_token_leaves_every_file_alone(self, env, monkeypatch):
         """Under `CLAUDE_CODE_OAUTH_TOKEN` nothing reads these files; the host side keeps none."""
         _, stack, pod, _ = env
@@ -257,6 +276,13 @@ class TestStartRefresher:
     def test_does_not_spawn_without_a_host_login(self, env, monkeypatch):
         store, *_ = env
         store.unlink()
+        spawned = []
+        monkeypatch.setattr(claudeauth.subprocess, "Popen", lambda argv, **kw: spawned.append(argv))
+        _real_start_refresher()
+        assert spawned == []
+
+    def test_does_not_spawn_under_a_configured_token(self, env, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
         spawned = []
         monkeypatch.setattr(claudeauth.subprocess, "Popen", lambda argv, **kw: spawned.append(argv))
         _real_start_refresher()

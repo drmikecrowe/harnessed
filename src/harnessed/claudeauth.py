@@ -26,6 +26,8 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from . import paths
@@ -122,24 +124,38 @@ def write_view(path: Path, view: dict, *, in_place: bool) -> bool:
         finally:
             os.close(fd)
         return True
-    text = None
-    if path.is_file() and not path.is_symlink():
+    # A lock on the file itself would stay on the inode this replaces, so host views share one.
+    with _views_lock():
+        text = None
+        if path.is_file() and not path.is_symlink():
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError:
+                text = None
+        data = _merged(text, view)
+        if data is None:
+            return False
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")  # mode 0600
         try:
-            text = path.read_text(encoding="utf-8")
-        except OSError:
-            text = None
-    data = _merged(text, view)
-    if data is None:
-        return False
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")  # mode 0600
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(json.dumps(data))
-        os.replace(tmp, path)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(data))
+            os.replace(tmp, path)
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
     return True
+
+
+@contextmanager
+def _views_lock() -> Iterator[None]:
+    lock = _state_root() / "claude-auth-views.lock"
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
 
 
 def _host_views() -> list[Path]:
@@ -238,7 +254,7 @@ def start_refresher() -> None:
     started it, and the next launch after a reboot starts it again."""
     # Nothing to refresh. Also keeps a test that runs the CLI in a subprocess, out of reach of
     # conftest's stub, from leaving a refresher idling in a deleted tmp home.
-    if access_view(host_store()) is None:
+    if _host_oauth_token_configured() or access_view(host_store()) is None:
         return
     lock = _lock_path()
     lock.parent.mkdir(parents=True, exist_ok=True)
