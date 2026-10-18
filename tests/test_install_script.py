@@ -1227,11 +1227,11 @@ class TestPhase3ClosesAC2AcrossTheCatalog:
         vacuously. Six is what §1 Family B measured after REVISION 14 struck hyperpowers: caveman,
         superpowers, gstack, and mikes-universal-setup's three. Five since 2026-09-09, when
         mikes-universal-setup dropped blader/humanizer into its vendored mikes-voice skill. Six
-        since mattpocock-skills arrived, born on `install.refs`.
+        since mattpocock-skills arrived, born on `install.refs`. Seven since ponytail, likewise.
         """
         refs = self._all_refs()
-        assert len(refs) == 6, (
-            f"expected Family B's five refs plus mattpocock-skills, found {[(n, k) for n, k, _ in refs]}"
+        assert len(refs) == 7, (
+            f"expected Family B's five refs plus mattpocock-skills and ponytail, found {[(n, k) for n, k, _ in refs]}"
         )
 
     def test_every_declared_ref_is_pinned_immutably(self):
