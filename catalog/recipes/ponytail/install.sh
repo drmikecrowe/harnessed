@@ -43,6 +43,13 @@ mkdir -p "$HARNESSED_CONFIG_DIR/ponytail"
 rm -rf "$HARNESSED_CONFIG_DIR/ponytail/hooks"
 cp -r "$src/hooks" "$HARNESSED_CONFIG_DIR/ponytail/hooks"
 
+# Upstream names the tool ("grep every caller"); stacks deny grep or route search through a code
+# graph, so name the goal instead. Temp file + mv, not `sed -i`: BSD sed has no portable -i.
+for f in "$HARNESSED_CONFIG_DIR"/skills/ponytail*/SKILL.md "$HARNESSED_CONFIG_DIR/ponytail/hooks/ponytail-instructions.js"; do
+    sed 's/grep every caller/find every caller/g; s/grep the whole tree/search the whole tree/g' "$f" > "$f.tmp"
+    mv "$f.tmp" "$f"
+done
+
 # Pre-mark ponytail's statusline offer as seen. Unmarked, SessionStart tells the agent to edit
 # settings.json, which harnessed regenerates, so the edit would be lost. An empty file is the
 # upstream "already nudged, declined" state (hooks/ponytail-activate.js).
