@@ -3709,7 +3709,11 @@ def _acp_terminal_login(verb: str, harness: str, stack: Optional[str], args: lis
         env.pop("CLAUDE_CONFIG_DIR", None)
     # No `_acknowledge_warnings` first: nothing was assembled, so no launch warning is pending.
     login = [_HOST_HARNESSES[harness].argv0, *args]
-    os.execvpe(login[0], login, env)  # noqa: S606 — argv is a vector; nothing is word-split
+    try:
+        os.execvpe(login[0], login, env)  # noqa: S606 — argv is a vector; nothing is word-split
+    except OSError as exc:
+        _err.print(f"[bold red]error:[/bold red] cannot run {login[0]}: {exc}", soft_wrap=True)
+        raise typer.Exit(127) from exc
 
 
 @app.command("host-acp")
@@ -6539,9 +6543,12 @@ def _extract_acp_cli(argv: list[str]) -> list[str]:
     returning the head. Otherwise clears `_acp_cli` and returns argv unchanged.
 
     An empty rest is valid, not a usage error: the adapter's `claude-login` method sends exactly
-    `["--cli"]`, meaning an interactive claude where the user runs `/login`."""
+    `["--cli"]`, meaning an interactive claude where the user runs `/login`.
+
+    Only a `--cli` before any `--` counts: after it, `--cli` is the agent's passthrough argv."""
     global _acp_cli
-    if argv and argv[0] in _ACP_VERBS and "--cli" in argv:
+    end = argv.index("--") if "--" in argv else len(argv)
+    if argv and argv[0] in _ACP_VERBS and "--cli" in argv[:end]:
         i = argv.index("--cli")
         _acp_cli = argv[i + 1 :]
         return argv[:i]

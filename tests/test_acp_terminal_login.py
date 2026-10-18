@@ -89,6 +89,11 @@ class TestSplit:
         assert proc.returncode == 0, proc.stderr.decode()
         assert _record(env)["argv"] == []
 
+    def test_a_cli_after_the_passthrough_marker_is_the_agents(self):
+        argv = ["container-acp", "claude", "--stack", "s", "--", "--cli", "auth"]
+        assert launcher._extract_acp_cli(argv) == argv
+        assert launcher._acp_cli is None
+
     @pytest.mark.parametrize("verb", ["host-run", "container-run", "container-exec"])
     def test_other_verbs_are_untouched(self, verb):
         argv = [verb, "claude", "--", "--cli"]
@@ -105,6 +110,14 @@ class TestHostAcp:
         assert rec["config"] == str(Path(env["XDG_DATA_HOME"]) / "harnessed" / "home" / "shared" / "claude")
         # The editor shows this in a terminal: claude's output is not diverted to stderr.
         assert b"LOGIN-OUT" in proc.stdout
+
+    def test_a_missing_claude_is_an_error_not_a_traceback(self, env, tmp_path):
+        (tmp_path / "bin" / "claude").unlink()
+        env["PATH"] = str(tmp_path / "bin")
+        proc = _run(env, "host-acp", "claude", "--stack", "shared", "--cli", "auth", "login")
+        assert proc.returncode == 127
+        assert b"cannot run claude" in proc.stderr
+        assert b"Traceback" not in proc.stderr
 
     def test_a_harness_without_the_claude_cli_is_refused(self, env):
         proc = _run(env, "host-acp", "omp", "--stack", "shared", "--cli", "auth", "login")
