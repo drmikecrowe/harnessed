@@ -95,6 +95,15 @@ class TestSync:
         assert pod.read_text() == before
 
 
+    def test_a_store_with_top_level_tokens_writes_no_view(self, env):
+        """`_credentials_are_usable` accepts a bare token object; a view needs `claudeAiOauth`."""
+        store, _, pod, _ = env
+        store.write_text(json.dumps(_login("bare")["claudeAiOauth"]))
+        before = pod.read_text()
+        claudeauth.sync()
+        assert pod.read_text() == before
+
+
 class TestTick:
     def test_refreshes_only_inside_the_lead(self, env, monkeypatch):
         store, *_ = env

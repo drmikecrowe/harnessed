@@ -65,7 +65,10 @@ def access_view(store: Path) -> dict | None:
     """The host login without its refresh token, or None when the store holds no usable login."""
     if not _credentials_are_usable(store):
         return None
-    oauth = json.loads(store.read_text(encoding="utf-8"))["claudeAiOauth"]
+    # The usability check also accepts a bare token object; claude itself always nests it.
+    oauth = json.loads(store.read_text(encoding="utf-8")).get("claudeAiOauth")
+    if not isinstance(oauth, dict):
+        return None
     return {k: v for k, v in oauth.items() if k not in _REFRESH_KEYS}
 
 
