@@ -128,7 +128,8 @@ def _is_daemon_state(entry: Path) -> bool:
     """
     if not entry.is_dir() or entry.is_symlink():
         return False
-    if entry.name == "daemon":
+    # `jobs/` holds live background sessions, written to while a rebuild runs (rmtree raced them).
+    if entry.name in ("daemon", "jobs"):
         return True
     return any((entry / marker).exists() for marker in _DAEMON_STATE_MARKERS)
 
@@ -195,7 +196,8 @@ def _materialize_host_home(prof: Path, home: Path, *, fingerprint: str | None = 
     _migrate_legacy_host_homes(home)
     if home.exists():
         # `.claude.json` is Claude Code's live answer store, not recipe content (GH-594).
-        _clear_host_home_except_runtime(home, keep=(".claude.json",))
+        # `.mcp.json` is named in every background session's respawn flags; `wire_mcp` rewrites it.
+        _clear_host_home_except_runtime(home, keep=(".claude.json", ".mcp.json"))
     home.mkdir(parents=True, exist_ok=True)
     src_claude = prof / ".claude"
     if src_claude.is_dir():

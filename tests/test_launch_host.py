@@ -98,6 +98,36 @@ class TestMaterialize:
         assert (home / "daemon" / "sock").is_file()
         assert (home / "skills" / "greet-helper" / "SKILL.md").is_file()  # profile still landed
 
+    def test_live_background_jobs_survive_the_rebuild(self, tmp_path):
+        """Observed 2026-10-18. `jobs/<id>/` holds the state of Claude Code's background sessions,
+        which keep writing into it. The rebuild rmtree'd it mid-write and died on
+        `OSError: [Errno 39] Directory not empty: .../jobs`, so the stack could not launch at all."""
+        prof, home = tmp_path / "prof", tmp_path / "home"
+        prof.mkdir()
+        _fake_profile(prof)
+        job = home / "jobs" / "9d41a81b"
+        job.mkdir(parents=True)
+        (job / "state.json").write_text('{"state":"running"}')
+
+        launcher._materialize_host_home(prof, home)
+
+        assert (job / "state.json").read_text() == '{"state":"running"}'
+
+    def test_the_mcp_config_a_running_daemon_respawns_with_survives(self, tmp_path):
+        """Observed 2026-10-18. The daemon records `--mcp-config <home>/.mcp.json` in every
+        background session's respawn flags. A rebuild that deleted it, then failed an install
+        before `wire_mcp` rewrote it, left every new background session dying on
+        `MCP config file not found`."""
+        prof, home = tmp_path / "prof", tmp_path / "home"
+        prof.mkdir()
+        _fake_profile(prof)
+        home.mkdir()
+        (home / ".mcp.json").write_text('{"mcpServers": {}}')
+
+        launcher._materialize_host_home(prof, home)
+
+        assert (home / ".mcp.json").read_text() == '{"mcpServers": {}}'
+
     def test_dropped_recipe_content_is_still_removed(self, tmp_path):
         """The 8px.20 preserve must not weaken the 8px.12 invariant: sparing daemon state is not a
         licence to spare recipe content. A dir that merely LOOKS like state (no daemon markers) is
