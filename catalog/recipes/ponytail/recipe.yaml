@@ -43,8 +43,9 @@ expect:
 #   SessionStart     — injects the ruleset at the active level and writes the mode flag.
 #   SubagentStart    — injects the ruleset into subagents.
 #   UserPromptSubmit — tracks `/ponytail lite|full|ultra|off` so the level persists.
-# Each fails open (`exit 0`) when node or the script is missing: a context hook must never break a
-# session. `exec` keeps the hook payload on stdin, which the scripts read.
+# Each exits 0 when node or the script is missing: an absent install must never break a session.
+# Once `exec` runs, the script's own exit status reaches the harness; upstream's hooks catch their
+# own errors and exit 0. `exec` also keeps the hook payload on stdin, which the scripts read.
 hooks:
   SessionStart:
     - command: >-
