@@ -209,7 +209,8 @@ class TestTick:
 class TestRefreshHost:
     def test_runs_claude_against_the_host_store_with_nothing_else_loaded(self, env, monkeypatch):
         store, *_ = env
-        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
+        for var in claudeauth._OUTRANKS_THE_LOGIN:
+            monkeypatch.setenv(var, "x")
         seen = {}
         monkeypatch.setattr(claudeauth.shutil, "which", lambda name: "/bin/claude")
 
@@ -223,7 +224,7 @@ class TestRefreshHost:
         assert "--no-session-persistence" in seen["argv"]
         assert seen["argv"][seen["argv"].index("--setting-sources") + 1] == "project"
         assert "CLAUDE_CONFIG_DIR" not in seen["env"], "setting it to ~/.claude moves .claude.json"
-        assert "CLAUDE_CODE_OAUTH_TOKEN" not in seen["env"]
+        assert not set(claudeauth._OUTRANKS_THE_LOGIN) & set(seen["env"])
 
     def test_inside_a_stack_the_stack_config_dir_is_not_the_store(self, env, monkeypatch):
         """A launch from inside a host stack inherits that stack's CLAUDE_CONFIG_DIR."""
@@ -247,7 +248,26 @@ class TestRefreshHost:
             claudeauth.subprocess, "run", lambda argv, **kw: claudeauth.subprocess.CompletedProcess(argv, 3)
         )
         claudeauth.refresh_host(store)
-        assert "claude exited 3" in capsys.readouterr().out
+        assert "NOT refreshed (claude exited 3)" in capsys.readouterr().out
+
+    def test_success_is_judged_by_the_store_not_the_exit_code(self, env, monkeypatch, capsys):
+        """A credential the env could not strip answers the probe with exit 0 and no refresh."""
+        store, *_ = env
+        monkeypatch.setattr(claudeauth.shutil, "which", lambda name: "/bin/claude")
+        monkeypatch.setattr(
+            claudeauth.subprocess, "run", lambda argv, **kw: claudeauth.subprocess.CompletedProcess(argv, 0)
+        )
+        claudeauth.refresh_host(store)
+        assert "NOT refreshed" in capsys.readouterr().out
+
+        def refreshing_run(argv, **kw):
+            store.write_text(json.dumps(_login("host", expires_in=8 * 3600 + 60)))
+            return claudeauth.subprocess.CompletedProcess(argv, 0)
+
+        monkeypatch.setattr(claudeauth.subprocess, "run", refreshing_run)
+        claudeauth.refresh_host(store)
+        out = capsys.readouterr().out
+        assert "refreshed" in out and "NOT" not in out
 
 
 class TestStartRefresher:

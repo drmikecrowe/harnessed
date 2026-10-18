@@ -50,6 +50,13 @@ _TICK_S = 60
 _REFRESH_TIMEOUT_S = 120
 _REFRESH_BACKOFF_S = 300
 
+#: Credentials claude prefers over the OAuth login (code.claude.com/docs/en/authentication,
+#: "Authentication precedence"). With one set, the refresh probe would never touch the login.
+_OUTRANKS_THE_LOGIN = (
+    "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
+    "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN",
+)
+
 
 def host_store() -> Path:
     """The one credentials file that holds the refresh token."""
@@ -205,12 +212,12 @@ def refresh_host(store: Path) -> None:
     once the login is inside its expiry window. Run against the host store's own config dir, so
     claude's refresh lock also serialises it with the user's plain `claude` sessions.
     """
+    before = _expires_at(store)
     claude = shutil.which("claude")
     if claude is None:
         print("claude not on PATH; cannot refresh the host login", flush=True)
         return
-    env = dict(os.environ)
-    env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
+    env = {k: v for k, v in os.environ.items() if k not in _OUTRANKS_THE_LOGIN}
     # Unset means ~/.claude. Setting it to ~/.claude instead would move `.claude.json` into that dir.
     override = _host_claude_config_override()
     if override is None:
@@ -225,8 +232,11 @@ def refresh_host(store: Path) -> None:
             cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, timeout=_REFRESH_TIMEOUT_S, check=False,
         )
-    state = "refresh ran" if proc.returncode == 0 else f"claude exited {proc.returncode}"
-    print(f"{state}; host login expires at {time.ctime(_expires_at(store))}", flush=True)
+    after = _expires_at(store)
+    # Judge by the store, not the exit code: a credential this env could not strip (a gateway
+    # sign-in, managed settings) serves the request without ever touching the OAuth refresh.
+    state = "refreshed" if after > before else f"NOT refreshed (claude exited {proc.returncode})"
+    print(f"{state}; host login expires at {time.ctime(after)}", flush=True)
 
 
 _last_refresh = 0.0
