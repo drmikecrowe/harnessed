@@ -31,6 +31,7 @@ EXTRACTED = [
     "capmatrix.py",
     "catalogseed.py",
     "claude_imports.py",  # never lived in launcher.py; listed because it reports through the shared console
+    "claudeauth.py",  # never lived in launcher.py; listed because it reports through the shared console
     "console.py",
     "credmounts.py",
     "ctrquery.py",

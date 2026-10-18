@@ -288,6 +288,15 @@ class TestStartRefresher:
         _real_start_refresher()
         assert spawned == []
 
+    def test_a_failed_spawn_warns_and_does_not_fail_the_launch(self, env, monkeypatch):
+        def broken(argv, **kw):
+            raise OSError("no exec")
+
+        monkeypatch.setattr(claudeauth.subprocess, "Popen", broken)
+        before = claudeauth._err.warnings
+        _real_start_refresher()
+        assert claudeauth._err.warnings > before
+
     def test_does_not_spawn_while_one_holds_the_lock(self, env, monkeypatch):
         lock = claudeauth._lock_path()
         lock.parent.mkdir(parents=True, exist_ok=True)
@@ -297,3 +306,34 @@ class TestStartRefresher:
             monkeypatch.setattr(claudeauth.subprocess, "Popen", lambda argv, **kw: spawned.append(argv))
             _real_start_refresher()
         assert spawned == []
+
+
+class TestContainerLaunchGate:
+    """A container launch syncs and starts the refresher only when its pod will read a view."""
+
+    @pytest.fixture
+    def calls(self, monkeypatch):
+        from harnessed import launcher
+
+        seen = []
+        monkeypatch.setattr(claudeauth, "sync", lambda: seen.append("sync"))
+        monkeypatch.setattr(claudeauth, "start_refresher", lambda: seen.append("start"))
+        return launcher, seen
+
+    def test_without_a_token_it_syncs_and_starts(self, calls, monkeypatch, tmp_path):
+        launcher, seen = calls
+        monkeypatch.setattr(launcher, "_claude_oauth_token_configured", lambda h, p: False)
+        launcher._sync_claude_auth("claude", tmp_path)
+        assert seen == ["sync", "start"]
+
+    def test_a_project_token_skips_both(self, calls, monkeypatch, tmp_path):
+        launcher, seen = calls
+        monkeypatch.setattr(launcher, "_claude_oauth_token_configured", lambda h, p: True)
+        launcher._sync_claude_auth("claude", tmp_path)
+        assert seen == []
+
+    def test_another_harness_skips_both(self, calls, monkeypatch, tmp_path):
+        launcher, seen = calls
+        monkeypatch.setattr(launcher, "_claude_oauth_token_configured", lambda h, p: False)
+        launcher._sync_claude_auth("omp", tmp_path)
+        assert seen == []

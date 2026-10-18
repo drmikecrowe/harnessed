@@ -31,6 +31,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from . import paths
+from .console import _err
 from .hosthome import (
     _credentials_are_usable,
     _host_claude_config_override,
@@ -272,6 +273,9 @@ def start_refresher() -> None:
                 [sys.executable, "-m", "harnessed.claudeauth", str(fd)], pass_fds=(fd,),
                 stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
             )
+    except OSError as exc:
+        # The launch the user asked for must not fail on it; the next launch tries again.
+        _err.print(f"[bold yellow]warning:[/bold yellow] could not start the Claude login refresher: {exc}")
     finally:
         os.close(fd)
 

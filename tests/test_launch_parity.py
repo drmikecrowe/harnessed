@@ -96,6 +96,8 @@ CONTAINER_ONLY: dict[str, str] = {
     "_ccstatusline_settings_mount": "bind mount",
     "_claude_config_seed_mount": "seeds config INTO a container; the host uses its own ~/.claude",
     "_claude_creds_view_mount": "seeds credentials INTO a container; the host already has them",
+    "_sync_claude_auth": "the container half of the GH-597 sync; a host launch writes its view in "
+                         "_share_host_claude_state and starts the refresher in seed_auth",
     "_keyring_state_mount": "bind mount",
     "_keyring_fresh_wipe": "resets container-side keyring state",
     # `isolated_auth` (a stack running as a DIFFERENT Claude account) is container-only for now, by

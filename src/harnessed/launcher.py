@@ -4366,6 +4366,17 @@ def _acp_relaunch(project: Path, agent_start_folder: Optional[str]) -> tuple[sub
     return proc, start_dir
 
 
+def _sync_claude_auth(harness: str, project_path: Path) -> None:
+    """Bring every credential view up to the host login, and make sure something refreshes it.
+
+    Gated on the same check as `_claude_creds_view_mount`: under this project's own token no pod of
+    it reads a view, so neither the sync nor the refresher is this launch's business.
+    """
+    if harness == "claude" and not _claude_oauth_token_configured(harness, project_path):
+        claudeauth.sync()
+        claudeauth.start_refresher()
+
+
 @app.command("container-run")
 def container_run(
     ctx: typer.Context,
@@ -4648,11 +4659,9 @@ def container_run(
         stack=stack, harness=harness, project_path=project_path,
         extra=tuple(extra), no_strict_mcp=no_strict_mcp_config, ephemeral=rm,
     )
-    if harness == "claude":
-        # Before any attach path: an attach skips the mounts, so this is what brings a running pod's
-        # credential view up to the host's current login (GH-597).
-        claudeauth.sync()
-        claudeauth.start_refresher()
+    # Before any attach path: an attach skips the mounts, so this is what brings a running pod's
+    # credential view up to the host's current login (GH-597).
+    _sync_claude_auth(harness, project_path)
 
     # --fresh: tear down existing pod.
     if fresh:
