@@ -185,7 +185,31 @@ class TestStartRefresher:
         spawned = []
         monkeypatch.setattr(claudeauth.subprocess, "Popen", lambda argv, **kw: spawned.append(argv))
         _real_start_refresher()
-        assert spawned and spawned[0][1:] == ["-m", "harnessed.claudeauth"]
+        assert spawned[0][1:3] == ["-m", "harnessed.claudeauth"]
+
+    def test_the_child_inherits_the_held_lock(self, env, monkeypatch):
+        """No gap between the check and the child: while the parent spawns, the lock is held, and
+        the child gets that same locked fd."""
+        lock = claudeauth._lock_path()
+        seen = {}
+
+        def fake_popen(argv, **kw):
+            seen.update(argv=argv, pass_fds=kw["pass_fds"])
+            with lock.open("w") as probe:  # another launch, mid-spawn
+                with pytest.raises(BlockingIOError):
+                    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+        monkeypatch.setattr(claudeauth.subprocess, "Popen", fake_popen)
+        _real_start_refresher()
+        assert seen["pass_fds"] == (int(seen["argv"][3]),)
+
+    def test_does_not_spawn_without_a_host_login(self, env, monkeypatch):
+        store, *_ = env
+        store.unlink()
+        spawned = []
+        monkeypatch.setattr(claudeauth.subprocess, "Popen", lambda argv, **kw: spawned.append(argv))
+        _real_start_refresher()
+        assert spawned == []
 
     def test_does_not_spawn_while_one_holds_the_lock(self, env, monkeypatch):
         lock = claudeauth._lock_path()

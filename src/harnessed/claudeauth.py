@@ -94,7 +94,8 @@ def write_view(path: Path, view: dict, *, in_place: bool) -> bool:
     body = json.dumps(data)
     if in_place:
         # Raw writes over the old bytes, then trim: never an empty file, and one write(2) for a
-        # body this small, so a pod reading mid-write sees the old or the new login.
+        # body this small, so a pod reading mid-write sees the old or the new login. A crash
+        # between write and trim leaves a torn file; it fails to parse, so the next sync rewrites it.
         raw = body.encode("utf-8")
         fd = os.open(path, os.O_WRONLY | os.O_CREAT, 0o600)
         try:
@@ -205,30 +206,41 @@ def _lock_path() -> Path:
 def start_refresher() -> None:
     """Start the refresher unless one already runs. It is detached: it outlives the launch that
     started it, and the next launch after a reboot starts it again."""
+    # Nothing to refresh. Also keeps a test that runs the CLI in a subprocess, out of reach of
+    # conftest's stub, from leaving a refresher idling in a deleted tmp home.
+    if access_view(host_store()) is None:
+        return
     lock = _lock_path()
     lock.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
+        os.close(fd)
         return  # a refresher holds the lock
+    # The child inherits the locked fd, so the lock is never free between this check and the
+    # child: a concurrent launch cannot start a second refresher.
+    try:
+        with (lock.parent / "claude-auth-refresher.log").open("a") as log:
+            subprocess.Popen(
+                [sys.executable, "-m", "harnessed.claudeauth", str(fd)], pass_fds=(fd,),
+                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
+            )
     finally:
-        os.close(fd)  # closing releases a lock we took; the child takes its own
-    with (lock.parent / "claude-auth-refresher.log").open("a") as log:
-        subprocess.Popen(
-            [sys.executable, "-m", "harnessed.claudeauth"],
-            stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
-        )
+        os.close(fd)
 
 
 def main() -> None:
-    lock = _lock_path()
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        return  # two launches raced to start one; the other won
+    if len(sys.argv) > 1:
+        fd = int(sys.argv[1])  # inherited from `start_refresher`, already locked
+    else:
+        lock = _lock_path()
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return  # a refresher already runs
     print(f"refresher started, pid {os.getpid()}", flush=True)
     while True:
         try:
