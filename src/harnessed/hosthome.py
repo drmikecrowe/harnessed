@@ -125,11 +125,20 @@ def _is_daemon_state(entry: Path) -> bool:
     keys (`51ba83b8`, `d8551d86`); matching that shape would be guesswork, and a recipe is free to
     ship a directory with any name. A directory holding `daemon.json`/`daemon.log`/`daemon-auth-*`
     is unambiguously the daemon's.
+
+    Two exceptions are matched by name. `daemon/` is spared outright. `jobs/` holds live background
+    sessions, written to while a rebuild runs, so the rmtree raced them. It is spared only when its
+    content is the daemon's too (`pins.json`, or a `<id>/state.json`), so a recipe's own `jobs/`
+    is still wiped.
     """
     if not entry.is_dir() or entry.is_symlink():
         return False
     if entry.name == "daemon":
         return True
+    if entry.name == "jobs":
+        return (entry / "pins.json").is_file() or any(
+            (child / "state.json").is_file() for child in entry.iterdir()
+        )
     return any((entry / marker).exists() for marker in _DAEMON_STATE_MARKERS)
 
 
@@ -195,7 +204,8 @@ def _materialize_host_home(prof: Path, home: Path, *, fingerprint: str | None = 
     _migrate_legacy_host_homes(home)
     if home.exists():
         # `.claude.json` is Claude Code's live answer store, not recipe content (GH-594).
-        _clear_host_home_except_runtime(home, keep=(".claude.json",))
+        # `.mcp.json` is named in every background session's respawn flags; `wire_mcp` rewrites it.
+        _clear_host_home_except_runtime(home, keep=(".claude.json", ".mcp.json"))
     home.mkdir(parents=True, exist_ok=True)
     src_claude = prof / ".claude"
     if src_claude.is_dir():
