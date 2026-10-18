@@ -20,7 +20,7 @@ assembler emits it into the generated `settings.json`.
 | MCP server (`gortex mcp`) | hatago child (container) / native `.mcp.json` (host), behind a one-line daemon-ensure wrapper | harness start |
 | daemon + repo registration | `init.run` (daemon ensure + `gortex track "$PROJECT_DIR"`) | every attach |
 | per-repo wiring (claude only) | `init.run` → `gortex init --agents=claude-code --no-skills --no-hooks --yes` | every attach |
-| hooks (`gortex hook`, 8 events) | `recipe.yaml` `hooks:` → assembler `settings.json` | every tool call / prompt |
+| hooks (`gortex hook`, 6 events) | `recipe.yaml` `hooks:` → assembler `settings.json` | every tool call / prompt |
 
 ## Daemon lifecycle
 
