@@ -79,8 +79,15 @@ class TestSplit:
         assert launcher._acp_cli == ["auth", "login", "--", "--x"]
 
     def test_a_bare_cli_is_an_empty_login_argv(self):
+        # Not an error: the adapter's `claude-login` method sends exactly `["--cli"]` — an
+        # interactive claude in which the user runs /login.
         launcher._extract_acp_cli(["container-acp", "claude", "--stack", "s", "--cli"])
         assert launcher._acp_cli == []
+
+    def test_a_bare_cli_runs_an_interactive_claude(self, env):
+        proc = _run(env, "host-acp", "claude", "--stack", "shared", "--cli")
+        assert proc.returncode == 0, proc.stderr.decode()
+        assert _record(env)["argv"] == []
 
     @pytest.mark.parametrize("verb", ["host-run", "container-run", "container-exec"])
     def test_other_verbs_are_untouched(self, verb):

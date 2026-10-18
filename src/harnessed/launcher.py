@@ -6536,7 +6536,10 @@ _ACP_VERBS = ("host-acp", "container-acp")
 
 def _extract_acp_cli(argv: list[str]) -> list[str]:
     """For an ACP verb, split argv at the first `--cli`, stashing the rest in `_acp_cli` and
-    returning the head. Otherwise clears `_acp_cli` and returns argv unchanged."""
+    returning the head. Otherwise clears `_acp_cli` and returns argv unchanged.
+
+    An empty rest is valid, not a usage error: the adapter's `claude-login` method sends exactly
+    `["--cli"]`, meaning an interactive claude where the user runs `/login`."""
     global _acp_cli
     if argv and argv[0] in _ACP_VERBS and "--cli" in argv:
         i = argv.index("--cli")
