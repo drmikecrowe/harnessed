@@ -36,6 +36,7 @@ from . import acprelay
 from . import aoe
 from . import broker
 from . import claude_imports
+from . import context as stack_context
 from . import dynstack
 from . import emit
 from . import launchscript
@@ -5218,6 +5219,36 @@ def _broker_report(pod_exists, *, run=None) -> None:
     _out.print("[bold]Secret brokers (host-side, one per instance):[/bold]")
     for b in live:
         _out.print(f"  {b.instance}  session {b.session}  127.0.0.1:{b.port}")
+
+
+@app.command("context")
+def context(
+    stack: str = typer.Argument(..., help="Built stack to inspect"),
+    harness: str = typer.Argument("claude", help="Harness the stack was built for"),
+) -> None:
+    """Show what a stack loads into every session; exit 1 on a duplicate or a leak.
+
+    Reads the host home when a host launch has made one, because only it holds what install
+    scripts wrote; otherwise the built profile. Leaks are looked for above the current directory,
+    which is what the agent walks when launched here."""
+    home = paths.host_home(stack, harness)
+    config = home if home.is_dir() else paths.profile_dir(stack, harness) / ".claude"
+    if not config.is_dir():
+        _err.print(f"[bold red]error:[/bold red] {stack}/{harness} is not built: run `harnessed build {stack} {harness}`")
+        raise typer.Exit(2)
+    items = stack_context.collect(config, Path.cwd())
+    _out.print(f"[bold]{stack}/{harness}[/bold] from {config}")
+    for kind in ("memory", "leak", "skill"):
+        rows = sorted((it for it in items if it.kind == kind), key=lambda it: -it.tokens)
+        _out.print(f"  {kind}: {len(rows)} files, ~{sum(it.tokens for it in rows)} tokens")
+        if kind != "skill":
+            for it in rows:
+                _out.print(f"    ~{it.tokens:>6}  {it.path}")
+    found = stack_context.problems(items)
+    for problem in found:
+        _err.print(f"[bold red]problem:[/bold red] {problem}")
+    if found:
+        raise typer.Exit(1)
 
 
 @app.command("list")
