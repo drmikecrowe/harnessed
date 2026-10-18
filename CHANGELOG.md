@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.5.0](https://github.com/drmikecrowe/harnessed/compare/v0.4.0...v0.5.0) (2026-10-18)
+
+
+### Features
+
+* **catalog:** add ponytail recipe ([#614](https://github.com/drmikecrowe/harnessed/issues/614)) ([30520ec](https://github.com/drmikecrowe/harnessed/commit/30520ec5b871b198d3587192164a13167a713db9))
+* **catalog:** upgrade pins 2026-10-17 ([#612](https://github.com/drmikecrowe/harnessed/issues/612)) ([41b0dfd](https://github.com/drmikecrowe/harnessed/commit/41b0dfd37cf0de2dfa42ebedb1579f82e7823b0e))
+
+
+### Bug Fixes
+
+* **acp:** run an ACP terminal login instead of rejecting --cli ([#616](https://github.com/drmikecrowe/harnessed/issues/616)) ([da36921](https://github.com/drmikecrowe/harnessed/commit/da36921b925d5962b22aecf0f8a2d3bfd414d5f2))
+* **gortex:** drop Stop and SubagentStop hooks (GH-610) ([#613](https://github.com/drmikecrowe/harnessed/issues/613)) ([0140722](https://github.com/drmikecrowe/harnessed/commit/0140722958d38c2db313f410739fd4f87b9ca16b))
+* **host:** spare live background jobs and .mcp.json in the host home rebuild ([#615](https://github.com/drmikecrowe/harnessed/issues/615)) ([c8e417c](https://github.com/drmikecrowe/harnessed/commit/c8e417ca43c50c91513946e54818a47c69b53fe6))
+
+
+### Documentation
+
+* **agents:** make AGENTS.md the source of truth for agent rules ([#608](https://github.com/drmikecrowe/harnessed/issues/608)) ([1d04c66](https://github.com/drmikecrowe/harnessed/commit/1d04c66d9507ad84fcc50a0150b4ceb73e03c29e))
+
 ## [0.4.0](https://github.com/drmikecrowe/harnessed/compare/v0.3.1...v0.4.0) (2026-10-14)
 
 
