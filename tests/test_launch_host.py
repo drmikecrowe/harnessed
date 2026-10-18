@@ -113,6 +113,19 @@ class TestMaterialize:
 
         assert (job / "state.json").read_text() == '{"state":"running"}'
 
+    def test_a_recipe_jobs_dir_without_job_state_is_still_removed(self, tmp_path):
+        """PR #615 review. `jobs/` is spared by its content, not its name, so a recipe that ships
+        its own `jobs/` cannot leave it behind after the recipe is dropped."""
+        prof, home = tmp_path / "prof", tmp_path / "home"
+        prof.mkdir()
+        _fake_profile(prof)
+        (home / "jobs").mkdir(parents=True)
+        (home / "jobs" / "README.md").write_text("recipe content")
+
+        launcher._materialize_host_home(prof, home)
+
+        assert not (home / "jobs").exists()
+
     def test_the_mcp_config_a_running_daemon_respawns_with_survives(self, tmp_path):
         """Observed 2026-10-18. The daemon records `--mcp-config <home>/.mcp.json` in every
         background session's respawn flags. A rebuild that deleted it, then failed an install
