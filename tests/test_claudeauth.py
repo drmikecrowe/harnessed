@@ -68,6 +68,15 @@ class TestSync:
         assert pod.stat().st_ino == inode
         assert json.loads(pod.read_text())["mcpOAuth"] == {"srv": 1}
 
+    def test_a_shorter_view_leaves_no_trailing_bytes(self, env):
+        """The in-place write overwrites, then trims: a shorter body must not keep the old tail."""
+        _, _, pod, _ = env
+        pod.write_text(json.dumps({**_login("pod", refresh="pod-r"), "pad": "x" * 500}))
+        inode = pod.stat().st_ino
+        claudeauth.write_view(pod, {"accessToken": "a"}, in_place=True)
+        assert pod.stat().st_ino == inode
+        assert json.loads(pod.read_text())["claudeAiOauth"] == {"accessToken": "a"}
+
     def test_an_isolated_auth_login_is_never_touched(self, env):
         *_, isolated = env
         before = isolated.read_text()
@@ -136,6 +145,7 @@ class TestRefreshHost:
 
         def fake_run(argv, **kw):
             seen.update(argv=argv, env=kw["env"], cwd=kw["cwd"])
+            return claudeauth.subprocess.CompletedProcess(argv, 0)
 
         monkeypatch.setattr(claudeauth.subprocess, "run", fake_run)
         claudeauth.refresh_host(store)
@@ -152,9 +162,22 @@ class TestRefreshHost:
         assert claudeauth.host_store() == store
         seen = {}
         monkeypatch.setattr(claudeauth.shutil, "which", lambda name: "/bin/claude")
-        monkeypatch.setattr(claudeauth.subprocess, "run", lambda argv, **kw: seen.update(env=kw["env"]))
+        def fake_run(argv, **kw):
+            seen.update(env=kw["env"])
+            return claudeauth.subprocess.CompletedProcess(argv, 0)
+
+        monkeypatch.setattr(claudeauth.subprocess, "run", fake_run)
         claudeauth.refresh_host(store)
         assert "CLAUDE_CONFIG_DIR" not in seen["env"]
+
+    def test_a_failing_claude_is_logged_as_a_failure(self, env, monkeypatch, capsys):
+        store, *_ = env
+        monkeypatch.setattr(claudeauth.shutil, "which", lambda name: "/bin/claude")
+        monkeypatch.setattr(
+            claudeauth.subprocess, "run", lambda argv, **kw: claudeauth.subprocess.CompletedProcess(argv, 3)
+        )
+        claudeauth.refresh_host(store)
+        assert "claude exited 3" in capsys.readouterr().out
 
 
 class TestStartRefresher:

@@ -93,10 +93,17 @@ def write_view(path: Path, view: dict, *, in_place: bool) -> bool:
     data["claudeAiOauth"] = view
     body = json.dumps(data)
     if in_place:
+        # Raw writes over the old bytes, then trim: never an empty file, and one write(2) for a
+        # body this small, so a pod reading mid-write sees the old or the new login.
+        raw = body.encode("utf-8")
         fd = os.open(path, os.O_WRONLY | os.O_CREAT, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(body)
-            fh.truncate()
+        try:
+            written = 0
+            while written < len(raw):
+                written += os.write(fd, raw[written:])
+            os.ftruncate(fd, len(raw))
+        finally:
+            os.close(fd)
     else:
         fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")  # mode 0600
         try:
@@ -166,13 +173,14 @@ def refresh_host(store: Path) -> None:
         env["CLAUDE_CONFIG_DIR"] = str(override)
     with tempfile.TemporaryDirectory() as cwd:
         # Project settings only, from an empty dir: no user hooks, MCP servers or plugins start.
-        subprocess.run(
+        proc = subprocess.run(
             [claude, "-p", "--model", "haiku", "--no-session-persistence", "--strict-mcp-config",
              "--setting-sources", "project", "Reply with: ok"],
             cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, timeout=_REFRESH_TIMEOUT_S, check=False,
         )
-    print(f"refresh ran; host login now expires at {time.ctime(_expires_at(store))}", flush=True)
+    state = "refresh ran" if proc.returncode == 0 else f"claude exited {proc.returncode}"
+    print(f"{state}; host login expires at {time.ctime(_expires_at(store))}", flush=True)
 
 
 _last_refresh = 0.0
