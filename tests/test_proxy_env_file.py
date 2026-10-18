@@ -328,7 +328,7 @@ class TestSeedAuthSkipsTheProxiedDirs:
             return [], []
 
         monkeypatch.setattr(launcher, "_resolve_launch_secrets", resolve)
-        monkeypatch.setattr(launcher, "_claude_creds_seed_mount", lambda *a, **k: [])
+        monkeypatch.setattr(launcher, "_claude_creds_view_mount", lambda *a, **k: [])
         monkeypatch.setattr(launcher, "_claude_oauth_token_configured", lambda *a, **k: True)
         b = launcher.ContainerBackend.__new__(launcher.ContainerBackend)
         b.inst, b.mount_args = "inst", []

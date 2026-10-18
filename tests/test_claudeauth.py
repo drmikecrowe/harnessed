@@ -1,0 +1,166 @@
+"""GH-597: one Claude login per machine, refreshed by the host alone.
+
+The host store keeps the refresh token; every stack home and pod gets a view without it. These pin
+what `sync`, the refresher pass and the refresher start do with real files under tmp dirs.
+"""
+import fcntl
+import json
+import os
+import time
+
+import pytest
+
+from harnessed import claudeauth
+from harnessed.claudeauth import start_refresher as _real_start_refresher  # before conftest stubs it
+
+
+def _login(access: str, *, refresh: str | None = "r", expires_in: float = 8 * 3600, **extra) -> dict:
+    oauth = {"accessToken": access, "expiresAt": int((time.time() + expires_in) * 1000), **extra}
+    if refresh is not None:
+        oauth["refreshToken"] = refresh
+        oauth["refreshTokenExpiresAt"] = 1
+    return {"claudeAiOauth": oauth}
+
+
+@pytest.fixture
+def env(monkeypatch, tmp_path):
+    """A host store, one host stack home, one pod view and one isolated-auth store."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    store = tmp_path / "home" / ".claude" / ".credentials.json"
+    store.parent.mkdir(parents=True)
+    store.write_text(json.dumps(_login("host")))
+    stack = tmp_path / "data" / "harnessed" / "home" / "s" / "claude" / ".credentials.json"
+    stack.parent.mkdir(parents=True)
+    stack.symlink_to(store)  # the pre-GH-597 layout
+    pod = tmp_path / "state" / "harnessed" / "harnessed-claude-s-1" / "credentials.json"
+    pod.parent.mkdir(parents=True)
+    pod.write_text(json.dumps({**_login("pod", refresh="pod-r"), "mcpOAuth": {"srv": 1}}))
+    isolated = tmp_path / "state" / "harnessed" / "harnessed-claude-c-2" / "isolated-auth" / "credentials.json"
+    isolated.parent.mkdir(parents=True)
+    isolated.write_text(json.dumps(_login("client")))
+    return store, stack, pod, isolated
+
+
+def _oauth(path):
+    return json.loads(path.read_text())["claudeAiOauth"]
+
+
+class TestSync:
+    def test_every_view_gets_the_host_login_without_the_refresh_token(self, env):
+        store, stack, pod, _ = env
+        before = store.read_text()
+        claudeauth.sync()
+        for view in (stack, pod):
+            assert _oauth(view)["accessToken"] == "host"
+            assert "refreshToken" not in _oauth(view)
+            assert "refreshTokenExpiresAt" not in _oauth(view)
+        assert not stack.is_symlink(), "a symlinked view is replaced, never written through"
+        assert store.read_text() == before, "sync wrote the host store"
+
+    def test_a_pod_view_keeps_its_inode_and_its_mcp_logins(self, env):
+        _, _, pod, _ = env
+        inode = pod.stat().st_ino
+        claudeauth.sync()
+        assert pod.stat().st_ino == inode
+        assert json.loads(pod.read_text())["mcpOAuth"] == {"srv": 1}
+
+    def test_an_isolated_auth_login_is_never_touched(self, env):
+        *_, isolated = env
+        before = isolated.read_text()
+        claudeauth.sync()
+        assert isolated.read_text() == before
+
+    def test_a_newer_login_made_inside_a_stack_is_promoted_first(self, env):
+        """A `/login` in a stack writes a full pair into its view. Overwriting it unpromoted would
+        throw the new login away."""
+        store, stack, pod, _ = env
+        stack.unlink()
+        stack.write_text(json.dumps(_login("stack-login", refresh="stack-r")))
+        os.utime(stack, (time.time() + 60, time.time() + 60))
+        claudeauth.sync()
+        assert _oauth(store)["refreshToken"] == "stack-r"
+        assert _oauth(stack)["accessToken"] == "stack-login"
+        assert "refreshToken" not in _oauth(stack)
+        assert _oauth(pod)["accessToken"] == "stack-login"
+
+    def test_a_gutted_host_store_writes_no_view(self, env):
+        store, _, pod, _ = env
+        store.write_text(json.dumps(_login("", refresh="", expires_in=0)))
+        before = pod.read_text()
+        claudeauth.sync()
+        assert pod.read_text() == before
+
+
+class TestTick:
+    def test_refreshes_only_inside_the_lead(self, env, monkeypatch):
+        store, *_ = env
+        calls = []
+        monkeypatch.setattr(claudeauth, "refresh_host", calls.append)
+        monkeypatch.setattr(claudeauth, "_last_refresh", 0.0)
+        claudeauth.tick()
+        assert calls == []
+        store.write_text(json.dumps(_login("host", expires_in=60)))
+        claudeauth.tick()
+        assert calls == [store]
+
+    def test_a_failing_refresh_is_not_retried_every_tick(self, env, monkeypatch):
+        store, *_ = env
+        store.write_text(json.dumps(_login("host", expires_in=-60)))
+        calls = []
+        monkeypatch.setattr(claudeauth, "refresh_host", calls.append)
+        monkeypatch.setattr(claudeauth, "_last_refresh", 0.0)
+        claudeauth.tick()
+        claudeauth.tick()
+        assert len(calls) == 1
+
+
+class TestRefreshHost:
+    def test_runs_claude_against_the_host_store_with_nothing_else_loaded(self, env, monkeypatch):
+        store, *_ = env
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
+        seen = {}
+        monkeypatch.setattr(claudeauth.shutil, "which", lambda name: "/bin/claude")
+
+        def fake_run(argv, **kw):
+            seen.update(argv=argv, env=kw["env"], cwd=kw["cwd"])
+
+        monkeypatch.setattr(claudeauth.subprocess, "run", fake_run)
+        claudeauth.refresh_host(store)
+        assert seen["argv"][:2] == ["/bin/claude", "-p"]
+        assert "--no-session-persistence" in seen["argv"]
+        assert seen["argv"][seen["argv"].index("--setting-sources") + 1] == "project"
+        assert "CLAUDE_CONFIG_DIR" not in seen["env"], "setting it to ~/.claude moves .claude.json"
+        assert "CLAUDE_CODE_OAUTH_TOKEN" not in seen["env"]
+
+    def test_inside_a_stack_the_stack_config_dir_is_not_the_store(self, env, monkeypatch):
+        """A launch from inside a host stack inherits that stack's CLAUDE_CONFIG_DIR."""
+        store, stack, *_ = env
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(stack.parent))
+        assert claudeauth.host_store() == store
+        seen = {}
+        monkeypatch.setattr(claudeauth.shutil, "which", lambda name: "/bin/claude")
+        monkeypatch.setattr(claudeauth.subprocess, "run", lambda argv, **kw: seen.update(env=kw["env"]))
+        claudeauth.refresh_host(store)
+        assert "CLAUDE_CONFIG_DIR" not in seen["env"]
+
+
+class TestStartRefresher:
+    def test_spawns_when_none_runs(self, env, monkeypatch):
+        spawned = []
+        monkeypatch.setattr(claudeauth.subprocess, "Popen", lambda argv, **kw: spawned.append(argv))
+        _real_start_refresher()
+        assert spawned and spawned[0][1:] == ["-m", "harnessed.claudeauth"]
+
+    def test_does_not_spawn_while_one_holds_the_lock(self, env, monkeypatch):
+        lock = claudeauth._lock_path()
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        with lock.open("w") as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+            spawned = []
+            monkeypatch.setattr(claudeauth.subprocess, "Popen", lambda argv, **kw: spawned.append(argv))
+            _real_start_refresher()
+        assert spawned == []

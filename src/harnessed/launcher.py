@@ -36,6 +36,7 @@ from . import acprelay
 from . import aoe
 from . import broker
 from . import claude_imports
+from . import claudeauth
 from . import dynstack
 from . import emit
 from . import launchscript
@@ -134,8 +135,7 @@ from .mounts import (
     _build_mount_args,
     _ccstatusline_settings_mount,
     _claude_config_seed_mount,
-    _claude_creds_expired,
-    _claude_creds_seed_mount,
+    _claude_creds_view_mount,
     _claude_isolated_auth_mount,
     _env_files_value,
     _isolated_auth_fresh_wipe,
@@ -286,7 +286,6 @@ __all__ = [
     "_DAEMON_STATE_MARKERS",       # hosthome
     "_HOST_STACK_FINGERPRINT",     # hosthome
     "_STABLE_PORT_RANGE",          # svcstate
-    "_claude_creds_expired",       # mounts
     "_ensure_config_volume",       # volumes
     "_env_files_value",            # mounts
     "_gcd_db_name",                # setupenv
@@ -2935,6 +2934,8 @@ class HostBackend(ExecutionBackend):
         assert self.home is not None, "seed_auth before materialize_config"  # noqa: S101  # type-narrowing: ordering enforced by caller
         _HOST_HARNESSES[spec.harness].share_state(self.home)
         if spec.harness == "claude":
+            # The stack holds a view, so something on the host must refresh the login (GH-597).
+            claudeauth.start_refresher()
             _seed_host_claude_json(
                 self.home, None if self.acp else str(spec.project_path),
                 isolated_auth=self.isolated_auth,
@@ -3674,10 +3675,9 @@ def _acp_terminal_login(verb: str, harness: str, stack: Optional[str], args: lis
     before `set_acp_mode`. It execs `claude <args>` against the credentials the agent will read:
 
       * `host-acp` — the stack's host config dir. A login there replaces the `.credentials.json`
-        symlink with a regular file, and the next launch's `_rescue_host_credentials` promotes it
-        to the shared copy, as it does for a `/login` inside `host-run`.
-      * `container-acp` — the user's own `~/.claude`, the file `_claude_creds_seed_mount` seeds a
-        container from. An `isolated_auth` stack logs in inside its container instead, to a store
+        view with a full login, and `_rescue_host_credentials` (the next launch, or the refresher's
+        next pass) promotes it to the host store, as it does for a `/login` inside `host-run`.
+      * `container-acp` — the user's own `~/.claude`, the host store every pod's view is cut from. An `isolated_auth` stack logs in inside its container instead, to a store
         keyed per project, and this verb is given no project; it says how rather than log in to
         the wrong account.
     """
@@ -3988,7 +3988,7 @@ class ContainerBackend(ExecutionBackend):
                 )
             # Claude auth, last of the mounts: a long-lived CLAUDE_CODE_OAUTH_TOKEN (host env, varlock,
             # or plain .env) supersedes the credential file, so nothing is mounted in that case.
-            self.mount_args += _claude_creds_seed_mount(
+            self.mount_args += _claude_creds_view_mount(
                 spec.harness, self.inst, _claude_oauth_token_configured(spec.harness, spec.project_path)
             )
         self.secrets_env_files = secrets_env_files
@@ -4648,6 +4648,11 @@ def container_run(
         stack=stack, harness=harness, project_path=project_path,
         extra=tuple(extra), no_strict_mcp=no_strict_mcp_config, ephemeral=rm,
     )
+    if harness == "claude":
+        # Before any attach path: an attach skips the mounts, so this is what brings a running pod's
+        # credential view up to the host's current login (GH-597).
+        claudeauth.sync()
+        claudeauth.start_refresher()
 
     # --fresh: tear down existing pod.
     if fresh:

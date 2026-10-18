@@ -399,7 +399,7 @@ class TestShareClaudeState:
     def test_symlinks_session_state_and_live_auth(self, monkeypatch, tmp_path):
         real = tmp_path / "host-claude"
         real.mkdir()
-        (real / ".credentials.json").write_text('{"token":"x"}')
+        (real / ".credentials.json").write_text('{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1}}')
         (real / ".claude.json").write_text('{"account":"a"}')
         (real / "projects").mkdir()
         (real / "projects" / "p.jsonl").write_text("transcript")
@@ -415,9 +415,11 @@ class TestShareClaudeState:
         assert (home / "projects" / "p.jsonl").read_text() == "transcript"
         for name in ("file-history", "todos", "tasks", "session-env", "shell-snapshots"):
             assert (home / name).is_symlink()
-        # auth token: symlinked (live refresh propagates)
-        assert (home / ".credentials.json").is_symlink()
-        assert (home / ".credentials.json").read_text() == '{"token":"x"}'
+        # auth token: a view without the refresh token, so only the host refreshes (GH-597)
+        assert not (home / ".credentials.json").is_symlink()
+        assert json.loads((home / ".credentials.json").read_text()) == {
+            "claudeAiOauth": {"accessToken": "a", "expiresAt": 1}
+        }
         # account: MERGED into the stack's own file (isolated writes), not a symlink (GH-594)
         assert (home / ".claude.json").is_file()
         assert not (home / ".claude.json").is_symlink()
@@ -426,7 +428,7 @@ class TestShareClaudeState:
         """`CLAUDE_CODE_OAUTH_TOKEN` takes precedence over the credentials file, so with one
         configured the file is dead weight — and maintaining it carries the whole 8px.10
         symlink-replacement failure mode for nothing. The container path already refuses to mount a
-        credential file under a token (`_claude_creds_seed_mount`); this is the host's half."""
+        credential file under a token (`_claude_creds_view_mount`); this is the host's half."""
         real = tmp_path / "host-claude"
         real.mkdir()
         (real / ".credentials.json").write_text('{"token":"x"}')
@@ -473,12 +475,12 @@ class TestShareClaudeState:
 
         assert (real / ".credentials.json").read_text() == '{"token":"shared"}'
 
-    def test_no_token_keeps_the_symlink(self, monkeypatch, tmp_path):
+    def test_no_token_writes_the_view(self, monkeypatch, tmp_path):
         """Regression guard: without a token the credential file is load-bearing. Removing it here
         would log the user out on every launch."""
         real = tmp_path / "host-claude"
         real.mkdir()
-        (real / ".credentials.json").write_text('{"token":"x"}')
+        (real / ".credentials.json").write_text('{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1}}')
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(real))
         monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
         home = tmp_path / "home"
@@ -486,14 +488,15 @@ class TestShareClaudeState:
 
         launcher._share_host_claude_state(home)
 
-        assert (home / ".credentials.json").is_symlink()
+        assert not (home / ".credentials.json").is_symlink()
+        assert json.loads((home / ".credentials.json").read_text())["claudeAiOauth"]["accessToken"] == "a"
 
     def test_an_empty_token_var_is_not_a_configured_token(self, monkeypatch, tmp_path):
         """`CLAUDE_CODE_OAUTH_TOKEN=` (exported empty) is how a shell profile disables it. Treating
         the mere presence of the name as configured would log the user out with no way back."""
         real = tmp_path / "host-claude"
         real.mkdir()
-        (real / ".credentials.json").write_text('{"token":"x"}')
+        (real / ".credentials.json").write_text('{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1}}')
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(real))
         monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
         home = tmp_path / "home"
@@ -501,7 +504,7 @@ class TestShareClaudeState:
 
         launcher._share_host_claude_state(home)
 
-        assert (home / ".credentials.json").is_symlink()
+        assert json.loads((home / ".credentials.json").read_text())["claudeAiOauth"]["accessToken"] == "a"
 
     def test_claude_json_seeded_from_home_level_not_config_dir(self, monkeypatch, tmp_path):
         # The account file is $HOME/.claude.json — NOT ~/.claude/.claude.json. Seed from the right one.
