@@ -93,6 +93,34 @@ class TestSync:
         writer.join(5)
         assert _oauth(pod) == {"accessToken": "b"}
 
+    def test_the_merge_reads_what_the_previous_writer_stored(self, env):
+        """The merge happens under the lock, so keys stored while this writer waited survive."""
+        _, _, pod, _ = env
+        with pod.open("r+") as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+            writer = threading.Thread(
+                target=claudeauth.write_view, args=(pod, {"accessToken": "b"}), kwargs={"in_place": True}
+            )
+            writer.start()
+            writer.join(0.3)
+            # Another writer, holding the lock, stores a key before this one runs.
+            held.seek(0)
+            held.write(json.dumps({"claudeAiOauth": {"accessToken": "a"}, "mcpOAuth": {"new": 1}}))
+            held.truncate()
+            held.flush()
+        writer.join(5)
+        data = json.loads(pod.read_text())
+        assert data == {"claudeAiOauth": {"accessToken": "b"}, "mcpOAuth": {"new": 1}}
+
+    def test_a_configured_token_leaves_every_file_alone(self, env, monkeypatch):
+        """Under `CLAUDE_CODE_OAUTH_TOKEN` nothing reads these files; the host side keeps none."""
+        _, stack, pod, _ = env
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
+        before = pod.read_text()
+        claudeauth.sync()
+        assert pod.read_text() == before
+        assert stack.is_symlink()
+
     def test_a_store_that_vanishes_after_the_check_gives_no_view(self, env, monkeypatch):
         """A logout between the usability check and the read must not fail a launch."""
         store, *_ = env

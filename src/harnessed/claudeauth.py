@@ -33,6 +33,7 @@ from .hosthome import (
     _credentials_are_usable,
     _host_claude_config_override,
     _host_claude_source,
+    _host_oauth_token_configured,
     _rescue_host_credentials,
 )
 
@@ -75,6 +76,22 @@ def access_view(store: Path) -> dict | None:
     return {k: v for k, v in oauth.items() if k not in _REFRESH_KEYS}
 
 
+def _merged(text: str | None, view: dict) -> dict | None:
+    """`text`'s JSON with its login set to `view`, or None when it already holds `view`."""
+    data: dict = {}
+    if text:
+        try:
+            loaded = json.loads(text)
+        except ValueError:
+            loaded = {}
+        if isinstance(loaded, dict):
+            data = loaded
+    if data.get("claudeAiOauth") == view:
+        return None
+    data["claudeAiOauth"] = view
+    return data
+
+
 def write_view(path: Path, view: dict, *, in_place: bool) -> bool:
     """Set `path`'s login to `view`, keeping its other keys (claude stores `mcpOAuth` here too).
 
@@ -83,42 +100,45 @@ def write_view(path: Path, view: dict, *, in_place: bool) -> bool:
     which also turns a pre-GH-597 symlink into a regular file without writing through it.
     Returns True when the file changed.
     """
-    data: dict = {}
-    if path.is_file() and not path.is_symlink():
-        try:
-            loaded = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            loaded = {}
-        if isinstance(loaded, dict):
-            data = loaded
-    if data.get("claudeAiOauth") == view:
-        return False
-    data["claudeAiOauth"] = view
-    body = json.dumps(data)
     if in_place:
-        # Raw writes over the old bytes, then trim: never an empty file, and one write(2) for a
-        # body this small, so a pod reading mid-write sees the old or the new login. A crash
-        # between write and trim leaves a torn file; it fails to parse, so the next sync rewrites it.
-        raw = body.encode("utf-8")
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT, 0o600)
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
         try:
-            # The refresher and a launch can both sync; unserialised, their writes interleave.
+            # Read, merge and write under one lock: the refresher and a launch can both sync, and
+            # a merge read before the lock would drop keys the other writer just stored.
             fcntl.flock(fd, fcntl.LOCK_EX)
+            data = _merged(os.read(fd, os.fstat(fd).st_size or 1).decode("utf-8", "replace"), view)
+            if data is None:
+                return False
+            # Raw writes over the old bytes, then trim: never an empty file, and one write(2) for a
+            # body this small, so a pod reading mid-write sees the old or the new login. A crash
+            # between write and trim leaves a torn file; it fails to parse, so the next sync
+            # rewrites it.
+            raw = json.dumps(data).encode("utf-8")
+            os.lseek(fd, 0, os.SEEK_SET)
             written = 0
             while written < len(raw):
                 written += os.write(fd, raw[written:])
             os.ftruncate(fd, len(raw))
         finally:
             os.close(fd)
-    else:
-        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")  # mode 0600
+        return True
+    text = None
+    if path.is_file() and not path.is_symlink():
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                fh.write(body)
-            os.replace(tmp, path)
-        except BaseException:
-            Path(tmp).unlink(missing_ok=True)
-            raise
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            text = None
+    data = _merged(text, view)
+    if data is None:
+        return False
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")  # mode 0600
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(data))
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
     return True
 
 
@@ -143,6 +163,9 @@ def sync() -> None:
     to the host store before this overwrites it. Pod files are never promoted: a pod's sign-in
     (`container-acp --cli`) already writes the host store.
     """
+    # Under a token nothing reads these files; the host side refuses to maintain them too.
+    if _host_oauth_token_configured():
+        return
     _rescue_host_credentials()
     view = access_view(host_store())
     if view is None:
@@ -195,6 +218,8 @@ _last_refresh = 0.0
 def tick() -> None:
     """One refresher pass: refresh the host login when it is about to expire, then sync."""
     global _last_refresh
+    if _host_oauth_token_configured():
+        return
     store = host_store()
     due = access_view(store) is not None and _expires_at(store) - time.time() < _REFRESH_LEAD_S
     # A login whose refresh keeps failing needs a /login; retrying every tick would only spam.
@@ -245,6 +270,7 @@ def main() -> None:
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
+            os.close(fd)
             return  # a refresher already runs
     print(f"refresher started, pid {os.getpid()}", flush=True)
     while True:
