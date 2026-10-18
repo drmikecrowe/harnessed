@@ -66,7 +66,10 @@ def access_view(store: Path) -> dict | None:
     if not _credentials_are_usable(store):
         return None
     # The usability check also accepts a bare token object; claude itself always nests it.
-    oauth = json.loads(store.read_text(encoding="utf-8")).get("claudeAiOauth")
+    try:  # a second read: a refresh or logout may have replaced or removed the store since
+        oauth = json.loads(store.read_text(encoding="utf-8")).get("claudeAiOauth")
+    except (OSError, ValueError):
+        return None
     if not isinstance(oauth, dict):
         return None
     return {k: v for k, v in oauth.items() if k not in _REFRESH_KEYS}
@@ -99,6 +102,8 @@ def write_view(path: Path, view: dict, *, in_place: bool) -> bool:
         raw = body.encode("utf-8")
         fd = os.open(path, os.O_WRONLY | os.O_CREAT, 0o600)
         try:
+            # The refresher and a launch can both sync; unserialised, their writes interleave.
+            fcntl.flock(fd, fcntl.LOCK_EX)
             written = 0
             while written < len(raw):
                 written += os.write(fd, raw[written:])

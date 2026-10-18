@@ -6,6 +6,7 @@ what `sync`, the refresher pass and the refresher start do with real files under
 import fcntl
 import json
 import os
+import threading
 import time
 
 import pytest
@@ -76,6 +77,28 @@ class TestSync:
         claudeauth.write_view(pod, {"accessToken": "a"}, in_place=True)
         assert pod.stat().st_ino == inode
         assert json.loads(pod.read_text())["claudeAiOauth"] == {"accessToken": "a"}
+
+    def test_a_pod_view_write_waits_for_another_writer(self, env):
+        """Two syncs (the refresher and a launch) must not interleave their in-place writes."""
+        _, _, pod, _ = env
+        before = pod.read_text()
+        with pod.open("r") as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+            writer = threading.Thread(
+                target=claudeauth.write_view, args=(pod, {"accessToken": "b"}), kwargs={"in_place": True}
+            )
+            writer.start()
+            writer.join(0.3)
+            assert writer.is_alive() and pod.read_text() == before
+        writer.join(5)
+        assert _oauth(pod) == {"accessToken": "b"}
+
+    def test_a_store_that_vanishes_after_the_check_gives_no_view(self, env, monkeypatch):
+        """A logout between the usability check and the read must not fail a launch."""
+        store, *_ = env
+        monkeypatch.setattr(claudeauth, "_credentials_are_usable", lambda path: True)
+        store.unlink()
+        assert claudeauth.access_view(store) is None
 
     def test_an_isolated_auth_login_is_never_touched(self, env):
         *_, isolated = env
