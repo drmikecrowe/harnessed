@@ -317,6 +317,44 @@ class TestStartRefresher:
         _real_start_refresher()
         assert claudeauth._err.warnings > before
 
+    def test_the_child_runs_from_root_and_starts_a_fresh_log(self, env, monkeypatch):
+        """A daemon must not pin the launch's cwd, nor grow one log for as long as it lives."""
+        log = claudeauth._log_path()
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text("old line\n")
+        seen = {}
+        monkeypatch.setattr(claudeauth.subprocess, "Popen", lambda argv, **kw: seen.update(kw))
+        _real_start_refresher()
+        assert seen["cwd"] == "/"
+        assert log.read_text() == ""
+
+    def test_a_failed_last_refresh_is_reported_on_the_console(self, env, monkeypatch):
+        log = claudeauth._log_path()
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text("refresher started, pid 1\nNOT refreshed (claude exited 1); host login expires at x\n")
+        monkeypatch.setattr(claudeauth.shutil, "which", lambda name: "/bin/claude")
+        monkeypatch.setattr(claudeauth.subprocess, "Popen", lambda argv, **kw: None)
+        before = claudeauth._err.warnings
+        _real_start_refresher()
+        assert claudeauth._err.warnings == before + 1
+
+    def test_a_missing_claude_is_reported_on_the_console(self, env, monkeypatch):
+        monkeypatch.setattr(claudeauth.shutil, "which", lambda name: None)
+        monkeypatch.setattr(claudeauth.subprocess, "Popen", lambda argv, **kw: None)
+        before = claudeauth._err.warnings
+        _real_start_refresher()
+        assert claudeauth._err.warnings == before + 1
+
+    def test_a_healthy_refresher_is_silent(self, env, monkeypatch):
+        log = claudeauth._log_path()
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text("refreshed; host login expires at x\n")
+        monkeypatch.setattr(claudeauth.shutil, "which", lambda name: "/bin/claude")
+        monkeypatch.setattr(claudeauth.subprocess, "Popen", lambda argv, **kw: None)
+        before = claudeauth._err.warnings
+        _real_start_refresher()
+        assert claudeauth._err.warnings == before
+
     def test_does_not_spawn_while_one_holds_the_lock(self, env, monkeypatch):
         lock = claudeauth._lock_path()
         lock.parent.mkdir(parents=True, exist_ok=True)

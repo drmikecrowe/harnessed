@@ -260,6 +260,30 @@ def _lock_path() -> Path:
     return _state_root() / "claude-auth-refresher.lock"
 
 
+def _log_path() -> Path:
+    return _state_root() / "claude-auth-refresher.log"
+
+
+def _warn_if_refresh_failing() -> None:
+    """Say so on the console when the refresher cannot keep the login alive. It runs detached, so
+    its own log is the only other place a failure shows, and nobody watches that file."""
+    if shutil.which("claude") is None:
+        _err.print(
+            "[bold yellow]warning:[/bold yellow] `claude` is not on PATH, so nothing can refresh the "
+            "Claude login stacks and pods share; they log out when it expires."
+        )
+        return
+    try:
+        last = _log_path().read_text(encoding="utf-8").splitlines()[-1]
+    except (OSError, IndexError):
+        return
+    if last.startswith("NOT refreshed"):
+        _err.print(
+            f"[bold yellow]warning:[/bold yellow] the Claude login refresher's last attempt failed "
+            f"({last}). Run `claude /login` on the host. Log: {_log_path()}"
+        )
+
+
 def start_refresher() -> None:
     """Start the refresher unless one already runs. It is detached: it outlives the launch that
     started it, and the next launch after a reboot starts it again."""
@@ -267,6 +291,7 @@ def start_refresher() -> None:
     # conftest's stub, from leaving a refresher idling in a deleted tmp home.
     if _host_oauth_token_configured() or access_view(host_store()) is None:
         return
+    _warn_if_refresh_failing()
     lock = _lock_path()
     lock.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
@@ -278,9 +303,10 @@ def start_refresher() -> None:
     # The child inherits the locked fd, so the lock is never free between this check and the
     # child: a concurrent launch cannot start a second refresher.
     try:
-        with (lock.parent / "claude-auth-refresher.log").open("a") as log:
+        # Truncated per refresher, so a daemon that lives for months cannot grow it without bound.
+        with _log_path().open("w") as log:
             subprocess.Popen(
-                [sys.executable, "-m", "harnessed.claudeauth", str(fd)], pass_fds=(fd,),
+                [sys.executable, "-m", "harnessed.claudeauth", str(fd)], pass_fds=(fd,), cwd="/",
                 stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
             )
     except OSError as exc:
