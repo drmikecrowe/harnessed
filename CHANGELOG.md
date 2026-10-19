@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/drmikecrowe/harnessed/compare/v0.5.0...v0.6.0) (2026-10-19)
+
+
+### Features
+
+* **context:** add harnessed context and count installed skills in the collision gate ([#618](https://github.com/drmikecrowe/harnessed/issues/618)) ([7c0fe12](https://github.com/drmikecrowe/harnessed/commit/7c0fe12aa5011ddd40fec52dc080c0e87d9fc67a))
+
+
+### Bug Fixes
+
+* **auth:** refresh the Claude login on the host alone (GH-597) ([#617](https://github.com/drmikecrowe/harnessed/issues/617)) ([3b6f968](https://github.com/drmikecrowe/harnessed/commit/3b6f968083975ee6a4a787c314685ad8a59d620d))
+
 ## [0.5.0](https://github.com/drmikecrowe/harnessed/compare/v0.4.0...v0.5.0) (2026-10-18)
 
 
