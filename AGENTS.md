@@ -191,9 +191,12 @@ under `worktrees/<branch-name>/`, named after its branch. Run `git worktree list
   `docs/guides/*`, `docs/codebase/*` and `docs/harnessed-design.md` exist **only in `main/`**, even
   though this file links to them freely. An empty `ls`/`fd` means "ignored here", not "missing".
   Confirm against `main/`, `git ls-tree`, and `.gitignore`.
-- **Never run a bare `harnessed` to verify a worktree's code.** The global `harnessed` is an editable
-  install of `main/`. An AOE pane resolves `harnessed` to it; an interactive shell resolves the branch
-  venv that `mise.toml` activates. Run `tools/run-tests.sh` or `uv run harnessed` from the worktree.
+- **Never run a bare `harnessed` to verify a worktree's code.** The global `~/.local/bin/harnessed`
+  is a `uv tool` install pinned to a release tag, not any checkout. Every installed launcher
+  (`~/.local/bin/harnessed-*`, which AOE panes and editor ACP sessions run) execs it by absolute
+  path; an interactive shell resolves the branch venv that `mise.toml` activates instead. Run
+  `tools/run-tests.sh` or `uv run harnessed` from the worktree. To move the launchers to a new
+  release, reinstall at its tag: `uv tool install --force "git+https://github.com/drmikecrowe/harnessed@vX.Y.Z"`.
 - **Every checkout shares one runtime state.** `~/.local/share/harnessed` (profiles, build stamps) and
   the AOE profile are not per worktree. A branch's `harnessed build <stack>` rewrites the profile live
   sessions use. Test build or launch changes on a throwaway stack, or under an isolated
