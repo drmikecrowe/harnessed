@@ -32,6 +32,7 @@ class Item:
     name: str
     path: Path
     tokens: int
+    digest: str = ""  # content hash of a file loaded whole; skills load only a description
 
 
 def estimate_tokens(text: str) -> int:
@@ -59,8 +60,21 @@ def _md_files(root: Path, filename: str | None = None) -> list[Path]:
     return sorted(out)
 
 
-def _skill(path: Path) -> Item:
-    text = path.read_text(encoding="utf-8", errors="replace")
+def _read(path: Path) -> str | None:
+    """A file's text, or None when it is missing or unreadable: the agent cannot load it either.
+    Ancestor files are outside the stack's control, so one bad permission must not crash the report."""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _whole(kind: str, path: Path, text: str) -> Item:
+    digest = hashlib.sha256(text.encode()).hexdigest()
+    return Item(kind, path.name, path, estimate_tokens(text), digest)
+
+
+def _skill(path: Path, text: str) -> Item:
     frontmatter, _body = split_frontmatter(text)
     named = _NAME_RE.search(frontmatter)
     name = named.group(1) if named else path.parent.name
@@ -70,18 +84,18 @@ def _skill(path: Path) -> Item:
 def collect(config_dir: Path, project_dir: Path | None = None) -> list[Item]:
     """Everything always loaded for a session in `config_dir`, plus leaks above `project_dir`."""
     items = []
-    memory = [config_dir / "CLAUDE.md", *_md_files(config_dir / "rules")]
-    for p in memory:
-        if p.is_file():
-            items.append(Item("memory", p.name, p, estimate_tokens(p.read_text(errors="replace"))))
-    items += [_skill(p) for p in _md_files(config_dir / "skills", "SKILL.md")]
+    for p in [config_dir / "CLAUDE.md", *_md_files(config_dir / "rules")]:
+        if (text := _read(p)) is not None:
+            items.append(_whole("memory", p, text))
+    for p in _md_files(config_dir / "skills", "SKILL.md"):
+        if (text := _read(p)) is not None:
+            items.append(_skill(p, text))
     if project_dir is not None:
         for d in Path(project_dir).resolve().parents:
-            leaked = [d / f for f in _ANCESTOR_FILES] + _md_files(d / ".claude" / "rules")
-            for p in leaked:
-                if p.is_file():  # a dangling symlink loads nothing, so it is not a leak
-                    text = p.read_text(errors="replace")
-                    items.append(Item("leak", p.name, p, estimate_tokens(text)))
+            # A dangling symlink reads as None: it loads nothing, so it is not a leak.
+            for p in [d / f for f in _ANCESTOR_FILES] + _md_files(d / ".claude" / "rules"):
+                if (text := _read(p)) is not None:
+                    items.append(_whole("leak", p, text))
     return items
 
 
@@ -98,8 +112,8 @@ def problems(items: list[Item]) -> list[str]:
             out.append(f"skill '{name}' is installed {len(where)} times: " + ", ".join(map(str, where)))
     by_hash: dict[str, list[Path]] = defaultdict(list)
     for it in items:
-        if it.kind in ("memory", "leak"):
-            by_hash[hashlib.sha256(it.path.read_bytes()).hexdigest()].append(it.path)
+        if it.digest:
+            by_hash[it.digest].append(it.path)
     for where in by_hash.values():
         if len(where) > 1:
             out.append("same content loaded twice: " + ", ".join(map(str, where)))

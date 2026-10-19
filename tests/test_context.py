@@ -80,3 +80,25 @@ def test_symlink_loop_terminates(tmp_path):
     _skill(config, "ponytail", "ponytail")
     (config / "skills" / "ponytail" / "loop").symlink_to(config / "skills")
     assert [it.name for it in collect(config) if it.kind == "skill"] == ["ponytail"]
+
+
+def test_unreadable_ancestor_file_is_skipped(tmp_path):
+    home = tmp_path / "home"
+    project = home / "repo"
+    project.mkdir(parents=True)
+    locked = _write(home / "CLAUDE.md", "secret")
+    locked.chmod(0)
+    try:
+        assert problems(collect(tmp_path / "config", project)) == []
+    finally:
+        locked.chmod(0o644)
+
+
+def test_unknown_harness_is_rejected():
+    from typer.testing import CliRunner
+
+    from harnessed.launcher import app
+
+    result = CliRunner().invoke(app, ["context", "default", "nope"])
+    assert result.exit_code == 1
+    assert "unsupported harness 'nope'" in result.output

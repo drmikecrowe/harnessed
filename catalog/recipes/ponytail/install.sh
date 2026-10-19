@@ -44,12 +44,14 @@ rm -rf "$HARNESSED_CONFIG_DIR/ponytail/hooks"
 cp -r "$src/hooks" "$HARNESSED_CONFIG_DIR/ponytail/hooks"
 
 # Upstream names the tool ("grep every caller"); stacks deny grep or route search through a code
-# graph, so name the goal instead. Temp file + mv, not `sed -i`: BSD sed has no portable -i.
+# graph, so name the goal instead. Not `sed -i`: BSD sed has no portable -i. The temp file is
+# written back with cat so the original keeps its inode and mode.
 # A path upstream renamed is skipped, not fatal: an unmatched glob reaches here as a literal.
 for f in "$HARNESSED_CONFIG_DIR"/skills/ponytail*/SKILL.md "$HARNESSED_CONFIG_DIR/ponytail/hooks/ponytail-instructions.js"; do
     [ -f "$f" ] || continue
     sed 's/grep every caller/find every caller/g; s/grep the whole tree/search the whole tree/g' "$f" > "$f.tmp"
-    mv "$f.tmp" "$f"
+    cat "$f.tmp" > "$f"
+    rm "$f.tmp"
 done
 
 # Pre-mark ponytail's statusline offer as seen. Unmarked, SessionStart tells the agent to edit
