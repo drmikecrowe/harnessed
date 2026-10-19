@@ -73,3 +73,10 @@ def test_dangling_rule_symlink_is_not_a_leak(tmp_path):
     (home / ".claude" / "rules").mkdir(parents=True)
     (home / ".claude" / "rules" / "gone.md").symlink_to(home / "missing.md")
     assert problems(collect(tmp_path / "config", project)) == []
+
+
+def test_symlink_loop_terminates(tmp_path):
+    config = tmp_path / "config"
+    _skill(config, "ponytail", "ponytail")
+    (config / "skills" / "ponytail" / "loop").symlink_to(config / "skills")
+    assert [it.name for it in collect(config) if it.kind == "skill"] == ["ponytail"]

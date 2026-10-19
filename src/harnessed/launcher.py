@@ -5232,7 +5232,7 @@ def context(
     scripts wrote; otherwise the built profile. Leaks are looked for above the current directory,
     which is what the agent walks when launched here."""
     home = paths.host_home(stack, harness)
-    config = home if home.is_dir() else paths.profile_dir(stack, harness) / ".claude"
+    config = home if home.is_dir() else paths.profile_dir(stack, harness) / HARNESS_CONFIG_DIR.get(harness, ".claude")
     if not config.is_dir():
         _err.print(f"[bold red]error:[/bold red] {stack}/{harness} is not built: run `harnessed build {stack} {harness}`")
         raise typer.Exit(2)

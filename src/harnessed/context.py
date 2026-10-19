@@ -43,7 +43,14 @@ def _md_files(root: Path, filename: str | None = None) -> list[Path]:
     """Every .md file (or every `filename`) under `root`, following symlinked dirs: host launches
     link plugin dirs into the config dir, and rglob does not descend into those."""
     out = []
-    for dirpath, _dirs, files in os.walk(root, followlinks=True):
+    seen: set[str] = set()
+    for dirpath, dirs, files in os.walk(root, followlinks=True):
+        # A link back to an ancestor would otherwise walk forever.
+        real = os.path.realpath(dirpath)
+        if real in seen:
+            dirs.clear()
+            continue
+        seen.add(real)
         for f in files:
             if (f == filename) if filename else f.endswith(".md"):
                 p = Path(dirpath) / f
