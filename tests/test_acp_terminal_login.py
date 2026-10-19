@@ -36,6 +36,13 @@ echo LOGIN-OUT
 """
 
 
+@pytest.fixture(autouse=True)
+def _restore_acp_cli(monkeypatch):
+    # `_extract_acp_cli` sets module state in-process. Left set, a later container-acp test runs
+    # the --cli login and execs the real claude: the PR #619 CI failure.
+    monkeypatch.setattr(launcher, "_acp_cli", launcher._acp_cli)
+
+
 @pytest.fixture
 def env(tmp_path) -> dict[str, str]:
     e = dict(os.environ)
