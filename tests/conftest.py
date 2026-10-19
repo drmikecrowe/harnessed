@@ -446,6 +446,15 @@ def _isolated_user_state(monkeypatch, tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
+def _no_claude_auth_refresher(monkeypatch):
+    """Never spawn the detached GH-597 refresher: it would outlive the test and run `claude`.
+    A test of `start_refresher` itself binds the real function at import, before this runs."""
+    from harnessed import claudeauth
+
+    monkeypatch.setattr(claudeauth, "start_refresher", lambda: None)
+
+
+@pytest.fixture(autouse=True)
 def _pin_container_runtime(monkeypatch):
     """Pin the container runtime to podman for the hermetic suite, and empty both runtime caches.
 

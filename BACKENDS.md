@@ -87,7 +87,7 @@ Every backend implements the same seam so a composed stack can run on any of the
 | **materialize config** | Deliver the assembled profile to where the harness reads it (bind-mount, copy, or symlink) — the `.claude/*` tree for claude, the harness's own shape otherwise (omp: `APPEND_SYSTEM.md` / `RULES.md` / `mcp.json` / `config.yml` in its agent dir). |
 | **provision tools** | Make tools resolvable to the harness: `install:` scripts run on first start (fingerprint-gated), `setup.script` at attach time. Container: baked into the image or run via `podman exec`; host: written to the stack's `$HARNESSED_BIN_DIR`. |
 | **wire MCP** | Present the stack's MCP servers to the harness (native `.mcp.json`, or hatago hub). |
-| **seed auth** | Give the harness the host's credentials **by reference** — bind-mount or symlink the live store, never a copy or snapshot (CLAUDE.md non-negotiable). A backend that cannot reference the live store must fail rather than replicate it. |
+| **seed auth** | Give the harness the host's credentials **by reference** — bind-mount or symlink the live store, or a view the host keeps current (claude: the login without its refresh token), never a copy or snapshot (CLAUDE.md non-negotiable). A backend that cannot reference the live store must fail rather than replicate it. |
 | **wire services** | Stand up service-backed dependencies and route the harness to them (pod netns, compose, or N/A). |
 | **apply isolation** | Enforce the backend's isolation level (none / landlock / container / VM). |
 
@@ -165,9 +165,11 @@ Both are worth having; describe them honestly per backend.
 - **Container-primary.** Containers and devcontainers get the investment. The host backend is a
   maintained secondary — the fast local path and the auth escape hatch — not a replacement and not
   a target for new features.
-- **Container auth is a host token proxy**, over a bind-mounted unix socket: one refresher, zero
-  divergence. Not per-instance credential copies, which go stale on the idle side and present as a
-  silent logout, and not a shared read-write mount.
+- **Container auth is a host-refreshed view**: one refresher, zero divergence. The pod gets a
+  bind-mounted file holding the access token and never the refresh token, and the host rewrites it
+  (ARCHITECTURE.md §Constraints, mechanism 3; GH-597). Not per-instance credential copies, which
+  go stale on the idle side and present as a silent logout, and not a shared read-write mount.
+  A unix socket was the earlier plan; claude reads its OAuth login only from this file.
 - **The folder-env contract is unified.** A recipe's `env:` with `{persist:…}` references resolves
   to the mode-correct path — bind-mount target in a container, host persist dir on a host launch.
   One declaration, both modes; no container-only `ENV` entries in Dockerfiles.

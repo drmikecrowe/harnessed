@@ -449,8 +449,8 @@ def _share_host_claude_state(home: Path) -> None:
     analog of the container's bind-mounts:
       * session state (projects/file-history/todos/tasks/session-env/shell-snapshots) → SYMLINKED, so
         transcripts, todos, and resumable sessions persist and also show up in your normal claude;
-      * the auth token (.credentials.json) → SYMLINKED, so a refresh in either place propagates —
-        one login everywhere, no stale copy.
+      * the auth token (.credentials.json) → a VIEW of the host login without its refresh token, so
+        only the host refreshes; `claudeauth.sync` keeps every view current (GH-597).
     The account file (.claude.json) is the stack's own, merged by `_seed_host_claude_json`, so the
     stack's writes don't leak back into your global claude state. Config (skills/commands/rules/agents/CLAUDE.md/settings/
     .mcp.json) stays isolated per-stack (copied from the profile by _materialize_host_home)."""
@@ -477,7 +477,13 @@ def _share_host_claude_state(home: Path) -> None:
         if stack_cred.is_symlink() or stack_cred.exists():
             stack_cred.unlink(missing_ok=True)
     elif cred.exists():
-        _relink(stack_cred, cred)  # live token, shared
+        # A view without the refresh token, never a symlink: a holder of that token refreshes by
+        # replacing the file, which broke the symlink and forked the login (GH-597, #556).
+        from .claudeauth import access_view, write_view  # claudeauth imports this module
+
+        view = access_view(cred)
+        if view is not None:
+            write_view(stack_cred, view, in_place=False)
     # .claude.json is not shared: `_seed_host_claude_json` merges it, with the project and the
     # stack's isolated_auth this function does not receive (GH-594).
 

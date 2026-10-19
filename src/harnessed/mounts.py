@@ -27,6 +27,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
 from . import paths
+from . import claudeauth
 from . import persist
 from .console import _err
 from .credmounts import (
@@ -131,9 +132,9 @@ def _build_mount_args(
     # _omp_agent_mount (appended in launch()); _omp_mcp_seed_mount then shadows just its mcp.json
     # with a per-instance copy that adds the hatago endpoint.
 
-    # Claude's OAuth credentials: seeded + mounted rw by _claude_creds_seed_mount (appended in
+    # Claude's OAuth credentials: seeded + mounted rw by _claude_creds_view_mount (appended in
     # launch()) — a ro mount here would block Claude Code's in-container token refresh, causing
-    # the "gets logged out" bug (see _claude_creds_seed_mount docstring).
+    # the "gets logged out" bug (see _claude_creds_view_mount docstring).
 
     # egress-firewall.sh (run inside the container by _apply_firewall).
     fw = _catalog_base("egress-firewall.sh")
@@ -153,7 +154,7 @@ def _claude_config_seed_mount(
     """Mount a token-free ~/.claude.json, MERGED over its live copy, so Claude Code skips onboarding.
 
     The real OAuth token lives in the rw ~/.claude/.credentials.json mount (see
-    _claude_creds_seed_mount). But Claude Code *also* gates its onboarding (the "Select login
+    _claude_creds_view_mount). But Claude Code *also* gates its onboarding (the "Select login
     method" screen) on ~/.claude.json — a credentialed container with no .claude.json still shows
     onboarding. We seed ONLY onboarding + identity fields (never the token), copied from the host
     ~/.claude.json, written to a per-instance state dir and mounted rw so Claude's runtime writes
@@ -202,7 +203,7 @@ def _claude_oauth_token_args(harness: str, env_files: Sequence[Path] = ()) -> li
     (`claude setup-token`, ~1-year lifetime, precedence above the credentials file). Because it
     never expires mid-session, it needs no in-container refresh — which is what makes the
     credential-file copy (and its whole divergence problem) unnecessary. See
-    _claude_creds_seed_mount for the legacy fallback.
+    _claude_creds_view_mount for the legacy fallback.
 
     Two supply routes, in order:
       * a resolved `--env-file` (varlock/1Password or a project `.env`) — already handed to the
@@ -220,7 +221,7 @@ def _claude_oauth_token_args(harness: str, env_files: Sequence[Path] = ()) -> li
     beat it is the failure mode that is hardest to see from inside a session." Skipping the `-e`
     here makes the two backends agree.
 
-    omp is NOT included: it reads no Claude credential (see `_claude_creds_seed_mount` for the
+    omp is NOT included: it reads no Claude credential (see `_claude_creds_view_mount` for the
     evidence; #314).
     """
     if harness != "claude":
@@ -273,7 +274,7 @@ def _claude_oauth_token_configured(harness: str, project_path: Path | None = Non
     3. Plain ``.env`` fallback — when no ``.env.schema`` / varlock is present,
        ``_plain_env_values`` parses the raw file directly.
 
-    Drives ``_claude_creds_seed_mount``'s decision to skip or restore the legacy
+    Drives ``_claude_creds_view_mount``'s decision to skip or restore the legacy
     credential-file mount.
 
     Empty is NOT configured — ``export CLAUDE_CODE_OAUTH_TOKEN=`` is how a shell
@@ -297,7 +298,7 @@ def _claude_oauth_token_configured(harness: str, project_path: Path | None = Non
     "cannot determine" state from "genuinely no token", so the credential-file
     mount that follows is not a silent regression.
 
-    omp is NOT included: it reads no Claude credential (see `_claude_creds_seed_mount` for the
+    omp is NOT included: it reads no Claude credential (see `_claude_creds_view_mount` for the
     evidence; #314).
     """
     if harness != "claude":
@@ -358,21 +359,14 @@ def _claude_oauth_token_configured(harness: str, project_path: Path | None = Non
     return False
 
 
-def _claude_creds_seed_mount(harness: str, inst: str, token_configured: bool = False) -> list[str]:
-    """LEGACY FALLBACK: seed a per-instance copy of ~/.claude/.credentials.json, mounted rw.
+def _claude_creds_view_mount(harness: str, inst: str, token_configured: bool = False) -> list[str]:
+    """Mount a VIEW of the host's Claude login: `claudeAiOauth` without the refresh token (GH-597).
 
-    Mounting host credential files into a container is an anti-pattern (Anthropic's own
-    devcontainer guidance says to prefer short-lived/scoped tokens), and it cannot be made
-    correct: host and container refresh their copies independently, and concurrent refresh-token
-    rotation is undocumented. `CLAUDE_CODE_OAUTH_TOKEN` supersedes this entirely — when one is
-    configured (`token_configured`) no credential file is mounted at all.
-
-    This path remains only so hosts that have not yet run `claude setup-token` keep working.
-    It seeds from the host's credentials, and — unlike the original — RE-SEEDS when the existing
-    copy has expired. The old code seeded exactly once, so an instance whose copy aged out was
-    permanently logged out: relaunching never refreshed it and the only cure was deleting the
-    state dir by hand. Re-seeding is gated on expiry precisely so a token the container itself
-    refreshed is never clobbered while it is still valid (the reason for the original guard).
+    The pod never refreshes, so it never rotates the refresh token away from the host, and a dead
+    copy cannot outlive the host's next refresh: `claudeauth.sync` rewrites this file in place
+    whenever the host store changes, so a running pod (an attach skips this function) re-reads it
+    on its next 401. The per-pod copy this replaced held the whole pair and refreshed on its own.
+    `CLAUDE_CODE_OAUTH_TOKEN` supersedes the file: when one is configured nothing is mounted.
 
     omp is NOT included: it reads no Claude credential. Its Anthropic env names are
     `ANTHROPIC_OAUTH_TOKEN`/`ANTHROPIC_API_KEY` (`CLAUDE_CODE_OAUTH_TOKEN` appears nowhere in the
@@ -383,26 +377,12 @@ def _claude_creds_seed_mount(harness: str, inst: str, token_configured: bool = F
     """
     if harness != "claude" or token_configured:
         return []
-
-    state_root = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state"))
-    state_dir = state_root / "harnessed" / inst
-    state_dir.mkdir(parents=True, exist_ok=True)
-    stub = state_dir / "credentials.json"
-
-    if not stub.is_file() or _claude_creds_expired(stub):
-        host_creds = Path.home() / ".claude" / ".credentials.json"
-        if not host_creds.is_file():
-            return []
-        stub.write_bytes(host_creds.read_bytes())
-        stub.chmod(0o600)
-
-    _err.print(
-        "[bold yellow]warning:[/bold yellow] mounting a copy of your Claude credentials into the "
-        "container — it expires in hours and cannot refresh in step with the host.\n"
-        f"  Fix once:  [cyan]claude setup-token[/cyan]  then store the token as [bold]{_OAUTH_TOKEN_VAR}[/bold] "
-        "in 1Password/varlock or your project .env\n"
-        "  That token lasts ~1 year, needs no refresh, and this mount disappears."
-    )
+    view = claudeauth.access_view(claudeauth.host_store())
+    if view is None:
+        return []
+    stub = claudeauth.pod_view_path(inst)
+    stub.parent.mkdir(parents=True, exist_ok=True)
+    claudeauth.write_view(stub, view, in_place=True)
     return ["-v", f"{stub}:{_CONTAINER_HOME_STR}/.claude/.credentials.json:rw"]
 
 
@@ -420,7 +400,7 @@ def _claude_isolated_auth_mount(harness: str, inst: str) -> list[str]:
     forwarded, so the agent comes up logged OUT and `/login` writes the client's credentials here.
 
     Contrast with the two shared-identity paths this REPLACES:
-      * `_claude_creds_seed_mount` copies the host's credentials — wrong account, and a copy that
+      * `_claude_creds_view_mount` copies the host's credentials — wrong account, and a copy that
         rots on refresh;
       * `_claude_oauth_token_args` forwards the host's token — wrong account.
     Both are suppressed by the caller when this is active. Because nothing is copied, the SOP in
@@ -432,7 +412,7 @@ def _claude_isolated_auth_mount(harness: str, inst: str) -> list[str]:
     unchanged`) — its docstring's "safe to destroy: credentials are bind-mounted over it and live on
     the host" is exactly the invariant relied on here. A login stored in the volume would be wiped
     by the next recipe edit. The mount shape (single file, rw, over the volume) is the one
-    `_claude_creds_seed_mount` already uses, so in-container refresh behaves the same way it does
+    `_claude_creds_view_mount` already uses, so in-container refresh behaves the same way it does
     today; only the SOURCE policy differs.
 
     Seeded as `{}` when absent because podman bind-mounts a MISSING source as a new empty DIRECTORY,
@@ -819,7 +799,7 @@ def _mcp_auth_store_mount(
     the live store is REFERENCED, and nothing is copied, seeded, or snapshotted into a per-stack home.
 
     THE SOURCE DEPENDS ON WHOSE IDENTITY THE STACK RUNS AS, mirroring the split that
-    `_claude_isolated_auth_mount` and `_claude_creds_seed_mount` already make:
+    `_claude_isolated_auth_mount` and `_claude_creds_view_mount` already make:
 
       * `isolated_auth` — a per-instance dir beside that stack's own Claude credentials. The flag
         exists so a stack runs as a DIFFERENT account (a client's); handing it the host's ~/.mcp-auth
@@ -870,22 +850,6 @@ def _mcp_auth_store_mount(
     if source.stat().st_mode & 0o077:
         source.chmod(0o700)
     return ["-v", f"{source}:{_CONTAINER_HOME_STR}/.mcp-auth:rw"]
-
-
-def _claude_creds_expired(creds: Path) -> bool:
-    """True when a seeded credential copy's OAuth access token has passed its `expiresAt`.
-
-    Unparseable/absent expiry counts as expired: a copy we cannot vouch for is worth replacing
-    with the host's current one. Reads only the expiry timestamp — never the token itself.
-    """
-    try:
-        data = json.loads(creds.read_text(encoding="utf-8"))
-        expires_at = data.get("claudeAiOauth", {}).get("expiresAt")
-    except (ValueError, OSError):
-        return True
-    if not isinstance(expires_at, (int, float)):
-        return True
-    return (expires_at / 1000) <= datetime.now(timezone.utc).timestamp()
 
 
 def _keyring_state_mount(harness: str, inst: str) -> list[str]:
