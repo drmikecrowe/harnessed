@@ -128,6 +128,12 @@ install:
 # The trailing `mcp__` catch-all subsumes them regardless — and per upstream's own note, the hook
 # body (`isExternalMcpTool()` in hooks/core/routing.mjs) filters context-mode's own tools out, so
 # dropping the plugin-specific entries preserves the semantics exactly.
+#
+# The same plugin names are also baked into the TEXT the PreToolUse and SessionStart hooks emit
+# (hooks/core/tool-naming.mjs maps claude-code to the plugin prefix, with no env override), so the
+# agent was told to call tools that do not exist here. Those two hooks pipe through sed to the bare
+# `ctx_foo` form, the same rewrite install.sh applies to the skills. Not patched in the package: it
+# is a symlink into the shared pnpm store. pipefail keeps the hook's own exit status.
 hooks:
   # Per-ENTRY skips rather than the recipe-wide `skip_harnesses: [omp]` this replaces. That key is
   # all-or-nothing, so suppressing the one event omp cannot deliver cost every other event too, and a
@@ -139,7 +145,9 @@ hooks:
     # result has no context field and there is no current-turn injection API, so
     # omp-claude-hooks-bridge documents PreToolUse additionalContext as deliberately not bridged.
     # Replaying it would spawn a node CLI per tool call to produce output nothing can deliver.
-    - command: context-mode hook claude-code pretooluse
+    - command: >-
+        bash -c 'set -o pipefail; context-mode hook claude-code pretooluse
+        | sed "s/mcp__plugin_context-mode_context-mode__//g"'
       matcher: Bash|WebFetch|Read|Grep|Agent|mcp__
       skip_harnesses: [omp]
   SessionStart:
@@ -148,7 +156,9 @@ hooks:
     # stdout (queued to the next prompt, since omp session_start handlers cannot return context). The
     # native extension handles session_start directly and without that queuing, so it is the better
     # of the two — but only one may run.
-    - command: context-mode hook claude-code sessionstart
+    - command: >-
+        bash -c 'set -o pipefail; context-mode hook claude-code sessionstart
+        | sed "s/mcp__plugin_context-mode_context-mode__//g"'
       skip_harnesses: [omp]
   PostToolUse:
     # Optional upstream. Captures edits / git ops / tasks / errors into SQLite for continuity.

@@ -43,6 +43,17 @@ mkdir -p "$HARNESSED_CONFIG_DIR/ponytail"
 rm -rf "$HARNESSED_CONFIG_DIR/ponytail/hooks"
 cp -r "$src/hooks" "$HARNESSED_CONFIG_DIR/ponytail/hooks"
 
+# Upstream names the tool ("grep every caller"); stacks deny grep or route search through a code
+# graph, so name the goal instead. Not `sed -i`: BSD sed has no portable -i. The temp file is
+# written back with cat so the original keeps its inode and mode.
+# A path upstream renamed is skipped, not fatal: an unmatched glob reaches here as a literal.
+for f in "$HARNESSED_CONFIG_DIR"/skills/ponytail*/SKILL.md "$HARNESSED_CONFIG_DIR/ponytail/hooks/ponytail-instructions.js"; do
+    [ -f "$f" ] || continue
+    sed 's/grep every caller/search for every caller/g; s/grep the whole tree/search the whole tree/g' "$f" > "$f.tmp"
+    cat "$f.tmp" > "$f"
+    rm "$f.tmp"
+done
+
 # Pre-mark ponytail's statusline offer as seen. Unmarked, SessionStart tells the agent to edit
 # settings.json, which harnessed regenerates, so the edit would be lost. An empty file is the
 # upstream "already nudged, declined" state (hooks/ponytail-activate.js).

@@ -22,6 +22,13 @@ class CollisionError(Exception):
     """Two recipes ship a skill/command with the same harness-native name."""
 
 
+def _singleton_message(name: str, first: str, second: str) -> str:
+    return (
+        f"skill name collision: '{name}' is delivered by two recipes, '{first}' and '{second}' "
+        f"(an install script's `expect.skills` counts). Keep it in one recipe."
+    )
+
+
 @dataclass
 class LinkSyncer:
     """Accumulate skills/commands across every recipe in a stack, detecting collisions.
@@ -34,6 +41,9 @@ class LinkSyncer:
     skills: dict[str, tuple[Path, str]] = field(default_factory=dict)
     commands: dict[str, tuple[Path, str]] = field(default_factory=dict)
     rules: dict[str, tuple[Path, str]] = field(default_factory=dict)
+    # skill name -> owning recipe, for skills an install script writes (`expect.skills`). Never
+    # fanned, but a second recipe delivering the same name is the same collision.
+    installed: dict[str, str] = field(default_factory=dict)
     # Target harness, for `only_harnesses` on an entry. None = ship everything (the assemble-time
     # default before a harness is known), which keeps a harness-less inspection complete.
     harness: str | None = None
@@ -44,6 +54,14 @@ class LinkSyncer:
         # Rules are flat `.md` files in Claude's real shape (dirs allowed for organization),
         # so a rule source may be either a single file or a directory.
         self._register(recipe, recipe.rules, self.rules, "rule", allow_file=True)
+        own = {entry.name for entry in recipe.skills}
+        for name in recipe.expect.skills:
+            if name in own:
+                continue
+            prev = self.installed.get(name) or self.skills.get(name, (None, None))[1]
+            if prev is not None and prev != recipe.name:
+                raise CollisionError(_singleton_message(name, prev, recipe.name))
+            self.installed[name] = recipe.name
 
     def _register(
         self,
@@ -74,6 +92,8 @@ class LinkSyncer:
                     f"  recipe '{recipe.name}': {src}\n"
                     f"Rename one of them or drop a recipe from the stack."
                 )
+            if kind == "skill" and self.installed.get(name, recipe.name) != recipe.name:
+                raise CollisionError(_singleton_message(name, self.installed[name], recipe.name))
             registry[name] = (src, recipe.name)
 
     def fan(self, harness_config_dir: Path) -> None:
