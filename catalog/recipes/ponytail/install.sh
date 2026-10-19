@@ -49,7 +49,7 @@ cp -r "$src/hooks" "$HARNESSED_CONFIG_DIR/ponytail/hooks"
 # A path upstream renamed is skipped, not fatal: an unmatched glob reaches here as a literal.
 for f in "$HARNESSED_CONFIG_DIR"/skills/ponytail*/SKILL.md "$HARNESSED_CONFIG_DIR/ponytail/hooks/ponytail-instructions.js"; do
     [ -f "$f" ] || continue
-    sed 's/grep every caller/find every caller/g; s/grep the whole tree/search the whole tree/g' "$f" > "$f.tmp"
+    sed 's/grep every caller/search for every caller/g; s/grep the whole tree/search the whole tree/g' "$f" > "$f.tmp"
     cat "$f.tmp" > "$f"
     rm "$f.tmp"
 done
