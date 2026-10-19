@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from pathlib import Path
 
-from harnessed import launcher
+from harnessed import launcher, mounts
 from harnessed.backend import LaunchSpec
 from support import patch_all
 
@@ -30,7 +30,7 @@ def _home(monkeypatch, tmp_path):
 def _creds(expires_in: timedelta) -> str:
     """A credentials payload whose access token expires `expires_in` from now."""
     expires_at = (datetime.now(timezone.utc) + expires_in).timestamp() * 1000
-    return json.dumps({"claudeAiOauth": {"accessToken": "t", "expiresAt": expires_at}})
+    return json.dumps({"claudeAiOauth": {"accessToken": "t", "refreshToken": "r", "expiresAt": expires_at}})
 
 
 class TestOauthTokenDetection:
@@ -172,7 +172,7 @@ class TestCredsMountSupersededByToken:
     def test_token_configured_mounts_no_credential_file(self, monkeypatch, tmp_path):
         """The whole point: a configured token means we never mount host credentials at all."""
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
-        assert launcher._claude_creds_seed_mount("claude", "inst", token_configured=True) == []
+        assert launcher._claude_creds_view_mount("claude", "inst", token_configured=True) == []
 
     def test_without_token_still_mounts(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
@@ -180,7 +180,7 @@ class TestCredsMountSupersededByToken:
         host = tmp_path / "home" / ".claude"
         host.mkdir(parents=True)
         (host / ".credentials.json").write_text(_creds(timedelta(hours=8)))
-        args = launcher._claude_creds_seed_mount("claude", "inst", token_configured=False)
+        args = launcher._claude_creds_view_mount("claude", "inst", token_configured=False)
         assert args and args[0] == "-v"
 
 
@@ -226,71 +226,68 @@ class TestOmpConsumesNoClaudeCredential:
         (host / ".credentials.json").write_text(_creds(timedelta(hours=8)))
 
         before = launcher._err.warnings
-        assert launcher._claude_creds_seed_mount("omp", "inst", token_configured=False) == []
+        assert launcher._claude_creds_view_mount("omp", "inst", token_configured=False) == []
         assert not (tmp_path / "harnessed" / "inst" / "credentials.json").exists(), (
             "the host credential was copied into per-instance state for a harness that cannot use it"
         )
         assert launcher._err.warnings == before
 
 
-class TestExpiredCopyReseeds:
-    """The seed-once ratchet: an aged-out copy was never refreshed, so relaunching a stale
-    instance stayed logged out forever."""
+class TestPodGetsAView:
+    """GH-597: a pod that holds the refresh token refreshes on its own, rotating it away from every
+    other holder, and nothing re-seeded it while it ran. The pod now holds a view the host keeps
+    current, and never the refresh token."""
 
-    def _setup(self, monkeypatch, tmp_path, stub_creds: str):
+    def _setup(self, monkeypatch, tmp_path, stub_creds: str | None = None):
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
         host = tmp_path / "home" / ".claude"
         host.mkdir(parents=True)
         (host / ".credentials.json").write_text(_creds(timedelta(hours=8)))
-        state = tmp_path / "harnessed" / "inst"
-        state.mkdir(parents=True)
-        stub = state / "credentials.json"
-        stub.write_text(stub_creds)
-        return stub
+        stub = tmp_path / "harnessed" / "inst" / "credentials.json"
+        if stub_creds is not None:
+            stub.parent.mkdir(parents=True)
+            stub.write_text(stub_creds)
+        return host / ".credentials.json", stub
 
-    def test_expired_copy_is_reseeded_from_host(self, monkeypatch, tmp_path):
-        stub = self._setup(monkeypatch, tmp_path, _creds(timedelta(hours=-3)))
-        launcher._claude_creds_seed_mount("claude", "inst", token_configured=False)
-        expires_at = json.loads(stub.read_text())["claudeAiOauth"]["expiresAt"] / 1000
-        assert expires_at > datetime.now(timezone.utc).timestamp()  # refreshed, not left dead
+    def test_the_view_never_holds_the_refresh_token(self, monkeypatch, tmp_path):
+        _, stub = self._setup(monkeypatch, tmp_path)
+        args = launcher._claude_creds_view_mount("claude", "inst", token_configured=False)
+        assert args == ["-v", f"{stub}:{mounts._CONTAINER_HOME_STR}/.claude/.credentials.json:rw"]
+        oauth = json.loads(stub.read_text())["claudeAiOauth"]
+        assert oauth["accessToken"] == "t"
+        assert "refreshToken" not in oauth
 
-    def test_valid_copy_is_never_clobbered(self, monkeypatch, tmp_path):
-        """The original guard's real purpose: don't overwrite a token the container refreshed."""
-        original = _creds(timedelta(hours=5))
-        stub = self._setup(monkeypatch, tmp_path, original)
-        launcher._claude_creds_seed_mount("claude", "inst", token_configured=False)
-        assert stub.read_text() == original
+    def test_a_copy_the_pod_holds_is_replaced_by_the_view(self, monkeypatch, tmp_path):
+        """The old guard kept a still-valid pod copy because the pod refreshed it. Nothing in a pod
+        refreshes now, so the host login always wins."""
+        old = json.dumps({"claudeAiOauth": {"accessToken": "pod", "refreshToken": "pod-r", "expiresAt": 1}})
+        _, stub = self._setup(monkeypatch, tmp_path, old)
+        launcher._claude_creds_view_mount("claude", "inst", token_configured=False)
+        oauth = json.loads(stub.read_text())["claudeAiOauth"]
+        assert oauth["accessToken"] == "t"
+        assert "refreshToken" not in oauth
 
-    def test_malformed_copy_is_replaced(self, monkeypatch, tmp_path):
-        stub = self._setup(monkeypatch, tmp_path, "{not json")
-        launcher._claude_creds_seed_mount("claude", "inst", token_configured=False)
-        assert json.loads(stub.read_text())["claudeAiOauth"]["expiresAt"]  # parseable again
+    def test_the_view_is_written_in_place(self, monkeypatch, tmp_path):
+        """A single-file bind mount pins the inode: a replace would leave a running pod on the old
+        file."""
+        _, stub = self._setup(monkeypatch, tmp_path, "{}")
+        inode = stub.stat().st_ino
+        launcher._claude_creds_view_mount("claude", "inst", token_configured=False)
+        assert stub.stat().st_ino == inode
 
+    def test_mcp_oauth_the_pod_stored_survives(self, monkeypatch, tmp_path):
+        _, stub = self._setup(monkeypatch, tmp_path, json.dumps({"mcpOAuth": {"srv": {"x": 1}}}))
+        launcher._claude_creds_view_mount("claude", "inst", token_configured=False)
+        assert json.loads(stub.read_text())["mcpOAuth"] == {"srv": {"x": 1}}
 
-class TestExpiryHelper:
-    def test_future_expiry_is_not_expired(self, tmp_path):
-        f = tmp_path / "c.json"
-        f.write_text(_creds(timedelta(hours=1)))
-        assert launcher._claude_creds_expired(f) is False
-
-    def test_past_expiry_is_expired(self, tmp_path):
-        f = tmp_path / "c.json"
-        f.write_text(_creds(timedelta(hours=-1)))
-        assert launcher._claude_creds_expired(f) is True
-
-    def test_epoch_zero_is_expired(self, tmp_path):
-        """Observed on real instances: expiresAt=0 (never-valid/cleared) must count as expired."""
-        f = tmp_path / "c.json"
-        f.write_text(json.dumps({"claudeAiOauth": {"expiresAt": 0}}))
-        assert launcher._claude_creds_expired(f) is True
-
-    def test_missing_or_unparseable_is_expired(self, tmp_path):
-        missing = tmp_path / "nope.json"
-        assert launcher._claude_creds_expired(missing) is True
-        bad = tmp_path / "bad.json"
-        bad.write_text("{}")
-        assert launcher._claude_creds_expired(bad) is True
+    def test_no_usable_host_login_mounts_nothing(self, monkeypatch, tmp_path):
+        """A gutted host store has nothing to share; mounting it would only mount a logged-out file."""
+        host, stub = self._setup(monkeypatch, tmp_path)
+        host.write_text(json.dumps({"claudeAiOauth": {"accessToken": "", "refreshToken": "", "expiresAt": 0}}))
+        assert launcher._claude_creds_view_mount("claude", "inst", token_configured=False) == []
+        assert not stub.exists()
 
 
 class TestVarlockResolveMemo:

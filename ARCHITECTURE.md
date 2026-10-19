@@ -510,6 +510,10 @@ silent logout the user experiences as "it keeps asking me to log in". Two mechan
    reads it, rw where it owns the whole dir). Always current by construction.
 2. **Reference a token or broker URL** — an env token, or omp's `auth.broker.url` +
    `auth.broker.token`. No file involved at all.
+3. **A view the host keeps current** — a file holding only what the harness needs to authenticate,
+   never what it needs to refresh, rewritten by the host whenever the live store changes. The
+   holder cannot refresh, so it cannot fork the login, and its file never goes stale. Claude's
+   `.credentials.json` without `refreshToken` is the case (GH-597).
 
 Everything else is replication and is out of bounds, however carefully guarded. "Copy it back if
 it is newer" is still replication — it just moves the race rather than removing it.
@@ -547,14 +551,16 @@ stack is the point, and those files are not subject to the replace-on-refresh ha
    absence. A project-level `CLAUDE_CODE_OAUTH_TOKEN=` therefore disables a user-global token and
    correctly falls back to the credential file. Answering from the *first* source instead leaves the
    container with no token **and** no credentials.
-2. **Per-instance credential seed (legacy fallback — NOT mechanism 1).** When no OAuth token is
-   configured, the launcher seeds a per-instance copy of `~/.claude/.credentials.json`, mounted
-   **rw** so the container can refresh it. This is acknowledged replication — it violates the SOP
-   above — and is tolerated only so that hosts which have not yet run `claude setup-token` keep
-   working. The container's copy diverges from the host's on the first token refresh, and concurrent
-   rotation is undocumented. The launcher re-seeds from the host file when the copy has expired,
-   which addresses the "permanently logged out" failure mode of the original design; the underlying
-   race remains. Migrate with `claude setup-token`.
+2. **A view of the host login (mechanism 3).** When no OAuth token is configured, every pod
+   gets `~/.claude/.credentials.json` minus `refreshToken`, bind-mounted from
+   `$XDG_STATE_HOME/harnessed/<inst>/credentials.json`. The host store is the only holder of the
+   refresh token and the only refresher. `claudeauth.sync` rewrites every view in place when it
+   changes, so a running pod (an attach mounts nothing) picks it up on its next 401. Measured on
+   Claude Code 2.1.299: a view serves model requests and remote control, claude never refreshes or
+   rewrites it, even after `expiresAt`, and a running session re-reads it after a 401. The
+   refresher (`python -m harnessed.claudeauth`, started detached by any claude launch, one per
+   machine under a lock) runs one minimal `claude -p` against the host store when the login is
+   inside its last two minutes, which is when claude refreshes, and re-syncs every minute.
 
 **A third path exists for a different *identity*, not a different mechanism: `isolated_auth: true`
 (stack).** Both paths above answer "how does the container get **your** login". This one answers
@@ -570,9 +576,11 @@ diverge from. The store lives on the host rather than in the `~/.claude` config 
 `_ensure_config_volume` destroys that volume whenever the profile fingerprint changes — its own
 "safe to destroy: credentials are bind-mounted over it" invariant is what this relies on.
 
-**`host-run` applies the same order.** Without a token it symlinks the per-stack `.credentials.json`
-at the host `CLAUDE_CONFIG_DIR`'s (default `~/.claude`; mechanism 1, subject to the replace-on-refresh hazard above — hence the rescue
-that promotes a refreshed token back before the next launch wipes the home). With one configured it
+**`host-run` applies the same order.** Without a token it writes the per-stack `.credentials.json`
+as a view of the host `CLAUDE_CONFIG_DIR`'s (default `~/.claude`; mechanism 3). It used to be a
+symlink, which the replace-on-refresh hazard above turned into a private copy. A `/login` inside a
+stack still writes a full pair into its view, so the rescue promotes it to the host store before
+the next sync or launch overwrites it. With one configured it
 does neither: no link is made, the rescue is skipped, and a copy an earlier token-free launch left
 behind is removed, so the stale file cannot outlive the switch. The shared `~/.claude` copy is never
 deleted — or, when configured, the shared `CLAUDE_CONFIG_DIR` copy is never deleted — because it is the user's own login, outside any stack.
