@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0](https://github.com/drmikecrowe/harnessed/compare/v0.6.0...v0.7.0) (2026-10-20)
+
+
+### Features
+
+* **catalog:** upgrade pins 2026-10-19 ([#621](https://github.com/drmikecrowe/harnessed/issues/621)) ([3844a4c](https://github.com/drmikecrowe/harnessed/commit/3844a4c8533d3af33a730d6cde4cd201970dcfd7))
+* **gortex:** ship the linked-worktree recovery rule ([#622](https://github.com/drmikecrowe/harnessed/issues/622)) ([57f1409](https://github.com/drmikecrowe/harnessed/commit/57f140911dbf5b96da00d713d198788648cd63c7))
+
 ## [0.6.0](https://github.com/drmikecrowe/harnessed/compare/v0.5.0...v0.6.0) (2026-10-19)
 
 
