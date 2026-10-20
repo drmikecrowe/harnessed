@@ -21,6 +21,7 @@ assembler emits it into the generated `settings.json`.
 | daemon + repo registration | `init.run` (daemon ensure + `gortex track "$PROJECT_DIR"`) | every attach |
 | per-repo wiring (claude only) | `init.run` → `gortex init --agents=claude-code --no-skills --no-hooks --yes` | every attach |
 | hooks (`gortex hook`, 6 events) | `recipe.yaml` `hooks:` → assembler `settings.json` | every tool call / prompt |
+| linked-worktree recovery rule (`gortex-worktrees`, v0.64.7) | `recipe.yaml` `rules:` → `.claude/rules/` | every session |
 
 ## Daemon lifecycle
 
