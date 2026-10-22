@@ -259,6 +259,15 @@ class TestS3PnpmGetsPnpm:
         assert f"`{_INSTALL}`" in result.output
         assert launcher._acp_adapter_owner(str(bindir / "claude-agent-acp")) == "other"
 
+    def test_s3_3_b_notice_lines_around_the_dir_still_classify_pnpm(self, monkeypatch, tmp_path):
+        bindir = _stub(tmp_path / "pnpm" / "bin", "0.85.1")
+        noisy = bindir / "pnpm"
+        noisy.write_text(f'#!/bin/sh\necho "Update available!"\necho {bindir}\necho "Run pnpm add -g pnpm"\n')
+        noisy.chmod(0o755)
+        monkeypatch.setenv("PATH", str(bindir))
+        monkeypatch.setenv("MISE_DATA_DIR", str(tmp_path / "mise"))
+        assert launcher._acp_adapter_owner(str(bindir / "claude-agent-acp")) == "pnpm"
+
     @pytest.mark.parametrize("kind", ["mise", "none"])
     def test_s3_4_mise_and_no_adapter_never_ask_pnpm(self, build_env, monkeypatch, tmp_path, kind):
         log = tmp_path / "pnpm-calls.log"

@@ -4928,7 +4928,8 @@ def _pnpm_global_bin() -> Optional[Path]:
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
-    out = (proc.stdout or "").strip()
+    # pnpm can print notices on stdout around the dir; keep the first absolute path.
+    out = next((s for s in map(str.strip, (proc.stdout or "").splitlines()) if os.path.isabs(s)), "")
     return Path(out) if proc.returncode == 0 and out else None
 
 
