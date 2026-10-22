@@ -98,6 +98,49 @@ class TestMaterialize:
         assert (home / "daemon" / "sock").is_file()
         assert (home / "skills" / "greet-helper" / "SKILL.md").is_file()  # profile still landed
 
+    def test_live_background_jobs_survive_the_rebuild(self, tmp_path):
+        """Observed 2026-10-18. `jobs/<id>/` holds the state of Claude Code's background sessions,
+        which keep writing into it. The rebuild rmtree'd it mid-write and died on
+        `OSError: [Errno 39] Directory not empty: .../jobs`, so the stack could not launch at all."""
+        prof, home = tmp_path / "prof", tmp_path / "home"
+        prof.mkdir()
+        _fake_profile(prof)
+        job = home / "jobs" / "9d41a81b"
+        job.mkdir(parents=True)
+        (job / "state.json").write_text('{"state":"running"}')
+
+        launcher._materialize_host_home(prof, home)
+
+        assert (job / "state.json").read_text() == '{"state":"running"}'
+
+    def test_a_recipe_jobs_dir_without_job_state_is_still_removed(self, tmp_path):
+        """PR #615 review. `jobs/` is spared by its content, not its name, so a recipe that ships
+        its own `jobs/` cannot leave it behind after the recipe is dropped."""
+        prof, home = tmp_path / "prof", tmp_path / "home"
+        prof.mkdir()
+        _fake_profile(prof)
+        (home / "jobs").mkdir(parents=True)
+        (home / "jobs" / "README.md").write_text("recipe content")
+
+        launcher._materialize_host_home(prof, home)
+
+        assert not (home / "jobs").exists()
+
+    def test_the_mcp_config_a_running_daemon_respawns_with_survives(self, tmp_path):
+        """Observed 2026-10-18. The daemon records `--mcp-config <home>/.mcp.json` in every
+        background session's respawn flags. A rebuild that deleted it, then failed an install
+        before `wire_mcp` rewrote it, left every new background session dying on
+        `MCP config file not found`."""
+        prof, home = tmp_path / "prof", tmp_path / "home"
+        prof.mkdir()
+        _fake_profile(prof)
+        home.mkdir()
+        (home / ".mcp.json").write_text('{"mcpServers": {}}')
+
+        launcher._materialize_host_home(prof, home)
+
+        assert (home / ".mcp.json").read_text() == '{"mcpServers": {}}'
+
     def test_dropped_recipe_content_is_still_removed(self, tmp_path):
         """The 8px.20 preserve must not weaken the 8px.12 invariant: sparing daemon state is not a
         licence to spare recipe content. A dir that merely LOOKS like state (no daemon markers) is
@@ -356,7 +399,7 @@ class TestShareClaudeState:
     def test_symlinks_session_state_and_live_auth(self, monkeypatch, tmp_path):
         real = tmp_path / "host-claude"
         real.mkdir()
-        (real / ".credentials.json").write_text('{"token":"x"}')
+        (real / ".credentials.json").write_text('{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1}}')
         (real / ".claude.json").write_text('{"account":"a"}')
         (real / "projects").mkdir()
         (real / "projects" / "p.jsonl").write_text("transcript")
@@ -372,9 +415,11 @@ class TestShareClaudeState:
         assert (home / "projects" / "p.jsonl").read_text() == "transcript"
         for name in ("file-history", "todos", "tasks", "session-env", "shell-snapshots"):
             assert (home / name).is_symlink()
-        # auth token: symlinked (live refresh propagates)
-        assert (home / ".credentials.json").is_symlink()
-        assert (home / ".credentials.json").read_text() == '{"token":"x"}'
+        # auth token: a view without the refresh token, so only the host refreshes (GH-597)
+        assert not (home / ".credentials.json").is_symlink()
+        assert json.loads((home / ".credentials.json").read_text()) == {
+            "claudeAiOauth": {"accessToken": "a", "expiresAt": 1}
+        }
         # account: MERGED into the stack's own file (isolated writes), not a symlink (GH-594)
         assert (home / ".claude.json").is_file()
         assert not (home / ".claude.json").is_symlink()
@@ -383,7 +428,7 @@ class TestShareClaudeState:
         """`CLAUDE_CODE_OAUTH_TOKEN` takes precedence over the credentials file, so with one
         configured the file is dead weight — and maintaining it carries the whole 8px.10
         symlink-replacement failure mode for nothing. The container path already refuses to mount a
-        credential file under a token (`_claude_creds_seed_mount`); this is the host's half."""
+        credential file under a token (`_claude_creds_view_mount`); this is the host's half."""
         real = tmp_path / "host-claude"
         real.mkdir()
         (real / ".credentials.json").write_text('{"token":"x"}')
@@ -430,12 +475,12 @@ class TestShareClaudeState:
 
         assert (real / ".credentials.json").read_text() == '{"token":"shared"}'
 
-    def test_no_token_keeps_the_symlink(self, monkeypatch, tmp_path):
+    def test_no_token_writes_the_view(self, monkeypatch, tmp_path):
         """Regression guard: without a token the credential file is load-bearing. Removing it here
         would log the user out on every launch."""
         real = tmp_path / "host-claude"
         real.mkdir()
-        (real / ".credentials.json").write_text('{"token":"x"}')
+        (real / ".credentials.json").write_text('{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1}}')
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(real))
         monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
         home = tmp_path / "home"
@@ -443,14 +488,15 @@ class TestShareClaudeState:
 
         launcher._share_host_claude_state(home)
 
-        assert (home / ".credentials.json").is_symlink()
+        assert not (home / ".credentials.json").is_symlink()
+        assert json.loads((home / ".credentials.json").read_text())["claudeAiOauth"]["accessToken"] == "a"
 
     def test_an_empty_token_var_is_not_a_configured_token(self, monkeypatch, tmp_path):
         """`CLAUDE_CODE_OAUTH_TOKEN=` (exported empty) is how a shell profile disables it. Treating
         the mere presence of the name as configured would log the user out with no way back."""
         real = tmp_path / "host-claude"
         real.mkdir()
-        (real / ".credentials.json").write_text('{"token":"x"}')
+        (real / ".credentials.json").write_text('{"claudeAiOauth":{"accessToken":"a","refreshToken":"r","expiresAt":1}}')
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(real))
         monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
         home = tmp_path / "home"
@@ -458,7 +504,7 @@ class TestShareClaudeState:
 
         launcher._share_host_claude_state(home)
 
-        assert (home / ".credentials.json").is_symlink()
+        assert json.loads((home / ".credentials.json").read_text())["claudeAiOauth"]["accessToken"] == "a"
 
     def test_claude_json_seeded_from_home_level_not_config_dir(self, monkeypatch, tmp_path):
         # The account file is $HOME/.claude.json — NOT ~/.claude/.claude.json. Seed from the right one.

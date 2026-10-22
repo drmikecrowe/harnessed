@@ -33,7 +33,7 @@ CATALOG = Path(__file__).resolve().parents[1] / "catalog"
 # `mise use -g` / `mise install` and nothing else, so it had no configuration half to keep. serena
 # is the last member with both halves. See tests/test_cbm_migration.py.
 MIGRATED = ["serena"]
-TOOLS_ONLY = ["repowise", "agentmemory", "codebase-memory-mcp"]
+TOOLS_ONLY = ["agentmemory", "codebase-memory-mcp"]
 
 
 def _recipe(name):

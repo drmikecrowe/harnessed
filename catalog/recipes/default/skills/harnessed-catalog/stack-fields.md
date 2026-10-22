@@ -91,7 +91,7 @@ forward_git_credentials: true
 # child
 name: house-review
 extends: house
-recipes: [repowise]        # → ccstatusline, mikes-universal-setup, repowise
+recipes: [openwiki]        # → ccstatusline, mikes-universal-setup, openwiki
 permissions: yolo          # → yolo (child wins)
 ```
 

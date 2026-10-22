@@ -186,12 +186,17 @@ env:
   DO_NOT_TRACK: "1"
 
 # --- Hooks ------------------------------------------------------------------------------------------
-# Upstream's claude-code install set at v0.64.5, verbatim except for two deviations the
-# assembler forces (see below): 8 events, all `gortex hook`, which speaks Claude Code's hook
-# protocol off stdin and degrades silently when the daemon is unreachable (measured: instant
-# "standing down" notice, never a hang). This is the enforcement half of the recipe —
-# PreToolUse redirects Read/Grep/Glob of indexed source at graph tools, Stop runs post-task
-# diagnostics — and it is why the tools actually get used rather than merely connected.
+# Upstream's claude-code install set at v0.64.5, minus its two end-of-turn events (turn end and
+# subagent end), plus two deviations the assembler forces (see below): 6 events, all `gortex
+# hook`, which speaks Claude Code's hook protocol off stdin and degrades silently when the daemon
+# is unreachable (measured: instant "standing down" notice, never a hang). This is the
+# enforcement half of the recipe — PreToolUse redirects Read/Grep/Glob of indexed source at
+# graph tools — and it is why the tools actually get used rather than merely connected.
+#
+# The two end-of-turn events are dropped (GH-610): they ran `gortex hook` after every turn and
+# every subagent for no user value, and printed errors on every turn wherever `gortex` was
+# missing from the hook's PATH. Dropping them here, not in install.sh, is the only place that
+# holds: the assembler rewrites settings.json from this block after install.sh runs.
 #
 # Deviations from the installer-written settings.local.json (captured from a real
 # `gortex install` at v0.64.5):
@@ -211,7 +216,7 @@ env:
 # this ONE matcher does not fire there — localization enrichment is host-only. Widening it to
 # mcp__hatago__* would fire gortex's hook for every OTHER recipe's MCP tools too, which is not
 # gortex's call to make. The name-independent events (PreToolUse on *, SessionStart,
-# UserPromptSubmit, PreCompact, Stop, Subagent*) work in both modes.
+# UserPromptSubmit, PreCompact, SubagentStart) work in both modes.
 hooks:
   PreToolUse:
     - command: gortex hook
@@ -225,12 +230,21 @@ hooks:
     - command: gortex hook
   PreCompact:
     - command: gortex hook
-  Stop:
-    - command: gortex hook
   SubagentStart:
     - command: gortex hook
-  SubagentStop:
-    - command: gortex hook
+
+# --- Rules ------------------------------------------------------------------------------------------
+# Recovery steps for linked Git worktrees that upstream's own instructions do not give. PIN-SPECIFIC:
+# verified on v0.64.7 only. Each section retires with its upstream issue (zzet/gortex):
+#   Stale session binding  #931, #932
+#   Trust explain_view     #933; its primary check #934, #898
+#   Writes                 none: the view_building retry may be intended behaviour
+#   Admin commands         #936
+#   New-worktree scripts   #937, #935
+# On a pin bump, re-test every section against the new pin and delete each one whose issue is
+# fixed there. A stale rule is wrong advice and can block the correct fix.
+rules:
+  - path: rules/gortex-worktrees
 
 # --- Profile wiring (install.sh) --------------------------------------------------------------------
 # Runs upstream's own per-machine installer, constrained to the claude-code adapter (which

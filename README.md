@@ -139,6 +139,7 @@ and MCP servers it declares.
 | `harnessed project-setup <claude \| omp> <path> --stack <name>` | The per-project half of `host-run` for one folder: services, the project tool env file, recipe setup and init scripts |
 | `harnessed build [<stack> [<harness>]]` | Build the shared images and reconcile every stale stack, or assemble and build one stack |
 | `harnessed test <stack> <harness>` | Capability test: launch headless and assert the declared capabilities, written as a markdown report |
+| `harnessed context <stack> [<harness>]` | What a built stack loads into every session, with token estimates; exits 1 when a skill is installed twice, a file loads twice, or a memory file leaks in from above the current directory |
 | `harnessed list` | Authored stacks (with which harnesses are built) and running instances |
 | `harnessed stop \| rm <stack> [<harness>]` | Stop or remove instances of a stack |
 | `harnessed install \| uninstall <stack> <harness>` | Write or remove the `~/.local/bin/harnessed-<harness>-<stack>-<backend>` launchers; `uninstall` also removes the retired `~/.local/bin/<stack>` shim and names aoe rows that still use a removed launcher |

@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.7.0](https://github.com/drmikecrowe/harnessed/compare/v0.6.0...v0.7.0) (2026-10-20)
+
+
+### Features
+
+* **catalog:** upgrade pins 2026-10-19 ([#621](https://github.com/drmikecrowe/harnessed/issues/621)) ([3844a4c](https://github.com/drmikecrowe/harnessed/commit/3844a4c8533d3af33a730d6cde4cd201970dcfd7))
+* **gortex:** ship the linked-worktree recovery rule ([#622](https://github.com/drmikecrowe/harnessed/issues/622)) ([57f1409](https://github.com/drmikecrowe/harnessed/commit/57f140911dbf5b96da00d713d198788648cd63c7))
+
+## [0.6.0](https://github.com/drmikecrowe/harnessed/compare/v0.5.0...v0.6.0) (2026-10-19)
+
+
+### Features
+
+* **context:** add harnessed context and count installed skills in the collision gate ([#618](https://github.com/drmikecrowe/harnessed/issues/618)) ([7c0fe12](https://github.com/drmikecrowe/harnessed/commit/7c0fe12aa5011ddd40fec52dc080c0e87d9fc67a))
+
+
+### Bug Fixes
+
+* **auth:** refresh the Claude login on the host alone (GH-597) ([#617](https://github.com/drmikecrowe/harnessed/issues/617)) ([3b6f968](https://github.com/drmikecrowe/harnessed/commit/3b6f968083975ee6a4a787c314685ad8a59d620d))
+
+## [0.5.0](https://github.com/drmikecrowe/harnessed/compare/v0.4.0...v0.5.0) (2026-10-18)
+
+
+### Features
+
+* **catalog:** add ponytail recipe ([#614](https://github.com/drmikecrowe/harnessed/issues/614)) ([30520ec](https://github.com/drmikecrowe/harnessed/commit/30520ec5b871b198d3587192164a13167a713db9))
+* **catalog:** upgrade pins 2026-10-17 ([#612](https://github.com/drmikecrowe/harnessed/issues/612)) ([41b0dfd](https://github.com/drmikecrowe/harnessed/commit/41b0dfd37cf0de2dfa42ebedb1579f82e7823b0e))
+
+
+### Bug Fixes
+
+* **acp:** run an ACP terminal login instead of rejecting --cli ([#616](https://github.com/drmikecrowe/harnessed/issues/616)) ([da36921](https://github.com/drmikecrowe/harnessed/commit/da36921b925d5962b22aecf0f8a2d3bfd414d5f2))
+* **gortex:** drop Stop and SubagentStop hooks (GH-610) ([#613](https://github.com/drmikecrowe/harnessed/issues/613)) ([0140722](https://github.com/drmikecrowe/harnessed/commit/0140722958d38c2db313f410739fd4f87b9ca16b))
+* **host:** spare live background jobs and .mcp.json in the host home rebuild ([#615](https://github.com/drmikecrowe/harnessed/issues/615)) ([c8e417c](https://github.com/drmikecrowe/harnessed/commit/c8e417ca43c50c91513946e54818a47c69b53fe6))
+
+
+### Documentation
+
+* **agents:** make AGENTS.md the source of truth for agent rules ([#608](https://github.com/drmikecrowe/harnessed/issues/608)) ([1d04c66](https://github.com/drmikecrowe/harnessed/commit/1d04c66d9507ad84fcc50a0150b4ceb73e03c29e))
+
+## [0.4.0](https://github.com/drmikecrowe/harnessed/compare/v0.3.1...v0.4.0) (2026-10-14)
+
+
+### Features
+
+* **claude:** copy ~/.claude/CLAUDE.md @-imports into stack rules for ACP sessions (GH-600) ([#605](https://github.com/drmikecrowe/harnessed/issues/605)) ([42981bd](https://github.com/drmikecrowe/harnessed/commit/42981bda342f0bdc5809f23d4ccc27b3eab5d25f))
+
 ## [0.3.1](https://github.com/drmikecrowe/harnessed/compare/v0.3.0...v0.3.1) (2026-10-14)
 
 

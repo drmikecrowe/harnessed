@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from harnessed.schema import FileExt, Recipe
+from harnessed.schema import Expect, FileExt, Recipe
 from harnessed.synclinks import CollisionError, LinkSyncer
 
 
@@ -160,3 +160,39 @@ class TestRulesRoundTrip:
         # consistently by _fan_into — just verify the fan call completes without error.
         # The dir is created because _fan_into always calls mkdir.
         assert (claude_dir / "rules").is_dir()
+
+
+class TestInstalledSkillSingleton:
+    """A skill an install script writes (`expect.skills`) reserves its name like a fanned one."""
+
+    def _skill_dir(self, root: Path, name: str) -> None:
+        (root / "skills" / name).mkdir(parents=True)
+
+    def test_two_recipes_installing_one_skill_collide(self, tmp_path):
+        syncer = LinkSyncer(harness="claude")
+        syncer.add_recipe(Recipe(name="a", root=tmp_path, expect=Expect(skills=["simple-english"])))
+        with pytest.raises(CollisionError, match="'simple-english' is delivered by two recipes, 'a' and 'b'"):
+            syncer.add_recipe(Recipe(name="b", root=tmp_path, expect=Expect(skills=["simple-english"])))
+
+    def test_installed_then_fanned_collide(self, tmp_path):
+        self._skill_dir(tmp_path, "ponytail")
+        syncer = LinkSyncer(harness="claude")
+        syncer.add_recipe(Recipe(name="a", root=tmp_path, expect=Expect(skills=["ponytail"])))
+        with pytest.raises(CollisionError, match="'ponytail'"):
+            syncer.add_recipe(Recipe(name="b", root=tmp_path, skills=[FileExt(path="skills/ponytail")]))
+
+    def test_fanned_then_installed_collide(self, tmp_path):
+        self._skill_dir(tmp_path, "ponytail")
+        syncer = LinkSyncer(harness="claude")
+        syncer.add_recipe(Recipe(name="a", root=tmp_path, skills=[FileExt(path="skills/ponytail")]))
+        with pytest.raises(CollisionError, match="'ponytail'"):
+            syncer.add_recipe(Recipe(name="b", root=tmp_path, expect=Expect(skills=["ponytail"])))
+
+    def test_a_recipe_may_fan_and_expect_its_own_skill(self, tmp_path):
+        self._skill_dir(tmp_path, "ponytail")
+        syncer = LinkSyncer(harness="claude")
+        syncer.add_recipe(
+            Recipe(name="a", root=tmp_path, skills=[FileExt(path="skills/ponytail")],
+                   expect=Expect(skills=["ponytail", "ponytail-help"]))
+        )
+        assert syncer.installed == {"ponytail-help": "a"}

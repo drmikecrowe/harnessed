@@ -36,6 +36,8 @@ from . import acprelay
 from . import aoe
 from . import broker
 from . import claude_imports
+from . import claudeauth
+from . import context as stack_context
 from . import dynstack
 from . import emit
 from . import launchscript
@@ -134,8 +136,7 @@ from .mounts import (
     _build_mount_args,
     _ccstatusline_settings_mount,
     _claude_config_seed_mount,
-    _claude_creds_expired,
-    _claude_creds_seed_mount,
+    _claude_creds_view_mount,
     _claude_isolated_auth_mount,
     _env_files_value,
     _isolated_auth_fresh_wipe,
@@ -286,7 +287,6 @@ __all__ = [
     "_DAEMON_STATE_MARKERS",       # hosthome
     "_HOST_STACK_FINGERPRINT",     # hosthome
     "_STABLE_PORT_RANGE",          # svcstate
-    "_claude_creds_expired",       # mounts
     "_ensure_config_volume",       # volumes
     "_env_files_value",            # mounts
     "_gcd_db_name",                # setupenv
@@ -2935,6 +2935,8 @@ class HostBackend(ExecutionBackend):
         assert self.home is not None, "seed_auth before materialize_config"  # noqa: S101  # type-narrowing: ordering enforced by caller
         _HOST_HARNESSES[spec.harness].share_state(self.home)
         if spec.harness == "claude":
+            # The stack holds a view, so something on the host must refresh the login (GH-597).
+            claudeauth.start_refresher()
             _seed_host_claude_json(
                 self.home, None if self.acp else str(spec.project_path),
                 isolated_auth=self.isolated_auth,
@@ -3667,6 +3669,54 @@ def host_run(
         raise
 
 
+def _acp_terminal_login(verb: str, harness: str, stack: Optional[str], args: list[str]) -> None:
+    """Run the claude CLI an ACP client's terminal login asked for (`<verb> … --cli <args>`).
+
+    The client runs this in a terminal it shows the user, so nothing here is JSON-RPC: it must run
+    before `set_acp_mode`. It execs `claude <args>` against the credentials the agent will read:
+
+      * `host-acp` — the stack's host config dir. A login there replaces the `.credentials.json`
+        view with a full login, and `_rescue_host_credentials` (the next launch, or the refresher's
+        next pass) promotes it to the host store, as it does for a `/login` inside `host-run`.
+      * `container-acp` — the user's own `~/.claude`, the host store every pod's view is cut from. An `isolated_auth` stack logs in inside its container instead, to a store
+        keyed per project, and this verb is given no project; it says how rather than log in to
+        the wrong account.
+    """
+    if harness != "claude":
+        _err.print(
+            f"[bold red]error:[/bold red] --cli runs the claude CLI for an ACP terminal login; "
+            f"{harness} has none", soft_wrap=True,
+        )
+        raise typer.Exit(2)
+    if not stack:
+        _err.print(f"[bold red]error:[/bold red] {verb} --cli needs --stack", soft_wrap=True)
+        raise typer.Exit(2)
+    env = dict(os.environ)
+    if verb == "host-acp":
+        env["CLAUDE_CONFIG_DIR"] = str(paths.host_home(stack, harness))
+    else:
+        try:
+            isolated = load_stack_with_recipes(None, stack)[0].isolated_auth
+        except SchemaError as exc:
+            _err.print(f"[bold red]error:[/bold red] stack '{stack}': {exc}", soft_wrap=True)
+            raise typer.Exit(1) from exc
+        if isolated:
+            _err.print(
+                f"[bold red]error:[/bold red] stack '{stack}' sets isolated_auth: it logs in inside "
+                f"its container. Run `harnessed container-run claude <project> --stack {stack}` and "
+                "use /login there.", soft_wrap=True,
+            )
+            raise typer.Exit(1)
+        env.pop("CLAUDE_CONFIG_DIR", None)
+    # No `_acknowledge_warnings` first: nothing was assembled, so no launch warning is pending.
+    login = [_HOST_HARNESSES[harness].argv0, *args]
+    try:
+        os.execvpe(login[0], login, env)  # noqa: S606 — argv is a vector; nothing is word-split
+    except OSError as exc:
+        _err.print(f"[bold red]error:[/bold red] cannot run {login[0]}: {exc}", soft_wrap=True)
+        raise typer.Exit(127) from exc
+
+
 @app.command("host-acp")
 def host_acp(
     harness: str = typer.Argument(..., help="Harness to run as an ACP agent: omp or claude"),
@@ -3680,7 +3730,10 @@ def host_acp(
     folder this starts in gets only the per-stack setup. Stdout carries JSON-RPC and nothing else.
 
         harnessed host-acp <harness> --stack <name>
+        harnessed host-acp claude --stack <name> --cli auth login   # an ACP terminal login
     """
+    if _acp_cli is not None:
+        _acp_terminal_login("host-acp", harness, stack, _acp_cli)
     if harness not in _ACP_HARNESSES:
         _err.print(
             f"[bold red]error:[/bold red] {harness} has no ACP mode; host-acp supports: "
@@ -3936,7 +3989,7 @@ class ContainerBackend(ExecutionBackend):
                 )
             # Claude auth, last of the mounts: a long-lived CLAUDE_CODE_OAUTH_TOKEN (host env, varlock,
             # or plain .env) supersedes the credential file, so nothing is mounted in that case.
-            self.mount_args += _claude_creds_seed_mount(
+            self.mount_args += _claude_creds_view_mount(
                 spec.harness, self.inst, _claude_oauth_token_configured(spec.harness, spec.project_path)
             )
         self.secrets_env_files = secrets_env_files
@@ -4314,6 +4367,17 @@ def _acp_relaunch(project: Path, agent_start_folder: Optional[str]) -> tuple[sub
     return proc, start_dir
 
 
+def _sync_claude_auth(harness: str, project_path: Path) -> None:
+    """Bring every credential view up to the host login, and make sure something refreshes it.
+
+    Gated on the same check as `_claude_creds_view_mount`: under this project's own token no pod of
+    it reads a view, so neither the sync nor the refresher is this launch's business.
+    """
+    if harness == "claude" and not _claude_oauth_token_configured(harness, project_path):
+        claudeauth.sync()
+        claudeauth.start_refresher()
+
+
 @app.command("container-run")
 def container_run(
     ctx: typer.Context,
@@ -4379,6 +4443,8 @@ def container_run(
     JSON-RPC channel. See `set_acp_mode`.
     """
     acp_mode = ctx.info_name == "container-acp"
+    if acp_mode and _acp_cli is not None:
+        _acp_terminal_login("container-acp", harness, stack, _acp_cli)
     exec_mode = acp_mode or ctx.info_name == "container-exec"
     set_exec_mode(exec_mode)
     # BEFORE anything below can print or spawn a child that writes to stdout.
@@ -4594,6 +4660,9 @@ def container_run(
         stack=stack, harness=harness, project_path=project_path,
         extra=tuple(extra), no_strict_mcp=no_strict_mcp_config, ephemeral=rm,
     )
+    # Before any attach path: an attach skips the mounts, so this is what brings a running pod's
+    # credential view up to the host's current login (GH-597).
+    _sync_claude_auth(harness, project_path)
 
     # --fresh: tear down existing pod.
     if fresh:
@@ -5231,6 +5300,42 @@ def _broker_report(pod_exists, *, run=None) -> None:
     _out.print("[bold]Secret brokers (host-side, one per instance):[/bold]")
     for b in live:
         _out.print(f"  {b.instance}  session {b.session}  127.0.0.1:{b.port}")
+
+
+@app.command("context")
+def context(
+    stack: str = typer.Argument(..., help="Built stack to inspect"),
+    harness: str = typer.Argument("claude", help="Harness the stack was built for"),
+) -> None:
+    """Show what a stack loads into every session; exit 1 on a duplicate or a leak.
+
+    Reads the host home when a host launch has made one, because only it holds what install
+    scripts wrote; otherwise the built profile. Leaks are looked for above the current directory,
+    which is what the agent walks when launched here."""
+    if harness not in HARNESS_CONFIG_DIR:
+        _err.print(
+            f"[bold red]error:[/bold red] unsupported harness '{harness}' "
+            f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
+        )
+        raise typer.Exit(1)
+    home = paths.host_home(stack, harness)
+    config = home if home.is_dir() else paths.profile_dir(stack, harness) / HARNESS_CONFIG_DIR[harness]
+    if not config.is_dir():
+        _err.print(f"[bold red]error:[/bold red] {stack}/{harness} is not built: run `harnessed build {stack} {harness}`")
+        raise typer.Exit(2)
+    items = stack_context.collect(config, Path.cwd())
+    _out.print(f"[bold]{stack}/{harness}[/bold] from {config}")
+    for kind in ("memory", "leak", "skill"):
+        rows = sorted((it for it in items if it.kind == kind), key=lambda it: -it.tokens)
+        _out.print(f"  {kind}: {len(rows)} files, ~{sum(it.tokens for it in rows)} tokens")
+        if kind != "skill":
+            for it in rows:
+                _out.print(f"    ~{it.tokens:>6}  {it.path}")
+    found = stack_context.problems(items)
+    for problem in found:
+        _err.print(f"[bold red]problem:[/bold red] {problem}")
+    if found:
+        raise typer.Exit(1)
 
 
 @app.command("list")
@@ -6540,6 +6645,35 @@ def _extract_passthrough(argv: list[str]) -> list[str]:
     return argv
 
 
+# The claude CLI argv an ACP client's terminal login asked for, or None when it asked for none.
+# claude-agent-acp advertises its login methods as ACP `terminal` auth with args like
+# `["--cli", "auth", "login", "--claudeai"]`, and the client runs THE AGENT'S OWN COMMAND with those
+# appended — here a launcher, so `harnessed host-acp claude --stack S --cli auth login --claudeai`.
+# Split off before Typer parses, as `_passthrough` is: everything after `--cli` belongs to claude,
+# and Click would reject `--cli` and bind `auth` to container-acp's `path`. Set by main().
+_acp_cli: Optional[list[str]] = None
+
+_ACP_VERBS = ("host-acp", "container-acp")
+
+
+def _extract_acp_cli(argv: list[str]) -> list[str]:
+    """For an ACP verb, split argv at the first `--cli`, stashing the rest in `_acp_cli` and
+    returning the head. Otherwise clears `_acp_cli` and returns argv unchanged.
+
+    An empty rest is valid, not a usage error: the adapter's `claude-login` method sends exactly
+    `["--cli"]`, meaning an interactive claude where the user runs `/login`.
+
+    Only a `--cli` before any `--` counts: after it, `--cli` is the agent's passthrough argv."""
+    global _acp_cli
+    end = argv.index("--") if "--" in argv else len(argv)
+    if argv and argv[0] in _ACP_VERBS and "--cli" in argv[:end]:
+        i = argv.index("--cli")
+        _acp_cli = argv[i + 1 :]
+        return argv[:i]
+    _acp_cli = None
+    return argv
+
+
 def main() -> None:
     # No bare-stack shortcut: the leading token is a subcommand, full stop. It used to be "a stack
     # name unless it matches a registered command", which meant every new @app.command had to be
@@ -6547,7 +6681,7 @@ def main() -> None:
     # update` parsing as `harnessed launch update` and failing with "Missing argument 'HARNESS'",
     # which reads like a usage error rather than a missing registration. With the stack named by
     # `--stack`, a bare leading token is a harness and there is nothing left to disambiguate.
-    sys.argv = [sys.argv[0], *_extract_passthrough(sys.argv[1:])]
+    sys.argv = [sys.argv[0], *_extract_passthrough(_extract_acp_cli(sys.argv[1:]))]
     # The persist gate (persist.py) is default-deny BY DESIGN, so being refused is a normal outcome
     # of a first launch — and every one of its refusals already carries the remediation in the
     # message (the exact allowlist line to add, or the chown to run). Left uncaught, typer's

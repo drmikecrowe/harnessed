@@ -1,0 +1,61 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
+# Recipe: ponytail (upstream: Dietrich Gebert, MIT) — "lazy senior dev" mode. Steers the agent to
+# the simplest code that works: YAGNI, stdlib first, no unrequested abstractions.
+#
+# Upstream ships a Claude Code plugin: six skills plus Node lifecycle hooks. We do not run
+# `/plugin install` (needs the harness binary at install time and bypasses the harness-independent
+# fan-out — the same call caveman made). install.sh clones the pinned tag and copies the six skill
+# trees and the hooks/ dir; `hooks:` below re-declares the three Claude events the plugin's
+# hooks/claude-codex-hooks.json registers.
+#
+# Not carried: upstream's `commands/*.toml` (Gemini-format; Claude reaches the same entry points as
+# skills) and `hooks/claude-band.json` (a plugin-loader UI module plus the task-board ledger, which
+# needs the plugin's userConfig and is opt-in upstream anyway).
+name: ponytail
+description: ponytail — "lazy senior dev" mode; the agent writes the simplest code that works (YAGNI, stdlib first, no unrequested abstractions). Levels lite/full/ultra/off via /ponytail. Six skills plus always-on ruleset hooks.
+
+# The pin lives here once, as `install.refs:`; install.sh reads it as $HARNESSED_REF_PONYTAIL /
+# $HARNESSED_REPO_PONYTAIL and `install.cache` is derived from it (Phase 3 of #329).
+#
+# No `hold:` — upstream tags releases, so `harnessed update` can resolve this pin. No `system:` —
+# nothing needs root; node already ships in harnessed-base.
+install:
+  script: install.sh
+  refs:
+    ponytail:
+      repo: DietrichGebert/ponytail
+      ref: v5.3.2
+
+# install.sh copies skills, so the assembler cannot see them. All six are stable upstream names.
+expect:
+  skills:
+    - ponytail
+    - ponytail-audit
+    - ponytail-debt
+    - ponytail-gain
+    - ponytail-help
+    - ponytail-review
+
+# The plugin's three Claude hooks, minus `${CLAUDE_PLUGIN_ROOT}`: install.sh puts the scripts at
+# <config>/ponytail/hooks, resolved through ${CLAUDE_CONFIG_DIR:-$HOME/.claude} — SET on a host
+# launch (the stack home), UNSET in a container (~/.claude, written at build). Same shape as
+# mikes-universal-setup's PreToolUse hook.
+#   SessionStart     — injects the ruleset at the active level and writes the mode flag.
+#   SubagentStart    — injects the ruleset into subagents.
+#   UserPromptSubmit — tracks `/ponytail lite|full|ultra|off` so the level persists.
+# Each exits 0 when node or the script is missing: an absent install must never break a session.
+# Once `exec` runs, the script's own exit status reaches the harness; upstream's hooks catch their
+# own errors and exit 0. `exec` also keeps the hook payload on stdin, which the scripts read.
+hooks:
+  SessionStart:
+    - command: >-
+        sh -c 's="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/ponytail/hooks/ponytail-activate.js";
+        [ -f "$s" ] && command -v node >/dev/null 2>&1 && exec node "$s"; exit 0'
+  SubagentStart:
+    - command: >-
+        sh -c 's="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/ponytail/hooks/ponytail-subagent.js";
+        [ -f "$s" ] && command -v node >/dev/null 2>&1 && exec node "$s"; exit 0'
+  UserPromptSubmit:
+    - command: >-
+        sh -c 's="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/ponytail/hooks/ponytail-mode-tracker.js";
+        [ -f "$s" ] && command -v node >/dev/null 2>&1 && exec node "$s"; exit 0'

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -97,13 +98,11 @@ def test_stack_assembles_and_oracle_is_nonempty(stack, tmp_path):
 
 
 def test_multi_recipe_stack_composes_capabilities():
-    """A multi-recipe stack exposes the union of its recipes' capabilities — here the repowise
-    MCP server and the gsd-core skills both surface on gsd-core_repowise."""
-    _stk, caps = _oracle("gsd-core_repowise")
-    assert "repowise" in set(caps.mcp_servers), "missing repowise MCP server"
-    assert {"gsd-new-project", "gsd-plan-phase", "gsd-execute-phase"} <= set(caps.skills), (
-        "missing gsd-core skills"
-    )
+    """A multi-recipe stack exposes the union of its recipes' capabilities — here the openwiki
+    MCP server and the default recipe's harnessed-catalog skill both surface on openwiki."""
+    _stk, caps = _oracle("openwiki")
+    assert "openwiki" in set(caps.mcp_servers), "missing openwiki MCP server"
+    assert "harnessed-catalog" in set(caps.skills), "missing default recipe's skill"
 
 
 def test_floating_pin_is_rejected():
@@ -289,6 +288,43 @@ def test_codebase_memory_mcp_hooks_reach_settings():
     payload = json.loads(payload_line)
     assert payload["hookSpecificOutput"]["hookEventName"] == "SubagentStart"
     assert "search_graph" in payload["hookSpecificOutput"]["additionalContext"]
+
+
+_GORTEX_POST_TOOL_MATCHER = (
+    "mcp__gortex__explore|mcp__gortex__search|mcp__gortex__read|mcp__gortex__relations"
+    "|mcp__gortex__trace|mcp__gortex__analyze|mcp__plugin_gortex_gortex__explore"
+    "|mcp__plugin_gortex_gortex__search|mcp__plugin_gortex_gortex__read"
+    "|mcp__plugin_gortex_gortex__relations|mcp__plugin_gortex_gortex__trace"
+    "|mcp__plugin_gortex_gortex__analyze"
+)
+
+
+def test_gortex_hooks_stop_at_six_events():
+    """The real catalog recipe (GH-610): gortex contributes six hook events, and never Stop or
+    SubagentStop, which ran `gortex hook` at the end of every turn and subagent for no user value.
+
+    Asserted here because `expect:` has no hooks kind and the recipe's own `gortex-runs.sh` only
+    checks that SOME `gortex hook` entry exists, so a re-added end-of-turn event would pass it.
+    """
+    recipe = load_recipe(ROOT / "catalog" / "recipes" / "gortex", strict=True)
+    six = {"PreToolUse", "PostToolUse", "SessionStart", "UserPromptSubmit", "PreCompact", "SubagentStart"}
+
+    hooks = required_settings([], [recipe], harness="claude")["hooks"]
+    assert set(hooks) == six
+
+    for harness in ("claude", "omp", "opencode", "codex", "antigravity"):
+        got = required_settings([], [recipe], harness=harness).get("hooks", {})
+        assert "Stop" not in got and "SubagentStop" not in got, harness
+
+    # The six that stay are untouched: one `gortex hook` entry each, matchers as before.
+    for event in six:
+        [entry] = hooks[event]
+        assert [h["command"] for h in entry["hooks"]] == ["gortex hook"], event
+    assert hooks["PreToolUse"][0]["matcher"] == "*"
+    assert hooks["PostToolUse"][0]["matcher"] == _GORTEX_POST_TOOL_MATCHER
+
+    # gortex-runs.sh's own check, applied to the serialized hooks the way it reads settings.json.
+    assert re.search(r'"command"\s*:\s*"gortex hook"', json.dumps(hooks, indent=2))
 
 
 # --- Layer 2: live container check (podman-gated) -------------------------------------------------
