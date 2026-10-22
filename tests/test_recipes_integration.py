@@ -98,13 +98,11 @@ def test_stack_assembles_and_oracle_is_nonempty(stack, tmp_path):
 
 
 def test_multi_recipe_stack_composes_capabilities():
-    """A multi-recipe stack exposes the union of its recipes' capabilities — here the repowise
-    MCP server and the gsd-core skills both surface on gsd-core_repowise."""
-    _stk, caps = _oracle("gsd-core_repowise")
-    assert "repowise" in set(caps.mcp_servers), "missing repowise MCP server"
-    assert {"gsd-new-project", "gsd-plan-phase", "gsd-execute-phase"} <= set(caps.skills), (
-        "missing gsd-core skills"
-    )
+    """A multi-recipe stack exposes the union of its recipes' capabilities — here the openwiki
+    MCP server and the default recipe's harnessed-catalog skill both surface on openwiki."""
+    _stk, caps = _oracle("openwiki")
+    assert "openwiki" in set(caps.mcp_servers), "missing openwiki MCP server"
+    assert "harnessed-catalog" in set(caps.skills), "missing default recipe's skill"
 
 
 def test_floating_pin_is_rejected():
