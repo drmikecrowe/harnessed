@@ -1,0 +1,39 @@
+## S1.2
+exit 1
+## S1.1
+27:| Project folder | Taken from each session, so one entry works everywhere | Taken from each session's `session/new` cwd, so one entry works everywhere |
+29:| Ready for editors | Yes | Yes |
+## S2.2
+harnessed-acp-claude-default-container: 2
+harnessed-acp-omp-zai-acp-container: 2
+harnessed-acp-<harness>-<stack>-container: 1
+## S2.1/S2.4 args
+68:      "args": [],
+74:      "args": [],
+91:      "args": [],
+97:      "args": [],
+116:       "args": []
+## S3.1
+140:In container mode, the first session in a project also waits for that project's pod to start. harnessed answers `initialize` at once, but the editor's `session/new` request gets its reply only after the agent in the pod is up. If the pod starts slowly, the editor's time limit for `session/new` can run out before the agent is ready. Later sessions in the same project use the same agent.
+## S3.2 seconds
+exit 1
+## S4
+83:For container mode, use a `-container` launcher, `~/.local/bin/harnessed-acp-<harness>-<stack>-container`. Leave `args` empty: do not put a project path there. One entry serves every project you open, and each project gets its own agent. For example, `harnessed-acp-claude-default-container` runs claude on the `default` stack, and `harnessed-acp-omp-zai-acp-container` runs omp on the `zai-acp` stack:
+94:    "harnessed omp (zai-acp, container)": {
+96:      "command": "/home/you/.local/bin/harnessed-acp-omp-zai-acp-container",
+155:- **A version change makes the profile stale.** The build stamp includes the harnessed version. When the harnessed that launches the agent differs from the one that built the profile, for example a release install and a source checkout, the profile counts as stale. Run `harnessed build <stack> <harness>` with the harnessed that launches it.
+156:- **omp needs egress to its model's API.** In container mode the egress firewall applies, so omp needs a stack that allows its model provider. For example, omp's zai model needs `api.z.ai`, which the `zai-acp` stack allows and `default` does not.
+## S4.3 atlas/597/566
+4:> ACP support is in progress under [#528](https://github.com/drmikecrowe/harnessed/issues/528). This page describes what works today and is updated as each part lands. Host mode works in Zed and Atlas. Container mode works in Zed.
+104:## Atlas
+106:Atlas has no settings screen for custom agents. Add the entry to its installed-agents file by hand:
+108:1. Quit Atlas. It rewrites the file on every agent install and uninstall, so an edit made while it runs can be lost.
+109:2. Edit `~/.local/share/dev.atlas.ide/external-agents/installed.json`. A development build of Atlas uses `~/.local/share/dev.atlas.ide.dev/external-agents/installed.json` instead. Create the file if it does not exist.
+122:3. Keep the JSON valid. Atlas treats a malformed file as empty. `jq . installed.json` is a quick check.
+123:4. Start Atlas and pick the agent.
+125:Atlas writes the agent's stderr into its own log as `agent stderr:` lines.
+## diff stat
+ guides/acp-editors.md | 38 +++++++++++++++++++++++++++++++-------
+ 1 file changed, 31 insertions(+), 7 deletions(-)
+ M guides/acp-editors.md
+?? spec-evidence/

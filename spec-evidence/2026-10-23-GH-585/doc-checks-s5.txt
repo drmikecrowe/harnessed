@@ -1,0 +1,18 @@
+## S5.1 comment
+Wiki commit for this issue: https://github.com/drmikecrowe/harnessed/wiki/_compare/a1fc3788a4c7c1aa5fdc5483ee6bff2a82c28c0d
+
+The acp-editors page now covers container mode: the `-container` launcher with empty args, the first-session wait for the pod, and the two container limits from #584.
+
+HTTP: 200
+## S5.2 branch -r --contains a1fc3788a4c7c1aa5fdc5483ee6bff2a82c28c0d
+  origin/HEAD -> origin/master
+  origin/master
+## wiki commit files
+a1fc3788a4c7c1aa5fdc5483ee6bff2a82c28c0d docs: container mode in the editor (ACP) guide (GH-585)
+
+ guides/acp-editors.md | 38 +++++++++++++++++++++++++++++++-------
+ 1 file changed, 31 insertions(+), 7 deletions(-)
+## gitleaks
+9:10AM INF scanned ~9917 bytes (9.92 KB) in 210ms
+9:10AM INF no leaks found
+exit 0
