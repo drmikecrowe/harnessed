@@ -4979,8 +4979,50 @@ def _acp_adapter_pin() -> tuple[str, str]:
     return package, agent.build_args[_ACP_ADAPTER_ARG]
 
 
-def _acp_adapter_install_cmd(package: str, version: str) -> list[str]:
-    return ["npm", "i", "-g", f"{package}@{version}"]
+def _mise_data_dir() -> Path:
+    env = os.environ.get("MISE_DATA_DIR", "")
+    return Path(env) if env else paths.xdg_data_home() / "mise"
+
+
+def _pnpm_global_bin() -> Optional[Path]:
+    """The directory `pnpm bin -g` prints, or None when pnpm is absent or does not answer (GH-604
+    Decide 1 B). pnpm 11 puts it at `$PNPM_HOME/bin`, not `$PNPM_HOME`, so it is asked, not derived."""
+    pnpm = shutil.which("pnpm")
+    if pnpm is None:
+        return None
+    try:
+        proc = subprocess.run(
+            [pnpm, "bin", "-g"], stdin=subprocess.DEVNULL, capture_output=True, text=True,
+            check=False, timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    # pnpm can print notices on stdout around the dir; keep the first absolute path.
+    out = next((s for s in map(str.strip, (proc.stdout or "").splitlines()) if os.path.isabs(s)), "")
+    return Path(out) if proc.returncode == 0 and out else None
+
+
+def _acp_adapter_owner(found: Optional[str]) -> str:
+    """Who installed the adapter at `found` (the PATH lookup, symlinks not followed): "mise",
+    "pnpm", or "other" for absent or unrecognised. pnpm is asked only outside mise's dirs."""
+    if found is None:
+        return "other"
+    path = Path(found)
+    mise = _mise_data_dir()
+    if path.is_relative_to(mise / "installs") or path.is_relative_to(mise / "shims"):
+        return "mise"
+    pnpm_bin = _pnpm_global_bin()
+    if pnpm_bin is not None and path.is_relative_to(pnpm_bin):
+        return "pnpm"
+    return "other"
+
+
+def _acp_adapter_install_cmd(package: str, version: str, owner: str) -> list[str]:
+    """The command that replaces the adapter PATH finds: mise's own when mise owns it, else pnpm
+    (GH-604; CLAUDE.md: pnpm, never raw npm). Another tool's copy would stay in front of it."""
+    if owner == "mise":
+        return ["mise", "use", "-g", f"npm:{package}@{version}"]
+    return ["pnpm", "add", "-g", f"{package}@{version}"]
 
 
 _VERSION_RE = re.compile(r"\d+\.\d+\.\d+\S*")
@@ -5013,8 +5055,9 @@ def _require_acp_adapter() -> None:
     Never asks: an editor started this process and nobody can answer. The install is `build`'s.
     """
     package, pin = _acp_adapter_pin()
-    shown = shlex.join(_acp_adapter_install_cmd(package, pin))
-    if shutil.which(_ACP_ADAPTER_BIN) is None:
+    found = shutil.which(_ACP_ADAPTER_BIN)
+    if found is None:
+        shown = shlex.join(_acp_adapter_install_cmd(package, pin, "other"))
         _err.print(
             f"[bold red]error:[/bold red] {_ACP_ADAPTER_BIN} is not installed; host-acp claude "
             f"needs it. Install it with: {escape(shown)}", soft_wrap=True,
@@ -5022,6 +5065,7 @@ def _require_acp_adapter() -> None:
         raise typer.Exit(1)
     version = _installed_acp_adapter()
     if version != pin:
+        shown = shlex.join(_acp_adapter_install_cmd(package, pin, _acp_adapter_owner(found)))
         _err.print(
             f"[yellow]warning:[/yellow] {_ACP_ADAPTER_BIN} is {version or 'of unknown version'}, "
             f"not the pinned {pin}; running it anyway. Reinstall with: {escape(shown)}",
@@ -5032,14 +5076,14 @@ def _require_acp_adapter() -> None:
 def _offer_acp_adapter() -> None:
     """`build <stack> claude`: offer to install the pinned adapter `host-acp claude` runs (AC-6).
 
-    `y` runs the npm install, `c` runs a command the user types instead (a pnpm user's own), `n`
-    skips. Without a terminal it only names the command. A failed install never fails the build:
-    the stack is built, and only `host-acp claude` needs the adapter.
+    `y` runs the install command of whoever owns the adapter on PATH (GH-604), `c` runs a command
+    the user types instead, `n` skips. Without a terminal it only names the command. A failed
+    install never fails the build: the stack is built, and only `host-acp claude` needs the adapter.
     """
     package, pin = _acp_adapter_pin()
     if _installed_acp_adapter() == pin:
         return
-    cmd = _acp_adapter_install_cmd(package, pin)
+    cmd = _acp_adapter_install_cmd(package, pin, _acp_adapter_owner(shutil.which(_ACP_ADAPTER_BIN)))
     shown = shlex.join(cmd)
     if not _can_prompt():
         _err.print(
@@ -5067,6 +5111,29 @@ def _offer_acp_adapter() -> None:
         _err.print(
             f"[yellow]warning:[/yellow] the ACP adapter install failed ({escape(why)}): "
             f"{escape(shown)}", soft_wrap=True,
+        )
+        return
+    # Not after the mise command: this process's PATH still names the old mise version's dir,
+    # which `mise use` keeps, until the shell hook runs again (GH-604 Decide 2 A).
+    if cmd[0] != "mise":
+        _recheck_acp_adapter(pin)
+
+
+def _recheck_acp_adapter(pin: str) -> None:
+    """After an install that exited 0, say when PATH still does not find the pin (GH-604 AC-4)."""
+    found = shutil.which(_ACP_ADAPTER_BIN)
+    if found is None:
+        _err.print(
+            f"[yellow]warning:[/yellow] the ACP adapter install exited 0, but {_ACP_ADAPTER_BIN} "
+            "is not on PATH; add the directory it installed into to PATH.", soft_wrap=True,
+        )
+        return
+    version = _installed_acp_adapter()
+    if version != pin:
+        _err.print(
+            f"[yellow]warning:[/yellow] {escape(found)} comes first on PATH and is still "
+            f"{version or 'of unknown version'}, not the pinned {pin}; remove it or put the new "
+            "install ahead of it.", soft_wrap=True,
         )
 
 
