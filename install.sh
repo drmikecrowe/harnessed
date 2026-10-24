@@ -16,10 +16,12 @@
 # convenience alias for THIS file at a pinned tag — never the primary path,
 # and never pointed at a moving branch. Read it before you run it.
 #
-# Posture: every install is pinned to an exact release tag (the newest one,
-# resolved at run time), never a bare clone of `main`, and the installer
-# refuses to run anything privileged (no sudo, no package-manager writes, no
-# podman/docker auto-install) on your behalf.
+# Posture: every install names one exact release tag, never a bare clone of
+# `main`. By default that tag is the newest stable one the repository
+# publishes, looked up at run time, so the installer and self-update trust
+# the repository's tags; set HARNESSED_VERSION=<tag> to choose one yourself.
+# It refuses to run anything privileged (no sudo, no package-manager writes,
+# no podman/docker auto-install) on your behalf.
 set -eu
 
 # ── configuration ─────────────────────────────────────────────────────────
@@ -103,6 +105,12 @@ podman_install_hint() {
   esac
 }
 
+# Newest stable release tag; pre-releases (v1.0.0-rc1) are skipped. Kept as
+# text so the self-update helper embeds this exact function.
+# shellcheck disable=SC2016  # $1 expands when the function runs
+LATEST_TAG_FN='latest_tag() { git ls-remote --tags --refs --sort=-v:refname "$1" "v*" | sed "s#.*refs/tags/##" | grep -v -- - | head -n1; }'
+eval "$LATEST_TAG_FN"
+
 # pip path needs a python3 that can build a venv with pip in it.
 pip_ok() {
   have python3 && python3 -c 'import sys, venv, ensurepip; sys.exit(sys.version_info < (3, 12))' 2>/dev/null
@@ -110,10 +118,15 @@ pip_ok() {
 
 # Which package manager owns harnessed today (empty when none does).
 manager_in_use() {
-  if have mise && mise ls --global 2>/dev/null | grep -q "pypi:${GH_SLUG}"; then echo mise
+  if have mise && mise ls --global 2>/dev/null | grep -q "^pypi:${GH_SLUG} "; then echo mise
   elif have uv && uv tool list 2>/dev/null | grep -q '^harnessed '; then echo uv
   elif [ -x "$PIP_VENV/bin/harnessed" ]; then echo pip
   fi
+}
+
+# pipx is not an install manager here, but a pipx copy must not be shadowed.
+pipx_has_harnessed() {
+  have pipx && pipx list 2>/dev/null | grep -q 'package harnessed '
 }
 
 # y/n gate; --force skips it. Reads the terminal, so `curl | sh` still asks.
@@ -152,7 +165,7 @@ esac
 # ── uninstall path ─────────────────────────────────────────────────────────
 if [ "$ACTION" = "uninstall" ]; then
   in_use="$(manager_in_use)"
-  if [ -z "$in_use" ] && have pipx && pipx list 2>/dev/null | grep -q 'package harnessed'; then
+  if [ -z "$in_use" ] && pipx_has_harnessed; then
     in_use="pipx"
   fi
   say "harnessed uninstaller"
@@ -208,6 +221,9 @@ else
 fi
 
 # ── detect: package manager (in use first, then mise, uv, pip) ───────────
+pipx_has_harnessed && \
+  die "harnessed is installed with pipx, which this installer does not manage. Run 'install.sh --uninstall' first, then re-run."
+
 MANAGER="$(manager_in_use)"
 if [ -n "$MANAGER" ]; then
   manager_why="already manages harnessed"
@@ -222,19 +238,27 @@ else
   die "mise, uv, or python3 >= 3.12 with venv + pip is required."
 fi
 
-# mise and pip link into BIN_DIR; never overwrite a real file there.
-if [ "$MANAGER" != uv ]; then
+# mise and pip link into BIN_DIR. Anything already there must be our own
+# link; a file or a link from another install is never replaced.
+case "$MANAGER" in
+  mise) link_src="$MISE_SHIMS" ;;
+  pip)  link_src="$PIP_VENV/bin" ;;
+  uv)   link_src="" ;;
+esac
+if [ -n "$link_src" ]; then
   for c in $COMMANDS; do
-    if [ -e "$BIN_DIR/$c" ] && [ ! -L "$BIN_DIR/$c" ]; then
-      die "$BIN_DIR/$c exists and is not a link; move it aside and re-run."
-    fi
+    [ -e "$BIN_DIR/$c" ] || [ -L "$BIN_DIR/$c" ] || continue
+    case "$(readlink "$BIN_DIR/$c" 2>/dev/null)" in
+      "$link_src"/*) : ;;
+      *) die "$BIN_DIR/$c belongs to another install; remove it (or run install.sh --uninstall) and re-run." ;;
+    esac
   done
 fi
 
 # ── resolve the newest release tag unless HARNESSED_VERSION pinned one ─────
 if [ -z "$VERSION" ]; then
   have git || die "git is required to find the latest release (or set HARNESSED_VERSION=<tag>)."
-  VERSION="$(git ls-remote --tags --refs --sort=-v:refname "$REPO" 'v*' | head -n1 | sed 's#.*refs/tags/##')"
+  VERSION="$(latest_tag "$REPO")"
   [ -n "$VERSION" ] || die "no release tag found at ${REPO} (set HARNESSED_VERSION=<tag> to pick one)."
   version_why="newest release"
 else
@@ -272,10 +296,9 @@ fi
 install_step="$n"
 info "${n}. install harnessed ${VERSION} (${version_why}):"
 info "     $(install_cmd "$VERSION")"; n=$((n + 1))
-case "$MANAGER" in
-  mise) info "${n}. link ${BIN_DIR}/{harnessed,harnessed-tools} -> ${MISE_SHIMS}/"; n=$((n + 1)) ;;
-  pip)  info "${n}. link ${BIN_DIR}/{harnessed,harnessed-tools} -> ${PIP_VENV}/bin/"; n=$((n + 1)) ;;
-esac
+if [ -n "$link_src" ]; then
+  info "${n}. link ${BIN_DIR}/{harnessed,harnessed-tools} -> ${link_src}/"; n=$((n + 1))
+fi
 info "${n}. write ${SELF_UPDATE}"
 info "     (reruns step ${install_step}'s command for the newest release, without asking)"
 say ""
@@ -294,12 +317,9 @@ fi
 say "→ $(install_cmd "$VERSION")"
 case "$MANAGER" in
   mise) mise use -g "pypi:${GH_SLUG}@${VERSION}"
-        [ -x "$MISE_SHIMS/harnessed" ] || mise reshim
-        link_src="$MISE_SHIMS" ;;
-  uv)   uv tool install --force "git+${REPO}@${VERSION}"
-        link_src="" ;;
-  pip)  "$PIP_VENV/bin/pip" install --upgrade "git+${REPO}@${VERSION}"
-        link_src="$PIP_VENV/bin" ;;
+        [ -x "$MISE_SHIMS/harnessed" ] || mise reshim ;;
+  uv)   uv tool install --force "git+${REPO}@${VERSION}" ;;
+  pip)  "$PIP_VENV/bin/pip" install --upgrade "git+${REPO}@${VERSION}" ;;
 esac
 if [ -n "$link_src" ]; then
   for c in $COMMANDS; do
@@ -309,16 +329,21 @@ if [ -n "$link_src" ]; then
 fi
 
 # ── self-update helper: the same install command, newest tag at run time ──
+# The pip helper rebuilds its venv if it has gone missing.
+helper_pre=""
+[ "$MANAGER" = pip ] && helper_pre="[ -x '${PIP_VENV}/bin/pip' ] || python3 -m venv '${PIP_VENV}'"
 # shellcheck disable=SC2016  # $tag expands inside the helper, not here
 cat >"$SELF_UPDATE" <<EOF
 #!/usr/bin/env sh
 # Written by harnessed install.sh (manager: ${MANAGER}). Reinstalls the CLI
 # from the newest release tag. Never asks: running it is the yes.
 set -eu
-tag="\$(git ls-remote --tags --refs --sort=-v:refname '${REPO}' 'v*' | head -n1 | sed 's#.*refs/tags/##')"
+${LATEST_TAG_FN}
+tag="\$(latest_tag '${REPO}')"
 [ -n "\$tag" ] || { echo "error: no release tag found at ${REPO}" >&2; exit 1; }
 echo "upgrading harnessed to \$tag with ${MANAGER} ..."
-exec $(install_cmd '$tag')
+${helper_pre}
+exec $(install_cmd '"$tag"')
 EOF
 chmod +x "$SELF_UPDATE"
 say "→ wrote ${SELF_UPDATE}"
