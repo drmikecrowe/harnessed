@@ -110,7 +110,7 @@ podman_install_hint() {
 # suffixed tag is skipped. `ls-remote --sort` needs git >= 2.18. Kept as
 # text so the self-update helper embeds this exact function.
 # shellcheck disable=SC2016  # $1 expands when the function runs
-LATEST_TAG_FN='latest_tag() { git ls-remote --tags --refs --sort=-v:refname "$1" "v*" | sed "s#.*refs/tags/##" | grep -E "^v[0-9]+(\.[0-9]+)*$" | head -n1; }'
+LATEST_TAG_FN='latest_tag() { git ls-remote --tags --refs --sort=-v:refname "$1" "v*" | sed "s#.*refs/tags/##" | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$" | head -n1; }'
 eval "$LATEST_TAG_FN"
 
 # pip path needs a python3 that can build a venv with pip in it.
