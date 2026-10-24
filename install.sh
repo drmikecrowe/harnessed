@@ -11,10 +11,11 @@
 # writes ~/.local/bin/harnessed-self-update, which reruns the same install
 # command for the newest release tag, without the prompt.
 #
-# This is the honest, auditable form of the manual steps in README §Install.
-# The `curl -fsSL <raw-tag-url>/install.sh | sh` one-liner is a documented
-# convenience alias for THIS file at a pinned tag — never the primary path,
-# and never pointed at a moving branch. Read it before you run it.
+# README §Install runs this file as
+#   curl -fsSL https://github.com/drmikecrowe/harnessed/releases/latest/download/install.sh | sh
+# release-please attaches it to every release, so that URL is always the
+# installer from the newest release, never a moving branch. Read it before
+# you run it; it prints its plan and asks before it changes anything.
 #
 # Posture: every install names one exact release tag, never a bare clone of
 # `main`. By default that tag is the newest stable one the repository
