@@ -5,94 +5,101 @@
 #### Composable, on-demand configuration for agentic harnesses: managed stacks, isolation, controlled upgrades, and security scanning in a repeatable host or container environment
 
 > [!WARNING]
-> **Alpha software.** harnessed is under active development and the field of agentic AI security
-> is very young. Expect breaking changes. Rootless podman is the reference runtime and the only one
-> in testing; Docker and Apple `container` are pending. The runtime table and its caveats are in
-> [troubleshooting](https://github.com/drmikecrowe/harnessed/wiki/troubleshooting#container-runtimes-podman--docker--apple-container).
+> **Alpha software.** harnessed is under active development, and the field of agentic AI security is very young. Expect breaking changes. Rootless podman is the reference runtime. Docker works with a rootful daemon only: harnessed refuses a rootless daemon, and the 1Password secrets broker does not run under Docker. Apple `container` is pending. The details are in [BACKENDS.md](BACKENDS.md) and [troubleshooting](https://github.com/drmikecrowe/harnessed/wiki/troubleshooting#container-runtimes-podman--docker--apple-container).
 
-harnessed keeps every Claude Code (or omp) configuration separate, and lets me compose one per
-project or per task. Nothing it installs lands in `~/.claude`.
+harnessed keeps every agent configuration separate, and lets me compose one per project or per task. It drives Claude Code, omp, opencode, Codex, and Antigravity, and nothing it installs lands in `~/.claude` or any other harness's global config.
 
-I built it because plugin suites install globally. Try superpowers for one project and it is in
-every project. Add a Jira MCP server for a client and it is running while I work on a hobby repo.
-I also have a set of rules and skills I want everywhere, and I want them there without copying
-them into every repo. harnessed gives me a baseline stack, a stack per client, and a way to switch
-one tool on for an afternoon and off again.
+I built it because plugin suites install globally. Try superpowers for one project and it is in every project. Add a Jira MCP server for a client and it is running while I work on a hobby repo. I also have a set of rules and skills I want everywhere, and I want them there without copying them into every repo. harnessed gives me a baseline stack, a stack per client, and a way to switch one tool on for an afternoon and off again.
 
 I don't type `claude` anymore. I launch a stack.
 
-You can read the [announcement post](https://mikesshinyobjects.tech/posts/2026/2026-03-20-code-container-isolating-ai-harnesses/).
-Forked from [kevinMEH/code-container](https://github.com/kevinMEH/code-container) and rebuilt
-around rootless podman, composable stacks, and more than one harness.
+You can read the [announcement post](https://mikesshinyobjects.tech/posts/2026/2026-03-20-code-container-isolating-ai-harnesses/). Forked from [kevinMEH/code-container](https://github.com/kevinMEH/code-container) and rebuilt around rootless podman, composable stacks, and more than one harness.
+
+## Install
+
+```bash
+curl -fsSL https://github.com/drmikecrowe/harnessed/releases/latest/download/install.sh | sh
+```
+
+The installer prints what it found and every step it will run, then asks y/n before it changes anything. It reads the answer from your terminal, so the prompt works through the pipe. It:
+
+- Requires podman or docker, and stops if it finds neither. It never installs them for you.
+- Uses the package manager that already manages harnessed, else the first it finds of mise, uv, or pip (pip installs into a private venv).
+- Installs the newest release. Set `HARNESSED_VERSION=<tag>` to pin another one.
+
+It installs two commands into `~/.local/bin`:
+
+- `harnessed`: the CLI.
+- `harnessed-self-update`: reinstalls the newest release with the same package manager, without asking.
+
+It also links `harnessed-tools`, the build-time assembler that harnessed uses. You rarely run it yourself.
+
+Each stack you build gets its own launchers in `~/.local/bin` too, named `harnessed-<harness>-<stack>-<backend>`. For the `default` stack with Claude Code:
+
+- `harnessed-claude-default-host`: runs the stack on the host, in the current folder.
+- `harnessed-claude-default-container`: runs the same stack in a container.
+- `harnessed-acp-claude-default-host`: serves the same stack to an editor over ACP (for harnesses with an ACP mode).
+
+To remove the CLI, run the installer with `--uninstall`. Your config and data stay where they are.
+
+```bash
+curl -fsSL https://github.com/drmikecrowe/harnessed/releases/latest/download/install.sh | sh -s -- --uninstall
+```
 
 ## Three words
 
-- A **recipe** is one thing with its install pinned: a skill suite, a rule set, an MCP server, or a
-  CLI tool. `rtk`, `serena`, `pulumi`, and `superpowers` are recipes.
-- A **stack** is a named list of recipes. Mine is
-  `[default, ccstatusline, local, mikes-universal-setup, context-mode, rtk, openbrain, old-coder]`.
-- A **harness** is the CLI that runs the stack: `claude` or `omp` today. You pick it at launch. It
-  is never part of the stack.
+- A **recipe** is one thing with its install pinned: a skill suite, a rule set, an MCP server, or a CLI tool. `rtk`, `serena`, `pulumi`, and `superpowers` are recipes.
+- A **stack** is a named list of recipes. A stack can `extends:` another one and add to it.
+- A **harness** is the CLI that runs the stack: `claude`, `omp`, `opencode`, `codex`, or `antigravity`. You pick it at launch. It is never part of the stack.
 
-Launching a stack assembles its recipes into one profile, points the harness at that profile and
-nothing else, and puts every MCP server behind one hub. The rest of the vocabulary (agent, service,
-catalog, overlay, profile) is in [ARCHITECTURE.md](ARCHITECTURE.md). You don't need it to start.
+Launching a stack assembles its recipes into one profile, points the harness at that profile and nothing else, and puts every MCP server behind one hub. The rest of the vocabulary (agent, service, catalog, overlay, profile) is in [ARCHITECTURE.md](ARCHITECTURE.md). You don't need it to start.
 
-## Two ways I use it
+## How I use it
 
-**A stack per project.** My `default` stack runs everything personal. My `isolated` stack is the
-same baseline minus my memory server, plus Jira and Confluence, and it authenticates with the
-client's Claude account instead of mine. Both run at the same time in two terminals, and neither
-one can see the other's config.
+**Two launchers, most days.** My personal `default` stack lives in my overlay catalog and replaces the one harnessed ships. It holds my status line, my rules and skills, a memory server, and forwarding for my git signing and AWS SSO credentials. When I don't need project intelligence, that is all I launch. For project work I launch a stack that extends it with a code-intelligence graph and my issue tracker:
 
 ```bash
-harnessed container-run claude --stack default  ~/Programming/Personal/blog
-harnessed container-run claude --stack isolated ~/Programming/Clients/acme
+harnessed-claude-default-host            # quick work, no project intelligence
+harnessed-claude-gortex-ghissues-host    # project work: code graph + GitHub issues
 ```
 
-**A recipe for this session only.** I don't want the Pulumi CLI, its egress hosts, and my
-`~/.pulumi` login mounted into every session. I want them while I'm doing deployments.
+```yaml
+# ~/.config/harnessed/catalog/stacks/gortex-ghissues/stack.yaml (trimmed to shipped recipes)
+name: gortex-ghissues
+extends: default
+recipes: [gortex, gh-issue-tracker]
+```
+
+A sibling stack does the same with Jira as the issue tracker, for projects that live there.
+
+**Small stacks for a task.** When I want to try a tool, I don't touch the baseline. I write a stack that extends it with one recipe or a few, and launch that instead:
+
+```yaml
+# ~/.config/harnessed/catalog/stacks/superpowers/stack.yaml
+name: superpowers
+extends: default
+recipes: [superpowers]
+```
+
+**The same stacks in my editor.** Every stack also gets an ACP launcher, such as `harnessed-acp-claude-default-host`. I point the editor at it, and each session the editor opens runs that stack in the session's folder. See [ACP editors](https://github.com/drmikecrowe/harnessed/wiki/acp-editors).
+
+**A container for sensitive work or another account.** Client work runs in its own stack, in a container. It logs in with the client's Claude account (`isolated_auth: true`), carries the client's MCP servers, and has none of my memory or personal skills. The container adds an egress firewall, and neither session can see the other's config.
 
 ```bash
-harnessed container-run claude --recipe pulumi
+harnessed-claude-isolated-container
 ```
 
-That runs the `default` baseline plus pulumi. Nothing is written to a stack file, and the next
-launch without the flag has no Pulumi in it.
+**Other harnesses and model providers.** Stacks are harness-free, so the same stack runs under omp or opencode. One of mine only adds egress to a different model provider for omp.
 
-You can already put skills and an `.mcp.json` in a repo, and for a lot of people that is enough.
-What that doesn't give you is the plugin that insists on installing globally, the rules you want in
-every repo without committing them to every repo, or a second identity for client work.
+**My catalog follows me.** `~/.config/harnessed` is a private git repository that I clone on every machine. Secrets are declared in its `.env.schema` and resolved at launch, so none are committed. See [Secrets](https://github.com/drmikecrowe/harnessed/wiki/secrets).
 
 ## Getting started
 
-Start in host mode. It needs no podman, and it proves the composition part in a few minutes. The
-container boundary comes last, once you have a stack you like. The longer version, with what each
-step writes where, is the [getting started guide](https://github.com/drmikecrowe/harnessed/wiki/getting-started).
+Start on the host. It needs no container, and it proves the composition part in a few minutes. The container boundary comes last, once you have a stack you like. The [getting started guide](https://github.com/drmikecrowe/harnessed/wiki/getting-started) is the longer version, with what each step writes where.
 
-**1. Install.** harnessed is a host Python CLI (Python 3.12 or newer). `install.sh` installs the
-newest release. You need podman or docker, and one of mise, uv, or pip.
+**1. Install** with the one-liner above.
 
-```bash
-git clone --depth 1 https://github.com/drmikecrowe/harnessed.git
-sh harnessed/install.sh               # --force to skip the prompt; --uninstall to remove
-```
-
-The installer:
-
-- Checks for podman or docker, and stops if it finds neither. It never installs them for you.
-- Picks the package manager: the one that already manages harnessed, else mise, uv, then pip (into a private venv at `~/.local/share/harnessed-venv`).
-- Shows what it found and every step with its exact command, then asks y/n. `--force` skips the question.
-- Installs the newest release tag. To pin a different one, set `HARNESSED_VERSION=<tag>`.
-- Puts `harnessed` and `harnessed-tools` in `~/.local/bin`, and writes `~/.local/bin/harnessed-self-update`.
-
-**Upgrade** with `harnessed-self-update`. It runs the same install command for the newest release,
-without asking.
-
-Or by hand, with a release tag: `uv tool install git+https://github.com/drmikecrowe/harnessed.git@<tag>`.
-
-**2. Run the baseline.** The shipped `default` stack is one recipe: the skill that helps you author
-more recipes.
+**2. Run the baseline.** The shipped `default` stack is one recipe: the skill that helps you author more recipes.
 
 ```bash
 cd /path/to/project
@@ -107,56 +114,75 @@ Claude starts with a config dir that holds exactly that profile. Your `~/.claude
 harnessed host-run claude --recipe superpowers
 ```
 
-Now the superpowers skills are loaded. Exit, launch without the flag, and they are gone. Nothing
-was installed into your host config.
+Now the superpowers skills are loaded. Exit, launch without the flag, and they are gone. Nothing was installed into your host config.
 
-**4. Save it as a stack.** Author the manifest in your overlay catalog. Three lines is a stack.
+**4. Save it as a stack.** Write the manifest in your overlay catalog. It wins over the shipped catalog, and upgrades never touch it.
 
 ```yaml
 # ~/.config/harnessed/catalog/stacks/mine/stack.yaml
 name: mine
-recipes: [default, superpowers, rtk]
+extends: default
+recipes: [superpowers, rtk]
 ```
 
 ```bash
 harnessed host-run claude --stack mine
 ```
 
-**5. Add the container boundary.** Build the image once, then launch the same stack as a podman pod
-with the egress firewall on. Building, launching or `harnessed install` writes one launcher per
-backend into `~/.local/bin` (`harnessed-claude-mine-host`, `-container`, and
-`harnessed-acp-claude-mine-container` for harnesses with an ACP mode), so later launches from any
-folder are one word.
+**5. Build it and use its launchers.** `harnessed build` assembles the stack, builds its container image, and writes its launchers into `~/.local/bin`. From then on, any project folder is one word away.
 
 ```bash
 harnessed build mine claude
-harnessed container-run claude --stack mine
-harnessed-claude-mine-container            # from any project folder
+harnessed-claude-mine-host          # on the host
+harnessed-claude-mine-container     # in a container, egress firewall on
 ```
 
-The first build is slow (it builds the base toolchain image). Later builds are cache hits.
-`harnessed test mine claude` launches the stack headless and asserts it exposes exactly the skills
-and MCP servers it declares.
+The first build is slow, because it builds the base toolchain image. Later builds are cache hits. `harnessed test mine claude` launches the stack headless and asserts it exposes exactly the skills and MCP servers it declares.
 
 ## Command surface
 
+`harnessed --help` has the full surface. These are the commands you will use.
+
+**Launch**
+
 | Command | What it does |
 | --- | --- |
-| `harnessed host-run <claude \| omp> [path] [--stack <name> \| --recipe <name>…]` | Host-native: no podman. Config isolated per stack, your real filesystem and credentials. Only harnesses whose config dir is an env var (`CLAUDE_CONFIG_DIR`, `PI_CODING_AGENT_DIR`); see [BACKENDS.md](BACKENDS.md) |
-| `harnessed container-run <harness> [path] [--stack <name> \| --recipe <name>…] [--fresh]` | Isolated podman pod: harness + MCP hub + declared services, egress firewall on. `--stack` and `--recipe` are mutually exclusive; with neither, runs `default` |
-| `harnessed host-acp <claude \| omp> --stack <name>` | Host-native ACP agent on stdio, for an editor such as Atlas, Zed or VS Code. One process serves every project the editor opens: each session runs in the folder its `session/new` names, and the first session in a folder runs `project-setup` there. Needs a built stack; claude also needs the `claude-agent-acp` adapter, which `build <stack> claude` offers to install. Point the editor at `~/.local/bin/harnessed-acp-<harness>-<stack>-host` |
-| `harnessed project-setup <claude \| omp> <path> --stack <name>` | The per-project half of `host-run` for one folder: services, the project tool env file, recipe setup and init scripts |
-| `harnessed build [<stack> [<harness>]]` | Build the shared images and reconcile every stale stack, or assemble and build one stack |
-| `harnessed test <stack> <harness>` | Capability test: launch headless and assert the declared capabilities, written as a markdown report |
-| `harnessed context <stack> [<harness>]` | What a built stack loads into every session, with token estimates; exits 1 when a skill is installed twice, a file loads twice, or a memory file leaks in from above the current directory |
-| `harnessed list` | Authored stacks (with which harnesses are built) and running instances |
-| `harnessed stop \| rm <stack> [<harness>]` | Stop or remove instances of a stack |
-| `harnessed install \| uninstall <stack> <harness>` | Write or remove the `~/.local/bin/harnessed-<harness>-<stack>-<backend>` launchers; `uninstall` also removes the retired `~/.local/bin/<stack>` shim and names aoe rows that still use a removed launcher |
-| `harnessed svc up \| down \| recreate \| sync \| migrate <service>` | Manage service sidecars |
-| `harnessed update [--check] [--yes]` | Find outdated catalog pins and offer to bump them; `--check` is the CI mode |
-| `harnessed --fresh …` / `--no-firewall …` | Tear down the existing pod first / skip the egress firewall for one run |
+| `harnessed host-run <harness> [path] [--stack <name> \| --recipe <name>…]` | Run on the host, no container. Config is isolated per stack; the filesystem and credentials are your real ones. Only harnesses whose config dir is an env var; see [BACKENDS.md](BACKENDS.md) |
+| `harnessed container-run <harness> [path] [--stack <name> \| --recipe <name>…]` | Run in a container with the MCP hub, the declared services, and the egress firewall. With neither flag it runs `default`. `--fresh` tears down the existing pod first; `--no-firewall` skips the firewall for one run |
+| `harnessed host-exec \| container-exec <harness> [path] … -- <harness args>` | The same, non-interactive: output streams to your terminal and the exit code is the agent's, for scripts and CI |
 
-`harnessed --help` has the full surface.
+**Editor (ACP)**
+
+| Command | What it does |
+| --- | --- |
+| `harnessed host-acp <harness> --stack <name>` | Serve a stack to an editor such as Zed, Atlas, or VS Code over ACP on stdio. One process serves every project the editor opens. Point the editor at `~/.local/bin/harnessed-acp-<harness>-<stack>-host` |
+| `harnessed container-acp <harness> [path] --stack <name>` | The same, in a container |
+
+**Build and verify**
+
+| Command | What it does |
+| --- | --- |
+| `harnessed build [<stack> [<harness>]]` | Build the shared images and reconcile every stale stack, or assemble and build one stack |
+| `harnessed test <stack> <harness>` | Launch headless and assert the declared capabilities, written as a markdown report |
+| `harnessed context <stack> [<harness>]` | Show what a built stack loads into every session, with token estimates. Exits 1 when a skill is installed twice, a file loads twice, or a memory file leaks in from above the current folder |
+
+**Manage**
+
+| Command | What it does |
+| --- | --- |
+| `harnessed list` | Authored stacks, which harnesses each is built for, and running instances |
+| `harnessed stop \| rm <stack> [<harness>]` | Stop or remove the instances of a stack |
+| `harnessed prune` | Tear down instances whose session exited and stayed idle |
+| `harnessed clean` | Purge the assembled profile cache |
+| `harnessed install \| uninstall <stack> <harness>` | Write or remove a stack's `~/.local/bin/harnessed-<harness>-<stack>-<backend>` launchers |
+
+**Maintain**
+
+| Command | What it does |
+| --- | --- |
+| `harnessed update [--check] [--yes]` | Find outdated catalog pins and offer to bump them. `upgrade` is the same command; `--check` is the CI mode |
+| `harnessed scan <stack> [<harness>]` / `harnessed rescan` | Re-scan built images for vulnerabilities, for one stack or all of them |
+| `harnessed svc up \| down \| recreate \| sync \| migrate <service>` | Manage service sidecars |
 
 ## Guides
 
@@ -164,7 +190,8 @@ Everything below lives on the [wiki](https://github.com/drmikecrowe/harnessed/wi
 
 - [Getting started](https://github.com/drmikecrowe/harnessed/wiki/getting-started): the five steps above, in more detail.
 - [Choosing recipes](https://github.com/drmikecrowe/harnessed/wiki/recipe-catalog): what ships, what is planned, and which recipes overlap.
-- [Stacks](https://github.com/drmikecrowe/harnessed/wiki/stacks): the `stack.yaml` schema and the build, run, test lifecycle.
+- [Stacks](https://github.com/drmikecrowe/harnessed/wiki/stacks) and [extending stacks](https://github.com/drmikecrowe/harnessed/wiki/extending-stacks): the `stack.yaml` schema, `extends:`, and the build, run, test lifecycle.
+- [ACP editors](https://github.com/drmikecrowe/harnessed/wiki/acp-editors): running a stack inside Zed, Atlas, or VS Code.
 - [Recipe authoring](https://github.com/drmikecrowe/harnessed/wiki/recipe-authoring): writing `recipe.yaml`, with worked examples.
 - [Service authoring](https://github.com/drmikecrowe/harnessed/wiki/service-authoring): shared sidecars.
 - [Build and images](https://github.com/drmikecrowe/harnessed/wiki/build-and-images): the base, agent, and stack image lineage, and why the agent installs last.
@@ -175,6 +202,8 @@ Everything below lives on the [wiki](https://github.com/drmikecrowe/harnessed/wi
 - [Alternatives](https://github.com/drmikecrowe/harnessed/wiki/alternatives): how this compares to OpenShell, the Anthropic devcontainer, and Trail of Bits.
 - [Design rationale](https://github.com/drmikecrowe/harnessed/wiki/harnessed-design): the why behind every decision.
 - [Roadmap](ROADMAP.md): where this is going, at the epic level.
+
+Working on harnessed itself? [CONTRIBUTING.md](CONTRIBUTING.md) has the dev setup.
 
 ## Constraints I hold the project to
 

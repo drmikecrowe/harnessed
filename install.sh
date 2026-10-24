@@ -11,10 +11,11 @@
 # writes ~/.local/bin/harnessed-self-update, which reruns the same install
 # command for the newest release tag, without the prompt.
 #
-# This is the honest, auditable form of the manual steps in README §Install.
-# The `curl -fsSL <raw-tag-url>/install.sh | sh` one-liner is a documented
-# convenience alias for THIS file at a pinned tag — never the primary path,
-# and never pointed at a moving branch. Read it before you run it.
+# README §Install runs this file as
+#   curl -fsSL https://github.com/drmikecrowe/harnessed/releases/latest/download/install.sh | sh
+# release-please attaches it to every release, so that URL is always the
+# installer from the newest release, never a moving branch. Read it before
+# you run it; it prints its plan and asks before it changes anything.
 #
 # Posture: every install names one exact release tag, never a bare clone of
 # `main`. By default that tag is the newest stable one the repository
@@ -105,10 +106,11 @@ podman_install_hint() {
   esac
 }
 
-# Newest stable release tag; pre-releases (v1.0.0-rc1) are skipped. Kept as
+# Newest stable release tag: plain vX.Y.Z only, so v1.0.0-rc1 or any other
+# suffixed tag is skipped. `ls-remote --sort` needs git >= 2.18. Kept as
 # text so the self-update helper embeds this exact function.
 # shellcheck disable=SC2016  # $1 expands when the function runs
-LATEST_TAG_FN='latest_tag() { git ls-remote --tags --refs --sort=-v:refname "$1" "v*" | sed "s#.*refs/tags/##" | grep -v -- - | head -n1; }'
+LATEST_TAG_FN='latest_tag() { git ls-remote --tags --refs --sort=-v:refname "$1" "v*" | sed "s#.*refs/tags/##" | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$" | head -n1; }'
 eval "$LATEST_TAG_FN"
 
 # pip path needs a python3 that can build a venv with pip in it.
@@ -131,7 +133,7 @@ pipx_has_harnessed() {
 
 # y/n gate; --force skips it. Reads the terminal, so `curl | sh` still asks.
 confirm() {
-  [ "$FORCE" = 1 ] && return 0
+  if [ "$FORCE" = 1 ]; then return 0; fi
   printf '%s [y/N] ' "$1"
   reply=""
   read -r reply </dev/tty 2>/dev/null || die "no terminal to ask on. Download install.sh, read it, and run it from a terminal (or pass --force)."
@@ -180,7 +182,7 @@ if [ "$ACTION" = "uninstall" ]; then
     pipx) info "remove harnessed with:  pipx uninstall harnessed" ;;
     *)    info "find no harnessed install via mise, uv, pip or pipx (nothing to remove)" ;;
   esac
-  [ -f "$SELF_UPDATE" ] && info "delete ${SELF_UPDATE}"
+  if [ -f "$SELF_UPDATE" ]; then info "delete ${SELF_UPDATE}"; fi
   say "Left in place on purpose:"
   info "podman/docker — the installer never installed them, so it never removes them"
   data_dirs
@@ -220,9 +222,16 @@ else
   die "podman (>= ${PODMAN_MIN_MAJOR}.0) or docker is required. The installer will not install either for you."
 fi
 
+# The install command and the helper single-quote these paths, so a quote
+# inside one would break the generated shell.
+case "${BIN_DIR}${PIP_VENV}${MISE_SHIMS}" in
+  *"'"*) die "an install path contains a single quote; use HOME, XDG_DATA_HOME and MISE_DATA_DIR without one." ;;
+esac
+
 # ── detect: package manager (in use first, then mise, uv, pip) ───────────
-pipx_has_harnessed && \
+if pipx_has_harnessed; then
   die "harnessed is installed with pipx, which this installer does not manage. Run 'install.sh --uninstall' first, then re-run."
+fi
 
 MANAGER="$(manager_in_use)"
 if [ -n "$MANAGER" ]; then
@@ -258,11 +267,13 @@ done
 if [ -z "$VERSION" ]; then
   have git || die "git is required to find the latest release (or set HARNESSED_VERSION=<tag>)."
   VERSION="$(latest_tag "$REPO")"
-  [ -n "$VERSION" ] || die "no release tag found at ${REPO} (set HARNESSED_VERSION=<tag> to pick one)."
+  [ -n "$VERSION" ] || die "no release tag found at ${REPO} (needs git >= 2.18; or set HARNESSED_VERSION=<tag>)."
   version_why="newest release"
 else
   version_why="pinned by HARNESSED_VERSION"
 fi
+# Shell-safe, not path-safe: the tag is eval'd into the install command and
+# only ever used as a git ref after `@`, never as a filesystem path.
 case "$VERSION" in
   *[!A-Za-z0-9._-]*) die "'${VERSION}' is not a plain release tag." ;;
 esac
@@ -328,10 +339,23 @@ if [ -n "$link_src" ]; then
 fi
 
 # ── self-update helper: the same install command, newest tag at run time ──
+# Every line is built here as literal text; the helper defines only
+# latest_tag and never calls install_cmd.
+# shellcheck disable=SC2016  # $tag expands inside the helper, not here
+helper_cmd="$(install_cmd '"$tag"')"
 # The pip helper rebuilds its venv if it has gone missing.
 helper_pre=""
-[ "$MANAGER" = pip ] && helper_pre="[ -x '${PIP_VENV}/bin/pip' ] || python3 -m venv '${PIP_VENV}'"
-# shellcheck disable=SC2016  # $tag expands inside the helper, not here
+if [ "$MANAGER" = pip ]; then
+  helper_pre="[ -x '${PIP_VENV}/bin/pip' ] || python3 -m venv '${PIP_VENV}'"
+fi
+# mise and pip helpers restore their links, never over a real file.
+helper_links=""
+if [ -n "$link_src" ]; then
+  for c in $COMMANDS; do
+    helper_links="${helper_links}if [ -L '${BIN_DIR}/${c}' ] || [ ! -e '${BIN_DIR}/${c}' ]; then ln -sfn '${link_src}/${c}' '${BIN_DIR}/${c}'; else echo \"warning: ${BIN_DIR}/${c} is a real file, not a link; leaving it in place\" >&2; fi
+"
+  done
+fi
 cat >"$SELF_UPDATE" <<EOF
 #!/usr/bin/env sh
 # Written by harnessed install.sh (manager: ${MANAGER}). Reinstalls the CLI
@@ -339,22 +363,24 @@ cat >"$SELF_UPDATE" <<EOF
 set -eu
 ${LATEST_TAG_FN}
 tag="\$(latest_tag '${REPO}')"
-[ -n "\$tag" ] || { echo "error: no release tag found at ${REPO}" >&2; exit 1; }
+[ -n "\$tag" ] || { echo "error: no release tag found at ${REPO} (needs git >= 2.18)" >&2; exit 1; }
+case "\$tag" in *[!A-Za-z0-9._-]*) echo "error: '\$tag' is not a plain release tag" >&2; exit 1 ;; esac
 echo "upgrading harnessed to \$tag with ${MANAGER} ..."
 ${helper_pre}
-exec $(install_cmd '"$tag"')
+${helper_links}exec ${helper_cmd}
 EOF
 chmod +x "$SELF_UPDATE"
 say "→ wrote ${SELF_UPDATE}"
 
 # ── verify ─────────────────────────────────────────────────────────────────
 exe_dir="$BIN_DIR"
-[ "$MANAGER" = uv ] && exe_dir="$(uv tool dir --bin)"
+if [ "$MANAGER" = uv ]; then exe_dir="$(uv tool dir --bin)"; fi
 [ -x "$exe_dir/harnessed" ] || die "install finished but ${exe_dir}/harnessed is missing."
 say ""
 say "installed: harnessed ${VERSION} (${exe_dir}/harnessed)."
-[ "$exe_dir" = "$BIN_DIR" ] || \
+if [ "$exe_dir" != "$BIN_DIR" ]; then
   say "note: uv put harnessed in ${exe_dir}; the stack launchers look for it in ${BIN_DIR}."
+fi
 case ":$PATH:" in
   *":$BIN_DIR:"*) : ;;
   *) say "note: ${BIN_DIR} is not on your PATH; add it to your shell profile." ;;
