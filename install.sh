@@ -346,7 +346,7 @@ fi
 helper_links=""
 if [ -n "$link_src" ]; then
   for c in $COMMANDS; do
-    helper_links="${helper_links}if [ -L '${BIN_DIR}/${c}' ] || [ ! -e '${BIN_DIR}/${c}' ]; then ln -sfn '${link_src}/${c}' '${BIN_DIR}/${c}'; fi
+    helper_links="${helper_links}if [ -L '${BIN_DIR}/${c}' ] || [ ! -e '${BIN_DIR}/${c}' ]; then ln -sfn '${link_src}/${c}' '${BIN_DIR}/${c}'; else echo \"warning: ${BIN_DIR}/${c} is a real file, not a link; leaving it in place\" >&2; fi
 "
   done
 fi
