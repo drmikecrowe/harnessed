@@ -263,6 +263,9 @@ if [ -z "$VERSION" ]; then
 else
   version_why="pinned by HARNESSED_VERSION"
 fi
+case "$VERSION" in
+  *[!A-Za-z0-9._-]*) die "'${VERSION}' is not a plain release tag." ;;
+esac
 
 # One install command per manager; the plan shows it, the run and the
 # self-update helper execute it. TAG is substituted per use.
@@ -314,12 +317,9 @@ if [ "$MANAGER" = pip ] && [ ! -x "$PIP_VENV/bin/pip" ]; then
   python3 -m venv "$PIP_VENV"
 fi
 say "→ $(install_cmd "$VERSION")"
-case "$MANAGER" in
-  mise) mise use -g "pypi:${GH_SLUG}@${VERSION}"
-        [ -x "$MISE_SHIMS/harnessed" ] || mise reshim ;;
-  uv)   uv tool install --force "git+${REPO}@${VERSION}" ;;
-  pip)  "$PIP_VENV/bin/pip" install --upgrade "git+${REPO}@${VERSION}" ;;
-esac
+# Run exactly the command the plan showed; VERSION was checked to be a plain tag.
+eval "$(install_cmd "$VERSION")"
+if [ "$MANAGER" = mise ] && [ ! -x "$MISE_SHIMS/harnessed" ]; then mise reshim; fi
 if [ -n "$link_src" ]; then
   for c in $COMMANDS; do
     ln -sfn "$link_src/$c" "$BIN_DIR/$c"
