@@ -266,6 +266,8 @@ if [ -z "$VERSION" ]; then
 else
   version_why="pinned by HARNESSED_VERSION"
 fi
+# Shell-safe, not path-safe: the tag is eval'd into the install command and
+# only ever used as a git ref after `@`, never as a filesystem path.
 case "$VERSION" in
   *[!A-Za-z0-9._-]*) die "'${VERSION}' is not a plain release tag." ;;
 esac
