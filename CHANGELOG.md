@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.0](https://github.com/drmikecrowe/harnessed/compare/v0.7.0...v0.8.0) (2026-10-24)
+
+
+### Features
+
+* **catalog:** upgrade pins 2026-10-21 ([#624](https://github.com/drmikecrowe/harnessed/issues/624)) ([31b7746](https://github.com/drmikecrowe/harnessed/commit/31b77468a740e3951f532cd1d64e94f6626553fb))
+* **install:** accept docker, pick mise/uv/pip, add harnessed-self-update ([#629](https://github.com/drmikecrowe/harnessed/issues/629)) ([93571f7](https://github.com/drmikecrowe/harnessed/commit/93571f7bebb02efbb22743269afb046dd1cbd179))
+
+
+### Bug Fixes
+
+* **acp:** name the ACP adapter install command of the tool that owns it (GH-604) ([#625](https://github.com/drmikecrowe/harnessed/issues/625)) ([d889bcf](https://github.com/drmikecrowe/harnessed/commit/d889bcf70b0083995e9231e7b3ac9425ebc776e3))
+* **catalog:** remove the repowise recipe and gsd-core_repowise stack ([#626](https://github.com/drmikecrowe/harnessed/issues/626)) ([44aa48c](https://github.com/drmikecrowe/harnessed/commit/44aa48cb69658d9d2541800acd0fb1d6c666141c))
+
 ## [0.7.0](https://github.com/drmikecrowe/harnessed/compare/v0.6.0...v0.7.0) (2026-10-20)
 
 
