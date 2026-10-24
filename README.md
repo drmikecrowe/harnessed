@@ -56,19 +56,29 @@ Launching a stack assembles its recipes into one profile, points the harness at 
 
 ## How I use it
 
-**One baseline, everywhere.** My personal `default` stack lives in my overlay catalog and replaces the one harnessed ships. It holds my status line, my rules and skills, a memory server, and forwarding for my git signing and AWS SSO credentials. Most days I open a project folder and run:
+**Two launchers, most days.** My personal `default` stack lives in my overlay catalog and replaces the one harnessed ships. It holds my status line, my rules and skills, a memory server, and forwarding for my git signing and AWS SSO credentials. When I don't need project intelligence, that is all I launch. For project work I launch a stack that extends it with a code-intelligence graph and my issue tracker:
 
 ```bash
-harnessed-claude-default-host
+harnessed-claude-default-host            # quick work, no project intelligence
+harnessed-claude-gortex-ghissues-host    # project work: code graph + GitHub issues
 ```
 
-**Small stacks for a task.** When I want to try a tool, I don't touch the baseline. I write a stack that extends it with one to three recipes, and launch that instead:
-
 ```yaml
-# ~/.config/harnessed/catalog/stacks/graph/stack.yaml
-name: graph
+# ~/.config/harnessed/catalog/stacks/gortex-ghissues/stack.yaml (trimmed to shipped recipes)
+name: gortex-ghissues
 extends: default
 recipes: [gortex, gh-issue-tracker]
+```
+
+A sibling stack does the same with Jira as the issue tracker, for projects that live there.
+
+**Small stacks for a task.** When I want to try a tool, I don't touch the baseline. I write a stack that extends it with one recipe or a few, and launch that instead:
+
+```yaml
+# ~/.config/harnessed/catalog/stacks/superpowers/stack.yaml
+name: superpowers
+extends: default
+recipes: [superpowers]
 ```
 
 **The same stacks in my editor.** Every stack also gets an ACP launcher, such as `harnessed-acp-claude-default-host`. I point the editor at it, and each session the editor opens runs that stack in the session's folder. See [ACP editors](https://github.com/drmikecrowe/harnessed/wiki/acp-editors).
