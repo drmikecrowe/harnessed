@@ -134,9 +134,9 @@ confirm() {
   [ "$FORCE" = 1 ] && return 0
   printf '%s [y/N] ' "$1"
   reply=""
-  read -r reply </dev/tty 2>/dev/null || die "no terminal to ask on; re-run with --force to proceed without asking."
+  read -r reply </dev/tty 2>/dev/null || die "no terminal to ask on. Download install.sh, read it, and run it from a terminal (or pass --force)."
   case "$reply" in
-    y|Y|yes|YES) : ;;
+    [Yy]|[Yy][Ee][Ss]) : ;;
     *) say "aborted; nothing changed."; exit 1 ;;
   esac
 }
@@ -190,7 +190,7 @@ if [ "$ACTION" = "uninstall" ]; then
   case "$in_use" in
     mise) mise unuse -g "pypi:${GH_SLUG}"; unlink_commands "$MISE_SHIMS" ;;
     uv)   uv tool uninstall harnessed ;;
-    pip)  unlink_commands "$PIP_VENV"; rm -r "$PIP_VENV"; say "removed: $PIP_VENV" ;;
+    pip)  unlink_commands "$PIP_VENV"; rm -rf "$PIP_VENV"; say "removed: $PIP_VENV" ;;
     pipx) pipx uninstall harnessed ;;
   esac
   if [ -f "$SELF_UPDATE" ]; then
@@ -238,22 +238,21 @@ else
   die "mise, uv, or python3 >= 3.12 with venv + pip is required."
 fi
 
-# mise and pip link into BIN_DIR. Anything already there must be our own
-# link; a file or a link from another install is never replaced.
+# mise and pip link into BIN_DIR; uv places its own links. Anything already
+# there must point into the chosen manager's tree; a file or a link from
+# another install is never replaced.
 case "$MANAGER" in
-  mise) link_src="$MISE_SHIMS" ;;
-  pip)  link_src="$PIP_VENV/bin" ;;
-  uv)   link_src="" ;;
+  mise) link_src="$MISE_SHIMS";   owned="$MISE_SHIMS" ;;
+  pip)  link_src="$PIP_VENV/bin"; owned="$PIP_VENV/bin" ;;
+  uv)   link_src="";              owned="$(uv tool dir)" ;;
 esac
-if [ -n "$link_src" ]; then
-  for c in $COMMANDS; do
-    [ -e "$BIN_DIR/$c" ] || [ -L "$BIN_DIR/$c" ] || continue
-    case "$(readlink "$BIN_DIR/$c" 2>/dev/null)" in
-      "$link_src"/*) : ;;
-      *) die "$BIN_DIR/$c belongs to another install; remove it (or run install.sh --uninstall) and re-run." ;;
-    esac
-  done
-fi
+for c in $COMMANDS; do
+  [ -e "$BIN_DIR/$c" ] || [ -L "$BIN_DIR/$c" ] || continue
+  case "$(readlink "$BIN_DIR/$c" 2>/dev/null)" in
+    "$owned"/*) : ;;
+    *) die "$BIN_DIR/$c belongs to another install; remove it (or run install.sh --uninstall) and re-run." ;;
+  esac
+done
 
 # ── resolve the newest release tag unless HARNESSED_VERSION pinned one ─────
 if [ -z "$VERSION" ]; then
@@ -271,7 +270,7 @@ install_cmd() {
   case "$MANAGER" in
     mise) printf '%s' "mise use -g pypi:${GH_SLUG}@$1" ;;
     uv)   printf '%s' "uv tool install --force git+${REPO}@$1" ;;
-    pip)  printf '%s' "${PIP_VENV}/bin/pip install --upgrade git+${REPO}@$1" ;;
+    pip)  printf '%s' "'${PIP_VENV}/bin/pip' install --upgrade git+${REPO}@$1" ;;
   esac
 }
 
@@ -349,9 +348,13 @@ chmod +x "$SELF_UPDATE"
 say "→ wrote ${SELF_UPDATE}"
 
 # ── verify ─────────────────────────────────────────────────────────────────
-[ -x "$BIN_DIR/harnessed" ] || die "install finished but ${BIN_DIR}/harnessed is missing."
+exe_dir="$BIN_DIR"
+[ "$MANAGER" = uv ] && exe_dir="$(uv tool dir --bin)"
+[ -x "$exe_dir/harnessed" ] || die "install finished but ${exe_dir}/harnessed is missing."
 say ""
-say "installed: harnessed ${VERSION} (${BIN_DIR}/harnessed)."
+say "installed: harnessed ${VERSION} (${exe_dir}/harnessed)."
+[ "$exe_dir" = "$BIN_DIR" ] || \
+  say "note: uv put harnessed in ${exe_dir}; the stack launchers look for it in ${BIN_DIR}."
 case ":$PATH:" in
   *":$BIN_DIR:"*) : ;;
   *) say "note: ${BIN_DIR} is not on your PATH; add it to your shell profile." ;;
