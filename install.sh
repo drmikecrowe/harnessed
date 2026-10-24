@@ -222,6 +222,12 @@ else
   die "podman (>= ${PODMAN_MIN_MAJOR}.0) or docker is required. The installer will not install either for you."
 fi
 
+# The install command and the helper single-quote these paths, so a quote
+# inside one would break the generated shell.
+case "${BIN_DIR}${PIP_VENV}${MISE_SHIMS}" in
+  *"'"*) die "an install path contains a single quote; use HOME, XDG_DATA_HOME and MISE_DATA_DIR without one." ;;
+esac
+
 # ── detect: package manager (in use first, then mise, uv, pip) ───────────
 if pipx_has_harnessed; then
   die "harnessed is installed with pipx, which this installer does not manage. Run 'install.sh --uninstall' first, then re-run."
