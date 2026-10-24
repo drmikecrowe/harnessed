@@ -70,17 +70,26 @@ Start in host mode. It needs no podman, and it proves the composition part in a 
 container boundary comes last, once you have a stack you like. The longer version, with what each
 step writes where, is the [getting started guide](https://github.com/drmikecrowe/harnessed/wiki/getting-started).
 
-**1. Install.** harnessed is a host Python CLI (Python 3.12 or newer). `install.sh` checks for uv
-(and podman, which it never installs for you), then installs the CLI.
+**1. Install.** harnessed is a host Python CLI (Python 3.12 or newer). `install.sh` installs the
+newest release. You need podman or docker, and one of mise, uv, or pip.
 
 ```bash
-git clone https://github.com/drmikecrowe/harnessed.git
-cd harnessed && ./install.sh          # --install-uv to also install uv; --uninstall to remove
+git clone --depth 1 https://github.com/drmikecrowe/harnessed.git
+sh harnessed/install.sh               # --force to skip the prompt; --uninstall to remove
 ```
 
-Or by hand: `uv tool install ./harnessed` (or `pipx install ./harnessed`). Either way the binary
-lands in `~/.local/bin`. Working on the CLI itself? Use the editable env in
-[CONTRIBUTING.md](CONTRIBUTING.md) instead.
+The installer:
+
+- Checks for podman or docker, and stops if it finds neither. It never installs them for you.
+- Picks the package manager: the one that already manages harnessed, else mise, uv, then pip (into a private venv at `~/.local/share/harnessed-venv`).
+- Shows what it found and every step with its exact command, then asks y/n. `--force` skips the question.
+- Installs the newest release tag. To pin a different one, set `HARNESSED_VERSION=<tag>`.
+- Puts `harnessed` and `harnessed-tools` in `~/.local/bin`, and writes `~/.local/bin/harnessed-self-update`.
+
+**Upgrade** with `harnessed-self-update`. It runs the same install command for the newest release,
+without asking.
+
+Or by hand, with a release tag: `uv tool install git+https://github.com/drmikecrowe/harnessed.git@<tag>`.
 
 **2. Run the baseline.** The shipped `default` stack is one recipe: the skill that helps you author
 more recipes.

@@ -1,72 +1,73 @@
 #!/usr/bin/env sh
 # harnessed installer — checked-in, reviewable, POSIX sh.
 #
-#   ./install.sh                 install the `harnessed` CLI (pinned source)
-#   ./install.sh --force         reinstall / upgrade in place (idempotent)
-#   ./install.sh --install-uv    also install uv (user-space) if it is missing
-#   ./install.sh --uninstall     remove the CLI; leaves your data untouched
-#   ./install.sh --help          usage
+#   ./install.sh               show the plan, ask y/n, install the newest release
+#   ./install.sh --force       same, without the y/n prompt
+#   ./install.sh --uninstall   remove the CLI; leaves your data untouched
+#   ./install.sh --help        usage
+#
+# The package manager is the one that already manages harnessed, else the
+# first found of: mise, uv, pip (into a private venv). Every install also
+# writes ~/.local/bin/harnessed-self-update, which reruns the same install
+# command for the newest release tag, without the prompt.
 #
 # This is the honest, auditable form of the manual steps in README §Install.
 # The `curl -fsSL <raw-tag-url>/install.sh | sh` one-liner is a documented
 # convenience alias for THIS file at a pinned tag — never the primary path,
 # and never pointed at a moving branch. Read it before you run it.
 #
-# Posture: this project preaches "pin every download" (recipe Dockerfiles
-# reject floating refs). The installer follows the same ethos — it installs
-# from a pinned git tag, never a bare clone of `main`, and it refuses to run
-# anything privileged (no sudo, no package-manager writes, no podman
-# auto-install) on your behalf.
+# Posture: every install is pinned to an exact release tag (the newest one,
+# resolved at run time), never a bare clone of `main`, and the installer
+# refuses to run anything privileged (no sudo, no package-manager writes, no
+# podman/docker auto-install) on your behalf.
 set -eu
 
-# ── configuration (single pin point) ──────────────────────────────────────
-# VERSION is the git tag the CLI is installed from. It MUST be an existing
-# tag, never a branch. As of this writing NO release tag has been cut yet:
-# `v0.1.0` is a placeholder that matches pyproject `version = "0.1.0"`.
-#   >>> OUTSTANDING RELEASE ACTION: cut and push tag `v0.1.0` before this
-#   >>> installer can succeed against the repo source. Until then the
-#   >>> `uv tool install git+...@v0.1.0` step will fail to resolve the ref.
-# Override for local testing with HARNESSED_VERSION=<tag> ./install.sh
-VERSION="${HARNESSED_VERSION:-v0.1.0}"
+# ── configuration ─────────────────────────────────────────────────────────
+# Empty VERSION means: resolve the newest release tag at run time.
+# Pin one with HARNESSED_VERSION=<tag> ./install.sh
+VERSION="${HARNESSED_VERSION:-}"
 
 REPO="https://github.com/drmikecrowe/harnessed.git"
-
-# SOURCE selects where the CLI comes from: `repo` (pinned git tag, the only
-# source that exists today) or `pypi` (once published). Flip the default here
-# — or export HARNESSED_SOURCE=pypi — after the first PyPI release; nothing
-# else in the script changes.
-SOURCE="${HARNESSED_SOURCE:-repo}"
-
+GH_SLUG="drmikecrowe/harnessed"
 PODMAN_MIN_MAJOR=4          # advisory floor; the reference runtime is podman >= 4.0
+BIN_DIR="$HOME/.local/bin"
+SELF_UPDATE="$BIN_DIR/harnessed-self-update"
+PIP_VENV="${XDG_DATA_HOME:-$HOME/.local/share}/harnessed-venv"
+MISE_SHIMS="${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}/shims"
+# The stack launchers run ~/.local/bin/harnessed by absolute path
+# (launchscript._harnessed_argv), so mise and pip installs link both here.
+COMMANDS="harnessed harnessed-tools"
 
 # ── flags ──────────────────────────────────────────────────────────────────
-INSTALL_UV=0
 FORCE=0
 ACTION="install"
 
 usage() {
   cat <<'EOF'
-usage: install.sh [--uninstall] [--install-uv] [--force] [--help]
+usage: install.sh [--force] [--uninstall] [--help]
 
-  (no args)     install the `harnessed` CLI from a pinned source onto your PATH
-  --force       reinstall / upgrade even if already installed (idempotent)
-  --install-uv  install uv (user-space, single binary) if it is missing;
-                without this flag a missing uv is reported, not installed
-  --uninstall   remove the `harnessed` CLI; preserves ~/.config/harnessed and
-                $XDG_DATA_HOME/harnessed, and leaves podman in place
+  (no args)     show what will happen, ask y/n, then install the newest
+                harnessed release onto your PATH
+  --force       do not ask; install (or reinstall) straight away
+  --uninstall   remove the `harnessed` CLI and harnessed-self-update; preserves
+                ~/.config/harnessed and $XDG_DATA_HOME/harnessed, and leaves
+                podman/docker in place
   --help, -h    show this message
 
+Every install also writes ~/.local/bin/harnessed-self-update. Run it to
+reinstall from the newest release tag; it never asks.
+
 Requirements the installer DETECTS but never installs for you:
-  * podman (rootless) — the reference runtime; install with your distro
-  * uv                — install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
-                        or pass --install-uv to have this script do it (user-space only)
+  * podman (rootless, the reference runtime) or docker
+  * one package manager: mise, uv, or python3 >= 3.12 with venv + pip
+    (it uses the one that already manages harnessed, else the first found
+    in that order)
 EOF
 }
 
 for arg in "$@"; do
   case "$arg" in
     --uninstall)  ACTION="uninstall" ;;
-    --install-uv) INSTALL_UV=1 ;;
     --force)      FORCE=1 ;;
     -h|--help)    usage; exit 0 ;;
     *) printf 'error: unknown argument: %s\n\n' "$arg" >&2; usage >&2; exit 2 ;;
@@ -102,7 +103,41 @@ podman_install_hint() {
   esac
 }
 
-# ── (5) platform guard ─────────────────────────────────────────────────────
+# pip path needs a python3 that can build a venv with pip in it.
+pip_ok() {
+  have python3 && python3 -c 'import sys, venv, ensurepip; sys.exit(sys.version_info < (3, 12))' 2>/dev/null
+}
+
+# Which package manager owns harnessed today (empty when none does).
+manager_in_use() {
+  if have mise && mise ls --global 2>/dev/null | grep -q "pypi:${GH_SLUG}"; then echo mise
+  elif have uv && uv tool list 2>/dev/null | grep -q '^harnessed '; then echo uv
+  elif [ -x "$PIP_VENV/bin/harnessed" ]; then echo pip
+  fi
+}
+
+# y/n gate; --force skips it. Reads the terminal, so `curl | sh` still asks.
+confirm() {
+  [ "$FORCE" = 1 ] && return 0
+  printf '%s [y/N] ' "$1"
+  reply=""
+  read -r reply </dev/tty 2>/dev/null || die "no terminal to ask on; re-run with --force to proceed without asking."
+  case "$reply" in
+    y|Y|yes|YES) : ;;
+    *) say "aborted; nothing changed."; exit 1 ;;
+  esac
+}
+
+# Remove our links from BIN_DIR, only where they point into $1.
+unlink_commands() {
+  for c in $COMMANDS; do
+    case "$(readlink "$BIN_DIR/$c" 2>/dev/null)" in
+      "$1"/*) rm -f "$BIN_DIR/$c"; say "removed: $BIN_DIR/$c" ;;
+    esac
+  done
+}
+
+# ── platform guard ─────────────────────────────────────────────────────────
 os="$(uname -s)"
 case "$os" in
   Linux) : ;;
@@ -114,102 +149,189 @@ case "$os" in
   *) die "unsupported platform: $os — harnessed is Linux-only." ;;
 esac
 
-# ── (4) uninstall path ─────────────────────────────────────────────────────
+# ── uninstall path ─────────────────────────────────────────────────────────
 if [ "$ACTION" = "uninstall" ]; then
-  say "Uninstalling the harnessed CLI (your data is preserved):"
-  if have uv && uv tool list 2>/dev/null | grep -q '^harnessed'; then
-    uv tool uninstall harnessed
-    say "removed: harnessed CLI (via uv tool)."
-  elif have pipx && pipx list 2>/dev/null | grep -q 'package harnessed'; then
-    pipx uninstall harnessed
-    say "removed: harnessed CLI (via pipx)."
-  else
-    say "harnessed CLI not found via uv or pipx — nothing to remove."
+  in_use="$(manager_in_use)"
+  if [ -z "$in_use" ] && have pipx && pipx list 2>/dev/null | grep -q 'package harnessed'; then
+    in_use="pipx"
   fi
+  say "harnessed uninstaller"
   say ""
-  say "left in place on purpose (not removed):"
-  info "podman — the installer never installed it, so it never removes it"
+  say "This will:"
+  case "$in_use" in
+    mise) info "remove harnessed with:  mise unuse -g pypi:${GH_SLUG}"
+          info "remove the links in ${BIN_DIR} that point into ${MISE_SHIMS}" ;;
+    uv)   info "remove harnessed with:  uv tool uninstall harnessed" ;;
+    pip)  info "delete the venv ${PIP_VENV}"
+          info "remove the links in ${BIN_DIR} that point into it" ;;
+    pipx) info "remove harnessed with:  pipx uninstall harnessed" ;;
+    *)    info "find no harnessed install via mise, uv, pip or pipx (nothing to remove)" ;;
+  esac
+  [ -f "$SELF_UPDATE" ] && info "delete ${SELF_UPDATE}"
+  say "Left in place on purpose:"
+  info "podman/docker — the installer never installed them, so it never removes them"
   data_dirs
+  say ""
+  confirm "Uninstall?"
+
+  case "$in_use" in
+    mise) mise unuse -g "pypi:${GH_SLUG}"; unlink_commands "$MISE_SHIMS" ;;
+    uv)   uv tool uninstall harnessed ;;
+    pip)  unlink_commands "$PIP_VENV"; rm -r "$PIP_VENV"; say "removed: $PIP_VENV" ;;
+    pipx) pipx uninstall harnessed ;;
+  esac
+  if [ -f "$SELF_UPDATE" ]; then
+    rm -f "$SELF_UPDATE"
+    say "removed: ${SELF_UPDATE}"
+  fi
   exit 0
 fi
 
-# ── plan: echo what this run will do BEFORE doing it ───────────────────────
-case "$SOURCE" in
-  repo) src_desc="git+${REPO}@${VERSION}  (pinned tag)" ;;
-  pypi) src_desc="harnessed==${VERSION#v}  (PyPI)" ;;
-  *)    die "bad SOURCE '$SOURCE' — expected 'repo' or 'pypi'." ;;
-esac
+# ── detect: container runtime (required, never installed for you) ─────────
+if have podman; then
+  runtime="podman ($(command -v podman))"
+  # advisory podman version floor — warn only, never block on a parse quirk
+  pv="$(podman --version 2>/dev/null | awk '{print $3}')"
+  pv_major="${pv%%.*}"
+  case "$pv_major" in
+    ''|*[!0-9]*) : ;;   # unparseable — skip the check rather than guess
+    *) [ "$pv_major" -lt "$PODMAN_MIN_MAJOR" ] && \
+         say "warning: podman ${pv} is below the tested floor ${PODMAN_MIN_MAJOR}.0 — continuing anyway." ;;
+  esac
+elif have docker; then
+  runtime="docker ($(command -v docker))"
+else
+  say "no container runtime found. Install podman (rootless, the reference runtime)"
+  say "or docker with your distro package manager, then re-run this script:"
+  podman_install_hint
+  die "podman (>= ${PODMAN_MIN_MAJOR}.0) or docker is required. The installer will not install either for you."
+fi
 
-action_desc="install"
-[ "$FORCE" = 1 ] && action_desc="install (--force / reinstall)"
-uv_desc="uv (detected, not installed)"
-[ "$INSTALL_UV" = 1 ] && uv_desc="uv (--install-uv: will install if missing)"
+# ── detect: package manager (in use first, then mise, uv, pip) ───────────
+MANAGER="$(manager_in_use)"
+if [ -n "$MANAGER" ]; then
+  manager_why="already manages harnessed"
+elif have mise; then MANAGER=mise; manager_why="found on PATH"
+elif have uv;   then MANAGER=uv;   manager_why="found on PATH"
+elif pip_ok;    then MANAGER=pip;  manager_why="python3 with venv + pip found"
+else
+  say "no supported package manager found. Install one of these, then re-run:"
+  info "mise: https://mise.jdx.dev/getting-started.html"
+  info "uv:   https://docs.astral.sh/uv/getting-started/installation/"
+  info "pip:  python3 >= 3.12 with the venv module (e.g. sudo apt install python3-venv)"
+  die "mise, uv, or python3 >= 3.12 with venv + pip is required."
+fi
+
+# mise and pip link into BIN_DIR; never overwrite a real file there.
+if [ "$MANAGER" != uv ]; then
+  for c in $COMMANDS; do
+    if [ -e "$BIN_DIR/$c" ] && [ ! -L "$BIN_DIR/$c" ]; then
+      die "$BIN_DIR/$c exists and is not a link; move it aside and re-run."
+    fi
+  done
+fi
+
+# ── resolve the newest release tag unless HARNESSED_VERSION pinned one ─────
+if [ -z "$VERSION" ]; then
+  have git || die "git is required to find the latest release (or set HARNESSED_VERSION=<tag>)."
+  VERSION="$(git ls-remote --tags --refs --sort=-v:refname "$REPO" 'v*' | head -n1 | sed 's#.*refs/tags/##')"
+  [ -n "$VERSION" ] || die "no release tag found at ${REPO} (set HARNESSED_VERSION=<tag> to pick one)."
+  version_why="newest release"
+else
+  version_why="pinned by HARNESSED_VERSION"
+fi
+
+# One install command per manager; the plan shows it, the run and the
+# self-update helper execute it. TAG is substituted per use.
+install_cmd() {
+  case "$MANAGER" in
+    mise) printf '%s' "mise use -g pypi:${GH_SLUG}@$1" ;;
+    uv)   printf '%s' "uv tool install --force git+${REPO}@$1" ;;
+    pip)  printf '%s' "${PIP_VENV}/bin/pip install --upgrade git+${REPO}@$1" ;;
+  esac
+}
+
+# ── plan: say exactly what this run will do BEFORE doing it ────────────────
+current="not installed"
+if [ -x "$BIN_DIR/harnessed" ]; then current="$BIN_DIR/harnessed"
+elif have harnessed; then current="$(command -v harnessed)"
+fi
 
 say "harnessed installer"
-say "  platform : ${os}"
-say "  action   : ${action_desc}"
-say "  source   : ${src_desc}"
-say "  installs : the harnessed CLI into ~/.local/bin"
-say "  requires : podman (detected, not installed) + ${uv_desc}"
-say "  preserves: your config/data dirs (never touched)"
 say ""
-
-# ── (2) detect deps — instruct, do not auto-install (uv is the opt-in exception) ──
-if ! have uv; then
-  if [ "$INSTALL_UV" = 1 ]; then
-    say "uv not found — installing it (user-space, single binary; no sudo):"
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    # uv's installer drops an env script that puts ~/.local/bin on PATH.
-    # shellcheck disable=SC1091
-    [ -r "$HOME/.local/bin/env" ] && . "$HOME/.local/bin/env" || true
-    have uv || die "uv install ran but 'uv' is still not on PATH — open a new shell and re-run."
-  else
-    say "uv not found. Install it (user-space, no sudo):"
-    info "curl -LsSf https://astral.sh/uv/install.sh | sh"
-    info "…or re-run this script with --install-uv"
-    die "uv is required to install the harnessed CLI."
-  fi
+say "Found:"
+info "runtime : ${runtime}"
+info "manager : ${MANAGER} (${manager_why})"
+info "current : ${current}"
+say ""
+say "This will:"
+n=1
+if [ "$MANAGER" = pip ] && [ ! -x "$PIP_VENV/bin/pip" ]; then
+  info "${n}. create a venv:        python3 -m venv ${PIP_VENV}"; n=$((n + 1))
 fi
-
-if ! have podman; then
-  say "podman (rootless) not found — the reference runtime. Install it with your"
-  say "distro package manager, then re-run this script:"
-  podman_install_hint
-  die "podman is required (reference runtime; >= ${PODMAN_MIN_MAJOR}.0). The installer will not install it for you."
-fi
-
-# advisory podman version floor — warn only, never block on a parse quirk
-pv="$(podman --version 2>/dev/null | awk '{print $3}')"
-pv_major="${pv%%.*}"
-case "$pv_major" in
-  ''|*[!0-9]*) : ;;   # unparseable — skip the check rather than guess
-  *) [ "$pv_major" -lt "$PODMAN_MIN_MAJOR" ] && \
-       say "warning: podman ${pv} is below the tested floor ${PODMAN_MIN_MAJOR}.0 — continuing anyway." ;;
+install_step="$n"
+info "${n}. install harnessed ${VERSION} (${version_why}):"
+info "     $(install_cmd "$VERSION")"; n=$((n + 1))
+case "$MANAGER" in
+  mise) info "${n}. link ${BIN_DIR}/{harnessed,harnessed-tools} -> ${MISE_SHIMS}/"; n=$((n + 1)) ;;
+  pip)  info "${n}. link ${BIN_DIR}/{harnessed,harnessed-tools} -> ${PIP_VENV}/bin/"; n=$((n + 1)) ;;
 esac
+info "${n}. write ${SELF_UPDATE}"
+info "     (reruns step ${install_step}'s command for the newest release, without asking)"
+say ""
+say "It will not touch:"
+info "podman/docker, or anything needing sudo"
+data_dirs
+say ""
+confirm "Proceed?"
 
-# ── (1)+(3) install the CLI from the pinned source; (4) idempotent via --force ──
-if have harnessed && [ "$FORCE" != 1 ]; then
-  say "harnessed is already installed ($(command -v harnessed))."
-  say "re-run with --force to reinstall/upgrade to ${VERSION}."
-  exit 0
+# ── install ────────────────────────────────────────────────────────────────
+mkdir -p "$BIN_DIR"
+if [ "$MANAGER" = pip ] && [ ! -x "$PIP_VENV/bin/pip" ]; then
+  say "→ python3 -m venv ${PIP_VENV}"
+  python3 -m venv "$PIP_VENV"
+fi
+say "→ $(install_cmd "$VERSION")"
+case "$MANAGER" in
+  mise) mise use -g "pypi:${GH_SLUG}@${VERSION}"
+        [ -x "$MISE_SHIMS/harnessed" ] || mise reshim
+        link_src="$MISE_SHIMS" ;;
+  uv)   uv tool install --force "git+${REPO}@${VERSION}"
+        link_src="" ;;
+  pip)  "$PIP_VENV/bin/pip" install --upgrade "git+${REPO}@${VERSION}"
+        link_src="$PIP_VENV/bin" ;;
+esac
+if [ -n "$link_src" ]; then
+  for c in $COMMANDS; do
+    ln -sfn "$link_src/$c" "$BIN_DIR/$c"
+    say "→ linked $BIN_DIR/$c -> $link_src/$c"
+  done
 fi
 
-say "installing the harnessed CLI from ${src_desc} …"
-case "$SOURCE" in
-  repo) uv tool install --force "git+${REPO}@${VERSION}" ;;
-  pypi) uv tool install --force "harnessed==${VERSION#v}" ;;
-esac
+# ── self-update helper: the same install command, newest tag at run time ──
+# shellcheck disable=SC2016  # $tag expands inside the helper, not here
+cat >"$SELF_UPDATE" <<EOF
+#!/usr/bin/env sh
+# Written by harnessed install.sh (manager: ${MANAGER}). Reinstalls the CLI
+# from the newest release tag. Never asks: running it is the yes.
+set -eu
+tag="\$(git ls-remote --tags --refs --sort=-v:refname '${REPO}' 'v*' | head -n1 | sed 's#.*refs/tags/##')"
+[ -n "\$tag" ] || { echo "error: no release tag found at ${REPO}" >&2; exit 1; }
+echo "upgrading harnessed to \$tag with ${MANAGER} ..."
+exec $(install_cmd '$tag')
+EOF
+chmod +x "$SELF_UPDATE"
+say "→ wrote ${SELF_UPDATE}"
 
 # ── verify ─────────────────────────────────────────────────────────────────
-if ! have harnessed; then
-  say "the CLI installed but 'harnessed' is not on your PATH yet."
-  say "run this once, then open a new shell:"
-  info "uv tool update-shell"
-  die "harnessed not on PATH — see the note above."
-fi
-
+[ -x "$BIN_DIR/harnessed" ] || die "install finished but ${BIN_DIR}/harnessed is missing."
 say ""
-say "installed: harnessed ($(command -v harnessed))."
+say "installed: harnessed ${VERSION} (${BIN_DIR}/harnessed)."
+case ":$PATH:" in
+  *":$BIN_DIR:"*) : ;;
+  *) say "note: ${BIN_DIR} is not on your PATH; add it to your shell profile." ;;
+esac
 say "next steps:"
 info "harnessed build claude_time     # assemble + build a stack"
 info "harnessed claude_time           # run it"
+info "harnessed-self-update           # later: upgrade to the newest release"
