@@ -157,7 +157,15 @@ def _claim_profile(stack: str, harness: str) -> _ProfileClaim:
     gate = open(parent / f"{harness}.build.lock", "a")
     session: TextIO | None = None
     try:
-        fcntl.flock(gate.fileno(), fcntl.LOCK_EX)
+        try:
+            fcntl.flock(gate.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            # Another launch is building: say so, or this launch looks hung until it finishes.
+            _err.print(
+                f"[blue][INFO][/blue] waiting for a concurrent build of profile '{stack}' ({harness}) ...",
+                soft_wrap=True,
+            )
+            fcntl.flock(gate.fileno(), fcntl.LOCK_EX)
         session = open(parent / f"{harness}.lock", "a")
         try:
             fcntl.flock(session.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)

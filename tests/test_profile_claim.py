@@ -154,6 +154,19 @@ class TestConcurrentLaunchesBuildOnce:
         assert _IN_USE not in builder
 
 
+class TestAWaitIsVisible:
+    """PR #636 review: a launch blocked on the gate printed nothing until the build finished."""
+
+    _WAITING = "waiting for a concurrent build of profile 's' (claude)"
+
+    def test_only_the_claim_that_waits_on_the_gate_says_so(self, env, tmp_path):
+        results = _race(env, tmp_path)
+        waiter = next(err for _, out, err in results if out.strip() == "build=False")
+        builder = next(err for _, out, err in results if out.strip() == "build=True")
+        assert waiter.count(self._WAITING) == 1, waiter
+        assert self._WAITING not in builder
+
+
 class TestAfterEverySessionEnds:
     def test_s3_1_a_killed_session_releases_the_profile(self, env):
         _lock().parent.mkdir(parents=True)
@@ -204,7 +217,8 @@ class TestAFailedClaimReleases:
         real = fcntl.flock
 
         def flock(fd, op):
-            if op == fcntl.LOCK_EX | fcntl.LOCK_NB:
+            on_session = os.readlink(f"/proc/self/fd/{fd}") == str(_lock())
+            if on_session and op == fcntl.LOCK_EX | fcntl.LOCK_NB:
                 raise OSError(errno.ENOLCK, "no locks available")
             return real(fd, op)
 
