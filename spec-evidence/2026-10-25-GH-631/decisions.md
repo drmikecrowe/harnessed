@@ -33,3 +33,5 @@ Default: A.
 Changes: SPEC.md Orientation `Decided:` line; S1.1 and S4.2 wait on the gate; the `hosthome.py` Touches line names both locks and no marker.
 
 ## Revisions
+### Revision 1. release() and the S2 launch are stated exactly
+Gate 1a round 1: PR-READINGS on `release()` after `done()`, and PR-REFERENT on S2.1's unnamed stubs and `...` arguments. Applied the smallest fixes: `release()` acts only before `done()` and the session lock is held until exit; S2, S4.1 and S6 name the `host` fixture of `tests/test_host_acp.py`, the stack `acpspike`, harness `omp`, the exact stubs and the argv. S2, S4.1 and S6 move to `tests/test_host_acp.py` to use that fixture. Changed: the `hosthome.py` and test Touches lines, the Orientation Touches line, S2, S4.1 and S6.
