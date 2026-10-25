@@ -70,7 +70,7 @@ reinstall from the newest release tag; it never asks.
 
 Requirements the installer DETECTS but never installs for you:
   * podman (rootless, the reference runtime) or docker
-  * one package manager: mise (runs a pinned uv), uv, or python3 >= 3.12
+  * one package manager: uv, mise (runs a pinned uv), or python3 >= 3.12
     with venv + pip
     (it uses the one that already manages harnessed, else the first found
     in that order)
@@ -128,11 +128,12 @@ pip_ok() {
 }
 
 # Which package manager owns harnessed today (empty when none does). A uv
-# tool install is run again with mise's uv when mise is present, else with uv.
-# Reads the directories only, so detection never downloads anything.
+# tool install is run again with the uv on PATH when there is one, so the
+# tool dir is the one that uv reports; mise's pinned uv is used only without
+# it. Detection never downloads anything.
 manager_in_use() {
-  if [ -d "$UV_TOOLS/harnessed" ]; then
-    if have mise; then echo mise; elif have uv; then echo uv; fi
+  if have uv && uv tool list 2>/dev/null | grep -q '^harnessed '; then echo uv
+  elif have mise && [ -d "$UV_TOOLS/harnessed" ]; then echo mise
   elif [ -x "$PIP_VENV/bin/harnessed" ]; then echo pip
   fi
 }
@@ -264,14 +265,20 @@ esac
 if pipx_has_harnessed; then
   die "harnessed is installed with pipx, which this installer does not manage. Run 'install.sh --uninstall' first, then re-run."
 fi
+# An install made through mise's pypi or pipx backend would keep shadowing a
+# new one through mise's shims.
+legacy_spec="$(mise_legacy_spec)"
+if [ -n "$legacy_spec" ]; then
+  die "an older mise install of harnessed (${legacy_spec}) would shadow this one. Run 'install.sh --uninstall' first, then re-run."
+fi
 
 MANAGER="$(manager_in_use)"
 if [ "$MANAGER" = pip ]; then
   manager_why="already manages harnessed"
 elif [ -n "$MANAGER" ]; then
   manager_why="harnessed is already a uv tool"
-elif have mise; then MANAGER=mise; manager_why="found on PATH; installs with uv ${UV_PIN}"
 elif have uv;   then MANAGER=uv;   manager_why="found on PATH"
+elif have mise; then MANAGER=mise; manager_why="found on PATH; installs with uv ${UV_PIN}"
 elif pip_ok;    then MANAGER=pip;  manager_why="python3 with venv + pip found"
 else
   say "no supported package manager found. Install one of these, then re-run:"
@@ -286,7 +293,8 @@ fi
 # a link from another install is never replaced.
 case "$MANAGER" in
   pip)     link_src="$PIP_VENV/bin"; owned="$PIP_VENV/bin" ;;
-  uv|mise) link_src="";              owned="$UV_TOOLS" ;;
+  uv)      link_src="";              owned="$(uv tool dir)" ;;
+  mise)    link_src="";              owned="$UV_TOOLS" ;;
 esac
 for c in $COMMANDS; do
   [ -e "$BIN_DIR/$c" ] || [ -L "$BIN_DIR/$c" ] || continue
@@ -341,6 +349,9 @@ fi
 install_step="$n"
 info "${n}. install harnessed ${VERSION} (${version_why}):"
 info "     $(install_cmd "$VERSION")"; n=$((n + 1))
+if [ "$MANAGER" = mise ]; then
+  info "     (mise downloads uv ${UV_PIN} first if it does not have it)"
+fi
 if [ -n "$link_src" ]; then
   info "${n}. link ${BIN_DIR}/{harnessed,harnessed-tools} -> ${link_src}/"; n=$((n + 1))
 fi
@@ -405,7 +416,8 @@ say "→ wrote ${SELF_UPDATE}"
 
 # ── verify ─────────────────────────────────────────────────────────────────
 exe_dir="$BIN_DIR"
-if [ "$MANAGER" != pip ]; then exe_dir="$(eval "$(uv_run) tool dir --bin")"; fi
+# The last line only, in case mise adds a line of its own to stdout.
+if [ "$MANAGER" != pip ]; then exe_dir="$(eval "$(uv_run) tool dir --bin" | tail -n 1)"; fi
 [ -x "$exe_dir/harnessed" ] || die "install finished but ${exe_dir}/harnessed is missing."
 say ""
 say "installed: harnessed ${VERSION} (${exe_dir}/harnessed)."
