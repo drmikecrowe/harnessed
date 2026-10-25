@@ -174,10 +174,14 @@ def _claim_profile(stack: str, harness: str) -> _ProfileClaim:
             )
             fcntl.flock(gate.fileno(), fcntl.LOCK_EX)
         session = open(parent / f"{harness}.lock", "a")
+        # Under the gate only a builder that is still exiting can hold EX: a dying process can
+        # drop its gate before its session lock. SH waits that out, so the test below sees live
+        # sessions only, never a half-built profile (PR #636).
+        fcntl.flock(session.fileno(), fcntl.LOCK_SH)
         try:
             fcntl.flock(session.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            fcntl.flock(session.fileno(), fcntl.LOCK_SH)
+            fcntl.flock(session.fileno(), fcntl.LOCK_SH)  # a failed conversion may have dropped it
             os.set_inheritable(session.fileno(), True)
             gate.close()
             _err.print(

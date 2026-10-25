@@ -275,6 +275,39 @@ class TestABusyClaimReleases:
             claim.release()
 
 
+class TestADyingBuilderCannotHandOverAHalfBuild:
+    """S4.2 flaked: a builder's exit can release its gate before its exclusive session lock (the
+    kernel closes fds in fd order), so the waiter took the gate, failed `EX|NB`, and reused the
+    half-built profile. Here the builder closes the gate first, on purpose, and exits later."""
+
+    _GATE_FIRST = """
+import sys, time
+from pathlib import Path
+from harnessed.hosthome import _claim_profile
+waiting = Path(sys.argv[1])
+claim = _claim_profile("s", "claude")
+print(f"build={claim.build}", flush=True)
+while not waiting.exists():
+    time.sleep(0.005)
+time.sleep(0.3)
+claim._gate.close()  # the order a dying process can release them in
+time.sleep(0.5)
+sys.exit(1)
+"""
+
+    def test_the_waiter_builds_after_a_builder_dies_holding_the_session(self, env, tmp_path):
+        waiting = tmp_path / "waiting"
+        a = _spawn(env, self._GATE_FIRST, waiting)
+        assert a.stdout is not None
+        assert a.stdout.readline().strip() == "build=True"
+        b = _spawn(env, _WAITER, waiting)
+        a.communicate(timeout=60)
+        b_out, b_err = b.communicate(timeout=60)
+        assert a.returncode == 1
+        assert b.returncode == 0, b_err
+        assert b_out.strip() == "build=True", b_err
+
+
 class TestSessionLockSurvivesExec:
     @pytest.fixture
     def execd(self, env):
