@@ -132,6 +132,13 @@ pip_ok() {
 # never installs, so this never downloads anything.
 mise_uv() { mise which uv --tool "uv@${UV_PIN}" 2>/dev/null || true; }
 
+# The tool dir mise's uv uses: asked of that uv when mise has it, else the
+# computed default. Never downloads anything.
+mise_tool_dir() {
+  mu="$(mise_uv)"
+  if [ -n "$mu" ]; then "$mu" tool dir; else printf '%s' "$UV_TOOLS"; fi
+}
+
 # Which package manager owns harnessed today (empty when none does). Both uv
 # paths share one tool dir, so precedence only picks which uv runs: the one on
 # PATH first (asked through `uv tool list`), else mise's pinned uv. For mise the
@@ -140,7 +147,7 @@ mise_uv() { mise which uv --tool "uv@${UV_PIN}" 2>/dev/null || true; }
 # never downloads anything.
 manager_in_use() {
   if have uv && uv tool list 2>/dev/null | grep -q '^harnessed '; then echo uv
-  elif have mise && [ -x "$UV_TOOLS/harnessed/bin/harnessed" ]; then echo mise
+  elif have mise && [ -x "$(mise_tool_dir)/harnessed/bin/harnessed" ]; then echo mise
   elif [ -x "$PIP_VENV/bin/harnessed" ]; then echo pip
   fi
 }
@@ -232,17 +239,25 @@ if [ "$ACTION" = "uninstall" ]; then
   case "$in_use" in
     uv)   uv tool uninstall harnessed ;;
     # The same pinned uv that installed it, so the tool dir is the same one.
-    mise) mise install "uv@${UV_PIN}" || die "mise could not install uv ${UV_PIN}."
-          mu="$(mise_uv)"
-          [ -n "$mu" ] || die "mise installed uv ${UV_PIN} but cannot find it."
-          "$mu" tool uninstall harnessed ;;
+    # Offline, a uv tool is only a dir plus links, so remove those directly.
+    mise) if mise install "uv@${UV_PIN}" && mu="$(mise_uv)" && [ -n "$mu" ]; then
+            "$mu" tool uninstall harnessed
+          else
+            td="$(mise_tool_dir)"
+            say "warning: could not run mise's uv ${UV_PIN}; removing ${td}/harnessed directly"
+            unlink_commands "$td"
+            rm -rf "${td:?}/harnessed"
+            say "removed: ${td}/harnessed"
+          fi ;;
     pip)  unlink_commands "$PIP_VENV"; rm -rf "$PIP_VENV"; say "removed: $PIP_VENV" ;;
     pipx) pipx uninstall harnessed ;;
   esac
   if [ -n "$legacy_spec" ]; then
     mise unuse -g "$legacy_spec"
-    unlink_commands "$MISE_SHIMS"
   fi
+  # Links into mise's shims are only ever from an older install; drop them
+  # even when mise itself is gone, or a fresh install would refuse them.
+  unlink_commands "$MISE_SHIMS"
   if [ -f "$SELF_UPDATE" ]; then
     rm -f "$SELF_UPDATE"
     say "removed: ${SELF_UPDATE}"
@@ -310,9 +325,7 @@ fi
 case "$MANAGER" in
   pip)     link_src="$PIP_VENV/bin"; owned="$PIP_VENV/bin" ;;
   uv)      link_src="";              owned="$(uv tool dir)" ;;
-  mise)    link_src=""
-           mu="$(mise_uv)"
-           if [ -n "$mu" ]; then owned="$("$mu" tool dir)"; else owned="$UV_TOOLS"; fi ;;
+  mise)    link_src="";              owned="$(mise_tool_dir)" ;;
 esac
 for c in $COMMANDS; do
   [ -e "$BIN_DIR/$c" ] || [ -L "$BIN_DIR/$c" ] || continue
