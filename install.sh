@@ -203,6 +203,13 @@ case "$os" in
   *) die "unsupported platform: $os — harnessed is Linux-only." ;;
 esac
 
+# The install command and the helper quote these paths (mise's uv path comes
+# from MISE_DATA_DIR), so a quote, $ or backtick inside one would break the
+# generated shell. Checked before --uninstall too, which removes under them.
+case "${BIN_DIR}${PIP_VENV}${UV_TOOLS}${MISE_SHIMS}" in
+  *"'"*|*'"'*|*'$'*|*'`'*) die "an install path contains a shell metacharacter; use HOME, XDG_DATA_HOME, MISE_DATA_DIR and UV_TOOL_DIR without one." ;;
+esac
+
 # ── uninstall path ─────────────────────────────────────────────────────────
 if [ "$ACTION" = "uninstall" ]; then
   in_use="$(manager_in_use)"
@@ -218,7 +225,7 @@ if [ "$ACTION" = "uninstall" ]; then
     uv)   info "remove harnessed with:  uv tool uninstall harnessed" ;;
     mise) mu="$(mise_uv)"; mise_uv_desc="mise uv ${UV_PIN}"
           info "install uv ${UV_PIN} with mise if it is gone:  mise install uv@${UV_PIN}"
-          info "remove harnessed with:  ${mu:-$mise_uv_desc} tool uninstall harnessed" ;;
+          info "remove harnessed with:  \"${mu:-$mise_uv_desc}\" tool uninstall harnessed" ;;
     pip)  info "delete the venv ${PIP_VENV}"
           info "remove the links in ${BIN_DIR} that point into it" ;;
     pipx) info "remove harnessed with:  pipx uninstall harnessed" ;;
@@ -289,13 +296,6 @@ else
   podman_install_hint
   die "podman (>= ${PODMAN_MIN_MAJOR}.0) or docker is required. The installer will not install either for you."
 fi
-
-# The install command and the helper quote these paths (mise's uv path comes
-# from MISE_DATA_DIR), so a quote, $ or backtick inside one would break the
-# generated shell.
-case "${BIN_DIR}${PIP_VENV}${UV_TOOLS}${MISE_SHIMS}" in
-  *"'"*|*'"'*|*'$'*|*'`'*) die "an install path contains a shell metacharacter; use HOME, XDG_DATA_HOME, MISE_DATA_DIR and UV_TOOL_DIR without one." ;;
-esac
 
 # ── detect: package manager (in use first, then uv, mise, pip) ───────────
 if pipx_has_harnessed; then
