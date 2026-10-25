@@ -24,7 +24,7 @@ curl -fsSL https://github.com/drmikecrowe/harnessed/releases/latest/download/ins
 The installer prints what it found and every step it will run, then asks y/n before it changes anything. It reads the answer from your terminal, so the prompt works through the pipe. It:
 
 - Requires podman or docker, and stops if it finds neither. It never installs them for you.
-- Uses the package manager that already manages harnessed, else the first it finds of mise, uv, or pip (pip installs into a private venv).
+- Uses the package manager that already manages harnessed, else the first it finds of mise, uv, or pip. mise installs through a pinned uv, so it needs no pipx; pip installs into a private venv.
 - Installs the newest release. Set `HARNESSED_VERSION=<tag>` to pin another one.
 
 It installs two commands into `~/.local/bin`:
