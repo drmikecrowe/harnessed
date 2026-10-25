@@ -603,6 +603,144 @@ class TestHostRunSharesTheSetup:
         assert not paths.host_home(_STACK, "omp").exists()
 
 
+class TestTheProfileClaim:
+    """GH-631: a host launch claims the stack's profile, and assembles only when it builds it."""
+
+    _IN_USE = (
+        f"profile '{_STACK}' (omp) is in use by a running session; stack changes apply after "
+        "every session of it closes"
+    )
+    _HOLD = (
+        "import fcntl, os, sys, time\n"
+        "fd = os.open(sys.argv[1], os.O_RDWR | os.O_CREAT, 0o644)\n"
+        "fcntl.flock(fd, fcntl.LOCK_SH)\n"
+        "print('held', flush=True)\n"
+        "time.sleep(60)\n"
+    )
+
+    @staticmethod
+    def _spy(monkeypatch, name: str) -> list[tuple]:
+        calls: list[tuple] = []
+        real = getattr(launcher, name)
+
+        def spy(*a, **k):
+            calls.append(a)
+            return real(*a, **k)
+
+        monkeypatch.setattr(launcher, name, spy)
+        return calls
+
+    @staticmethod
+    def _stub_exec(monkeypatch) -> None:
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+        monkeypatch.setattr(launcher.aoe, "_bin", lambda: None)
+
+    @staticmethod
+    def _host_run(project: Path):
+        from typer.testing import CliRunner
+
+        return CliRunner().invoke(launcher.app, ["host-run", "omp", str(project), "--stack", _STACK])
+
+    @pytest.fixture
+    def reused(self, host, tmp_path, monkeypatch):
+        """S2: one launch has run, a session holds the lock shared, and the launch runs again."""
+        self._stub_exec(monkeypatch)
+        assembled = self._spy(monkeypatch, "assemble")
+        merged = self._spy(monkeypatch, "_merge_host_claude_settings")
+        project = tmp_path / "proj"
+        project.mkdir()
+        first = self._host_run(project)
+        assert first.exit_code == 0, first.output
+        assert assembled and merged, "the first launch must build"
+        prof = paths.profile_dir(_STACK, "omp")
+        holder = subprocess.Popen(
+            [sys.executable, "-c", self._HOLD, str(prof.parent / "omp.lock")],
+            stdout=subprocess.PIPE, text=True,
+        )
+        try:
+            assert holder.stdout is not None
+            assert holder.stdout.readline().strip() == "held"
+            (prof / "sentinel").write_text("live session\n")
+            assembled.clear()
+            merged.clear()
+            yield self._host_run(project), assembled, merged, prof
+        finally:
+            holder.kill()
+            holder.communicate()
+
+    def test_s2_1_a_live_sessions_profile_is_reused_not_reset(self, reused):
+        result, assembled, _, prof = reused
+        assert result.exit_code == 0, result.output
+        assert assembled == []
+        assert (prof / "sentinel").is_file()
+        assert self._IN_USE in result.output
+
+    def test_s2_2_a_reused_profile_gets_no_settings_merge(self, reused):
+        result, _, merged, _ = reused
+        assert result.exit_code == 0, result.output
+        assert merged == []
+
+    def test_s4_1_a_failed_build_releases_the_locks(self, host, tmp_path, monkeypatch):
+        import threading
+
+        from harnessed.hosthome import _claim_profile
+
+        def boom(*_a, **_k):
+            raise launcher.SchemaError("boom")
+
+        self._stub_exec(monkeypatch)
+        monkeypatch.setattr(launcher, "assemble", boom)
+        project = tmp_path / "proj"
+        project.mkdir()
+        result = self._host_run(project)
+        assert result.exit_code == 1, result.output
+
+        claims: list = []
+        t = threading.Thread(target=lambda: claims.append(_claim_profile(_STACK, "omp")), daemon=True)
+        t.start()
+        t.join(timeout=5)
+        assert claims, "the next claim still waits: the failed build kept the locks"
+        try:
+            assert claims[0].build is True
+        finally:
+            claims[0].release()
+
+    def test_s6_1_host_run_and_host_acp_each_claim_once(self, host, tmp_path, monkeypatch):
+        class _Exited(Exception):
+            pass
+
+        def fake_exit(code):
+            raise _Exited(code)
+
+        self._stub_exec(monkeypatch)
+        claimed = self._spy(monkeypatch, "_claim_profile")
+        project = tmp_path / "proj"
+        project.mkdir()
+        with pytest.raises(SystemExit):
+            launcher._launch_host(_STACK, "omp", str(project))
+        assert claimed == [(_STACK, "omp")]
+
+        monkeypatch.setattr(launcher.acprelay, "run", lambda *_a, **_k: 0)
+        monkeypatch.setattr(launcher, "acp_stdout", lambda: os.open(os.devnull, os.O_WRONLY))
+        monkeypatch.setattr(launcher.os, "_exit", fake_exit)
+        with pytest.raises(_Exited):
+            launcher._launch_host(_STACK, "omp", str(project), acp=True)
+        assert claimed == [(_STACK, "omp"), (_STACK, "omp")]
+
+    def test_s6_2_project_setup_never_claims(self, host, tmp_path, monkeypatch):
+        host.build("omp")
+        self._stub_exec(monkeypatch)
+        claimed = self._spy(monkeypatch, "_claim_profile")
+        project = tmp_path / "proj"
+        project.mkdir()
+        launcher._launch_host(_STACK, "omp", str(project), project_only=True)
+        assert claimed == []
+        assert list(paths.profiles_root().rglob("*.lock")) == []
+
+
+
+
 class TestClaudeMcpAndEnv:
     def test_s5_1_the_adapter_gets_the_stack_mcp_file_and_strict(self, host):
         host.build("claude")

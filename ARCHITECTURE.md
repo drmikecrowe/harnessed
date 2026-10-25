@@ -242,7 +242,8 @@ of them, so a single combined verb can only accept them and do nothing.
 
 `--recipe` is how you run without a hand-written stack. It normalizes the recipe set, derives a name
 from its CONTENT, and mints a `stack.yaml` under the generated catalog root — which the container
-backend then builds, and the host backend does not need to (it assembles in-process every launch).
+backend then builds, and the host backend does not need to (it assembles in-process on a launch
+when no session of that stack and harness is open).
 Because the name is content-derived, the same recipe set in five repos is one stack — one image, one
 pair of volumes. `--extends` defaults to `default` — the baseline stack the repo ships (`catalog/stacks/default`,
 composing `catalog/recipes/default`), so the documented default resolves on a bare install rather
@@ -367,7 +368,8 @@ exits without launching. There registering *is* the command, so it blocks, print
 exits non-zero if registration fails. On `container-run` a `--recipe` set is still minted AND
 built — the row replays `container-run`, which hard-errors without an assembled profile. Skipping
 the build creates a row that is dead on arrival. `host-run` needs no build: it assembles
-in-process on every launch.
+in-process on a launch when no session of that stack and harness is open, and reuses the profile
+otherwise.
 
 ## Folder-env contract
 
