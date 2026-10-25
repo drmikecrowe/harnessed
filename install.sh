@@ -7,7 +7,7 @@
 #   ./install.sh --help        usage
 #
 # The package manager is the one that already manages harnessed, else the
-# first found of: mise, uv, pip (into a private venv). Every install also
+# first found of: uv, mise, pip (into a private venv). Every install also
 # writes ~/.local/bin/harnessed-self-update, which reruns the same install
 # command for the newest release tag, without the prompt.
 #
@@ -134,11 +134,13 @@ mise_uv() { mise which uv --tool "uv@${UV_PIN}" 2>/dev/null || true; }
 
 # Which package manager owns harnessed today (empty when none does). Both uv
 # paths share one tool dir, so precedence only picks which uv runs: the one on
-# PATH first, else mise's pinned uv, asked through `uv tool list` either way.
-# Detection never downloads anything.
+# PATH first (asked through `uv tool list`), else mise's pinned uv. For mise the
+# test is the installed entry point, which needs no uv at all, so it holds even
+# when mise's uv is gone; a leftover dir without it does not count. Detection
+# never downloads anything.
 manager_in_use() {
   if have uv && uv tool list 2>/dev/null | grep -q '^harnessed '; then echo uv
-  elif have mise && mu="$(mise_uv)" && [ -n "$mu" ] && "$mu" tool list 2>/dev/null | grep -q '^harnessed '; then echo mise
+  elif have mise && [ -x "$UV_TOOLS/harnessed/bin/harnessed" ]; then echo mise
   elif [ -x "$PIP_VENV/bin/harnessed" ]; then echo pip
   fi
 }
@@ -206,12 +208,14 @@ if [ "$ACTION" = "uninstall" ]; then
   say ""
   say "This will:"
   case "$in_use" in
-    uv|mise) info "remove harnessed with:  $(uv_run) tool uninstall harnessed" ;;
+    uv)   info "remove harnessed with:  uv tool uninstall harnessed" ;;
+    mise) info "install uv ${UV_PIN} with mise if it is gone:  mise install uv@${UV_PIN}"
+          info "remove harnessed with:  $(uv_run) tool uninstall harnessed" ;;
     pip)  info "delete the venv ${PIP_VENV}"
           info "remove the links in ${BIN_DIR} that point into it" ;;
     pipx) info "remove harnessed with:  pipx uninstall harnessed" ;;
     *)    if [ -z "$legacy_spec" ]; then
-            info "find no harnessed install via mise, uv, pip or pipx (nothing to remove)"
+            info "find no harnessed install via uv, mise, pip or pipx (nothing to remove)"
           fi ;;
   esac
   if [ -n "$legacy_spec" ]; then
@@ -227,9 +231,11 @@ if [ "$ACTION" = "uninstall" ]; then
 
   case "$in_use" in
     uv)   uv tool uninstall harnessed ;;
-    # Both uv paths share one tool dir, so the uv on PATH can uninstall when
-    # mise's pinned uv has gone missing.
-    mise) mu="$(mise_uv)"; "${mu:-uv}" tool uninstall harnessed ;;
+    # The same pinned uv that installed it, so the tool dir is the same one.
+    mise) mise install "uv@${UV_PIN}" || die "mise could not install uv ${UV_PIN}."
+          mu="$(mise_uv)"
+          [ -n "$mu" ] || die "mise installed uv ${UV_PIN} but cannot find it."
+          "$mu" tool uninstall harnessed ;;
     pip)  unlink_commands "$PIP_VENV"; rm -rf "$PIP_VENV"; say "removed: $PIP_VENV" ;;
     pipx) pipx uninstall harnessed ;;
   esac
@@ -271,7 +277,7 @@ case "${BIN_DIR}${PIP_VENV}${UV_TOOLS}${MISE_SHIMS}" in
   *"'"*|*'"'*|*'$'*|*'`'*) die "an install path contains a shell metacharacter; use HOME, XDG_DATA_HOME, MISE_DATA_DIR and UV_TOOL_DIR without one." ;;
 esac
 
-# ── detect: package manager (in use first, then mise, uv, pip) ───────────
+# ── detect: package manager (in use first, then uv, mise, pip) ───────────
 if pipx_has_harnessed; then
   die "harnessed is installed with pipx, which this installer does not manage. Run 'install.sh --uninstall' first, then re-run."
 fi
@@ -292,10 +298,10 @@ elif have mise; then MANAGER=mise; manager_why="found on PATH; installs with uv 
 elif pip_ok;    then MANAGER=pip;  manager_why="python3 with venv + pip found"
 else
   say "no supported package manager found. Install one of these, then re-run:"
-  info "mise: https://mise.jdx.dev/getting-started.html"
   info "uv:   https://docs.astral.sh/uv/getting-started/installation/"
+  info "mise: https://mise.jdx.dev/getting-started.html"
   info "pip:  python3 >= 3.12 with the venv module (e.g. sudo apt install python3-venv)"
-  die "mise, uv, or python3 >= 3.12 with venv + pip is required."
+  die "uv, mise, or python3 >= 3.12 with venv + pip is required."
 fi
 
 # pip links into BIN_DIR; uv (directly or through mise) places its own links.
@@ -386,6 +392,7 @@ fi
 if [ "$MANAGER" = mise ]; then
   say "→ mise install uv@${UV_PIN}"
   mise install "uv@${UV_PIN}" || die "mise could not install uv ${UV_PIN}."
+  [ -n "$(mise_uv)" ] || die "mise installed uv ${UV_PIN} but cannot find it."
 fi
 say "→ $(install_cmd "$VERSION")"
 # Run exactly the command the plan showed; VERSION was checked to be a plain tag.
@@ -409,7 +416,8 @@ if [ "$MANAGER" = pip ]; then
   helper_pre="[ -x '${PIP_VENV}/bin/pip' ] || python3 -m venv '${PIP_VENV}'"
 elif [ "$MANAGER" = mise ]; then
   helper_pre="command -v mise >/dev/null 2>&1 || { echo 'error: mise is required to self-update this install; run install.sh again' >&2; exit 1; }
-mise install uv@${UV_PIN}"
+mise install uv@${UV_PIN}
+mise which uv --tool uv@${UV_PIN} >/dev/null 2>&1 || { echo 'error: mise installed uv ${UV_PIN} but cannot find it' >&2; exit 1; }"
 fi
 # The pip helper restores its links, never over a real file.
 helper_links=""
