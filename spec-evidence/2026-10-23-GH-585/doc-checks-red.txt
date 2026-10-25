@@ -1,0 +1,8 @@
+4:> ACP support is in progress under [#528](https://github.com/drmikecrowe/harnessed/issues/528). This page describes what works today and is updated as each part lands. Host mode works in Zed and Atlas. Container mode from an editor is not ready yet.
+18:- `<backend>` is `host` or `container`. Use `host` from an editor today (see the next section).
+29:| Ready for editors | Yes | Not yet ([#566](https://github.com/drmikecrowe/harnessed/issues/566)) |
+31:Host mode isolates configuration, not the filesystem, exactly like `host-run`. The agent works in your real project with your real credentials. If you need the container boundary, keep using `container-run` in a terminal until #566 lands.
+127:- **The session runs in the wrong folder.** Check that you used a `-host` launcher. A `-container` launcher runs in the folder the editor started it from.
+S2.2 exit 1
+S3/S4 exit 1
+c42f7e6fff99e759657a57fca072588db387ce84
