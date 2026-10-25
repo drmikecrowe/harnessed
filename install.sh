@@ -38,7 +38,8 @@ SELF_UPDATE="$BIN_DIR/harnessed-self-update"
 PIP_VENV="${XDG_DATA_HOME:-$HOME/.local/share}/harnessed-venv"
 # uv keeps each tool under this dir; a uv or mise install of harnessed lives here.
 UV_TOOLS="${UV_TOOL_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/uv/tools}"
-# mise installs through this pinned uv, so it needs neither pipx nor a uv on PATH.
+# mise installs this pinned uv (`mise install`), then runs it by path, so it
+# needs neither pipx nor a uv on PATH.
 # mise's own pypi/pipx backend needs pipx, and older mise has no `pypi:` at all.
 UV_PIN="0.12.19"
 # An older installer could put a mise install under mise's shims; --uninstall
@@ -127,20 +128,25 @@ pip_ok() {
   have python3 && python3 -c 'import sys, venv, ensurepip; sys.exit(sys.version_info < (3, 12))' 2>/dev/null
 }
 
-# Which package manager owns harnessed today (empty when none does). A uv
-# tool install is run again with the uv on PATH when there is one, so the
-# tool dir is the one that uv reports; mise's pinned uv is used only without
-# it. Detection never downloads anything.
+# Path to mise's pinned uv when mise has it installed, else empty. `mise which`
+# never installs, so this never downloads anything.
+mise_uv() { mise which uv --tool "uv@${UV_PIN}" 2>/dev/null || true; }
+
+# Which package manager owns harnessed today (empty when none does). Both uv
+# paths share one tool dir, so precedence only picks which uv runs: the one on
+# PATH first, else mise's pinned uv, asked through `uv tool list` either way.
+# Detection never downloads anything.
 manager_in_use() {
   if have uv && uv tool list 2>/dev/null | grep -q '^harnessed '; then echo uv
-  elif have mise && [ -d "$UV_TOOLS/harnessed" ]; then echo mise
+  elif have mise && mu="$(mise_uv)" && [ -n "$mu" ] && "$mu" tool list 2>/dev/null | grep -q '^harnessed '; then echo mise
   elif [ -x "$PIP_VENV/bin/harnessed" ]; then echo pip
   fi
 }
 
-# The uv that installs: mise's pinned uv for mise, else the uv on PATH.
+# The uv that installs, as shell text: mise's pinned uv run by its own path
+# (no `mise exec`, so uv sees this shell's env), else the uv on PATH.
 uv_run() {
-  if [ "$MANAGER" = mise ]; then printf '%s' "mise exec uv@${UV_PIN} -- uv"; else printf '%s' uv; fi
+  if [ "$MANAGER" = mise ]; then printf '%s' "\"\$(mise which uv --tool uv@${UV_PIN})\""; else printf '%s' uv; fi
 }
 
 # The spec of an install made by an older installer through mise's pypi or
@@ -294,7 +300,9 @@ fi
 case "$MANAGER" in
   pip)     link_src="$PIP_VENV/bin"; owned="$PIP_VENV/bin" ;;
   uv)      link_src="";              owned="$(uv tool dir)" ;;
-  mise)    link_src="";              owned="$UV_TOOLS" ;;
+  mise)    link_src=""
+           mu="$(mise_uv)"
+           if [ -n "$mu" ]; then owned="$("$mu" tool dir)"; else owned="$UV_TOOLS"; fi ;;
 esac
 for c in $COMMANDS; do
   [ -e "$BIN_DIR/$c" ] || [ -L "$BIN_DIR/$c" ] || continue
@@ -346,12 +354,13 @@ n=1
 if [ "$MANAGER" = pip ] && [ ! -x "$PIP_VENV/bin/pip" ]; then
   info "${n}. create a venv:        python3 -m venv ${PIP_VENV}"; n=$((n + 1))
 fi
+if [ "$MANAGER" = mise ]; then
+  info "${n}. install uv ${UV_PIN} with mise (skipped if mise has it):"
+  info "     mise install uv@${UV_PIN}"; n=$((n + 1))
+fi
 install_step="$n"
 info "${n}. install harnessed ${VERSION} (${version_why}):"
 info "     $(install_cmd "$VERSION")"; n=$((n + 1))
-if [ "$MANAGER" = mise ]; then
-  info "     (mise downloads uv ${UV_PIN} first if it does not have it)"
-fi
 if [ -n "$link_src" ]; then
   info "${n}. link ${BIN_DIR}/{harnessed,harnessed-tools} -> ${link_src}/"; n=$((n + 1))
 fi
@@ -370,6 +379,10 @@ if [ "$MANAGER" = pip ] && [ ! -x "$PIP_VENV/bin/pip" ]; then
   say "→ python3 -m venv ${PIP_VENV}"
   python3 -m venv "$PIP_VENV"
 fi
+if [ "$MANAGER" = mise ]; then
+  say "→ mise install uv@${UV_PIN}"
+  mise install "uv@${UV_PIN}" || die "mise could not install uv ${UV_PIN}."
+fi
 say "→ $(install_cmd "$VERSION")"
 # Run exactly the command the plan showed; VERSION was checked to be a plain tag.
 eval "$(install_cmd "$VERSION")"
@@ -385,10 +398,13 @@ fi
 # latest_tag and never calls install_cmd.
 # shellcheck disable=SC2016  # $tag expands inside the helper, not here
 helper_cmd="$(install_cmd '"$tag"')"
-# The pip helper rebuilds its venv if it has gone missing.
+# The pip helper rebuilds its venv if it has gone missing; the mise helper
+# installs its pinned uv first (a no-op when mise has it).
 helper_pre=""
 if [ "$MANAGER" = pip ]; then
   helper_pre="[ -x '${PIP_VENV}/bin/pip' ] || python3 -m venv '${PIP_VENV}'"
+elif [ "$MANAGER" = mise ]; then
+  helper_pre="mise install uv@${UV_PIN}"
 fi
 # The pip helper restores its links, never over a real file.
 helper_links=""
@@ -416,8 +432,10 @@ say "→ wrote ${SELF_UPDATE}"
 
 # ── verify ─────────────────────────────────────────────────────────────────
 exe_dir="$BIN_DIR"
-# The last line only, in case mise adds a line of its own to stdout.
-if [ "$MANAGER" != pip ]; then exe_dir="$(eval "$(uv_run) tool dir --bin" | tail -n 1)"; fi
+if [ "$MANAGER" != pip ]; then
+  exe_dir="$(eval "$(uv_run) tool dir --bin")" || die "could not ask uv for its bin dir."
+  [ -d "$exe_dir" ] || die "uv reported a bin dir that does not exist: ${exe_dir}"
+fi
 [ -x "$exe_dir/harnessed" ] || die "install finished but ${exe_dir}/harnessed is missing."
 say ""
 say "installed: harnessed ${VERSION} (${exe_dir}/harnessed)."
