@@ -85,6 +85,7 @@ from .hosthome import (
     _HOST_STACK_FINGERPRINT,
     _LEGACY_PROJECT_DIR_RE,
     _OAUTH_TOKEN_VAR,
+    _claim_profile,
     _host_fresh_wipe,
     _host_home_lock,
     _host_omp_claude_dir,
@@ -3173,182 +3174,196 @@ def _launch_host(
         _err.print(f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_dir / 'stack.yaml'})")
         raise typer.Exit(1)
 
-    # Assemble IN-PROCESS every launch — host-native, emit-only, NO podman and NO image build. This is
-    # what keeps host-run container-free end to end: unlike `harnessed build` (which also builds a
-    # multi-GB image), we only need the profile's content layer. Assembly is sub-second, so a
-    # rebuild-per-launch also sidesteps staleness bookkeeping entirely. `build_root` is the dir that
-    # CONTAINS profiles/ (assemble emits to <build_root>/profiles/<stack>/<harness>).
-    if not project_only:
-        _err.print(
-            f"[blue][INFO][/blue] Assembling '{stack}' ({harness}) host-native (no container) ..."
-        )
-        try:
-            # `shared_identity=False`: this backend gives omp a PER-STACK agent dir, so the shared
-            # `~/.omp/agent` block write would land where nothing on this path reads (#307).
-            assemble(
-                None, stack, paths.profiles_root().parent, harness, strict=True,
-                shared_identity=False,
+    # Assemble IN-PROCESS — host-native, emit-only, NO podman and NO image build. This is what keeps
+    # host-run container-free end to end: unlike `harnessed build` (which also builds a multi-GB
+    # image), we only need the profile's content layer. `build_root` is the dir that CONTAINS
+    # profiles/ (assemble emits to <build_root>/profiles/<stack>/<harness>).
+    # Skipped while the profile is claimed: `assemble` resets it with an rmtree, and a running
+    # session or a concurrent launch reads it (GH-631, see `_claim_profile`). The claim stays bound
+    # until the exec, the relay or the supervised run below; dropping it would drop the lock.
+    claim = None if project_only else _claim_profile(stack, harness)
+    try:
+        if claim is not None and claim.build:
+            _err.print(
+                f"[blue][INFO][/blue] Assembling '{stack}' ({harness}) host-native (no container) ..."
             )
-        except (SchemaError, CollisionError) as exc:
-            _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
-            raise typer.Exit(1) from exc
+            try:
+                # `shared_identity=False`: this backend gives omp a PER-STACK agent dir, so the shared
+                # `~/.omp/agent` block write would land where nothing on this path reads (#307).
+                assemble(
+                    None, stack, paths.profiles_root().parent, harness, strict=True,
+                    shared_identity=False,
+                )
+            except (SchemaError, CollisionError) as exc:
+                _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
+                raise typer.Exit(1) from exc
 
-        # The assemble above just refreshed THIS stack's block in the shared omp agent dir; this
-        # drops the blocks of stacks that no longer resolve at all. Both launch verbs prune, so it
-        # does not matter which one the user reaches for.
-        _prune_unlaunchable_omp_blocks(harness)
+        if not project_only:
+            # The assemble above just refreshed THIS stack's block in the shared omp agent dir; this
+            # drops the blocks of stacks that no longer resolve at all. Both launch verbs prune, so
+            # it does not matter which one the user reaches for.
+            _prune_unlaunchable_omp_blocks(harness)
 
-    # Same mirror as the container path, recorded under this verb so the two never collide: a
-    # host-native session and a containerized one for the same stack+harness+folder are different
-    # things to run. No-op when aoe is absent; never raises.
-    #
-    # AFTER assembly, not before. Assembly is this backend's real validation gate — the analogue of
-    # `launch`'s is_built/staleness checks — so registering ahead of it would leave a row behind for
-    # a launch that then died on a renamed recipe, and that row would fail identically every time it
-    # was started from the dashboard. It costs `--create-aoe-only` one assembly, which is
-    # sub-second, emit-only and container-free on this path.
-    # BEFORE the row, because the row's command IS this script. `_aoe_register` EXITS under
-    # `--create-aoe-only`, so writing afterwards would leave a row pointing at a file that does not
-    # exist — dead on arrival, failing every time it is started from the dashboard. That is the same
-    # class of dead row the comment above avoids by registering after assembly.
-    # Both or neither, and not at all for an ad-hoc stack — see `_persist_this_launch`.
-    # The global launchers come first: the local one, when written, execs one of them (GH-565).
-    asked = aoe_group is not None or aoe_title is not None or create_aoe_only
-    own_in_place = project_only or _write_global_launchers(stack, harness, "host-run", asked=asked)
-    if not (acp or project_only) and _own_launcher_or_exit(
-        own_in_place, "host-run", stack, harness, only=create_aoe_only
-    ) and _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):
-        launchscript.write(
-            "host-run", stack, harness, project_path,
-            group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
-            argv=_typed_invocation("host-run"),
-        )
-        # AFTER assembly, not before. Assembly is this backend's real validation gate — the analogue
-        # of `launch`'s is_built/staleness checks — so registering ahead of it would leave a row
-        # behind for a launch that then died on a renamed recipe, and that row would fail
-        # identically every time it was started from the dashboard. It costs `--create-aoe-only` one
-        # assembly, which is sub-second, emit-only and container-free on this path.
-        _aoe_register(
-            "host-run", stack, harness, project_path, only=create_aoe_only,
-            group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
-            managed_worktree=aoe_managed_worktree,
-        )
-        extra = [
-            *_session_name_args(
-                "host-run", stack, harness, project_path, list(extra or []),
+        # Same mirror as the container path, recorded under this verb so the two never collide: a
+        # host-native session and a containerized one for the same stack+harness+folder are different
+        # things to run. No-op when aoe is absent; never raises.
+        #
+        # AFTER assembly, not before. Assembly is this backend's real validation gate — the analogue of
+        # `launch`'s is_built/staleness checks — so registering ahead of it would leave a row behind for
+        # a launch that then died on a renamed recipe, and that row would fail identically every time it
+        # was started from the dashboard. It costs `--create-aoe-only` one assembly, which is
+        # sub-second, emit-only and container-free on this path.
+        # BEFORE the row, because the row's command IS this script. `_aoe_register` EXITS under
+        # `--create-aoe-only`, so writing afterwards would leave a row pointing at a file that does not
+        # exist — dead on arrival, failing every time it is started from the dashboard. That is the same
+        # class of dead row the comment above avoids by registering after assembly.
+        # Both or neither, and not at all for an ad-hoc stack — see `_persist_this_launch`.
+        # The global launchers come first: the local one, when written, execs one of them (GH-565).
+        asked = aoe_group is not None or aoe_title is not None or create_aoe_only
+        own_in_place = project_only or _write_global_launchers(stack, harness, "host-run", asked=asked)
+        if not (acp or project_only) and _own_launcher_or_exit(
+            own_in_place, "host-run", stack, harness, only=create_aoe_only
+        ) and _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):
+            launchscript.write(
+                "host-run", stack, harness, project_path,
                 group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
-            ),
-            *(extra or []),
-        ]
+                argv=_typed_invocation("host-run"),
+            )
+            # AFTER assembly, not before. Assembly is this backend's real validation gate — the analogue
+            # of `launch`'s is_built/staleness checks — so registering ahead of it would leave a row
+            # behind for a launch that then died on a renamed recipe, and that row would fail
+            # identically every time it was started from the dashboard. It costs `--create-aoe-only` one
+            # assembly, which is sub-second, emit-only and container-free on this path.
+            _aoe_register(
+                "host-run", stack, harness, project_path, only=create_aoe_only,
+                group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
+                managed_worktree=aoe_managed_worktree,
+            )
+            extra = [
+                *_session_name_args(
+                    "host-run", stack, harness, project_path, list(extra or []),
+                    group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
+                ),
+                *(extra or []),
+            ]
 
-    # Launch-time secrets — the host half of the container path's `--env-file` (see
-    # _resolve_launch_secrets). Set on THIS process for the same reason as the recipe env below:
-    # os.environ is the host's box, and `env = dict(os.environ)` at the exec is what delivers them
-    # to the agent. Nothing is written to disk on this path.
-    #
-    # Two precedence calls, both deliberate (bd harnessed-36l):
-    #   - applied BEFORE _recipe_env, so a recipe declaration still wins — mirroring container mode,
-    #     where `podman run -e` beats `--env-file`.
-    #   - overrides an inherited shell value of the same name. The schema is the declared source of
-    #     truth; letting a stale export in the invoking shell silently beat it is the failure mode
-    #     that is hardest to see from inside a session.
-    # Under `acp` only the global half: the launch folder is not a project (GH-571 Decide 2).
-    os.environ.update(_resolve_launch_env(None if acp else project_path))
+        # Launch-time secrets — the host half of the container path's `--env-file` (see
+        # _resolve_launch_secrets). Set on THIS process for the same reason as the recipe env below:
+        # os.environ is the host's box, and `env = dict(os.environ)` at the exec is what delivers them
+        # to the agent. Nothing is written to disk on this path.
+        #
+        # Two precedence calls, both deliberate (bd harnessed-36l):
+        #   - applied BEFORE _recipe_env, so a recipe declaration still wins — mirroring container mode,
+        #     where `podman run -e` beats `--env-file`.
+        #   - overrides an inherited shell value of the same name. The schema is the declared source of
+        #     truth; letting a stale export in the invoking shell silently beat it is the failure mode
+        #     that is hardest to see from inside a session.
+        # Under `acp` only the global half: the launch folder is not a project (GH-571 Decide 2).
+        os.environ.update(_resolve_launch_env(None if acp else project_path))
 
-    # The recipe closure, hoisted above the sidecars so the backend can be constructed with it.
-    # Inert as a reordering: `assemble(..., strict=True)` above already resolved and validated every
-    # recipe this reads, so there is no failure left here for the sidecars to have preceded.
-    host_stk, host_recipes = load_stack_with_recipes(None, stack)
-    backend = HostBackend(host_recipes, acp=acp)
-    # Before anything is materialized: a declaration this backend cannot honor is worth knowing
-    # about while there is still a choice to make (rerun under `container-run`), not after the
-    # agent is already up.
-    _warn_capability_gaps(HostBackend.name, host_recipes)
-    # The (backend, harness) gap capmatrix's backend-keyed table cannot express — see the function.
-    _note_host_omp_skill_gap(harness, host_recipes)
-    spec = LaunchSpec(
-        stack=stack, harness=harness, project_path=project_path,
-        extra=tuple(extra or []), no_strict_mcp=no_strict_mcp, ephemeral=rm,
-    )
-
-    # The per-project steps — services, the project tool env file, ATTACH, setup notices — are
-    # skipped under `acp`, whose launch folder is not a project; `project-setup` runs the same four,
-    # in this order, for each folder an editor opens (GH-571).
-    if not acp:
-        # Sidecars — the SAME ones `launch` ensures (bd harnessed-2sm). Ahead of the recipe env and
-        # setup scripts below, which is what needs the socket to already exist.
-        backend.wire_services(spec)
-
-        # Hand the PROJECT the same tool env we are about to hand the agent, so a plain `bd` in this
-        # repo is configured too. After services, because the client env includes their connection.
-        _write_project_tool_env(
-            stack, project_path, harness=harness, verb="host-run",
-            no_strict_mcp=no_strict_mcp, aoe_group=aoe_group, aoe_title=aoe_title,
+        # The recipe closure, hoisted above the sidecars so the backend can be constructed with it.
+        # Inert as a reordering: `assemble(..., strict=True)` above already resolved and validated every
+        # recipe this reads, so there is no failure left here for the sidecars to have preceded.
+        host_stk, host_recipes = load_stack_with_recipes(None, stack)
+        backend = HostBackend(host_recipes, acp=acp)
+        # Before anything is materialized: a declaration this backend cannot honor is worth knowing
+        # about while there is still a choice to make (rerun under `container-run`), not after the
+        # agent is already up.
+        _warn_capability_gaps(HostBackend.name, host_recipes)
+        # The (backend, harness) gap capmatrix's backend-keyed table cannot express — see the function.
+        _note_host_omp_skill_gap(harness, host_recipes)
+        spec = LaunchSpec(
+            stack=stack, harness=harness, project_path=project_path,
+            extra=tuple(extra or []), no_strict_mcp=no_strict_mcp, ephemeral=rm,
         )
 
-    # Recipe `env:` — the host half of what the derived image's ENV does for a container launch.
-    # Set on THIS process (same reasoning as the PATH mutation below: the process is dedicated to
-    # this launch), so all three consumers get it from one place: any install/setup script spawned
-    # from here inherits it, and so does claude itself — `env = dict(os.environ)` at the exec below
-    # is what actually delivers it to the running agent, the row that was broken before.
-    # Recipe declarations win over an inherited value, mirroring `podman run -e` in container mode.
-    if not acp:
-        os.environ.update(_recipe_env(host_recipes, project_path, mode="host"))
+        # The per-project steps — services, the project tool env file, ATTACH, setup notices — are
+        # skipped under `acp`, whose launch folder is not a project; `project-setup` runs the same four,
+        # in this order, for each folder an editor opens (GH-571).
+        if not acp:
+            # Sidecars — the SAME ones `launch` ensures (bd harnessed-2sm). Ahead of the recipe env and
+            # setup scripts below, which is what needs the socket to already exist.
+            backend.wire_services(spec)
 
-    # Put the stack bin dir on PATH BEFORE recipe setups + native MCP check. install.sh may put tools
-    # there (via UV_TOOL_BIN_DIR / PNPM_HOME redirect), and _host_native_mcp's presence check runs
-    # after that — it needs them resolvable. Mutating this process's PATH is fine: it's dedicated to
-    # this launch, and claude (env built from os.environ below) inherits it.
-    # The stack's `tools:` join it (bd harnessed-1t4.3): a binary the agent cannot resolve is the
-    # same as one that was never installed. Their REAL install dirs, never mise's shims dir — see
-    # `_host_tool_bin_dirs` and #449 for the two ways that dir shadowed the user's PATH, one of
-    # which killed the agent binary itself. `_apply_host_tool_path` writes BOTH entries, in the
-    # order `_stack_tool_path_prefix` fixes; `_host_install_tools` makes the same call once a first
-    # launch's installs exist, and the two agree because neither composes the order itself.
-    _apply_host_tool_path(os.environ, stack)
-    # Any `mise` the agent or a recipe script runs needs this. Unset, it reads the user's
-    # ~/.local/share/mise, where the stack installed nothing, so a `mise x`/`mise run` inside the
-    # session resolves against a tool set this stack never declared.
-    # Set on os.environ (not a private dict) for the same reason as PATH: installs, setups,
-    # the agent, and everything the agent spawns all need it, and os.environ IS the host's box.
-    # CLEARS as well as sets — see `_HOST_MISE_UNSET`. Launching a stack from inside another stack's
-    # host session inherits that session's MISE_STATE_DIR, and only a removal gets rid of it.
-    # Snapshot BEFORE the redirect: the agent gets these back at the exec below (#449). The
-    # redirect is for provisioning; carrying it into the session breaks every mise shim on the
-    # user's own PATH, the agent binary included. See `_restore_user_mise_env`.
-    user_mise_env = _snapshot_user_mise_env(os.environ)
-    _apply_host_mise_env(os.environ, stack)
-    # Folder-env contract into THIS process's env, for the same reason (and with the same precedent)
-    # as the PATH mutation above: a container launch sets the contract box-wide (`podman run -e`) so
-    # every process agrees, and the host has no box — os.environ IS the box. Without this the agent
-    # exec'd below inherits nothing, because subprocess.run(env=…) in _host_run_setups is a private
-    # copy that dies with the setup. Set BEFORE the setups so they see it too.
-    if not acp:
-        os.environ.update(harnessed_env(stack, project_path, harness=harness, mode="host"))
+            # Hand the PROJECT the same tool env we are about to hand the agent, so a plain `bd` in this
+            # repo is configured too. After services, because the client env includes their connection.
+            _write_project_tool_env(
+                stack, project_path, harness=harness, verb="host-run",
+                no_strict_mcp=no_strict_mcp, aoe_group=aoe_group, aoe_title=aoe_title,
+            )
 
-    # Materialize the host home FIRST, then install, then setup. This order is required, not
-    # stylistic: _materialize_host_home rmtree's the home on every launch, so an install that ran
-    # before it would have its output deleted — silently (harnessed-8px.1). Setup follows install
-    # because install bakes the content setup then configures. _host_launch_plan is pure
-    # materialization (its returned argv is rebuilt below), so hoisting it above the scripts costs
-    # nothing and is what lets a script write into the home at all.
-    #
-    # Resolve settings into the PROFILE first: _materialize_host_home (inside the plan) copies
-    # prof/settings.json into the host config dir verbatim, so anything not applied here never
-    # reaches the agent. This is the host half of the container path's merge (see the
-    # _merge_host_claude_settings call in `launch`) — without it a host session ran on the bare
-    # assemble-time FLOOR, so the host's own ~/.claude defaultMode never crossed over and a user
-    # running `auto` silently got `acceptEdits` (bd harnessed-8px.8). merge_settings applies
-    # required.defaultMode with setdefault — a floor, not an override — so the host's mode wins.
-    if harness in ("claude", "omp", "opencode") and not project_only:
-        _merge_host_claude_settings(
-            profile_dir(stack, harness),
-            emit.required_settings(
-                _resolve_service_servers(_merge_servers(host_recipes), None),
-                host_recipes, host_stk.permissions, harness, host_stk.settings,
-            ),
-            harness,
-        )
+        # Recipe `env:` — the host half of what the derived image's ENV does for a container launch.
+        # Set on THIS process (same reasoning as the PATH mutation below: the process is dedicated to
+        # this launch), so all three consumers get it from one place: any install/setup script spawned
+        # from here inherits it, and so does claude itself — `env = dict(os.environ)` at the exec below
+        # is what actually delivers it to the running agent, the row that was broken before.
+        # Recipe declarations win over an inherited value, mirroring `podman run -e` in container mode.
+        if not acp:
+            os.environ.update(_recipe_env(host_recipes, project_path, mode="host"))
+
+        # Put the stack bin dir on PATH BEFORE recipe setups + native MCP check. install.sh may put tools
+        # there (via UV_TOOL_BIN_DIR / PNPM_HOME redirect), and _host_native_mcp's presence check runs
+        # after that — it needs them resolvable. Mutating this process's PATH is fine: it's dedicated to
+        # this launch, and claude (env built from os.environ below) inherits it.
+        # The stack's `tools:` join it (bd harnessed-1t4.3): a binary the agent cannot resolve is the
+        # same as one that was never installed. Their REAL install dirs, never mise's shims dir — see
+        # `_host_tool_bin_dirs` and #449 for the two ways that dir shadowed the user's PATH, one of
+        # which killed the agent binary itself. `_apply_host_tool_path` writes BOTH entries, in the
+        # order `_stack_tool_path_prefix` fixes; `_host_install_tools` makes the same call once a first
+        # launch's installs exist, and the two agree because neither composes the order itself.
+        _apply_host_tool_path(os.environ, stack)
+        # Any `mise` the agent or a recipe script runs needs this. Unset, it reads the user's
+        # ~/.local/share/mise, where the stack installed nothing, so a `mise x`/`mise run` inside the
+        # session resolves against a tool set this stack never declared.
+        # Set on os.environ (not a private dict) for the same reason as PATH: installs, setups,
+        # the agent, and everything the agent spawns all need it, and os.environ IS the host's box.
+        # CLEARS as well as sets — see `_HOST_MISE_UNSET`. Launching a stack from inside another stack's
+        # host session inherits that session's MISE_STATE_DIR, and only a removal gets rid of it.
+        # Snapshot BEFORE the redirect: the agent gets these back at the exec below (#449). The
+        # redirect is for provisioning; carrying it into the session breaks every mise shim on the
+        # user's own PATH, the agent binary included. See `_restore_user_mise_env`.
+        user_mise_env = _snapshot_user_mise_env(os.environ)
+        _apply_host_mise_env(os.environ, stack)
+        # Folder-env contract into THIS process's env, for the same reason (and with the same precedent)
+        # as the PATH mutation above: a container launch sets the contract box-wide (`podman run -e`) so
+        # every process agrees, and the host has no box — os.environ IS the box. Without this the agent
+        # exec'd below inherits nothing, because subprocess.run(env=…) in _host_run_setups is a private
+        # copy that dies with the setup. Set BEFORE the setups so they see it too.
+        if not acp:
+            os.environ.update(harnessed_env(stack, project_path, harness=harness, mode="host"))
+
+        # Materialize the host home FIRST, then install, then setup. This order is required, not
+        # stylistic: _materialize_host_home rmtree's the home on every launch, so an install that ran
+        # before it would have its output deleted — silently (harnessed-8px.1). Setup follows install
+        # because install bakes the content setup then configures. _host_launch_plan is pure
+        # materialization (its returned argv is rebuilt below), so hoisting it above the scripts costs
+        # nothing and is what lets a script write into the home at all.
+        #
+        # Resolve settings into the PROFILE first: _materialize_host_home (inside the plan) copies
+        # prof/settings.json into the host config dir verbatim, so anything not applied here never
+        # reaches the agent. This is the host half of the container path's merge (see the
+        # _merge_host_claude_settings call in `launch`) — without it a host session ran on the bare
+        # assemble-time FLOOR, so the host's own ~/.claude defaultMode never crossed over and a user
+        # running `auto` silently got `acceptEdits` (bd harnessed-8px.8). merge_settings applies
+        # required.defaultMode with setdefault — a floor, not an override — so the host's mode wins.
+        # Only the launch that builds merges: the merge rewrites settings.json inside a profile a live
+        # session reads, and the builder already merged it (GH-631 A1).
+        if harness in ("claude", "omp", "opencode") and claim is not None and claim.build:
+            _merge_host_claude_settings(
+                profile_dir(stack, harness),
+                emit.required_settings(
+                    _resolve_service_servers(_merge_servers(host_recipes), None),
+                    host_recipes, host_stk.permissions, harness, host_stk.settings,
+                ),
+                harness,
+            )
+        if claim is not None:
+            claim.done()
+    except BaseException:
+        # A build that dies before `done()` must not leave the next launch waiting on the gate.
+        if claim is not None:
+            claim.release()
+        raise
     # Lock spans the rebuild AND the installs — see _host_home_lock for why releasing earlier would
     # let a second launch skip installs that are still running. `seed_auth` joins them inside it,
     # exactly where `_host_launch_plan` used to perform it.

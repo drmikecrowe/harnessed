@@ -21,6 +21,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from io import StringIO
 from pathlib import Path
+from typing import TextIO
 
 from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
@@ -109,6 +110,93 @@ def _host_home_lock(home: Path) -> Generator[None, None, None]:
     finally:
         fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
         fh.close()
+
+
+class _ProfileClaim:
+    """One launch's hold on a stack's assembled profile — see `_claim_profile`."""
+
+    def __init__(self, gate: TextIO | None, session: TextIO, *, build: bool) -> None:
+        self.build = build
+        self._gate = gate
+        self._session = session
+        # Set by done() or release(), so each runs once. Not `_gate is None`: a busy claim has no
+        # gate from the start, and its release() must still drop the shared lock (PR #636 review).
+        self._finished = False
+
+    def done(self) -> None:
+        """The launch is ready: keep the profile shared for this session, and let the next claim in.
+
+        Converting EX to SH is not atomic under flock, so it happens while the gate is still held."""
+        if self._finished:
+            return
+        self._finished = True
+        if self._gate is not None:
+            fcntl.flock(self._session.fileno(), fcntl.LOCK_SH)
+            os.set_inheritable(self._session.fileno(), True)
+            self._gate.close()
+            self._gate = None
+
+    def release(self) -> None:
+        """Drop the locks of a launch that failed before `done()`; a no-op after it."""
+        if self._finished:
+            return
+        self._finished = True
+        self._session.close()
+        if self._gate is not None:
+            self._gate.close()
+            self._gate = None
+
+
+def _claim_profile(stack: str, harness: str) -> _ProfileClaim:
+    """Claim `stack`'s assembled `harness` profile before a host launch assembles it (GH-631).
+
+    `assemble` resets the profile with an unlocked rmtree, so two launches raced inside it and a later
+    launch deleted the files a running session read. The session lock is held EXCLUSIVE by the one
+    launch that builds, then SHARED by every session for its life: the fd is made inheritable, so
+    it survives the exec into the harness and the kernel drops it when the session ends, crash
+    included. The gate serializes claims, so a second launch waits for the build instead of finding
+    a half-built profile. Neither lock is ever written to: no counter, no PID, no marker.
+
+    Both files are SIBLINGS of the profile dir — anything inside it dies in `reset_profile`.
+    """
+    parent = paths.profile_dir(stack, harness).parent
+    parent.mkdir(parents=True, exist_ok=True)
+    gate = open(parent / f"{harness}.build.lock", "a")
+    session: TextIO | None = None
+    try:
+        try:
+            fcntl.flock(gate.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            # Another launch is building: say so, or this launch looks hung until it finishes.
+            _err.print(
+                f"[blue][INFO][/blue] waiting for a concurrent build of profile '{stack}' ({harness}) ...",
+                soft_wrap=True,
+            )
+            fcntl.flock(gate.fileno(), fcntl.LOCK_EX)
+        session = open(parent / f"{harness}.lock", "a")
+        # Under the gate only a builder that is still exiting can hold EX: a dying process can
+        # drop its gate before its session lock. SH waits that out, so the test below sees live
+        # sessions only, never a half-built profile (PR #636).
+        fcntl.flock(session.fileno(), fcntl.LOCK_SH)
+        try:
+            fcntl.flock(session.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            fcntl.flock(session.fileno(), fcntl.LOCK_SH)  # a failed conversion may have dropped it
+            os.set_inheritable(session.fileno(), True)
+            gate.close()
+            _err.print(
+                f"[blue][INFO][/blue] profile '{stack}' ({harness}) is in use by a running session; "
+                "stack changes apply after every session of it closes",
+                soft_wrap=True,
+            )
+            return _ProfileClaim(None, session, build=False)
+        return _ProfileClaim(gate, session, build=True)
+    except BaseException:
+        # No claim reaches the caller, so nothing else can release these (PR #636 review).
+        if session is not None:
+            session.close()
+        gate.close()
+        raise
 
 
 # Files Claude Code's daemon keeps in its per-project state dir. Presence of ANY of these marks a
