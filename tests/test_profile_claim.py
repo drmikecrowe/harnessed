@@ -236,6 +236,45 @@ class TestAFailedClaimReleases:
         assert _try_exclusive(_lock())
 
 
+class TestABusyClaimReleases:
+    """PR #636 review: on the busy path `release()` was a no-op, so a launch that reused the profile
+    and then failed before `done()` kept its shared lock for as long as the claim lived."""
+
+    @pytest.fixture
+    def busy(self, env):
+        _lock().parent.mkdir(parents=True)
+        holder = _spawn(env, _HOLDER, _lock())
+        assert holder.stdout is not None
+        assert holder.stdout.readline().strip() == "held"
+        claim = _claim_profile("s", "claude")
+        assert claim.build is False
+        yield claim, holder
+        if holder.poll() is None:
+            holder.kill()
+            holder.communicate()
+
+    @staticmethod
+    def _end(holder: subprocess.Popen) -> None:
+        holder.kill()
+        holder.communicate(timeout=30)
+
+    def test_release_before_done_drops_the_shared_lock(self, busy):
+        claim, holder = busy
+        claim.release()
+        self._end(holder)
+        assert _try_exclusive(_lock())
+
+    def test_release_after_done_keeps_the_shared_lock(self, busy):
+        claim, holder = busy
+        claim.done()
+        claim.release()
+        self._end(holder)
+        try:
+            assert not _try_exclusive(_lock())
+        finally:
+            claim.release()
+
+
 class TestSessionLockSurvivesExec:
     @pytest.fixture
     def execd(self, env):

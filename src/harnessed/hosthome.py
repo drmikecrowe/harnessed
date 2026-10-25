@@ -119,25 +119,32 @@ class _ProfileClaim:
         self.build = build
         self._gate = gate
         self._session = session
+        # Set by done() or release(), so each runs once. Not `_gate is None`: a busy claim has no
+        # gate from the start, and its release() must still drop the shared lock (PR #636 review).
+        self._finished = False
 
     def done(self) -> None:
-        """The build is finished: keep the profile shared for this session, and let the next claim in.
+        """The launch is ready: keep the profile shared for this session, and let the next claim in.
 
         Converting EX to SH is not atomic under flock, so it happens while the gate is still held."""
-        if self._gate is None:
+        if self._finished:
             return
-        fcntl.flock(self._session.fileno(), fcntl.LOCK_SH)
-        os.set_inheritable(self._session.fileno(), True)
-        self._gate.close()
-        self._gate = None
+        self._finished = True
+        if self._gate is not None:
+            fcntl.flock(self._session.fileno(), fcntl.LOCK_SH)
+            os.set_inheritable(self._session.fileno(), True)
+            self._gate.close()
+            self._gate = None
 
     def release(self) -> None:
-        """Drop both locks of a build that failed before `done()`; a no-op after it."""
-        if self._gate is None:
+        """Drop the locks of a launch that failed before `done()`; a no-op after it."""
+        if self._finished:
             return
+        self._finished = True
         self._session.close()
-        self._gate.close()
-        self._gate = None
+        if self._gate is not None:
+            self._gate.close()
+            self._gate = None
 
 
 def _claim_profile(stack: str, harness: str) -> _ProfileClaim:
