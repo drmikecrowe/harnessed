@@ -12,7 +12,7 @@ Each criterion and its proof:
 6. `host-run` and `host-acp` each claim once, and `project-setup` never claims: S6.1, S6.2.
 7. The lock files survive `reset_profile`: S7.1.
 
-All 15 scenarios pass, and all 6 gauntlet layers passed on commit `61184e7`. Not proven: the `live` and `live-docker` CI jobs, which run only on the PR.
+All 14 scenarios pass, and all 6 gauntlet layers passed on commit `61184e7`. Not proven: the `live` and `live-docker` CI jobs, which run only on the PR.
 
 ## Agent decisions
 <details><summary>1 agent decision</summary>
@@ -36,7 +36,7 @@ All 15 scenarios pass, and all 6 gauntlet layers passed on commit `61184e7`. Not
 ## Orientation
 - Verdict: PASSED WITH LIMITS
 - Delivered: `_launch_host` claims the profile with a build gate and an inherited session lock, and assembles only when no session or build holds it.
-- Proven: 15/15 scenarios mapped and passing
+- Proven: 14/14 scenarios mapped and passing
 - Not proven: the `live` and `live-docker` layer (runs on the PR only)
 
 - Process: spec-evidence 0.16.2
@@ -76,7 +76,7 @@ All 15 scenarios pass, and all 6 gauntlet layers passed on commit `61184e7`. Not
 
 ### Spec → Test mapping
 <details>
-<summary>15/15 scenarios mapped and passing</summary>
+<summary>14/14 scenarios mapped and passing</summary>
 
 | Scenario | Test | Status |
 |---|---|---|
@@ -147,4 +147,5 @@ Must NOT mapping:
 - S5.1 failed on its first green run: the test child dropped the claim object right after `done()`, so CPython closed the fd before the exec. I fixed the test only, by binding the claim the way `_launch_host` does, and it passes. The implementation did not change.
 - The first baseline run used the wrong `--store` path (`spec-evidence/work/baselines`). I stopped it after a few seconds, deleted the directory, and reran it against `work/baselines`.
 - Adversary round 1 returned 0 findings, so no fix changed code and no round 2 ran.
+- The first `built` commit (`07734d3`) said 15/15 scenarios. The SPEC has 14, which Gate 2a pass 1 graded. I corrected the count, with no other change, and ran Gate 2a again.
 - The Gortex index served `main/` during part of the session, and its worktree route was rebuilding. I read worktree files by absolute path.
