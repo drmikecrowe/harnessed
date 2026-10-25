@@ -1,0 +1,59 @@
+{
+  "result": "green",
+  "mode": "full",
+  "expected_layers": [
+    "tests",
+    "coverage",
+    "types",
+    "lint",
+    "shellcheck",
+    "secrets"
+  ],
+  "completed_layers": [
+    "tests",
+    "coverage",
+    "types",
+    "lint",
+    "shellcheck",
+    "secrets"
+  ],
+  "layer_seconds": {
+    "tests": 286.862,
+    "coverage": 349.062,
+    "types": 13.515,
+    "lint": 0.113,
+    "shellcheck": 1.385,
+    "secrets": 2.461
+  },
+  "layers": {
+    "tests": {
+      "baseline": "reused",
+      "selection": "off"
+    },
+    "coverage": {
+      "baseline": "reused",
+      "selection": "off"
+    },
+    "types": {
+      "baseline": "reused",
+      "selection": "off"
+    },
+    "lint": {
+      "baseline": "reused",
+      "selection": "off"
+    },
+    "shellcheck": {
+      "baseline": "reused",
+      "selection": "off"
+    },
+    "secrets": {
+      "baseline": "reused",
+      "selection": "off"
+    }
+  },
+  "failed": null,
+  "exit_code": 0,
+  "commit": "6de22983165402564ba85db1f5a5ccd1deb9ebaa",
+  "dirty": true,
+  "written": "2026-10-23T18:46:02.355Z"
+}

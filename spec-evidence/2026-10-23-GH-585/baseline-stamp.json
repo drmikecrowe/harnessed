@@ -1,0 +1,65 @@
+{
+  "result": "green",
+  "mode": "baseline",
+  "expected_layers": [
+    "tests",
+    "coverage",
+    "types",
+    "lint",
+    "shellcheck",
+    "secrets"
+  ],
+  "completed_layers": [
+    "tests",
+    "coverage",
+    "types",
+    "lint",
+    "shellcheck",
+    "secrets"
+  ],
+  "layer_seconds": {
+    "tests": 246.038,
+    "coverage": 308.65,
+    "types": 12.548,
+    "lint": 0.158,
+    "shellcheck": 1.18,
+    "secrets": 2.18
+  },
+  "layers": {
+    "tests": {
+      "baseline": "rebuilt",
+      "selection": "off",
+      "baseline_reason": "absent"
+    },
+    "coverage": {
+      "baseline": "rebuilt",
+      "selection": "off",
+      "baseline_reason": "absent"
+    },
+    "types": {
+      "baseline": "rebuilt",
+      "selection": "off",
+      "baseline_reason": "absent"
+    },
+    "lint": {
+      "baseline": "rebuilt",
+      "selection": "off",
+      "baseline_reason": "absent"
+    },
+    "shellcheck": {
+      "baseline": "rebuilt",
+      "selection": "off",
+      "baseline_reason": "absent"
+    },
+    "secrets": {
+      "baseline": "rebuilt",
+      "selection": "off",
+      "baseline_reason": "absent"
+    }
+  },
+  "failed": null,
+  "exit_code": 0,
+  "commit": "6de22983165402564ba85db1f5a5ccd1deb9ebaa",
+  "dirty": false,
+  "written": "2026-10-23T13:18:39.631Z"
+}
