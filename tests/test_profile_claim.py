@@ -192,6 +192,36 @@ class TestFailedBuildReleases:
         assert b_out.strip() == "build=True", b_err
 
 
+class TestAFailedClaimReleases:
+    """PR #636 review: a lock call that fails inside `_claim_profile` returned no claim, so nothing
+    could release the gate it already held."""
+
+    def test_a_session_lock_error_leaves_the_gate_free(self, env, monkeypatch):
+        import errno
+
+        from harnessed import hosthome
+
+        real = fcntl.flock
+
+        def flock(fd, op):
+            if op == fcntl.LOCK_EX | fcntl.LOCK_NB:
+                raise OSError(errno.ENOLCK, "no locks available")
+            return real(fd, op)
+
+        # Kept, as a caller that logs or re-raises it keeps it: its traceback holds the frame's files,
+        # so GC cannot be what frees the gate. (`pytest.raises` drops the frames, hiding the leak.)
+        kept: OSError | None = None
+        with monkeypatch.context() as m:
+            m.setattr(hosthome.fcntl, "flock", flock)
+            try:
+                _claim_profile("s", "claude")
+            except OSError as exc:
+                kept = exc
+        assert kept is not None and kept.errno == errno.ENOLCK
+        assert _try_exclusive(_gate())
+        assert _try_exclusive(_lock())
+
+
 class TestSessionLockSurvivesExec:
     @pytest.fixture
     def execd(self, env):

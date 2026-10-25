@@ -155,21 +155,29 @@ def _claim_profile(stack: str, harness: str) -> _ProfileClaim:
     parent = paths.profile_dir(stack, harness).parent
     parent.mkdir(parents=True, exist_ok=True)
     gate = open(parent / f"{harness}.build.lock", "a")
-    fcntl.flock(gate.fileno(), fcntl.LOCK_EX)
-    session = open(parent / f"{harness}.lock", "a")
+    session: TextIO | None = None
     try:
-        fcntl.flock(session.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        fcntl.flock(session.fileno(), fcntl.LOCK_SH)
-        os.set_inheritable(session.fileno(), True)
+        fcntl.flock(gate.fileno(), fcntl.LOCK_EX)
+        session = open(parent / f"{harness}.lock", "a")
+        try:
+            fcntl.flock(session.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            fcntl.flock(session.fileno(), fcntl.LOCK_SH)
+            os.set_inheritable(session.fileno(), True)
+            gate.close()
+            _err.print(
+                f"[blue][INFO][/blue] profile '{stack}' ({harness}) is in use by a running session; "
+                "stack changes apply after every session of it closes",
+                soft_wrap=True,
+            )
+            return _ProfileClaim(None, session, build=False)
+        return _ProfileClaim(gate, session, build=True)
+    except BaseException:
+        # No claim reaches the caller, so nothing else can release these (PR #636 review).
+        if session is not None:
+            session.close()
         gate.close()
-        _err.print(
-            f"[blue][INFO][/blue] profile '{stack}' ({harness}) is in use by a running session; "
-            "stack changes apply after every session of it closes",
-            soft_wrap=True,
-        )
-        return _ProfileClaim(None, session, build=False)
-    return _ProfileClaim(gate, session, build=True)
+        raise
 
 
 # Files Claude Code's daemon keeps in its per-project state dir. Presence of ANY of these marks a
