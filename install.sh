@@ -226,7 +226,10 @@ if [ "$ACTION" = "uninstall" ]; then
   confirm "Uninstall?"
 
   case "$in_use" in
-    uv|mise) eval "$(uv_run) tool uninstall harnessed" ;;
+    uv)   uv tool uninstall harnessed ;;
+    # Both uv paths share one tool dir, so the uv on PATH can uninstall when
+    # mise's pinned uv has gone missing.
+    mise) mu="$(mise_uv)"; "${mu:-uv}" tool uninstall harnessed ;;
     pip)  unlink_commands "$PIP_VENV"; rm -rf "$PIP_VENV"; say "removed: $PIP_VENV" ;;
     pipx) pipx uninstall harnessed ;;
   esac
@@ -261,10 +264,11 @@ else
   die "podman (>= ${PODMAN_MIN_MAJOR}.0) or docker is required. The installer will not install either for you."
 fi
 
-# The install command and the helper single-quote these paths, so a quote
-# inside one would break the generated shell.
-case "${BIN_DIR}${PIP_VENV}" in
-  *"'"*) die "an install path contains a single quote; use HOME and XDG_DATA_HOME without one." ;;
+# The install command and the helper quote these paths (mise's uv path comes
+# from MISE_DATA_DIR), so a quote, $ or backtick inside one would break the
+# generated shell.
+case "${BIN_DIR}${PIP_VENV}${UV_TOOLS}${MISE_SHIMS}" in
+  *"'"*|*'"'*|*'$'*|*'`'*) die "an install path contains a shell metacharacter; use HOME, XDG_DATA_HOME, MISE_DATA_DIR and UV_TOOL_DIR without one." ;;
 esac
 
 # ── detect: package manager (in use first, then mise, uv, pip) ───────────
@@ -404,7 +408,8 @@ helper_pre=""
 if [ "$MANAGER" = pip ]; then
   helper_pre="[ -x '${PIP_VENV}/bin/pip' ] || python3 -m venv '${PIP_VENV}'"
 elif [ "$MANAGER" = mise ]; then
-  helper_pre="mise install uv@${UV_PIN}"
+  helper_pre="command -v mise >/dev/null 2>&1 || { echo 'error: mise is required to self-update this install; run install.sh again' >&2; exit 1; }
+mise install uv@${UV_PIN}"
 fi
 # The pip helper restores its links, never over a real file.
 helper_links=""
