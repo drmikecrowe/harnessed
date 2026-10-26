@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.1](https://github.com/drmikecrowe/harnessed/compare/v0.10.0...v0.10.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* **catalog:** stop head from failing pipefail scripts through SIGPIPE ([#641](https://github.com/drmikecrowe/harnessed/issues/641)) ([2eab775](https://github.com/drmikecrowe/harnessed/commit/2eab775d79f894debeb8d7c99df829eae2b113c1))
+
+
+### Documentation
+
+* remove ROADMAP.md and its README link ([#640](https://github.com/drmikecrowe/harnessed/issues/640)) ([830940f](https://github.com/drmikecrowe/harnessed/commit/830940fbd570b2d053c689fa4757cf2f6a4a24d6))
+
 ## [0.10.0](https://github.com/drmikecrowe/harnessed/compare/v0.9.0...v0.10.0) (2026-10-26)
 
 
