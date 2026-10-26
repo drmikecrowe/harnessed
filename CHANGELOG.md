@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.9.0](https://github.com/drmikecrowe/harnessed/compare/v0.8.0...v0.9.0) (2026-10-25)
+
+
+### Features
+
+* **catalog:** upgrade pins 2026-10-25 ([#632](https://github.com/drmikecrowe/harnessed/issues/632)) ([f768ec2](https://github.com/drmikecrowe/harnessed/commit/f768ec2720f0a8a4d30770b1fc4f9d8ae7b069f3))
+
+
+### Bug Fixes
+
+* **install:** install through mise's pinned uv, not mise's pypi backend ([#633](https://github.com/drmikecrowe/harnessed/issues/633)) ([ecb8270](https://github.com/drmikecrowe/harnessed/commit/ecb8270bd38deeb3126637cccef69ee5ae84fbf7))
+
+
+### Documentation
+
+* **acp:** record the container-mode wiki update (GH-585) ([#634](https://github.com/drmikecrowe/harnessed/issues/634)) ([f21a22c](https://github.com/drmikecrowe/harnessed/commit/f21a22cb6d6e7b9307f8d16b1c6bdab338aba02b))
+
 ## [0.8.0](https://github.com/drmikecrowe/harnessed/compare/v0.7.0...v0.8.0) (2026-10-24)
 
 
