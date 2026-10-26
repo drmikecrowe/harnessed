@@ -31,7 +31,7 @@ if [ ! -f .serena/project.yml ]; then
     serena project create --name "$HARNESSED_CFG_NAME" --index .
 else
     current=$(sed -n 's/^project_name:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}[[:space:]]*$/\1/p' \
-        .serena/project.yml | head -1)
+        .serena/project.yml | sed -n 1p)  # not head: SIGPIPE + pipefail exits silently
     if [ -z "$current" ]; then
         # Key absent entirely (hand-edited or an older serena) — add it.
         printf 'project_name: "%s"\n' "$HARNESSED_CFG_NAME" >> .serena/project.yml

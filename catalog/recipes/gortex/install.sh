@@ -26,7 +26,9 @@ if ! command -v gortex >/dev/null 2>&1; then
     echo "install.sh: gortex not on PATH — the tools: (github:zzet/gortex@…) layer delivered nothing runnable" >&2
     exit 1
 fi
-version="$(gortex version | head -n 1)"
+# `sed -n 1p`, never `head`: head exits early, gortex dies of SIGPIPE, and pipefail ends this
+# script silently (7 runs in 50 measured).
+version="$(gortex version | sed -n 1p)"
 
 # --- 2. the wiring ----------------------------------------------------------------------------------
 # --agents=claude-code   recipes never name harnesses; every harness consumes the same

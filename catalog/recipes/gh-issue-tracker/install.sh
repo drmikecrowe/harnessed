@@ -41,10 +41,12 @@ fi
 #    no-ops silently when gh is absent at runtime. An OLD gh is fatal, because that is the silent
 #    one.
 if command -v gh >/dev/null 2>&1; then
-    have="$(gh --version 2>/dev/null | head -1 | sed -E 's/.*gh version ([0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+    # `sed -n 1p`, never `head`: head exits early, the writer dies of SIGPIPE, and pipefail ends
+    # this script silently.
+    have="$(gh --version 2>/dev/null | sed -n 1p | sed -E 's/.*gh version ([0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
     need=2.94.0
     # Pure-sort version compare: the lower of {have, need} sorted first must be `need`.
-    if [ "$(printf '%s\n%s\n' "$have" "$need" | sort -V | head -1)" != "$need" ]; then
+    if [ "$(printf '%s\n%s\n' "$have" "$need" | sort -V | sed -n 1p)" != "$need" ]; then
         echo "gh-issue-tracker: gh $have is below the required $need." >&2
         echo "  Below $need, 'gh issue create --parent/--blocked-by' does not exist and the skill" >&2
         echo "  silently falls back to unqueryable prose in the issue body. Upgrade gh." >&2
