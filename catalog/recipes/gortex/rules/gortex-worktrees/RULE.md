@@ -28,6 +28,10 @@ Recovery steps the Gortex instructions do not give. They apply to v0.64.x. Upstr
 - Treat `not a ready dedicated checkout` on `untrack` as success. The checkout is already automatic.
 - From an untracked cwd, pass `--index <trunk worktree>` to every `gortex repos` command.
 
+## Hook false positives
+
+- When the hook blocks `rg` on a file that is not indexed source, process the file with `ctx_execute`.
+
 ## New-worktree scripts
 
 When you write a script or task that creates a worktree, follow this pattern. `$dest` is the new worktree and `$trunk` is the trunk worktree.
