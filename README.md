@@ -201,7 +201,6 @@ Everything below lives on the [wiki](https://github.com/drmikecrowe/harnessed/wi
 - [Troubleshooting](https://github.com/drmikecrowe/harnessed/wiki/troubleshooting): podman setup, runtimes, first-run build, `--fresh`.
 - [Alternatives](https://github.com/drmikecrowe/harnessed/wiki/alternatives): how this compares to OpenShell, the Anthropic devcontainer, and Trail of Bits.
 - [Design rationale](https://github.com/drmikecrowe/harnessed/wiki/harnessed-design): the why behind every decision.
-- [Roadmap](ROADMAP.md): where this is going, at the epic level.
 
 Working on harnessed itself? [CONTRIBUTING.md](CONTRIBUTING.md) has the dev setup.
 
