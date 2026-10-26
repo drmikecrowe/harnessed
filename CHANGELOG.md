@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/drmikecrowe/harnessed/compare/v0.9.0...v0.10.0) (2026-10-26)
+
+
+### Features
+
+* **gortex:** add the hook false-positive recovery to the worktree rule ([#638](https://github.com/drmikecrowe/harnessed/issues/638)) ([4e181c7](https://github.com/drmikecrowe/harnessed/commit/4e181c7d1a421cf41be9c5351ffb1928b26e6a25))
+
 ## [0.9.0](https://github.com/drmikecrowe/harnessed/compare/v0.8.0...v0.9.0) (2026-10-25)
 
 
