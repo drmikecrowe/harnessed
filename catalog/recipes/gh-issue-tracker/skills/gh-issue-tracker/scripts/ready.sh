@@ -32,8 +32,10 @@ command -v jq >/dev/null || { echo "jq not found" >&2; exit 127; }
 # Fail loudly on an old gh. An unsupported --json field makes gh error out, but
 # a partially-supported one could return null and silently report blocked work
 # as ready. That is the one wrong answer this script must never give.
-GH_VER="$(gh --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
-if [ "$(printf '%s\n2.94.0\n' "$GH_VER" | sort -V | head -1)" != "2.94.0" ]; then
+# `sed -n 1p`, never `head`: head exits early, the writer dies of SIGPIPE, and pipefail ends
+# this script silently.
+GH_VER="$(gh --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | sed -n 1p)"
+if [ "$(printf '%s\n2.94.0\n' "$GH_VER" | sort -V | sed -n 1p)" != "2.94.0" ]; then
   echo "gh $GH_VER is too old; need >= 2.94.0 for blockedBy/blocking fields" >&2
   exit 1
 fi
