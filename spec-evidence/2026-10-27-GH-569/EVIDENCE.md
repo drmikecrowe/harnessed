@@ -5,10 +5,10 @@ Delivered: every global launcher now takes `--register-<name>-only`. The flag ru
 
 How each criterion is proven:
 - AC-1 (aoe): tests of the shipped `register` script, the hidden `aoe-register` command and the runner (S1.1, S1.5 to S1.8). The second-run and pre-change-row clauses rest on the existing `sync_session` tests and on `test_aoe_real` against the real `aoe` binary (S1.2 to S1.4).
-- AC-2 (Zed), AC-3 (Atlas), AC-4 (VS Code): tests that run the shipped scripts against a temporary home and compare the settings files byte for byte (S2, S3, S4.1 to S4.5, S4.7). Property tests and mutation testing cover the editor.
-- AC-5 (lookup), AC-6 (no automatic registration), AC-7 (build first): runner tests through `main` (S5, S6, S7.1 to S7.4).
+- AC-2 (Zed), AC-3 (Atlas), AC-4 (VS Code): tests that run the shipped scripts against a temporary home and compare the settings files byte for byte (S2, S3, S4.1 to S4.5, S4.7). Property tests and mutation testing cover the editor. For AC-4's panel clause, a child-process test calls the registered wrapper exactly as the extension does, and the stack's claude starts with the SDK arguments (S4.6).
+- AC-5 (lookup), AC-6 (no automatic registration), AC-7 (build first): runner tests through `main` (S5, S6, S7.1 to S7.4). For AC-7's `initialize` clause, a test registers on a stack with no profile, which builds it, and the ACP launcher's `host-acp` then answers `initialize` with a `result` (S7.5).
 
-Not proven: the VS Code panel running a session (S4.6), the ACP `initialize` reply after a register run (S7.5), and the Zed panel and the Atlas list showing the entry. All need the apps and are the user's manual checks. The `live` and `live-docker` jobs run only on the PR. Real execution is SUBSTITUTED. Mutation testing leaves 45 equivalent mutants, each named under "Layers not run as specified".
+Not proven: the editors' own UIs, which no test drives: the VS Code panel's own spawn, the Zed panel and the Atlas list. Those remain the user's manual checks. The `live` and `live-docker` jobs run only on the PR. Real execution is SUBSTITUTED. Mutation testing leaves 45 equivalent mutants, each named under "Layers not run as specified".
 
 ## Agent decisions
 <details><summary>17 agent decisions</summary>
@@ -118,14 +118,14 @@ Not proven: the VS Code panel running a session (S4.6), the ACP `initialize` rep
 ## Orientation
 - Verdict: PASSED WITH LIMITS
 - Delivered: `--register-<name>-only` on every global launcher runs a catalog integration after a build-if-needed; aoe, Zed, Atlas and VS Code ship as integrations, and a launch registers nothing.
-- Proven: 49/52 scenarios mapped and passing; 3 unverified (S4.6, S7.5, and the Zed panel and Atlas list under the manual layer).
-- Not proven: S4.6, S7.5 and the Zed panel and Atlas list (manual, the user's); live layer (runs on the PR); real execution SUBSTITUTED; mutation testing with 45 named equivalent mutants.
+- Proven: 51/52 scenarios mapped and passing; 1 unverified (the manual layer: the VS Code, Zed and Atlas UIs).
+- Not proven: the editors' UIs (manual, the user's); live layer (runs on the PR); real execution SUBSTITUTED; mutation testing with 45 named equivalent mutants.
 
 - Process: spec-evidence 0.16.2
 - Spec: spec-evidence/2026-10-27-GH-569/SPEC.md (committed)
 - Spec approval: obtained from mcrowe (commit e49e2ec, `GH-569: spec approved`)
 - Intent review: round 1 changed S1.3, S1.4, S4.7, S5.8 and Known limits; round 2 changed the Summary (the no-`src/` rule governs later integrations), S1.4 (rename-and-add is the AC-1 repair) and S4.4 (cites the extension source for the wrapper argv)
-- Source state: commit 1f091b37509ad78a9ff3e8b9212d5b9ce466540c, the commit the final run read. Adversary round 2 read fc32ac1; the three commits after it change tests and spec-evidence files only, no file under `src/` or `catalog/`.
+- Source state: commit 8687ad28c0a62373ebe8268ae3235a5a70f75f0b, the commit the final run read. Adversary round 2 read fc32ac1; every commit after it changes tests and spec-evidence files only, no file under `src/` or `catalog/`.
 - Baseline: baseline-stamp.json at commit e49e2ec0459b43deacfebc2a062fb57d1a3abc4e, green (4606 passed, 79 skipped)
 
 <details>
@@ -152,12 +152,12 @@ Not proven: the VS Code panel running a session (S4.6), the ACP `initialize` rep
     "secrets"
   ],
   "layer_seconds": {
-    "tests": 276.63,
-    "coverage": 360.041,
-    "types": 13.217,
-    "lint": 0.11,
-    "shellcheck": 1.544,
-    "secrets": 2.293
+    "tests": 290.863,
+    "coverage": 354.013,
+    "types": 13.237,
+    "lint": 0.111,
+    "shellcheck": 2.521,
+    "secrets": 3.3
   },
   "layers": {
     "tests": {
@@ -187,21 +187,21 @@ Not proven: the VS Code panel running a session (S4.6), the ACP `initialize` rep
   },
   "failed": null,
   "exit_code": 0,
-  "commit": "1f091b37509ad78a9ff3e8b9212d5b9ce466540c",
+  "commit": "8687ad28c0a62373ebe8268ae3235a5a70f75f0b",
   "dirty": false,
-  "written": "2026-10-27T14:19:40.388Z"
+  "written": "2026-10-27T14:38:06.192Z"
 }
 ```
 
 </details>
 
 ### Spec → Test mapping
-Rows not `pass`: S4.6 unverified (manual: the VS Code panel), S7.5 unverified (manual: an ACP `initialize` after a register run), and AC-2 and AC-3's app-side check unverified (manual: the Zed panel and the Atlas list).
+Row not `pass`: the manual layer, unverified — the VS Code panel's own spawn, the Zed panel and the Atlas list, which no test can drive.
 
 Test ids below are relative to `tests/`. `ti` is `test_integrations.py`; `tj` is `test_jsonc.py`.
 
 <details>
-<summary>49/52 scenarios mapped and passing</summary>
+<summary>51/52 scenarios mapped and passing</summary>
 
 | Scenario | Test | Status |
 |---|---|---|
@@ -231,7 +231,7 @@ Test ids below are relative to `tests/`. `ti` is `test_integrations.py`; `tj` is
 | S4.3 (negative) | ti::TestVscode::test_s4_3_a_non_claude_harness_is_refused | pass |
 | S4.4 | ti::TestVscodeWrapperArgv::test_s4_4_the_bundled_claude_is_dropped_and_the_rest_is_passthrough; ti::TestVscodeWrapperArgv::test_any_other_argv_is_left_as_it_is | pass |
 | S4.5 (negative) | ti::TestVscode::test_s4_5_invalid_json_is_refused | pass |
-| S4.6 (boundary) | manual: the user opens the Claude Code panel and sends a prompt | unverified |
+| S4.6 (boundary) | ti::test_s4_6_the_wrapper_vscode_runs_starts_the_stacks_claude (the wrapper called as the extension calls it, fact 14; the panel UI itself is under the manual row) | pass |
 | S4.7 (negative) | ti::TestVscode::test_s4_7_the_container_backend_is_refused | pass |
 | S5.1 | ti::TestRunner::test_s5_1_the_contract_reaches_the_integration; ti::TestRunner::test_s5_1_the_container_backend_names_its_own_launchers | pass |
 | S5.2 (boundary) | ti::TestRunner::test_s5_2_the_overlay_wins_over_the_repo_catalog | pass |
@@ -249,14 +249,14 @@ Test ids below are relative to `tests/`. `ti` is `test_integrations.py`; `tj` is
 | S7.2 (boundary) | ti::TestBuildFirst::test_s7_2_a_stale_stamp_needs_a_build; ti::TestBuildFirst::test_s7_3_the_real_stamp_check_reads_a_current_profile | pass |
 | S7.3 (boundary) | ti::TestBuildFirst::test_s7_3_a_current_profile_needs_no_build; ti::TestRunner::test_s5_1_the_contract_reaches_the_integration | pass |
 | S7.4 (negative) | ti::TestBuildFirst::test_s7_4_a_failed_build_runs_no_integration | pass |
-| S7.5 | manual: an ACP `initialize` written to the ACP launcher after a register run | unverified |
+| S7.5 | ti::test_s7_5_after_a_build_and_zed_the_acp_launcher_answers_initialize | pass |
 | Must NOT: ACP stdout | ti::test_an_acp_register_run_writes_nothing_to_stdout | pass |
 | Must NOT: no partial write | tj::TestCli::test_a_failed_rename_leaves_the_old_file; tj::TestCli::test_an_invalid_file_is_refused_and_left_as_it_was | pass |
 | Must NOT: `harnessed build` runs no integration | ti::TestRunner::test_the_flag_is_read_only_on_a_global_verb | pass |
 | Must NOT: launcher names (GH-565) | ti::TestRunner::test_s5_1_the_contract_reaches_the_integration (asserts `launchscript.global_name` paths); the existing launchscript suite, unchanged | pass |
 | Must NOT: no credential value passed | ti::TestRunner::test_s5_8_the_environment_is_the_parents_plus_the_contract | pass |
 | Must NOT: nothing host-local in `catalog/`, no new runtime dependency | `catalog/integrations/*/register` read in full: each uses only `HARNESSED_*`, `HOME` and `XDG_*` at run time; `pyproject.toml` unchanged in the diff | pass |
-| Manual: Zed panel and Atlas list show the entry (AC-2, AC-3) | manual: the user opens each app | unverified |
+| Manual: the VS Code panel, the Zed panel and the Atlas list show and run the entry | manual: the user opens each app | unverified |
 
 Story criteria, clause by clause:
 
@@ -272,7 +272,7 @@ Story criteria, clause by clause:
 | AC-3 boundary: other entries stay; a missing file is created | S3.2, S3.3 | pass |
 | AC-3 negative: invalid JSON refused, file unchanged | S3.4 | pass |
 | AC-4 condition: the wrapper setting is the claude launcher | S4.1, S4.4 | pass |
-| AC-4 condition: the Claude Code panel then runs claude through the stack | S4.6 | unverified |
+| AC-4 condition: the Claude Code panel then runs claude through the stack | S4.6 | pass |
 | AC-4 boundary: a second stack replaces the one value; the rest unchanged | S4.2 | pass |
 | AC-4 negative: omp refused, non-zero, nothing written | S4.3 | pass |
 | AC-5 condition: an overlay integration runs | S5.1 | pass |
@@ -282,13 +282,13 @@ Story criteria, clause by clause:
 | AC-6 boundary: `harnessed rm` still removes aoe rows | S6.2 | pass |
 | AC-6 negative: no aoe integration lists the available ones, non-zero | S6.3 | pass |
 | AC-7 condition: a missing or stale profile is built before the integration | S7.1, S7.2 | pass |
-| AC-7 condition: the ACP launcher then answers `initialize` with a result | S7.5 | unverified |
+| AC-7 condition: the ACP launcher then answers `initialize` with a result | S7.5 | pass |
 | AC-7 boundary: a current profile is not rebuilt | S7.3 | pass |
 | AC-7 negative: a failed build runs nothing, writes nothing, exits non-zero with the build's error | S7.4 | pass |
 
 </details>
 
-Break checks: every new test in `test_integrations.py` and `test_jsonc.py` was first seen failing, at collection, before its module existed. The four tests in commit 0d5622b were each seen failing against a mutant applied by hand. S1.2 to S1.4 and S6.2 cite tests that predate this change and pass unchanged; this change does not touch `aoe.sync_session` or `aoe.forget_stack`.
+Break checks: every new test in `test_integrations.py` and `test_jsonc.py` was first seen failing, at collection, before its module existed. The four tests in commit 0d5622b were each seen failing against a mutant applied by hand. The S4.6 and S7.5 tests in 8687ad2 were each seen failing with their code path disabled (the wrapper argv rule; the build-first branch), and passing with it restored. S1.2 to S1.4 and S6.2 cite tests that predate this change and pass unchanged; this change does not touch `aoe.sync_session` or `aoe.forget_stack`.
 
 ### Gauntlet (final fresh run)
 Every row PASSED.
@@ -298,8 +298,8 @@ Every row PASSED.
 
 | Layer | Command | Status + result | Baseline | Selection | Log |
 |---|---|---|---|---|---|
-| tests | `mise exec -- tools/run-tests.sh` | PASSED — 4763 passed, 79 skipped (baseline 4606 passed, 79 skipped) | reused | off | work/tests.log |
-| coverage | `mise exec -- uv run --extra dev pytest -q --cov=src --cov-branch --cov-fail-under=80` | PASSED — 86.80% total (baseline 86.38%); integrations.py 100%, jsonc.py 99%; 4763 passed, 79 skipped | reused | off | work/coverage.log |
+| tests | `mise exec -- tools/run-tests.sh` | PASSED — 4765 passed, 79 skipped (baseline 4606 passed, 79 skipped) | reused | off | work/tests.log |
+| coverage | `mise exec -- uv run --extra dev pytest -q --cov=src --cov-branch --cov-fail-under=80` | PASSED — 86.80% total (baseline 86.38%); integrations.py 100%, jsonc.py 99%; 4765 passed, 79 skipped | reused | off | work/coverage.log |
 | types | pyright with the dev interpreter | PASSED — 0 errors, 0 warnings | reused | off | work/types.log |
 | lint | `mise exec -- uv run --extra dev ruff check src tests tools` | PASSED — All checks passed | reused | off | work/lint.log |
 | shellcheck | `shellcheck $(git ls-files "*.sh")` | PASSED — 0 findings | reused | off | work/shellcheck.log |
@@ -315,12 +315,12 @@ Contract layers outside the manifest:
 | mutation | `mutmut run "harnessed.jsonc.*" "harnessed.integrations.*"` on a tree copy with `tests_dir` narrowed to the two new test files | integrations: 162 killed, 3 survived. jsonc: 521 killed, 46 survived, 4 timed out. Killed by hand against the final tests: 7 (integrations extract#23; jsonc container#24, _insert#49, _unit#15, and the 4 timeouts: skip#15, skip#17, skip#45, container#50). 45 left, all named below |
 | shellcheck, by hand | `shellcheck -s sh catalog/integrations/*/register` | PASSED — exit 0, 0 findings |
 | live | `live` and `live-docker` on the PR | not run here |
-| manual | S4.6, S7.5, the Zed panel and the Atlas list | not run; the user's |
+| manual | the VS Code panel, the Zed panel and the Atlas list | not run; the user's |
 
 ### Layers not run as specified
 - N-A: none.
 - UNAVAILABLE: live — runs on the PR, because `launcher.py` and `paths.py` are live triggers. It cannot run before a PR exists.
-- UNAVAILABLE: manual — S4.6, S7.5 and the Zed and Atlas checks need the apps and the user.
+- UNAVAILABLE: manual — the VS Code, Zed and Atlas UIs need the apps and the user.
 - SUBSTITUTED: real execution — `ti::test_an_acp_register_run_writes_nothing_to_stdout` runs a real child `python -m harnessed host-acp claude --stack hostmcp --register-zellij-only` against a real stamped profile. It cannot detect a defect in the build path (`_build_stack` was not run for real, because a build rewrites shared runtime state) or in an editor reading what was written.
 - SUBSTITUTED: mutation scope — mutmut ran on a copy of the tree with `tests_dir` set to `tests/test_jsonc.py` and `tests/test_integrations.py`, so `pyproject.toml` stayed unchanged. It cannot show whether another test file kills a mutant. Its 4 timeouts were applied by hand and seen to fail.
 - Named mutation exclusions (45), each equivalent or below what a test can observe:
@@ -359,4 +359,5 @@ Contract layers outside the manifest:
 - The first mutation run left 137 mutants not killed. Tests in 4813ce3 and 0d5622b killed all but the 45 named above. The test helper `run()` had read `SystemExit(None)` as 1, which let a `None` exit code pass; it now reads it as 0.
 - A gauntlet run at 4813ce3 was discarded, because tests were edited during it. A later run was stopped so the evidence inputs could be committed and the stamp would read a clean tree.
 - The first final gauntlet went red on `tests/test_host_acp.py::TestAdversaryRound3::test_a_setup_child_that_ignores_term_is_still_stopped` with `ProcessLookupError`, under the coverage layer only. The test's `_gone` helper reads `/proc/<pid>/stat` while the process exits. It passed 6 of 6 repeats under coverage, and this change does not touch that file or the relay. The rerun was green and is the run cited.
+- Evidence gates, pass 1: Gate 2 not-ready (AC-4, AC-7) and Gate 2a not-ready (S4.6, S7.5), both for the clauses then mapped as manual. Pass 2 adds the two tests in 8687ad2, reruns the gauntlet, and rewrites this report.
 - Mutation testing ran under a copy of the tree; mise printed "not trusted" warnings for that copy's `mise.toml`, which do not affect the Python run.
