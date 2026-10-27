@@ -22,7 +22,6 @@ from typer.core import TyperGroup
 from typer.testing import CliRunner
 
 from harnessed import aoe, launchscript, launcher
-from harnessed.schema import SchemaError
 from support import patch_all
 
 
@@ -1029,14 +1028,15 @@ class TestWriteDispatch:
         assert aoe._spawn("/usr/bin/aoe", []) is True
 
 
-class TestCreateAoeOnly:
-    """`--create-aoe-only`: register the row, run nothing.
+class TestRegisterAoeOnly:
+    """`--register-aoe-only` (GH-569): register the row, run nothing.
 
-    All three launch verbs funnel through `_aoe_register`, so the flag's semantics are pinned here
-    once rather than three times through the CLI.
+    The aoe integration execs `aoe-register`, which ends in `_aoe_register`, so the flag's
+    semantics are pinned here once. A launch no longer mirrors into aoe at all: that is
+    test_integrations' S6.1, and the passive-mirror tests this class held went with the mirror.
     """
 
-    def _register(self, monkeypatch, *, ok: bool, only: bool, drift: str | None = None,
+    def _register(self, monkeypatch, *, ok: bool, drift: str | None = None,
                   repairing: bool = False) -> dict:
         seen: dict = {}
 
@@ -1052,49 +1052,31 @@ class TestCreateAoeOnly:
         monkeypatch.setattr(launcher.aoe, "sync_session", fake_sync)
         seen["exit"] = None
         try:
-            launcher._aoe_register("container-run", "serena", "claude", Path("/p"), only=only)
+            launcher._aoe_register("container-run", "serena", "claude", Path("/p"))
         except typer.Exit as exc:
             seen["exit"] = exc.exit_code
         return seen
 
-    def test_passive_mirror_does_not_block(self, monkeypatch):
-        seen = self._register(monkeypatch, ok=True, only=False)
-        assert seen["background"] is True
-        assert seen["exit"] is None, "a normal launch must carry on past the mirror"
-
-    def test_passive_mirror_ignores_failure(self, monkeypatch):
-        # aoe absent, broken or slow must never turn into a failed launch.
-        seen = self._register(monkeypatch, ok=False, only=False)
-        assert seen["exit"] is None
-
     def test_flag_blocks_on_the_write(self, monkeypatch):
-        seen = self._register(monkeypatch, ok=True, only=True)
+        seen = self._register(monkeypatch, ok=True)
         assert seen["background"] is False, "the user is waiting for this write's result"
 
     def test_flag_exits_zero_without_launching(self, monkeypatch):
-        seen = self._register(monkeypatch, ok=True, only=True)
+        seen = self._register(monkeypatch, ok=True)
         assert seen["exit"] == 0
 
     def test_flag_exits_nonzero_when_registration_fails(self, monkeypatch):
-        # An explicit request, unlike the passive mirror: failing silently would be a lie.
-        seen = self._register(monkeypatch, ok=False, only=True)
+        # An explicit request: failing silently would be a lie.
+        seen = self._register(monkeypatch, ok=False)
         assert seen["exit"] == 1
 
-    def test_normal_launch_prints_drift_and_continues(self, monkeypatch, capsys):
-        # bd harnessed-cn9: a silent exit 0 is what made the stale row cost hours. The launch
-        # still proceeds — a dashboard is not worth failing a launch for — but it SAYS so.
-        seen = self._register(monkeypatch, ok=False, only=False, drift="drift [claude/host] abc123")
-        assert seen["exit"] is None, "the mirror still must not abort a launch"
+    def test_register_aoe_only_fails_on_unrepairable_drift(self, monkeypatch, capsys):
+        seen = self._register(monkeypatch, ok=False, drift="drift [claude/host] abc123")
+        assert seen["exit"] == 1
         err = capsys.readouterr().err
         assert "abc123" in err
         # The title carries `[harness/backend]`; unescaped, rich would eat it as markup.
         assert "[claude/host]" in err
-
-    def test_create_aoe_only_fails_on_unrepairable_drift(self, monkeypatch, capsys):
-        seen = self._register(monkeypatch, ok=False, only=True, drift="drift [claude/host] abc123")
-        assert seen["exit"] == 1
-        err = capsys.readouterr().err
-        assert "abc123" in err
         # Not the "is aoe installed?" hint: aoe answered fine, the row is the problem.
         assert "initialized" not in err
         assert "left the existing row" in err
@@ -1103,120 +1085,59 @@ class TestCreateAoeOnly:
         # The report fires BEFORE the blocking write. If the rename lands and the re-add then
         # fails, the row has already moved — saying "left the existing row as it is" would send
         # the user looking for it under its old title.
-        seen = self._register(monkeypatch, ok=False, only=True, drift="drift abc123",
-                              repairing=True)
+        seen = self._register(monkeypatch, ok=False, drift="drift abc123", repairing=True)
         assert seen["exit"] == 1
         err = capsys.readouterr().err
         assert "left the existing row" not in err
         assert "renamed aside" in err
 
     @pytest.mark.parametrize("verb", ["container-run", "host-run"])
-    def test_every_launch_verb_accepts_the_flag(self, verb):
-        """Assert on the PARAMETER, not on rendered `--help`.
+    def test_no_launch_verb_accepts_create_aoe_only(self, verb):
+        """S1.8 (Decide 2): the old flag is gone, so typer rejects it as unknown.
 
-        Help text is laid out by rich against the terminal width and painted with ANSI, so an
-        earlier version of this test passed locally and failed in CI purely because the flag name
-        wrapped. The declaration is what the assertion is actually about.
+        Assert on the PARAMETER, not on rendered `--help`: help text is laid out by rich against
+        the terminal width and painted with ANSI, so an earlier version of this test passed
+        locally and failed in CI purely because the flag name wrapped.
         """
         group = typer.main.get_command(launcher.app)
         assert isinstance(group, TyperGroup)  # narrows to the .commands mapping
-        assert any("--create-aoe-only" in p.opts for p in group.commands[verb].params)
-
-
-class TestHookPlacement:
-    """A row must never outlive the launch that created it.
-
-    Both backends register only after their last validation gate — `is_built`/staleness for the
-    container path, in-process assembly for the host path. Registering earlier leaves a bookmark
-    for a launch that died, and it would fail identically every time it was started from the
-    dashboard.
-    """
-
-    def _host_run(self, monkeypatch, tmp_path, *, assembly_fails: bool):
-        registered: list = []
-        (tmp_path / "stack.yaml").write_text("name: broken\n")
-        monkeypatch.setattr(launcher.paths, "find_in_catalog", lambda *a: tmp_path)
-        monkeypatch.setattr(
-            launcher.aoe, "sync_session",
-            lambda *a, **k: (registered.append(a), True)[1],
-        )
-
-        def assemble(*_a, **_k):
-            if assembly_fails:
-                raise SchemaError("recipe 'gone' no longer resolves")
-            return None
-
-        monkeypatch.setattr(launcher, "assemble", assemble)
-        # create_aoe_only=True makes the hook itself the stopping point, so a successful assembly
-        # never reaches the launch machinery this test is not about. Both paths raise typer.Exit —
-        # 1 for the assembly failure, 0 for the registration — so the assertion is on what was
-        # registered, not on the exception.
-        with pytest.raises(typer.Exit):
-            launcher._launch_host("broken", "claude", str(tmp_path), create_aoe_only=True)
-        return registered
-
-    def test_failed_assembly_registers_nothing(self, monkeypatch, tmp_path):
-        assert self._host_run(monkeypatch, tmp_path, assembly_fails=True) == []
-
-    def test_registration_happens_once_assembly_succeeds(self, monkeypatch, tmp_path):
-        # Guards the test above from passing vacuously: if the hook were simply gone, both pass.
-        registered = self._host_run(monkeypatch, tmp_path, assembly_fails=False)
-        assert [a[0] for a in registered] == ["host-run"]
+        assert not any("--create-aoe-only" in p.opts for p in group.commands[verb].params)
 
 
 class TestLaunchFlagsReachTheRow:
     """`--no-strict-mcp-config` has to survive the trip from argv to the recorded command.
 
-    It is threaded separately on each verb — `host-run` through `_launch_host`, `container-run`
-    inline — so a wiring test per verb is a wiring test per call site. Both stop at
-    `--create-aoe-only`, which raises typer.Exit(0) from the register hook and never reaches the
-    launch machinery.
+    GH-569: the trip is argv, then `HARNESSED_NO_STRICT_MCP` in the integration's environment,
+    then `aoe-register`, then the row. It is threaded separately on each verb, so a wiring test
+    per verb is a wiring test per call site. `aoe-register` reading the name is pinned in
+    test_integrations (S1.6).
     """
 
-    def _seen(self, monkeypatch, tmp_path) -> dict:
+    def _env(self, monkeypatch, tmp_path, verb: str, argv: list[str]) -> dict:
         seen: dict = {}
+        monkeypatch.setattr(launcher, "_register", "aoe")
+        monkeypatch.setattr(launcher.integrations, "find", lambda name: tmp_path / "register")
+        monkeypatch.setattr(launcher.integrations, "needs_build", lambda *a: False)
+        monkeypatch.setattr(launcher, "_write_global_launchers", lambda *a, **k: True)
         monkeypatch.setattr(
-            launcher.aoe, "sync_session", lambda *a, **k: (seen.update(k), True)[1]
+            launcher.integrations, "run", lambda script, env, cwd: (seen.update(env), 0)[1]
         )
-        (tmp_path / "stack.yaml").write_text("name: s\n")
-        monkeypatch.setattr(launcher.paths, "find_in_catalog", lambda *a: tmp_path)
-        return seen
-
-    def test_host_run_records_it(self, monkeypatch, tmp_path):
-        seen = self._seen(monkeypatch, tmp_path)
-        monkeypatch.setattr(launcher, "assemble", lambda *a, **k: None)
-        with pytest.raises(typer.Exit):
-            launcher._launch_host(
-                "s", "claude", str(tmp_path), create_aoe_only=True, no_strict_mcp=True
-            )
-        assert seen["no_strict_mcp"] is True
-
-    def test_host_run_defaults_to_strict(self, monkeypatch, tmp_path):
-        seen = self._seen(monkeypatch, tmp_path)
-        monkeypatch.setattr(launcher, "assemble", lambda *a, **k: None)
-        with pytest.raises(typer.Exit):
-            launcher._launch_host("s", "claude", str(tmp_path), create_aoe_only=True)
-        assert seen["no_strict_mcp"] is False
-
-    def _container_run(self, monkeypatch, tmp_path, argv: list[str]) -> dict:
-        seen = self._seen(monkeypatch, tmp_path)
-        patch_all(monkeypatch, "_runtime", lambda: "podman")
-        monkeypatch.setattr(launcher, "is_built", lambda *a: True)
-        monkeypatch.setattr(launcher.staleness, "check_profile_fresh", lambda *a: None)
         project = tmp_path / "proj"
         project.mkdir()
-        CliRunner().invoke(
-            launcher.app,
-            ["container-run", "claude", str(project), "--stack", "s", "--create-aoe-only", *argv],
+        result = CliRunner().invoke(
+            launcher.app, [verb, "claude", str(project), "--stack", "s", *argv]
         )
+        assert result.exit_code == 0, result.output
         return seen
 
-    def test_container_run_records_it(self, monkeypatch, tmp_path):
-        seen = self._container_run(monkeypatch, tmp_path, ["--no-strict-mcp-config"])
-        assert seen["no_strict_mcp"] is True
+    @pytest.mark.parametrize("verb", ["host-run", "container-run"])
+    def test_the_flag_reaches_the_integration(self, monkeypatch, tmp_path, verb):
+        seen = self._env(monkeypatch, tmp_path, verb, ["--no-strict-mcp-config"])
+        assert seen["HARNESSED_NO_STRICT_MCP"] == "1"
 
-    def test_container_run_defaults_to_strict(self, monkeypatch, tmp_path):
-        assert self._container_run(monkeypatch, tmp_path, [])["no_strict_mcp"] is False
+    @pytest.mark.parametrize("verb", ["host-run", "container-run"])
+    def test_the_default_is_strict(self, monkeypatch, tmp_path, verb):
+        assert "HARNESSED_NO_STRICT_MCP" not in self._env(monkeypatch, tmp_path, verb, [])
 
 
 class TestCommandFor:

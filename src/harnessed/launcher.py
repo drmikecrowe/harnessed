@@ -40,6 +40,7 @@ from . import claudeauth
 from . import context as stack_context
 from . import dynstack
 from . import emit
+from . import integrations
 from . import launchscript
 from . import paths
 from . import persist
@@ -2664,9 +2665,7 @@ def _run_container_setups(
             raise typer.Exit(1)
 
 
-def _persist_this_launch(
-    stack: str, *, group: Optional[str], title: Optional[str], only: bool
-) -> bool:
+def _persist_this_launch(stack: str, *, group: Optional[str], title: Optional[str]) -> bool:
     """Whether this launch leaves anything behind: the launcher script AND the aoe row, or neither.
 
     An ad-hoc stack (`dynstack.is_adhoc` — machine-minted, or named `test`/`test.*`) is a one-off.
@@ -2679,15 +2678,12 @@ def _persist_this_launch(
     hazard both call sites are ORDERED to avoid.
 
     Same escape hatch `_SKIP_STACKS` grants, for the same stated reason: `--aoe-group`/`--aoe-title`
-    name the row, and naming one is asking for it. `--create-aoe-only` is the stronger case —
-    registering IS the command the user typed, so it cannot be the thing that gets skipped.
+    name the row, and naming one is asking for it.
 
     GH-565 (Decide 3): nothing persists without a usable aoe, because the local launcher exists only
-    for the row. `--create-aoe-only` still passes, so `_aoe_register` reports the missing aoe and
-    exits nonzero instead of the command silently becoming a plain launch.
+    for the row. GH-569: a launch writes neither any more, and this gates only the `--name` the
+    launch passes the harness; `--register-aoe-only` writes both, through `aoe-register`.
     """
-    if only:
-        return True
     if aoe._bin() is None:
         return False
     if group is not None or title is not None:
@@ -2719,19 +2715,17 @@ def _write_global_launchers(stack: str, harness: str, verb: str, *, asked: bool 
     return all(target.name != own for target in refused)
 
 
-def _own_launcher_or_exit(in_place: bool, verb: str, stack: str, harness: str, *, only: bool) -> bool:
-    """Whether the launch may persist. Under `--create-aoe-only` a refused launcher is an error:
-    registering is the whole command, and skipping it would turn the command into a plain launch."""
+def _own_launcher_or_exit(in_place: bool, verb: str, stack: str, harness: str) -> None:
+    """Under `--register-aoe-only` a refused launcher is an error: the row would replay a foreign
+    file, and registering is the whole command."""
     if in_place:
-        return True
-    if only:
-        _err.print(
-            "[bold red]error:[/bold red] --create-aoe-only: "
-            f"{escape(launchscript.global_name(verb, stack, harness))} in ~/.local/bin is not a "
-            "harnessed launcher, so no aoe row was registered"
-        )
-        raise typer.Exit(1)
-    return False
+        return
+    _err.print(
+        "[bold red]error:[/bold red] --register-aoe-only: "
+        f"{escape(launchscript.global_name(verb, stack, harness))} in ~/.local/bin is not a "
+        "harnessed launcher, so no aoe row was registered"
+    )
+    raise typer.Exit(1)
 
 
 def _session_name_args(
@@ -2753,16 +2747,14 @@ def _session_name_args(
 
 
 def _aoe_register(
-    verb: str, stack: str, harness: str, project_path: Path, *, only: bool,
+    verb: str, stack: str, harness: str, project_path: Path, *,
     group: Optional[str] = None, title: Optional[str] = None, no_strict_mcp: bool = False,
     managed_worktree: bool = False,
 ) -> None:
-    """Mirror this launch into Agent of Empires, and stop here under `--create-aoe-only`.
+    """Register this stack's row in Agent of Empires, and exit: `--register-aoe-only` (GH-569).
 
-    Two different contracts share one call. On a normal launch the mirror is passive: fire the
-    write detached (`aoe add` takes ~12s) and carry on regardless of outcome — a dashboard is not
-    worth blocking or failing a launch for. Under `--create-aoe-only` registering IS the command,
-    so it blocks, reports, and propagates an exit status the user can script against.
+    Registering IS the command, so it blocks, reports, and exits with a status the user can script
+    against. A launch no longer mirrors into aoe at all.
 
     `group`/`title` are the `--aoe-group`/`--aoe-title` overrides; passing both also switches how an
     existing row is recognised. `no_strict_mcp` is recorded so a restart reproduces this launch's
@@ -2778,19 +2770,17 @@ def _aoe_register(
         _err.print(f"[bold yellow]warning:[/bold yellow] {escape(message)}", highlight=False)
 
     registered = aoe.sync_session(
-        verb, stack, harness, project_path, background=not only,
+        verb, stack, harness, project_path, background=False,
         group=group, title=title, no_strict_mcp=no_strict_mcp, on_drift=_on_drift,
         managed_worktree=managed_worktree,
     )
-    if not only:
-        return
     if not registered:
         if any(drift):
             # A repair was attempted, so the write that failed may have been the second half of
             # it. Saying "left as it is" here would send the user looking for a row that has
             # already been renamed aside.
             _err.print(
-                "[bold red]error:[/bold red] --create-aoe-only: the repair failed part-way. The "
+                "[bold red]error:[/bold red] --register-aoe-only: the repair failed part-way. The "
                 "drifted row may have been renamed aside without its replacement being written — "
                 f"check `aoe list -p {aoe.PROFILE}`."
             )
@@ -2798,12 +2788,12 @@ def _aoe_register(
             # The row was found and reported just above; repeating the install hint would send
             # the user looking for a broken aoe when aoe answered fine.
             _err.print(
-                "[bold red]error:[/bold red] --create-aoe-only: left the existing row as it is; "
+                "[bold red]error:[/bold red] --register-aoe-only: left the existing row as it is; "
                 "nothing was registered."
             )
         else:
             _err.print(
-                "[bold red]error:[/bold red] --create-aoe-only: could not register the session. "
+                "[bold red]error:[/bold red] --register-aoe-only: could not register the session. "
                 "Is Agent of Empires (`aoe`) installed and initialized "
                 f"({paths.xdg_config_home() / 'agent-of-empires'})?"
             )
@@ -2814,10 +2804,45 @@ def _aoe_register(
         f"  profile:  {aoe.PROFILE}\n"
         f"  group:    {aoe.group_for(project_path, group=group)}\n"
         f"  command:  {aoe.command_for(verb, stack, harness, project_path, group=group, title=title, no_strict_mcp=no_strict_mcp)}\n"
-        f"  [dim]not launched (--create-aoe-only); start it with `aoe` or `aoe session start`[/dim]",
+        f"  [dim]not launched (--register-aoe-only); start it with `aoe` or `aoe session start`[/dim]",
         highlight=False,
     )
     raise typer.Exit(0)
+
+
+def _register_and_exit(
+    name: str, verb: str, harness: str, stack: str, path: Optional[str], *,
+    no_strict_mcp: bool = False, aoe_group: Optional[str] = None, aoe_title: Optional[str] = None,
+    aoe_managed_worktree: bool = False,
+) -> None:
+    """Run integration `name` for this stack and exit with its status: `--register-<name>-only`.
+
+    The order is the contract (GH-569 S5, S7): find the integration, so an unknown name builds
+    nothing; build a missing or stale profile, so a failed build runs nothing; write the global
+    launchers the integration registers; then run it. No agent starts. Always raises typer.Exit.
+    """
+    try:
+        script = integrations.find(name)
+    except integrations.IntegrationError as exc:
+        _err.print(f"[bold red]error:[/bold red] {escape(str(exc))}", soft_wrap=True, highlight=False)
+        raise typer.Exit(exc.code) from exc
+    project = Path(path).resolve() if path else Path.cwd()
+    if not project.is_dir():
+        _err.print(f"[bold red]error:[/bold red] project directory does not exist: {project}")
+        raise typer.Exit(1)
+    if integrations.needs_build(stack, harness):
+        _build_stack(_runtime(), stack, harness)
+    _write_global_launchers(stack, harness, verb, asked=True)
+    env = integrations.environ(
+        name, verb, harness, stack, project, no_strict_mcp=no_strict_mcp,
+        aoe_group=aoe_group, aoe_title=aoe_title, aoe_managed_worktree=aoe_managed_worktree,
+    )
+    try:
+        code = integrations.run(script, env, project)
+    except integrations.IntegrationError as exc:
+        _err.print(f"[bold red]error:[/bold red] {escape(str(exc))}", soft_wrap=True, highlight=False)
+        raise typer.Exit(exc.code) from exc
+    raise typer.Exit(code)
 
 
 def _warn_capability_gaps(backend: str, recipes) -> None:
@@ -3124,7 +3149,7 @@ def _exit_status(code: int) -> int:
 
 def _launch_host(
     stack: str, harness: str, path: Optional[str], *, rm: bool = False,
-    extra: Optional[list[str]] = None, create_aoe_only: bool = False,
+    extra: Optional[list[str]] = None,
     no_strict_mcp: bool = False,
     aoe_group: Optional[str] = None, aoe_title: Optional[str] = None,
     exec_mode: bool = False, fresh: bool = False, aoe_managed_worktree: bool = False,
@@ -3204,41 +3229,13 @@ def _launch_host(
             # it does not matter which one the user reaches for.
             _prune_unlaunchable_omp_blocks(harness)
 
-        # Same mirror as the container path, recorded under this verb so the two never collide: a
-        # host-native session and a containerized one for the same stack+harness+folder are different
-        # things to run. No-op when aoe is absent; never raises.
-        #
-        # AFTER assembly, not before. Assembly is this backend's real validation gate — the analogue of
-        # `launch`'s is_built/staleness checks — so registering ahead of it would leave a row behind for
-        # a launch that then died on a renamed recipe, and that row would fail identically every time it
-        # was started from the dashboard. It costs `--create-aoe-only` one assembly, which is
-        # sub-second, emit-only and container-free on this path.
-        # BEFORE the row, because the row's command IS this script. `_aoe_register` EXITS under
-        # `--create-aoe-only`, so writing afterwards would leave a row pointing at a file that does not
-        # exist — dead on arrival, failing every time it is started from the dashboard. That is the same
-        # class of dead row the comment above avoids by registering after assembly.
-        # Both or neither, and not at all for an ad-hoc stack — see `_persist_this_launch`.
-        # The global launchers come first: the local one, when written, execs one of them (GH-565).
-        asked = aoe_group is not None or aoe_title is not None or create_aoe_only
+        # GH-569: a launch writes no aoe row and no local launcher; `--register-aoe-only` does. The
+        # global launchers are still refreshed on every launch (GH-565).
+        asked = aoe_group is not None or aoe_title is not None
         own_in_place = project_only or _write_global_launchers(stack, harness, "host-run", asked=asked)
-        if not (acp or project_only) and _own_launcher_or_exit(
-            own_in_place, "host-run", stack, harness, only=create_aoe_only
-        ) and _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):
-            launchscript.write(
-                "host-run", stack, harness, project_path,
-                group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
-                argv=_typed_invocation("host-run"),
-            )
-            # AFTER assembly, not before. Assembly is this backend's real validation gate — the analogue
-            # of `launch`'s is_built/staleness checks — so registering ahead of it would leave a row
-            # behind for a launch that then died on a renamed recipe, and that row would fail
-            # identically every time it was started from the dashboard. It costs `--create-aoe-only` one
-            # assembly, which is sub-second, emit-only and container-free on this path.
-            _aoe_register(
-                "host-run", stack, harness, project_path, only=create_aoe_only,
-                group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
-                managed_worktree=aoe_managed_worktree,
-            )
+        if not (acp or project_only) and own_in_place and _persist_this_launch(
+            stack, group=aoe_group, title=aoe_title
+        ):
             extra = [
                 *_session_name_args(
                     "host-run", stack, harness, project_path, list(extra or []),
@@ -3608,11 +3605,6 @@ def host_run(
     aoe_group: Optional[str] = _AOE_GROUP_OPT,
     aoe_title: Optional[str] = _AOE_TITLE_OPT,
     aoe_managed_worktree: bool = _AOE_MANAGED_WORKTREE_OPT,
-    create_aoe_only: bool = typer.Option(
-        False, "--create-aoe-only",
-        help="Register the Agent of Empires session for this stack and exit without launching. "
-             "Requires aoe; runs no assembly.",
-    ),
 ) -> None:
     """Run a stack HOST-NATIVELY — no podman, no container.
 
@@ -3651,20 +3643,27 @@ def host_run(
     """
     _require_supported_harness(harness)
     stack_name, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
-    # Not under `host-exec`: nobody is at it, and `_launch_host` only declares exec mode later.
-    if harness == "claude" and ctx.info_name != "host-exec":
+    # Not under `host-exec`: nobody is at it, and `_launch_host` only declares exec mode later. Not
+    # under a register flag either: no agent starts, and a script registering a stack waits on no one.
+    if harness == "claude" and ctx.info_name != "host-exec" and _register is None:
         claude_imports.ask(stack_name)
     try:
+        if _register is not None:
+            _register_and_exit(
+                _register, "host-run", harness, stack_name, path,
+                no_strict_mcp=no_strict_mcp_config, aoe_group=aoe_group, aoe_title=aoe_title,
+                aoe_managed_worktree=aoe_managed_worktree,
+            )
         _launch_host(
             stack_name, harness, path, rm=rm, extra=_passthrough,
-            create_aoe_only=create_aoe_only, no_strict_mcp=no_strict_mcp_config,
+            no_strict_mcp=no_strict_mcp_config,
             aoe_group=aoe_group, aoe_title=aoe_title, aoe_managed_worktree=aoe_managed_worktree,
             exec_mode=ctx.info_name == "host-exec", fresh=fresh,
         )
     except typer.Exit as exc:
         # typer.Exit(0) is a SUCCESS that unwinds like a failure, and it must not clean up:
-        # `_aoe_register` ends `--create-aoe-only` that way, having just written a row whose
-        # recorded command names THIS manifest. Deleting it would manufacture precisely the
+        # `_register_and_exit` ends `--register-<name>-only` that way, having just registered an
+        # entry that names THIS manifest. Deleting it would manufacture precisely the
         # dead-on-arrival row the container path builds ahead of registering to avoid.
         # A NON-zero Exit is a real failure and still cleans up — `_launch_host` rejects a
         # non-claude harness that way, and it does so after the mint.
@@ -3757,6 +3756,8 @@ def host_acp(
         raise typer.Exit(2)
     # Before anything can print: stdout is the editor's channel from here on.
     set_acp_mode(True)
+    if _register is not None:
+        _register_and_exit(_register, "host-acp", harness, stack, None, no_strict_mcp=no_strict_mcp_config)
     if not paths.is_built(stack, harness):
         _err.print(
             f"[bold red]error:[/bold red] stack '{stack}' ({harness}) has no assembled profile "
@@ -3785,6 +3786,45 @@ def project_setup(
     runs. `host-acp` runs this for each new project folder an editor opens.
     """
     _launch_host(stack, harness, path, no_strict_mcp=no_strict_mcp_config, project_only=True)
+
+
+@app.command("aoe-register", hidden=True)
+def aoe_register() -> None:
+    """Register the Agent of Empires row `--register-aoe-only` asks for (GH-569).
+
+    `catalog/integrations/aoe/register` execs this with the integration contract's `HARNESSED_*`
+    names; it takes no arguments and is not for direct use. It writes the global launchers, then the
+    local launcher, then the row, in that order: the row's command IS the local launcher, which
+    execs a global one. With no usable aoe it writes nothing.
+    """
+    env = os.environ
+    try:
+        verb, stack, harness = env["HARNESSED_VERB"], env["HARNESSED_STACK"], env["HARNESSED_HARNESS"]
+        project = Path(env["HARNESSED_PROJECT"])
+    except KeyError as exc:
+        _err.print(
+            f"[bold red]error:[/bold red] aoe-register runs from the aoe integration; "
+            f"{exc.args[0]} is not set", soft_wrap=True,
+        )
+        raise typer.Exit(2) from exc
+    if aoe._bin() is None:
+        _err.print(
+            "[bold red]error:[/bold red] --register-aoe-only: Agent of Empires (`aoe`) is not "
+            f"installed or not initialized ({paths.xdg_config_home() / 'agent-of-empires'})",
+            soft_wrap=True, highlight=False,
+        )
+        raise typer.Exit(1)
+    group = env.get("HARNESSED_AOE_GROUP")
+    title = env.get("HARNESSED_AOE_TITLE")
+    no_strict_mcp = env.get("HARNESSED_NO_STRICT_MCP") == "1"
+    _own_launcher_or_exit(
+        _write_global_launchers(stack, harness, verb, asked=True), verb, stack, harness
+    )
+    launchscript.write(verb, stack, harness, project, group=group, title=title, no_strict_mcp=no_strict_mcp)
+    _aoe_register(
+        verb, stack, harness, project, group=group, title=title, no_strict_mcp=no_strict_mcp,
+        managed_worktree=env.get("HARNESSED_AOE_MANAGED_WORKTREE") == "1",
+    )
 
 
 @register
@@ -4434,12 +4474,6 @@ def container_run(
     aoe_group: Optional[str] = _AOE_GROUP_OPT,
     aoe_title: Optional[str] = _AOE_TITLE_OPT,
     aoe_managed_worktree: bool = _AOE_MANAGED_WORKTREE_OPT,
-    create_aoe_only: bool = typer.Option(
-        False, "--create-aoe-only",
-        help="Register the Agent of Empires session for this stack and exit without launching. "
-             "Requires aoe; validates the stack first, so the row is only created for a launch "
-             "that would have worked.",
-    ),
 ) -> None:
     """Run a stack in an isolated container against a project directory (container backend).
 
@@ -4477,6 +4511,14 @@ def container_run(
             f"{', '.join(_ACP_HARNESSES)}"
         )
         raise typer.Exit(2)
+    if _register is not None:
+        # Before the ACP proxy: a register run answers no client, it registers and exits.
+        reg_stack, _ = _resolve_stack(stack, recipe, extends, no_extends, service)
+        _register_and_exit(
+            _register, "container-acp" if acp_mode else "container-run", harness, reg_stack, path,
+            no_strict_mcp=no_strict_mcp_config, aoe_group=aoe_group, aoe_title=aoe_title,
+            aoe_managed_worktree=aoe_managed_worktree,
+        )
     if acp_mode and not os.environ.get(_ACP_DIRECT_ENV):
         # The proxy (#566) answers `initialize` before any of the work below, and runs it on the
         # first session request by relaunching this very command with the project in the env.
@@ -4498,8 +4540,7 @@ def container_run(
     if recipe:
         # A freshly minted stack has no assembled profile, and everything below hard-errors without
         # one. Unconditional because _build_stack is fingerprint-gated downstream, so an unchanged
-        # set is cheap — and deliberately NOT skipped under --create-aoe-only, since the command the
-        # registered row replays would be dead on arrival against an unbuilt stack.
+        # set is cheap.
         #
         # On failure, remove a manifest THIS invocation created. Otherwise a stack that never built
         # lingers in the catalog, appears in `harnessed list`, and no GC reclaims it — volume-gc
@@ -4583,31 +4624,12 @@ def container_run(
     # notice a block whose stack is gone.
     _prune_unlaunchable_omp_blocks(harness)
 
-    # BEFORE the row, for the reason spelled out at the host-run call site: the row's command IS
-    # this script, `_aoe_register` EXITS under `--create-aoe-only`, and a row written afterwards
-    # would point at a file that does not exist.
-    # Both or neither, and not at all for an ad-hoc stack — see `_persist_this_launch`.
     extra = list(_passthrough)
-    # GH-565: every launch refreshes the global launchers, and `container-acp` writes no local one —
-    # aoe never runs it, so there is no row for a local launcher to serve.
-    asked = aoe_group is not None or aoe_title is not None or create_aoe_only
+    # GH-565: every launch refreshes the global launchers. GH-569: a launch writes no aoe row and no
+    # local launcher; `--register-aoe-only` does.
+    asked = aoe_group is not None or aoe_title is not None
     own_in_place = _write_global_launchers(stack, harness, "container-run", asked=asked)
-    if not acp_mode and _own_launcher_or_exit(
-        own_in_place, "container-run", stack, harness, only=create_aoe_only
-    ) and _persist_this_launch(stack, group=aoe_group, title=aoe_title, only=create_aoe_only):
-        launchscript.write(
-            "container-run", stack, harness, project_path,
-            group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp_config,
-            argv=_typed_invocation("container-run"),
-        )
-        # Mirror into Agent of Empires if the user runs it. Placed after every validation above so a
-        # launch that is about to fail never leaves a row behind, and before the podman work so the
-        # row exists even if the container half goes wrong. No-op when aoe is absent; never raises.
-        _aoe_register(
-            "container-run", stack, harness, project_path, only=create_aoe_only,
-            group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp_config,
-            managed_worktree=aoe_managed_worktree,
-        )
+    if not acp_mode and own_in_place and _persist_this_launch(stack, group=aoe_group, title=aoe_title):
         extra = [
             *_session_name_args(
                 "container-run", stack, harness, project_path, extra,
@@ -6689,6 +6711,37 @@ def _extract_acp_cli(argv: list[str]) -> list[str]:
     return argv
 
 
+# The integration a `--register-<name>-only` flag named, or None. Set by main(); read by the four
+# global verbs, which run it in place of a launch (GH-569, `integrations`).
+_register: Optional[str] = None
+
+_WRAPPER_VERBS = ("host-run", "container-run")
+
+
+def _vscode_wrapper_argv(argv: list[str]) -> list[str]:
+    """The VS Code Claude Code extension's process-wrapper call, as passthrough (GH-569 S4.4).
+
+    The extension runs `<wrapper> <its bundled claude> <SDK args>`, so a claude launcher set as the
+    wrapper receives `host-run claude --stack S /x/claude --output-format …`. Typer would bind the
+    bundled binary to the project path and reject the SDK flags. When the first token after the
+    options is an absolute path to an executable file named `claude`, it is dropped and every later
+    token becomes passthrough: the stack's own claude runs in the cwd with the SDK's arguments. A
+    directory can never match, so a real project path is never misread.
+    """
+    if len(argv) < 3 or argv[0] not in _WRAPPER_VERBS or argv[1] != "claude":
+        return argv
+    i = 2
+    while i < len(argv) and argv[i].startswith("-") and argv[i] != "--":
+        i += 2 if argv[i] in ("--stack", "-s") else 1
+    tok = argv[i] if i < len(argv) else ""
+    if (
+        os.path.isabs(tok) and os.path.basename(tok) == "claude"
+        and os.path.isfile(tok) and os.access(tok, os.X_OK)
+    ):
+        return [*argv[:i], "--", *argv[i + 1 :]]
+    return argv
+
+
 def main() -> None:
     # No bare-stack shortcut: the leading token is a subcommand, full stop. It used to be "a stack
     # name unless it matches a registered command", which meant every new @app.command had to be
@@ -6696,7 +6749,13 @@ def main() -> None:
     # update` parsing as `harnessed launch update` and failing with "Missing argument 'HARNESS'",
     # which reads like a usage error rather than a missing registration. With the stack named by
     # `--stack`, a bare leading token is a harness and there is nothing left to disambiguate.
-    sys.argv = [sys.argv[0], *_extract_passthrough(_extract_acp_cli(sys.argv[1:]))]
+    global _register
+    try:
+        head, _register = integrations.extract(_extract_acp_cli(_vscode_wrapper_argv(sys.argv[1:])))
+    except integrations.IntegrationError as exc:
+        _err.print(f"[bold red]error:[/bold red] {exc}", highlight=False)
+        raise SystemExit(exc.code) from None
+    sys.argv = [sys.argv[0], *_extract_passthrough(head)]
     # The persist gate (persist.py) is default-deny BY DESIGN, so being refused is a normal outcome
     # of a first launch — and every one of its refusals already carries the remediation in the
     # message (the exact allowlist line to add, or the chown to run). Left uncaught, typer's
@@ -6713,6 +6772,10 @@ def main() -> None:
     ) as exc:
         _err.print(f"[bold red]error:[/bold red] {exc}", highlight=False)
         raise SystemExit(1) from None
+    finally:
+        # One parse, one command. A caller that drives `app` directly afterwards (a test's
+        # CliRunner) must not inherit this flag.
+        _register = None
 
 
 if __name__ == "__main__":

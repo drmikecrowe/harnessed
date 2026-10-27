@@ -1,0 +1,23 @@
+#!/bin/sh
+# Add this stack's ACP launcher to Zed's `agent_servers`: `--register-zed-only` (GH-569).
+# harnessed runs this with the integration contract's HARNESSED_* variables set.
+# `harnessed.jsonc` keeps every other byte of settings.json, comments included, and leaves an
+# existing entry's other members (args, env, default_config_options) as the user wrote them.
+set -eu
+if [ -z "$HARNESSED_ACP_LAUNCHER" ]; then
+    acp=$("$HARNESSED_PYTHON" -c 'from harnessed.attachcmd import _ACP_HARNESSES; print(", ".join(_ACP_HARNESSES))')
+    echo "error: Zed needs an ACP harness; $HARNESSED_HARNESS has no ACP mode (ACP harnesses: $acp)" >&2
+    exit 1
+fi
+if [ "$HARNESSED_BACKEND" = container ]; then
+    key="harnessed $HARNESSED_HARNESS ($HARNESSED_STACK, container)"
+else
+    key="harnessed $HARNESSED_HARNESS ($HARNESSED_STACK)"
+fi
+file="${XDG_CONFIG_HOME:-$HOME/.config}/zed/settings.json"
+command=$("$HARNESSED_PYTHON" -c 'import json, sys; print(json.dumps(sys.argv[1]))' "$HARNESSED_ACP_LAUNCHER")
+jsonc() { "$HARNESSED_PYTHON" -m harnessed.jsonc "$@"; }
+jsonc setdefault "$file" agent_servers "$key" "{\"type\": \"custom\", \"command\": $command, \"args\": [], \"env\": {}}"
+jsonc set "$file" agent_servers "$key" type '"custom"'
+jsonc set "$file" agent_servers "$key" command "$command"
+echo "Registered Zed agent server '$key' in $file"

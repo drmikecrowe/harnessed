@@ -127,6 +127,14 @@ Two consequences worth knowing:
   (`--recipe`). Generated is last so it can never shadow a stack you authored, and it is kept
   out of the overlay so `harnessed list` can tell authored from generated and a regenerated
   manifest can never clobber a hand edit. It is included only when it exists.
+- **integration** — a way to register a stack with an external tool (aoe, Zed, Atlas, VS Code). It is
+  one executable file, `catalog/integrations/<name>/register`, found across the catalog roots with the
+  overlay first, so a user adds or overrides one without touching `src/`. It runs only when a global
+  launcher is given `--register-<name>-only`: the launcher builds a missing or stale profile, writes
+  the global launchers, runs `register` in the project with the `HARNESSED_*` contract
+  (`src/harnessed/integrations.py`), and exits with its status. No agent starts, and a launch with no
+  register flag registers nothing. The JSON editors use `python -m harnessed.jsonc`, which keeps
+  every other byte of a settings file, comments included.
 
 ## How a build works (host-native)
 
@@ -298,8 +306,8 @@ expensively when it is not.
 
 ## Agent of Empires mirror (optional)
 
-Agent of Empires (`aoe`) is a tmux session coordinator some users run in front of their agents. harnessed neither requires nor installs it. When `aoe` is installed (`aoe` on PATH and `~/.config/agent-of-empires/` present), every launch
-mirrors itself into a dedicated `harnessed` aoe profile. The profile has a group per git repo and a
+Agent of Empires (`aoe`) is a tmux session coordinator some users run in front of their agents. harnessed neither requires nor installs it. When `aoe` is installed (`aoe` on PATH and `~/.config/agent-of-empires/` present), `--register-aoe-only`
+registers a stack in a dedicated `harnessed` aoe profile; a launch no longer mirrors itself (GH-569). The profile has a group per git repo and a
 session per launch. `src/harnessed/aoe.py` is the whole bridge. `HARNESSED_NO_AOE=1` turns it off.
 
 **Register-only, one-way.** harnessed still owns the process — `container-run` ends in an `os.execvp` that
@@ -315,7 +323,7 @@ detached write path, that failure is invisible.
 | identity | (project path, stack, harness, verb, MCP mode) | a stack has an assembled profile **per harness**, the same stack host-native vs containerized is two different things to run, and `--no-strict-mcp-config` changes the agent's MCP surface |
 | identity, overridden | (group, title), with `--aoe-group` **and** `--aoe-title` | the only key that can adopt a row harnessed did not write |
 | group | the git **common** dir's repo, or `--aoe-group` | every worktree of one checkout shares a group instead of each spawning its own |
-| skipped | the `default` stack; every ad-hoc stack — machine-minted, or named `test`/`test.*` | the baseline every dynamic stack extends is not something the user composed, and an ad-hoc launch is a one-off whose row would outlive it. `--aoe-group`/`--aoe-title`/`--create-aoe-only` overrule both: naming a row is asking for one |
+| skipped | the `default` stack; every ad-hoc stack — machine-minted, or named `test`/`test.*` | the baseline every dynamic stack extends is not something the user composed, and an ad-hoc launch is a one-off whose row would outlive it. `--aoe-group`/`--aoe-title` overrule the `default` skip, and `--register-aoe-only` registers an ad-hoc stack: naming or asking for a row is asking for one |
 | removed by | `harnessed rm <stack>` | container rows only — `rm` tears down containers, and a host-native session owns none |
 
 **A row never outlives its launch.** Each backend registers only after its last validation gate —
@@ -359,17 +367,14 @@ so this fixes rows created from here on. A row registered before the flag was ec
 command and re-registers once under the new identity; one adopted by `--aoe-group` + `--aoe-title`
 is left exactly as it is, and must be removed and relaunched to pick the flag up.
 
-`aoe add` takes ~12s (it starts aoe's daemon) while every read is ~0.01s. So the reads that decide
-*whether* to write run inline, and the writes are fired into a `start_new_session` child that
-outlives the `execvp`. A dashboard is not worth twelve seconds of a launch.
+`aoe add` takes ~12s (it starts aoe's daemon) while every read is ~0.01s, which is why a launch
+does not write rows: a dashboard is not worth twelve seconds of a launch.
 
-`--create-aoe-only` is the exception: on `container-run` and `host-run` it registers the session and
-exits without launching. There registering *is* the command, so it blocks, prints what it wrote, and
-exits non-zero if registration fails. On `container-run` a `--recipe` set is still minted AND
-built — the row replays `container-run`, which hard-errors without an assembled profile. Skipping
-the build creates a row that is dead on arrival. `host-run` needs no build: it assembles
-in-process on a launch when no session of that stack and harness is open, and reuses the profile
-otherwise.
+`--register-aoe-only` is the aoe integration (`catalog/integrations/aoe/register`). On `host-run`
+and `container-run` it registers the session and exits without launching; an ACP launcher is
+refused, because a row replays a terminal launcher. Registering *is* the command, so it blocks,
+prints what it wrote, and exits non-zero if registration fails. Like every integration, it builds a
+missing or stale profile first, so the row is never dead on arrival.
 
 ## Folder-env contract
 
