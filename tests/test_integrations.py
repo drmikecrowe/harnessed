@@ -842,3 +842,9 @@ def test_the_integration_runs_in_the_project_given_not_the_cwd(monkeypatch, home
     seen = json.loads((tmp_path / "dump.json").read_text())
     assert seen["cwd"] == str(other)
     assert seen["env"]["HARNESSED_PROJECT"] == str(other)
+
+
+def test_two_flags_name_the_rule():
+    with pytest.raises(integrations.IntegrationError) as exc:
+        integrations.extract(["host-run", "--register-a-only", "--register-b-only"])
+    assert str(exc.value) == "only one --register-<name>-only flag is allowed per command"

@@ -451,3 +451,26 @@ def test_main_reads_sys_argv_when_given_no_list(tmp_path, monkeypatch):
     monkeypatch.setattr(jsonc.sys, "argv", ["jsonc", "set", str(f), "k", "1"])
     assert jsonc.main() == 0
     assert json.loads(f.read_text()) == {"k": 1}
+
+
+def test_a_missing_comma_says_so():
+    with pytest.raises(jsonc.JsoncError) as exc:
+        jsonc.parse('{"a": 1 "b": 2}')
+    assert str(exc.value) == "line 1: expected ',' or '}'"
+
+
+def test_a_container_inserted_into_a_one_line_object_stays_on_the_line():
+    assert jsonc.set_value('{"a": 1}', ["k"], {"b": [1]}) == '{"k": {"b": [1]}, "a": 1}'
+
+
+def test_a_first_member_behind_a_comment_does_not_set_the_indent_step():
+    old = '{\n    /* c */ "a": 1\n}'
+    assert jsonc.set_value(old, ["a"], {"b": 2}) == '{\n    /* c */ "a": {"b": 2}\n}'
+    old = '{\n    /* c */ "a": 1,\n  "o": {}\n}'
+    assert jsonc.set_value(old, ["o", "k"], 1) == '{\n    /* c */ "a": 1,\n  "o": {\n    "k": 1\n  }\n}'
+
+
+def test_a_four_space_file_keeps_its_step():
+    assert jsonc.set_value('{\n    "a": 1\n}', ["k"], {"b": 2}) == (
+        '{\n    "k": {\n        "b": 2\n    },\n    "a": 1\n}'
+    )
