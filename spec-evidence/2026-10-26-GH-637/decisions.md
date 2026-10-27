@@ -35,3 +35,5 @@ Changes: S2.1 states the data-root paths with the ruling; the Orientation's `Dec
 ## Revisions
 ### Revision 1. Decide 1 ruled A
 The lock and log live under `$XDG_DATA_HOME/harnessed/`.
+### Revision 2. Gate 1a round 1 findings applied
+The Summary and Orientation state the lock ruling in plain words; the Decide line names the two settled risks and points at Known limits; Known limits gives the reason the sibling lock is a marker; S3.1 and S3.2 define the data root and how no refresh is due.

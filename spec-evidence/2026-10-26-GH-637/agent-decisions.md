@@ -9,3 +9,8 @@
 - Other option: Tier 2, the full loop with no property or mutation testing.
 - Why: the loop's tier list names auth as Tier 3, and a wrong ownership answer either logs every stack out or writes a login into the wrong file.
 - Command: hotfix
+
+### A3. Accept two refreshers for one host store during an upgrade
+- Other option: have the new refresher also take the old `XDG_STATE_HOME` lock, so an old-release refresher still blocks it.
+- Why: taking the old lock would bring back the starvation this change fixes, and claude's own refresh lock already serializes two refreshes of `~/.claude`.
+- Command: hotfix
