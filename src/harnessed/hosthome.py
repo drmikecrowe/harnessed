@@ -357,8 +357,9 @@ def _host_claude_source() -> Path:
     `default.codebase-memory-mcp.gh-issue-tracker/claude/projects` symlinked at that stack rather
     than at ~/.claude.
 
-    Containment, not the `.harnessed-stack` stamp: `_invalidate_host_home` deletes that stamp by
+    Containment, not only the `.harnessed-stack` stamp: `_invalidate_host_home` deletes that stamp by
     design, so a real stack home reads as unstamped between invalidation and the next materialize.
+    The stamp and the sibling lock still count, for a home under another data root (GH-637).
     This is the guard `_host_omp_source` has carried since #307, whose docstring names this function
     as having the same shape and no such guard.
     """
@@ -690,15 +691,23 @@ _OMP_RUNTIME_KEEP = ("terminal-sessions",)
 
 
 def _is_harnessed_owned(path: Path) -> bool:
-    """True when `path` is inside harnessed's own per-stack home tree.
+    """True when `path` is a harnessed per-stack home: inside the home tree, or carrying its markers.
 
     Used to tell "the user's real store" from "another stack's" — see `_host_omp_source`. Compares
     resolved paths so a symlinked home cannot dodge the check, and treats an unresolvable path as
     NOT owned: this only ever suppresses an override, and refusing on doubt would silently ignore a
     legitimate one the user set.
+
+    Containment alone misses a stack home under ANOTHER data root (GH-637): a refresher started under
+    an isolated `XDG_DATA_HOME` inherited a real stack's `CLAUDE_CONFIG_DIR`, took it for the user's
+    store, and let `~/.claude` expire. So the `.harnessed-stack` stamp, or the sibling `<name>.lock`
+    `_host_home_lock` leaves beside every home and never deletes, also mark one.
     """
     try:
-        path.resolve().relative_to(paths.host_homes_root().resolve())
+        real = path.resolve()
+        if (real / _HOST_STACK_FINGERPRINT).is_file() or (real.parent / f"{real.name}.lock").is_file():
+            return True
+        real.relative_to(paths.host_homes_root().resolve())
     except (OSError, ValueError):
         return False
     return True
