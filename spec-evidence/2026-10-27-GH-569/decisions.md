@@ -64,3 +64,7 @@ Changes: Touches names `src/harnessed/jsonc.py`; Orientation `Decided:` names it
 ## Revisions
 ### Revision 1. Intent review folded in; Decide 1-3 ruled A
 S1.3, S1.4, S4.7, S5.8 and Known limits changed from the intent review; the three rulings are written at S4.4, S1.8 and Touches.
+### Revision 2. Gate 1a round 1 finding PR-REFERENT applied
+The Orientation Decide line pointed the `--create-aoe-only` removal at S1.7; it is S1.8.
+### Revision 3. Intent review round 2 folded in
+Accepted: the Summary says the no-src rule governs later integrations; S1.4 says rename-and-add is the AC-1 repair; S4.4 cites the extension source for the wrapper argv (fact 14). Declined: ask about Zed `args` and `env` — both are in every Zed entry on this machine (fact 13), and S2.4 keeps an existing entry's values.
