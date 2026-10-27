@@ -116,54 +116,54 @@ def _replaces_a_container(doc: dict, keys: list[str]) -> bool:
     return isinstance(node, (dict, list)) and bool(node)
 
 
-class TestParseProperties:
-    @given(_VALUES)
-    def test_agrees_with_json_on_plain_json(self, value):
-        assert jsonc.parse(json.dumps(value)) == value
-        assert jsonc.parse(json.dumps(value, indent=2)) == value
+# Module-level, not methods: Hypothesis refuses a property test called from two executors, which
+# is what a mutmut run does to a method (HealthCheck.differing_executors).
+@given(_VALUES)
+def test_agrees_with_json_on_plain_json(value):
+    assert jsonc.parse(json.dumps(value)) == value
+    assert jsonc.parse(json.dumps(value, indent=2)) == value
 
-    @given(_VALUES)
-    def test_comments_change_no_value(self, value):
-        assert jsonc.parse(_with_comments(json.dumps(value, indent=2))) == value
+@given(_VALUES)
+def test_comments_change_no_value(value):
+    assert jsonc.parse(_with_comments(json.dumps(value, indent=2))) == value
 
 
-class TestSetProperties:
-    @settings(max_examples=300)
-    @given(_OBJECTS, _KEYS, _VALUES, st.booleans())
-    def test_the_edit_lands_and_every_comment_survives(self, doc, keys, value, indented):
-        old = _with_comments(json.dumps(doc, indent=2 if indented else None))
-        want = _expected(doc, keys, value)
-        if want is None:
-            with pytest.raises(jsonc.JsoncError):
-                jsonc.set_value(old, keys, value)
+@settings(max_examples=300)
+@given(_OBJECTS, _KEYS, _VALUES, st.booleans())
+def test_the_edit_lands_and_every_comment_survives(doc, keys, value, indented):
+    old = _with_comments(json.dumps(doc, indent=2 if indented else None))
+    want = _expected(doc, keys, value)
+    if want is None:
+        with pytest.raises(jsonc.JsoncError):
+            jsonc.set_value(old, keys, value)
+        return
+    new = jsonc.set_value(old, keys, value)
+    assert jsonc.parse(new) == want
+    if not _replaces_a_container(doc, keys):
+        assert _markers(new) == _markers(old), "a comment was lost or moved past another"
+
+@given(_OBJECTS, _KEYS, _VALUES)
+def test_setting_the_same_value_twice_changes_nothing(doc, keys, value):
+    old = _with_comments(json.dumps(doc, indent=2))
+    if _expected(doc, keys, value) is None:
+        return
+    once = jsonc.set_value(old, keys, value)
+    assert jsonc.set_value(once, keys, value) == once
+
+@given(_OBJECTS, _KEYS, _VALUES)
+def test_setdefault_never_changes_a_member_that_exists(doc, keys, value):
+    old = json.dumps(doc, indent=2)
+    want = _expected(doc, keys, value)
+    if want is None:
+        return
+    new = jsonc.set_value(old, keys, value, only_missing=True)
+    node = doc
+    for key in keys:
+        if not isinstance(node, dict) or key not in node:
+            assert jsonc.parse(new) == want
             return
-        new = jsonc.set_value(old, keys, value)
-        assert jsonc.parse(new) == want
-        if not _replaces_a_container(doc, keys):
-            assert _markers(new) == _markers(old), "a comment was lost or moved past another"
-
-    @given(_OBJECTS, _KEYS, _VALUES)
-    def test_setting_the_same_value_twice_changes_nothing(self, doc, keys, value):
-        old = _with_comments(json.dumps(doc, indent=2))
-        if _expected(doc, keys, value) is None:
-            return
-        once = jsonc.set_value(old, keys, value)
-        assert jsonc.set_value(once, keys, value) == once
-
-    @given(_OBJECTS, _KEYS, _VALUES)
-    def test_setdefault_never_changes_a_member_that_exists(self, doc, keys, value):
-        old = json.dumps(doc, indent=2)
-        want = _expected(doc, keys, value)
-        if want is None:
-            return
-        new = jsonc.set_value(old, keys, value, only_missing=True)
-        node = doc
-        for key in keys:
-            if not isinstance(node, dict) or key not in node:
-                assert jsonc.parse(new) == want
-                return
-            node = node[key]
-        assert new == old
+        node = node[key]
+    assert new == old
 
 
 class TestSet:

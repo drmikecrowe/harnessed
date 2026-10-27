@@ -173,6 +173,7 @@ CONTAINER_ONLY: dict[str, str] = {
     "_require_supported_harness": "`host_run` calls it itself, before delegating",
     "_resolve_stack": "`host_run` calls it itself — shared --stack/--recipe resolution",
     "_acp_terminal_login": "`host_acp` calls it itself — an ACP terminal login runs no launch",
+    "_register_and_exit": "`host_run` and `host_acp` call it themselves — a register run starts no launch (GH-569)",
 }
 
 
