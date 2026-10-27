@@ -325,3 +325,129 @@ def test_the_module_runs_as_a_script(tmp_path):
     )
     assert proc.returncode == 0, proc.stderr
     assert json.loads(Path(f).read_text()) == {"k": True}
+
+
+# --- Pinned by mutation testing: each test below kills a mutant the tests above let live. ---------
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ('{\n  "a": 1\n', "line 3: unexpected end of file: a `}` is missing"),
+        ('[1', "line 1: unexpected end of file: a `]` is missing"),
+        ("{1: 2}", "line 1: expected a key in double quotes"),
+        ('{"a" 1}', "line 1: expected ':'"),
+        ('{"a"', "line 1: expected ':'"),
+        ('{"a":', "line 1: unexpected end of file"),
+        ('{"a": "\\x"}', "line 1: a string is not valid JSON"),
+        ('{"a": x}', "line 1: unexpected 'x'"),
+        ("{X}", "line 1: expected a key in double quotes"),
+        ('{"a": 1} 2', "line 1: unexpected text after the value"),
+        ("{/* open", "line 1: a /* comment is not closed"),
+        ("\n{", "line 2: unexpected end of file: a `}` is missing"),
+    ],
+)
+def test_each_parse_error_says_what_and_where(text, message):
+    with pytest.raises(jsonc.JsoncError) as exc:
+        jsonc.parse(text)
+    assert str(exc.value) == message
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"a":1,"b":[1,2],"c":{"d":null}}',
+        '{"a":/**/1,"b"/*x*/:2}',
+        '{"a": /*/ still a comment */ 1}',
+        "{//c\n\"a\": 1}",
+    ],
+)
+def test_compact_text_and_tight_comments_parse(text):
+    assert jsonc.parse(text)["a"] == 1
+
+
+def test_errors_name_the_step_that_is_not_an_object():
+    with pytest.raises(jsonc.JsoncError) as exc:
+        jsonc.set_value('{\n  "a": [1]\n}', ["a", "b"], 1)
+    assert str(exc.value) == "line 2: 'a' is not an object"
+    with pytest.raises(jsonc.JsoncError) as exc:
+        jsonc.set_value('{"x": {"a": 1}}', ["x", "a", "b"], 1)
+    assert str(exc.value) == "line 1: 'a' is not an object"
+    with pytest.raises(jsonc.JsoncError) as exc:
+        jsonc.set_value("\n[1]", ["a"], 1)
+    assert str(exc.value) == "line 2: the top level is not an object"
+    with pytest.raises(ValueError, match=r"^set_value needs at least one key$"):
+        jsonc.set_value("{}", [], 1)
+
+
+def test_text_that_is_not_blank_is_never_treated_as_empty():
+    with pytest.raises(jsonc.JsoncError):
+        jsonc.set_value("X", ["a"], 1)
+
+
+def test_non_ascii_is_written_as_itself():
+    assert jsonc.set_value("", ["café"], "naïve") == '{\n  "café": "naïve"\n}\n'
+    assert jsonc.set_value("{}", ["café"], {"k": "é"}) == '{\n  "café": {\n    "k": "é"\n  }\n}'
+    assert jsonc.set_value('{\n  "a": 1\n}', ["café"], ["é"]) == (
+        '{\n  "café": [\n    "é"\n  ],\n  "a": 1\n}'
+    )
+    assert jsonc.set_value('{"a": 1}', ["é"], "é") == '{"é": "é", "a": 1}'
+    assert jsonc.set_value('{"a": 1}', ["a"], "é") == '{"a": "é"}'
+
+
+def test_an_empty_object_with_no_spaces_gets_its_member_on_new_lines():
+    assert jsonc.set_value('{"a":{}}', ["a", "k"], 1) == '{"a":{\n  "k": 1\n}}'
+
+
+def test_an_indented_empty_object_indents_its_member_one_step_further():
+    old = '{\n  "a": {},\n  "b": 2\n}'
+    assert jsonc.set_value(old, ["a", "k"], 1) == '{\n  "a": {\n    "k": 1\n  },\n  "b": 2\n}'
+
+
+def test_an_empty_object_holding_a_comment_keeps_it():
+    old = '{\n  "a": { // keep\n  }\n}'
+    assert jsonc.set_value(old, ["a", "k"], 1) == '{\n  "a": {\n    "k": 1 // keep\n  }\n}'
+
+
+def test_a_one_line_object_inside_a_multi_line_file_stays_on_its_line():
+    old = '{\n  "o": {"a": 1}\n}\n'
+    assert jsonc.set_value(old, ["o", "k"], 2) == '{\n  "o": {"k": 2, "a": 1}\n}\n'
+
+
+def test_a_member_at_the_braces_indent_falls_back_to_two_spaces():
+    old = '{\n"a": 1\n}\n'
+    assert jsonc.set_value(old, ["k"], {"b": 2}) == '{\n"k": {\n  "b": 2\n},\n"a": 1\n}\n'
+
+
+def test_the_indent_step_is_read_relative_to_an_indented_brace():
+    old = '    {\n        "a": 1\n    }\n'
+    assert jsonc.set_value(old, ["k"], {"b": 2}) == (
+        '    {\n        "k": {\n            "b": 2\n        },\n        "a": 1\n    }\n'
+    )
+
+
+def test_a_new_file_is_mode_644(tmp_path):
+    f = tmp_path / "new.json"
+    jsonc.write(f, "{}")
+    assert f.stat().st_mode & 0o777 == 0o644
+
+
+def test_the_temporary_file_is_in_the_target_directory(tmp_path, monkeypatch):
+    seen: list = []
+    real = jsonc.os.replace
+
+    def spy(src, dst):
+        seen.append((Path(src).parent, Path(dst)))
+        real(src, dst)
+
+    monkeypatch.setattr(jsonc.os, "replace", spy)
+    f = tmp_path / "s.json"
+    jsonc.write(f, "{}")
+    assert seen == [(tmp_path, f)]
+
+
+def test_main_reads_sys_argv_when_given_no_list(tmp_path, monkeypatch):
+    f = tmp_path / "s.json"
+    monkeypatch.setattr(jsonc.sys, "argv", ["jsonc", "set", str(f), "k", "1"])
+    assert jsonc.main() == 0
+    assert json.loads(f.read_text()) == {"k": 1}

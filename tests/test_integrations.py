@@ -72,7 +72,7 @@ def run(monkeypatch, *argv: str) -> int:
     try:
         launcher.main()
     except SystemExit as exc:
-        return exc.code if isinstance(exc.code, int) else 1
+        return 0 if exc.code is None else exc.code if isinstance(exc.code, int) else 1
     return 0
 
 
@@ -189,7 +189,7 @@ class TestRunner:
             "--register-zellij-only", "--register-zed-only",
         )
         assert code == 2
-        assert "only one" in capfd.readouterr().err
+        assert "only one --register-<name>-only flag is allowed per command" in capfd.readouterr().err
         assert not (tmp_path / "ran").exists()
 
     def test_s5_7_a_flag_after_double_dash_is_passthrough(self, monkeypatch, home, project, current, tmp_path):
@@ -799,7 +799,7 @@ class TestNoAutomaticRegistration:
     def test_s6_3_no_aoe_integration_in_any_root_is_an_unknown_name(self, monkeypatch, home, project, current, capfd, tmp_path):
         monkeypatch.setattr(paths, "catalog_roots", lambda: [tmp_path / "empty"])
         assert run(monkeypatch, "host-run", "claude", "--stack", STACK, "--register-aoe-only") == 2
-        assert "no integration named 'aoe'" in capfd.readouterr().err
+        assert "no integration named 'aoe'; available: none" in capfd.readouterr().err
 
 
 # --- The ACP channel ------------------------------------------------------------------------------
@@ -822,3 +822,23 @@ def test_an_acp_register_run_writes_nothing_to_stdout(home, project, tmp_path):
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout == ""
     assert "to-stdout" in proc.stderr
+
+
+# --- Pinned by mutation testing ------------------------------------------------------------------
+
+
+def test_environ_sets_no_optional_name_by_default(home, project):
+    env = integrations.environ("x", "host-run", "claude", STACK, project)
+    assert not OPTIONAL & set(env)
+
+
+def test_the_integration_runs_in_the_project_given_not_the_cwd(monkeypatch, home, project, current, tmp_path):
+    overlay("zellij", DUMP)
+    monkeypatch.setenv("DUMP", str(tmp_path / "dump.json"))
+    other = tmp_path / "other"
+    other.mkdir()
+    code = run(monkeypatch, "host-run", "claude", str(other), "--stack", STACK, "--register-zellij-only")
+    assert code == 0
+    seen = json.loads((tmp_path / "dump.json").read_text())
+    assert seen["cwd"] == str(other)
+    assert seen["env"]["HARNESSED_PROJECT"] == str(other)
