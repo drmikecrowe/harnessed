@@ -290,6 +290,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     except JsoncError as exc:
         print(f"error: {path}: {exc}", file=sys.stderr)
         return 1
+    except UnicodeDecodeError as exc:
+        print(f"error: {path}: not UTF-8 text ({exc.reason} at byte {exc.start})", file=sys.stderr)
+        return 1
     except OSError as exc:
         print(f"error: {path}: {exc}", file=sys.stderr)
         return 1

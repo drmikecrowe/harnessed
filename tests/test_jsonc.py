@@ -299,6 +299,14 @@ class TestCli:
         assert "not JSON" in capsys.readouterr().err
         assert not (tmp_path / "s.json").exists()
 
+    def test_a_file_that_is_not_utf8_is_refused_and_left_as_it_was(self, tmp_path, capsys):
+        f = tmp_path / "s.json"
+        f.write_bytes('{"a": "café"}'.encode("latin-1"))
+        assert self._run("set", str(f), "b", "1") == 1
+        assert f.read_bytes() == '{"a": "café"}'.encode("latin-1")
+        err = capsys.readouterr().err
+        assert str(f) in err and "UTF-8" in err
+
     def test_an_unreadable_file_exits_1(self, tmp_path, capsys):
         d = tmp_path / "dir.json"
         d.mkdir()
