@@ -848,3 +848,91 @@ def test_two_flags_name_the_rule():
     with pytest.raises(integrations.IntegrationError) as exc:
         integrations.extract(["host-run", "--register-a-only", "--register-b-only"])
     assert str(exc.value) == "only one --register-<name>-only flag is allowed per command"
+
+
+def test_s7_5_after_a_build_and_zed_the_acp_launcher_answers_initialize(monkeypatch, tmp_path):
+    """S7.5: S7.1 (no profile, so the register run builds) then S2.1 (the Zed entry), then an ACP
+    `initialize` to the launcher the entry names gets a `result`.
+
+    The build is a real in-process assembly in place of `_build_stack`'s podman preflight. The
+    `initialize` goes through `host-acp` in a child process with test_host_acp's stub agent, which
+    is what the launcher's exec line runs.
+    """
+    from test_host_acp import _STACK as ACP_STACK
+    from test_host_acp import _Host, _pin, _rpc, _stdout_messages
+
+    host = _Host(tmp_path, monkeypatch)
+    for name in CONTRACT | OPTIONAL:
+        monkeypatch.delenv(name, raising=False)
+    project = tmp_path / "proj"
+    project.mkdir()
+    monkeypatch.chdir(project)
+    assert not paths.is_built(ACP_STACK, "claude")
+    builds: list = []
+    monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+    monkeypatch.setattr(launcher, "_build_stack", lambda rt, s, h: (builds.append((s, h)), host.build(h)))
+
+    assert run(monkeypatch, "host-run", "claude", "--stack", ACP_STACK, "--register-zed-only") == 0
+    assert builds == [(ACP_STACK, "claude")]
+    assert paths.is_built(ACP_STACK, "claude")
+
+    entry = jsonc_value(Path(os.environ["XDG_CONFIG_HOME"]) / "zed" / "settings.json")["agent_servers"][
+        f"harnessed claude ({ACP_STACK})"
+    ]
+    acp_launcher = Path(entry["command"])
+    exec_line = [ln for ln in acp_launcher.read_text().splitlines() if ln.startswith("exec ")]
+    assert exec_line and exec_line[0].endswith(f'host-acp claude --stack {ACP_STACK} "$@"')
+
+    proc = host.run("claude", path_prefix=host.adapter(_pin()), msgs=[_rpc(1, "initialize", {"protocolVersion": 1})])
+    assert proc.returncode == 0, proc.stderr.decode()
+    [reply] = _stdout_messages(proc)
+    assert reply["id"] == 1 and "result" in reply
+
+
+def test_s4_6_the_wrapper_vscode_runs_starts_the_stacks_claude(monkeypatch, tmp_path):
+    """S4.6, up to the VS Code UI: after `--register-vscode-only`, the wrapper the setting names,
+    called the way the extension calls it (`<wrapper> <bundled claude> <SDK args>`, fact 14), starts
+    the stack's claude in the cwd with the SDK args and the stack's config dir. The bundled claude
+    does not run. A real child process runs the real launcher file; `claude` on PATH is a recorder.
+    """
+    from test_host_acp import _STACK as ACP_STACK
+    from test_host_acp import _Host
+
+    host = _Host(tmp_path, monkeypatch)
+    for name in CONTRACT | OPTIONAL:
+        monkeypatch.delenv(name, raising=False)
+    project = tmp_path / "proj"
+    project.mkdir()
+    monkeypatch.chdir(project)
+    monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+    monkeypatch.setattr(launcher, "_build_stack", lambda rt, s, h: host.build(h))
+    assert run(monkeypatch, "host-run", "claude", "--stack", ACP_STACK, "--register-vscode-only") == 0
+    settings = Path(os.environ["XDG_CONFIG_HOME"]) / "Code" / "User" / "settings.json"
+    wrapper = jsonc_value(settings)["claudeCode.claudeProcessWrapper"]
+
+    bundled = tmp_path / "ext" / "claude"
+    bundled.parent.mkdir()
+    bundled.write_text(f'#!/bin/sh\ntouch "{tmp_path}/bundled-ran"\n')
+    bundled.chmod(0o755)
+    fake = tmp_path / "fakebin"
+    fake.mkdir()
+    record = tmp_path / "claude-run.json"
+    (fake / "claude").write_text(
+        f"#!{sys.executable}\nimport json, os, sys\n"
+        f"json.dump({{'argv': sys.argv[1:], 'cwd': os.getcwd(), "
+        f"'config': os.environ.get('CLAUDE_CONFIG_DIR')}}, open({str(record)!r}, 'w'))\n"
+    )
+    (fake / "claude").chmod(0o755)
+    sdk = ["--output-format", "stream-json", "--input-format", "stream-json", "--verbose"]
+    env = {**host.env, "PATH": f"{fake}{os.pathsep}{host.env['PATH']}"}
+    proc = subprocess.run(
+        [wrapper, str(bundled), *sdk], cwd=project, env=env, stdin=subprocess.DEVNULL,
+        capture_output=True, timeout=180, check=False,
+    )
+    assert proc.returncode == 0, proc.stderr.decode()
+    seen = json.loads(record.read_text())
+    assert seen["argv"][-len(sdk):] == sdk
+    assert str(bundled) not in seen["argv"]
+    assert seen["cwd"] == str(project)
+    assert seen["config"] == str(paths.host_home(ACP_STACK, "claude"))
+    assert not (tmp_path / "bundled-ran").exists()
