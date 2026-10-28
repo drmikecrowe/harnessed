@@ -495,3 +495,13 @@ def test_a_file_of_only_comments_keeps_them_and_gets_the_object(text):
 def test_a_file_with_a_value_after_its_comments_is_not_treated_as_empty():
     with pytest.raises(jsonc.JsoncError):
         jsonc.set_value("// c\n[1]", ["a"], 1)
+
+
+def test_a_new_file_honours_the_umask(tmp_path):
+    """PR #645 review: a restrictive umask keeps a new settings file private."""
+    old = os.umask(0o077)
+    try:
+        jsonc.write(tmp_path / "new.json", "{}")
+    finally:
+        os.umask(old)
+    assert (tmp_path / "new.json").stat().st_mode & 0o777 == 0o600

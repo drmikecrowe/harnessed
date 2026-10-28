@@ -21,7 +21,7 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from harnessed import integrations, launcher, launchscript, paths, staleness
+from harnessed import console, integrations, launcher, launchscript, paths, staleness
 
 REPO_CATALOG = Path(__file__).resolve().parents[1] / "catalog"
 STACK = "gortex-ghissues"
@@ -34,6 +34,14 @@ OPTIONAL = {
     "HARNESSED_NO_STRICT_MCP", "HARNESSED_AOE_GROUP", "HARNESSED_AOE_TITLE",
     "HARNESSED_AOE_MANAGED_WORKTREE",
 }
+
+
+@pytest.fixture(autouse=True)
+def _reset_acp_mode():
+    """A wrapper-argv run through `main` swaps fd 1 for the process (`set_acp_mode`), and these tests
+    stub out the exec that would restore it; left swapped, a later test's launch reads as ACP."""
+    yield
+    console.set_acp_mode(False)
 
 
 @pytest.fixture
@@ -1119,3 +1127,19 @@ class TestAoeRegisterRefuses:
         seen = TestAoeRegister().invoke(monkeypatch, home, project, verb="host-acp")
         assert seen["code"] == 2, seen["output"]
         assert seen["calls"] == []
+
+
+@pytest.mark.parametrize("content", [b"\xff\xfe not utf-8\n", None])
+def test_a_requires_file_that_cannot_be_read_is_a_usage_error(home, content):
+    """PR #645 review: an unreadable `requires` gives the contract's error and exit 2, not a traceback."""
+    script = overlay("zellij", "#!/bin/sh\n")
+    spec = script.parent / "requires"
+    if content is None:
+        spec.write_text("harness claude\n")
+        spec.chmod(0)  # no read permission: reading it raises PermissionError
+    else:
+        spec.write_bytes(content)
+    with pytest.raises(integrations.IntegrationError) as exc:
+        integrations.check(script, "claude", "host-run")
+    assert exc.value.code == 2
+    assert str(spec) in str(exc.value)

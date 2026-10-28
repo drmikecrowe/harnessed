@@ -265,7 +265,12 @@ def write(path: Path, text: str) -> None:
     """
     target = Path(os.path.realpath(path))
     target.parent.mkdir(parents=True, exist_ok=True)
-    mode = target.stat().st_mode & 0o7777 if target.exists() else 0o644
+    if target.exists():
+        mode = target.stat().st_mode & 0o7777
+    else:
+        umask = os.umask(0)  # read it: the only portable way is to set and restore it
+        os.umask(umask)
+        mode = 0o666 & ~umask
     fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=f".{target.name}.", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:

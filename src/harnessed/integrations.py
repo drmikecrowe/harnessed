@@ -92,7 +92,11 @@ def check(script: Path, harness: str, verb: str) -> None:
         return
     name = script.parent.name
     backend = "container" if verb.startswith("container-") else "host"
-    for line in spec.read_text(encoding="utf-8").splitlines():
+    try:
+        text = spec.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise IntegrationError(f"{spec}: cannot read it: {exc}", 2) from exc
+    for line in text.splitlines():
         words = line.split("#", 1)[0].split()
         if not words:
             continue
