@@ -443,7 +443,7 @@ copy_local() {
 harnessed_register() {
   local p=$1 t=$2 g=$3 id
   "$HARNESSED" host-run "$harness" "$p" --stack "$stack" \
-    --aoe-group "${g%%/*}" --aoe-title "$t" --create-aoe-only --aoe-managed-worktree
+    --aoe-group "${g%%/*}" --aoe-title "$t" --register-aoe-only --aoe-managed-worktree
   id=$(row_by_path "$p")
   [ -n "$id" ] || die "harnessed registered no row for $p"
   [ "$(jq -r --arg i "$id" '.[] | select(.id == $i) | .group_path' "$sessions")" = "$g" ] \

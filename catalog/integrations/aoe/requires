@@ -1,0 +1,3 @@
+# Checked by harnessed before any build (see integrations.check).
+# An aoe row replays a terminal launcher, so an ACP launcher is refused.
+verb host-run container-run

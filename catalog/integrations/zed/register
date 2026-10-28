@@ -1,0 +1,26 @@
+#!/bin/sh
+# Add this stack's ACP launcher to Zed's `agent_servers`: `--register-zed-only` (GH-569).
+# harnessed runs this with the integration contract's HARNESSED_* variables set.
+# `harnessed.jsonc` keeps every other byte of settings.json, comments included, and leaves an
+# existing entry's other members (args, env, default_config_options) as the user wrote them.
+# `requires` beside this file limits it to an ACP harness, checked before any build.
+set -eu
+if [ "$HARNESSED_BACKEND" = container ]; then
+    key="harnessed $HARNESSED_HARNESS ($HARNESSED_STACK, container)"
+else
+    key="harnessed $HARNESSED_HARNESS ($HARNESSED_STACK)"
+fi
+# Zed's paths::config_dir(): XDG on Linux, ~/.config/zed on macOS whatever XDG_CONFIG_HOME says.
+if [ "$(uname -s)" = Darwin ]; then
+    file="$HOME/.config/zed/settings.json"
+else
+    file="${XDG_CONFIG_HOME:-$HOME/.config}/zed/settings.json"
+fi
+cmd_json=$("$HARNESSED_PYTHON" -c 'import json, sys; print(json.dumps(sys.argv[1]))' "$HARNESSED_ACP_LAUNCHER")
+jsonc() { "$HARNESSED_PYTHON" -m harnessed.jsonc "$@"; }
+jsonc setdefault "$file" agent_servers "$key" "{\"type\": \"custom\", \"command\": $cmd_json, \"args\": [], \"env\": {}}"
+# setdefault creates a missing entry; the two sets refresh an existing entry's type and command
+# while leaving the rest of it (args, env, the user's own members) as the user wrote it.
+jsonc set "$file" agent_servers "$key" type '"custom"'
+jsonc set "$file" agent_servers "$key" command "$cmd_json"
+echo "Registered Zed agent server '$key' in $file"

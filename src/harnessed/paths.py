@@ -499,6 +499,7 @@ _KIND_MARKER = {
     "recipes": "recipe.yaml",
     "services": "service.yaml",
     "stacks": "stack.yaml",
+    "integrations": "register",  # an executable file, not a manifest (GH-569)
 }
 
 

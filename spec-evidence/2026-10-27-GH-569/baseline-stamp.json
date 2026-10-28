@@ -1,0 +1,64 @@
+{
+  "result": "green",
+  "mode": "baseline",
+  "expected_layers": [
+    "tests",
+    "coverage",
+    "types",
+    "lint",
+    "shellcheck",
+    "secrets"
+  ],
+  "completed_layers": [
+    "tests",
+    "coverage",
+    "types",
+    "lint",
+    "shellcheck",
+    "secrets"
+  ],
+  "layer_seconds": {
+    "tests": 0.001,
+    "coverage": 411.599,
+    "types": 16.391,
+    "lint": 0.238,
+    "shellcheck": 1.761,
+    "secrets": 2.931
+  },
+  "layers": {
+    "tests": {
+      "baseline": "reused",
+      "selection": "off"
+    },
+    "coverage": {
+      "baseline": "rebuilt",
+      "selection": "off",
+      "baseline_reason": "absent"
+    },
+    "types": {
+      "baseline": "rebuilt",
+      "selection": "off",
+      "baseline_reason": "absent"
+    },
+    "lint": {
+      "baseline": "rebuilt",
+      "selection": "off",
+      "baseline_reason": "absent"
+    },
+    "shellcheck": {
+      "baseline": "rebuilt",
+      "selection": "off",
+      "baseline_reason": "absent"
+    },
+    "secrets": {
+      "baseline": "rebuilt",
+      "selection": "off",
+      "baseline_reason": "absent"
+    }
+  },
+  "failed": null,
+  "exit_code": 0,
+  "commit": "e49e2ec0459b43deacfebc2a062fb57d1a3abc4e",
+  "dirty": false,
+  "written": "2026-10-27T12:58:23.994Z"
+}

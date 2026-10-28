@@ -1,0 +1,16 @@
+#!/bin/sh
+# Set VS Code's Claude Code process wrapper to this stack's claude launcher:
+# `--register-vscode-only` (GH-569). harnessed runs this with the integration contract's
+# HARNESSED_* variables set. The extension then runs `<launcher> <its claude> <args>`, which
+# `host-run` reads as passthrough, so the session runs through the stack.
+# `requires` beside this file limits it to claude on the host backend, checked before any build.
+set -eu
+# VS Code's user settings: XDG on Linux, ~/Library/Application Support on macOS.
+if [ "$(uname -s)" = Darwin ]; then
+    file="$HOME/Library/Application Support/Code/User/settings.json"
+else
+    file="${XDG_CONFIG_HOME:-$HOME/.config}/Code/User/settings.json"
+fi
+wrapper=$("$HARNESSED_PYTHON" -c 'import json, sys; print(json.dumps(sys.argv[1]))' "$HARNESSED_RUN_LAUNCHER")
+"$HARNESSED_PYTHON" -m harnessed.jsonc set "$file" claudeCode.claudeProcessWrapper "$wrapper"
+echo "Set claudeCode.claudeProcessWrapper to $HARNESSED_RUN_LAUNCHER in $file"

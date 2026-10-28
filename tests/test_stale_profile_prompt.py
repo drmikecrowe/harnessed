@@ -72,15 +72,18 @@ def _run(monkeypatch, tmp_path, *, isatty: bool, confirm: bool = True, exc: Exce
     monkeypatch.setattr(launcher, "sys", _Sys(isatty))
     monkeypatch.setattr(console, "sys", _Sys(isatty))
     monkeypatch.setattr(typer, "confirm", lambda msg, **k: (prompts.append(msg), confirm)[1])
-    # --create-aoe-only exits through the register hook; stub the bridge so a machine without `aoe`
-    # installed does not turn "got past the guard" into exit 1.
-    monkeypatch.setattr(launcher.aoe, "sync_session", lambda *a, **k: True)
+    # The first call after the guard exits 0, so "got past the guard" is an exit status. It was
+    # `--create-aoe-only` until GH-569 removed that flag.
+    def _past_the_guard(*_a):
+        raise typer.Exit(0)
+
+    monkeypatch.setattr(launcher, "_prune_unlaunchable_omp_blocks", _past_the_guard)
 
     project = tmp_path / "proj"
     project.mkdir()
     result = CliRunner().invoke(
         launcher.app,
-        ["container-run", "claude", str(project), "--stack", "s", "--create-aoe-only"],
+        ["container-run", "claude", str(project), "--stack", "s"],
     )
     return result, builds, prompts
 
@@ -89,8 +92,8 @@ def test_consent_rebuilds_and_continues(monkeypatch, tmp_path):
     result, builds, prompts = _run(monkeypatch, tmp_path, isatty=True, confirm=True)
     assert builds == [("podman", "s", "claude")]
     assert len(prompts) == 1
-    # --create-aoe-only exits 0 from the register hook, which sits AFTER the guard: reaching it is
-    # the proof that consent let the launch proceed rather than merely suppressing the error.
+    # `_past_the_guard` exits 0, and it sits AFTER the guard: reaching it is the proof that consent
+    # let the launch proceed rather than merely suppressing the error.
     assert result.exit_code == 0, result.output
 
 

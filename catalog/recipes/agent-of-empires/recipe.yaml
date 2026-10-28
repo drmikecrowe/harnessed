@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 # Recipe: agent-of-empires — Agent of Empires sessions that each own a git worktree.
 #
-# The skill drives the host's `aoe` and, for harnessed rows, `harnessed host-run --create-aoe-only`.
+# The skill drives the host's `aoe` and, for harnessed rows, `harnessed host-run --register-aoe-only`.
 # It depends on nothing else from harnessed, so it can be copied to ~/.claude/skills unchanged.
 name: agent-of-empires
 description: "Agent of Empires sessions with one git worktree each: create, list, rename, move, archive, remove, restore, recover, and optional waves, with a safety check before any removal."

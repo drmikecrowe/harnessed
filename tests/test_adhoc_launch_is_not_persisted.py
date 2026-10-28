@@ -141,7 +141,6 @@ class TestThePersistGate:
         monkeypatch.setattr(launcher.aoe, "_bin", lambda: aoe_bin)
         kwargs.setdefault("group", None)
         kwargs.setdefault("title", None)
-        kwargs.setdefault("only", False)
         return launcher._persist_this_launch("whatever", **kwargs)
 
     def test_an_ordinary_stack_persists(self, monkeypatch):
@@ -157,21 +156,12 @@ class TestThePersistGate:
     def test_an_aoe_title_overrules_the_skip(self, monkeypatch):
         assert self._gate(monkeypatch, adhoc=True, title="scratch") is True
 
-    def test_create_aoe_only_overrules_the_skip(self, monkeypatch):
-        """Registering IS the command the user typed, so it cannot be the thing that is skipped."""
-        assert self._gate(monkeypatch, adhoc=True, only=True) is True
-
     def test_s2_3_without_a_usable_aoe_nothing_persists(self, monkeypatch):
         """GH-565 Decide 3: no aoe row can be registered, so no local launcher is written."""
         assert self._gate(monkeypatch, adhoc=False, aoe_bin=None) is False
 
     def test_an_aoe_title_without_a_usable_aoe_persists_nothing(self, monkeypatch):
         assert self._gate(monkeypatch, adhoc=False, aoe_bin=None, title="t") is False
-
-    def test_create_aoe_only_without_aoe_still_reaches_the_register_error(self, monkeypatch):
-        """`--create-aoe-only` must reach `_aoe_register`, which reports that aoe is missing and
-        exits nonzero. Skipping it would turn the command into a plain launch."""
-        assert self._gate(monkeypatch, adhoc=False, aoe_bin=None, only=True) is True
 
 
 class TestHostRunLeavesNothingBehind:
@@ -231,16 +221,16 @@ class TestHostRunLeavesNothingBehind:
         assert result.exit_code == 0, result.output
         assert paths.is_built("test.hostspike", "claude"), "the profile assembled and the agent exec'd"
 
-    def test_an_aoe_title_brings_both_back(self, tmp_path, monkeypatch):
-        """The hatch, at the call site: the row is asked for by name, so the script it points at
-        must be written too — a row whose command names a missing file is dead on arrival."""
+    def test_an_aoe_title_brings_neither_back(self, tmp_path, monkeypatch):
+        """GH-569: naming a row no longer asks a launch for one; `--register-aoe-only` does."""
         result, project, rows = self._launch(tmp_path, monkeypatch, "--aoe-title", "scratch")
         assert result.exit_code == 0, result.output
-        assert [p.name for p in project.iterdir()] == ["claude-test.hostspike-host"]
-        assert len(rows) == 1
+        assert list(project.iterdir()) == []
+        assert rows == []
 
-    def test_an_ordinary_stack_still_persists(self, tmp_path, monkeypatch):
-        """The control. Same path, same stubs, a name that is not ad-hoc."""
+    def test_an_ordinary_stack_persists_nothing_either(self, tmp_path, monkeypatch):
+        """GH-569 S6.1: same path, same stubs, a name that is not ad-hoc — and still no script and
+        no row. The launch itself happened: the profile assembled."""
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
@@ -260,8 +250,25 @@ class TestHostRunLeavesNothingBehind:
             launcher.app, ["host-run", "claude", str(project), "--stack", "hostspike"]
         )
         assert result.exit_code == 0, result.output
-        assert [p.name for p in project.iterdir()] == ["claude-hostspike-host"]
-        assert len(rows) == 1
+        assert list(project.iterdir()) == []
+        assert rows == []
+        assert paths.is_built("hostspike", "claude")
+
+
+def _aoe_register(monkeypatch, home: Path, project: Path, stack: str, verb: str, **extra: str):
+    """`aoe-register`, the command the aoe integration execs, with the contract it is given (GH-569).
+    Returns the result and the rows `sync_session` was asked for."""
+    monkeypatch.setattr(Path, "home", lambda: home)
+    rows: list = []
+    monkeypatch.setattr(launcher.aoe, "sync_session", lambda *a, **k: rows.append((a, k)) or True)
+    monkeypatch.setattr(launcher.aoe, "_bin", lambda: "/usr/bin/aoe")
+    env = {
+        "HARNESSED_VERB": verb, "HARNESSED_STACK": stack, "HARNESSED_HARNESS": "claude",
+        "HARNESSED_PROJECT": str(project), **extra,
+    }
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    return runner.invoke(launcher.app, ["aoe-register"]), rows
 
 
 _HOSTSPIKE_LAUNCHERS = [
@@ -326,11 +333,15 @@ class TestGlobalLaunchersAtLaunch:
         assert not bin_dir.exists() or list(bin_dir.iterdir()) == []
 
     def test_s1_14_an_adhoc_row_gets_its_global_launchers(self, tmp_path, monkeypatch):
-        """PR #570 review: the row asked for by name must exec a launcher that exists."""
-        _overlay_stack(tmp_path, "test.hostspike", TestHostRunLeavesNothingBehind.BODY)
-        result, bin_dir, project, rows, _seen = self._host_run(
-            tmp_path, monkeypatch, "test.hostspike", "--aoe-title", "scratch", aoe_bin="/usr/bin/aoe"
+        """PR #570 review: the row asked for must exec a launcher that exists. GH-569: the row is
+        asked for by `--register-aoe-only`, which reaches `aoe-register`."""
+        home = tmp_path / "home"
+        project = tmp_path / "project"
+        project.mkdir()
+        result, rows = _aoe_register(
+            monkeypatch, home, project, "test.hostspike", "host-run", HARNESSED_AOE_TITLE="scratch"
         )
+        bin_dir = home / ".local" / "bin"
         assert result.exit_code == 0, result.output
         local = project / "claude-test.hostspike-host"
         lines = local.read_text(encoding="utf-8").split("\n")
@@ -409,8 +420,10 @@ class TestGlobalLaunchersAtLaunch:
         assert (bin_dir / "harnessed-claude-s-host").is_file(), "the launch went on"
 
     def test_s3_1_the_local_launcher_execs_the_global_one(self, tmp_path, monkeypatch):
-        result, _b, project, rows = self._container(
-            tmp_path, monkeypatch, "container-run", "--no-strict-mcp-config"
+        project = tmp_path / "proj"
+        project.mkdir()
+        result, rows = _aoe_register(
+            monkeypatch, tmp_path / "home", project, "s", "container-run", HARNESSED_NO_STRICT_MCP="1"
         )
         assert result.exit_code == 0, result.output
         local = project / "claude-s-container"
@@ -454,32 +467,18 @@ class TestGlobalLaunchersAtLaunch:
         assert (bin_dir / "harnessed-acp-claude-s-container").is_file(), "the global launchers still land"
 
 
-class TestCreateAoeOnlyWithARefusedLauncher:
-    """S1.13 under `--create-aoe-only`: registering is the command, so a refused launcher is an error,
-    not a silent fall-through into a plain launch."""
+class TestRegisterAoeOnlyWithARefusedLauncher:
+    """S1.13 under `--register-aoe-only`: registering is the command, so a refused launcher is an
+    error, not a row that replays a foreign file."""
 
     def test_it_exits_nonzero_and_registers_nothing(self, tmp_path, monkeypatch):
         home = tmp_path / "home"
         bin_dir = home / ".local" / "bin"
         bin_dir.mkdir(parents=True)
         (bin_dir / "harnessed-claude-s-container").write_bytes(b"#!/bin/sh\necho mine\n")
-        monkeypatch.setattr(Path, "home", lambda: home)
-        rows: list = []
-        monkeypatch.setattr(launcher.aoe, "sync_session", lambda *a, **k: rows.append(a) or True)
-        monkeypatch.setattr(launcher.aoe, "_bin", lambda: "/usr/bin/aoe")
-        catalog = tmp_path / "s"
-        catalog.mkdir()
-        (catalog / "stack.yaml").write_text("name: s\n")
-        monkeypatch.setattr(launcher.paths, "find_in_catalog", lambda *a: catalog)
-        patch_all(monkeypatch, "_runtime", lambda: "podman")
-        monkeypatch.setattr(launcher, "is_built", lambda *a: True)
-        monkeypatch.setattr(launcher.staleness, "check_profile_fresh", lambda *a: None)
         project = tmp_path / "proj"
         project.mkdir()
-        result = runner.invoke(
-            launcher.app,
-            ["container-run", "claude", str(project), "--stack", "s", "--create-aoe-only"],
-        )
+        result, rows = _aoe_register(monkeypatch, home, project, "s", "container-run")
         assert result.exit_code == 1, result.output
         assert rows == [] and list(project.iterdir()) == []
         assert _names("harnessed-claude-s-container", result.output)

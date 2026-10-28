@@ -205,31 +205,29 @@ class TestHostRunRecipeMinting:
         runner.invoke(launcher.app, ["host-run", "claude", "--recipe", "serena"])
         assert (tmp_path / "stacks" / "default.serena" / "stack.yaml").is_file()
 
-    def test_create_aoe_only_keeps_the_manifest_its_row_points_at(self, monkeypatch, tmp_path):
-        """`--create-aoe-only` succeeds by RAISING: `_aoe_register` ends it with `typer.Exit(0)`.
+    def test_a_register_run_keeps_the_manifest_its_entry_points_at(self, monkeypatch, tmp_path):
+        """`--register-<name>-only` succeeds by RAISING: `_register_and_exit` ends it with
+        `typer.Exit(code)`, 0 on success (GH-569; it was `--create-aoe-only` before).
 
         That unwinds through the orphan-cleanup handler like any failure, so a naive `except
-        Exception` deletes the manifest the row it just wrote names in its recorded command —
-        manufacturing exactly the dead-on-arrival row the container path builds ahead of
-        registering to avoid.
+        Exception` deletes the manifest the entry it just registered names — manufacturing exactly
+        the dead-on-arrival row the container path builds ahead of registering to avoid.
         """
         import inspect
 
         # The premise, pinned so it cannot drift out from under the handler below: that is really
-        # how `--create-aoe-only` reports success. (Driving the real `_aoe_register` from here
-        # would need a resolvable catalog — assembly runs first, by ab3b060 — which is a different
-        # test's job.)
-        assert "raise typer.Exit(0)" in inspect.getsource(launcher._aoe_register)
+        # how a register run reports success. (Driving the real runner from here would need a
+        # resolvable catalog, which is test_integrations' job.)
+        assert "raise typer.Exit(code)" in inspect.getsource(launcher._register_and_exit)
 
         monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
 
         def registered_and_stop(*_a, **_k):
             raise launcher.typer.Exit(0)
 
-        monkeypatch.setattr(launcher, "_launch_host", registered_and_stop)
-        result = runner.invoke(
-            launcher.app, ["host-run", "claude", "--recipe", "serena", "--create-aoe-only"]
-        )
+        monkeypatch.setattr(launcher, "_register", "aoe")
+        monkeypatch.setattr(launcher, "_register_and_exit", registered_and_stop)
+        result = runner.invoke(launcher.app, ["host-run", "claude", "--recipe", "serena"])
         assert result.exit_code == 0, result.output
         assert (tmp_path / "stacks" / "default.serena" / "stack.yaml").is_file(), (
             "the registered row names this stack; deleting it leaves the row dead on arrival"
