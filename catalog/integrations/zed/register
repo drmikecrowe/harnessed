@@ -11,11 +11,11 @@ else
     key="harnessed $HARNESSED_HARNESS ($HARNESSED_STACK)"
 fi
 file="${XDG_CONFIG_HOME:-$HOME/.config}/zed/settings.json"
-command=$("$HARNESSED_PYTHON" -c 'import json, sys; print(json.dumps(sys.argv[1]))' "$HARNESSED_ACP_LAUNCHER")
+cmd_json=$("$HARNESSED_PYTHON" -c 'import json, sys; print(json.dumps(sys.argv[1]))' "$HARNESSED_ACP_LAUNCHER")
 jsonc() { "$HARNESSED_PYTHON" -m harnessed.jsonc "$@"; }
-jsonc setdefault "$file" agent_servers "$key" "{\"type\": \"custom\", \"command\": $command, \"args\": [], \"env\": {}}"
+jsonc setdefault "$file" agent_servers "$key" "{\"type\": \"custom\", \"command\": $cmd_json, \"args\": [], \"env\": {}}"
 # setdefault creates a missing entry; the two sets refresh an existing entry's type and command
 # while leaving the rest of it (args, env, the user's own members) as the user wrote it.
 jsonc set "$file" agent_servers "$key" type '"custom"'
-jsonc set "$file" agent_servers "$key" command "$command"
+jsonc set "$file" agent_servers "$key" command "$cmd_json"
 echo "Registered Zed agent server '$key' in $file"

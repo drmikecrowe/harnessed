@@ -212,10 +212,17 @@ def set_value(text: str, keys: list[str], value: Any, *, only_missing: bool = Fa
     """
     if not keys:
         raise ValueError("set_value needs at least one key")
-    if text.strip(" \t\r\n") == "":
+    blank = _Parser(text)
+    blank.skip()
+    if blank.pos >= len(text):
+        # Whitespace and comments only, as a fresh settings file can be: keep them, add the object.
         for key in reversed(keys):
             value = {key: value}
-        return json.dumps(value, ensure_ascii=False, indent=2) + "\n"
+        if text.strip(" \t\r\n") == "":
+            head = ""
+        else:
+            head = text if text.endswith("\n") else text + "\n"
+        return head + json.dumps(value, ensure_ascii=False, indent=2) + "\n"
     root = _Parser(text).document()
     unit = _unit(text, root)
     nl = "\r\n" if "\r\n" in text else "\n"

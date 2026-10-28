@@ -482,3 +482,16 @@ def test_a_crlf_file_gets_crlf_inserted_lines():
     assert new == '{\r\n  "k": {\r\n    "b": 2\r\n  },\r\n  "a": 1\r\n}\r\n'
     assert "\n" not in new.replace("\r\n", "")
     assert jsonc.set_value('{\r\n  "o": {}\r\n}', ["o", "k"], 1) == '{\r\n  "o": {\r\n    "k": 1\r\n  }\r\n}'
+
+
+@pytest.mark.parametrize("text", ["// a fresh settings file\n", "/* note */", "  // a\n  // b\n"])
+def test_a_file_of_only_comments_keeps_them_and_gets_the_object(text):
+    """PR #645 review: a fresh settings file can hold only a comment; it is empty, not invalid."""
+    new = jsonc.set_value(text, ["a", "b"], 1)
+    assert new.startswith(text)
+    assert jsonc.parse(new) == {"a": {"b": 1}}
+
+
+def test_a_file_with_a_value_after_its_comments_is_not_treated_as_empty():
+    with pytest.raises(jsonc.JsoncError):
+        jsonc.set_value("// c\n[1]", ["a"], 1)
