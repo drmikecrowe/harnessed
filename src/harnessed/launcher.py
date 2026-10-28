@@ -3463,6 +3463,7 @@ def _launch_host(
     if acp:
         _relay_acp(stack, harness, home, env, project_path, no_strict_mcp=no_strict_mcp)
     os.chdir(cwd)
+    restore_acp_stdout()  # the harness gets the real stdout; a no-op unless it was swapped
 
     if not rm:
         # Last chance to be read: past the exec, the agent owns the screen.
@@ -3680,6 +3681,9 @@ def host_run(
 
     Also registered as `host-exec` — the same launch with nobody at the keyboard. See `_can_prompt`.
     """
+    if _wrapped:
+        # Before anything can print: the VS Code extension parses this stdout (GH-569, PR #645).
+        set_acp_mode(True)
     _require_supported_harness(harness)
     stack_name, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
     # Not under `host-exec`: nobody is at it, and `_launch_host` only declares exec mode later. Not
@@ -6764,6 +6768,10 @@ _register: Optional[str] = None
 
 _WRAPPER_VERBS = ("host-run", "container-run")
 
+# Set by main() when `_vscode_wrapper_argv` rewrote argv: stdout is then the extension's stream-json
+# channel, so `host_run` points it at stderr until the exec, as the ACP verbs do.
+_wrapped = False
+
 
 def _vscode_wrapper_argv(argv: list[str]) -> list[str]:
     """The VS Code Claude Code extension's process-wrapper call, as passthrough (GH-569 S4.4).
@@ -6804,9 +6812,11 @@ def main() -> None:
     # update` parsing as `harnessed launch update` and failing with "Missing argument 'HARNESS'",
     # which reads like a usage error rather than a missing registration. With the stack named by
     # `--stack`, a bare leading token is a harness and there is nothing left to disambiguate.
-    global _register
+    global _register, _wrapped
+    argv = _vscode_wrapper_argv(sys.argv[1:])
+    _wrapped = argv != sys.argv[1:]
     try:
-        head, _register = integrations.extract(_extract_acp_cli(_vscode_wrapper_argv(sys.argv[1:])))
+        head, _register = integrations.extract(_extract_acp_cli(argv))
     except integrations.IntegrationError as exc:
         _err.print(f"[bold red]error:[/bold red] {exc}", highlight=False)
         raise SystemExit(exc.code) from None
@@ -6831,8 +6841,9 @@ def main() -> None:
         raise SystemExit(1) from None
     finally:
         # One parse, one command. A caller that drives `app` directly afterwards (a test's
-        # CliRunner) must not inherit this flag.
+        # CliRunner) must not inherit these flags.
         _register = None
+        _wrapped = False
 
 
 if __name__ == "__main__":

@@ -921,6 +921,7 @@ def test_s4_6_the_wrapper_vscode_runs_starts_the_stacks_claude(monkeypatch, tmp_
         f"#!{sys.executable}\nimport json, os, sys\n"
         f"json.dump({{'argv': sys.argv[1:], 'cwd': os.getcwd(), "
         f"'config': os.environ.get('CLAUDE_CONFIG_DIR')}}, open({str(record)!r}, 'w'))\n"
+        "print('{\"type\": \"claude-out\"}')\n"
     )
     (fake / "claude").chmod(0o755)
     sdk = ["--output-format", "stream-json", "--input-format", "stream-json", "--verbose"]
@@ -936,6 +937,8 @@ def test_s4_6_the_wrapper_vscode_runs_starts_the_stacks_claude(monkeypatch, tmp_
     assert seen["cwd"] == str(project)
     assert seen["config"] == str(paths.host_home(ACP_STACK, "claude"))
     assert not (tmp_path / "bundled-ran").exists()
+    # The extension reads the wrapper's stdout as stream-json: claude's own line and nothing else.
+    assert proc.stdout == b'{"type": "claude-out"}\n', proc.stdout
 
 
 def test_a_foreign_file_at_the_launcher_name_registers_nothing(monkeypatch, home, project, current, tmp_path, capfd):
