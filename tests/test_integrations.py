@@ -964,3 +964,23 @@ def test_a_failed_container_register_removes_the_manifest_it_minted(monkeypatch,
     code = run(monkeypatch, "container-run", "claude", "--recipe", "serena", "--register-zellij-only")
     assert code == 3
     assert not list((tmp_path / "gen" / "stacks").glob("*/stack.yaml"))
+
+
+@pytest.mark.parametrize("verb", ["host-run", "container-run", "host-acp", "container-acp"])
+def test_help_names_the_register_flag_and_every_integration(monkeypatch, home, capsys, verb):
+    """`--help` on a global verb names `--register-<name>-only` and the integrations the catalog
+    roots hold, overlay included: the flag is split off before typer, so typer cannot list it."""
+    overlay("zellij", "#!/bin/sh\n")
+    monkeypatch.setenv("COLUMNS", "400")
+    assert run(monkeypatch, verb, "--help") == 0
+    out = " ".join(capsys.readouterr().out.split())
+    assert "--register-<name>-only" in out
+    assert "aoe, atlas, vscode, zed, zellij" in out
+
+
+def test_help_on_another_verb_reads_no_integration(monkeypatch, home, capsys):
+    def boom(*_a):
+        raise AssertionError("listed integrations for a verb that takes no register flag")
+
+    monkeypatch.setattr(launcher.paths, "list_catalog", boom)
+    assert run(monkeypatch, "build", "--help") == 0

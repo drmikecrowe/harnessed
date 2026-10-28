@@ -3588,6 +3588,16 @@ _AOE_MANAGED_WORKTREE_OPT = typer.Option(
          "an aoe rename then moves the folder, and `aoe remove --delete-worktree` deletes it. "
          "Waits for the row to be written.",
 )
+# Help text only: `main` splits a real `--register-<name>-only` off argv before typer parses, so this
+# option never receives a value. `_add_register_help` fills in the integration names on `--help`.
+_REGISTER_HELP = (
+    "Register this stack with an external tool and exit without starting the agent. "
+    "Integrations: {names}."
+)
+_REGISTER_OPT = typer.Option(
+    False, "--register-<name>-only", help=_REGISTER_HELP.format(names="see --help"),
+    show_default=False,
+)
 
 
 @app.command("host-run")
@@ -3612,6 +3622,7 @@ def host_run(
     aoe_group: Optional[str] = _AOE_GROUP_OPT,
     aoe_title: Optional[str] = _AOE_TITLE_OPT,
     aoe_managed_worktree: bool = _AOE_MANAGED_WORKTREE_OPT,
+    register_help: bool = _REGISTER_OPT,
 ) -> None:
     """Run a stack HOST-NATIVELY — no podman, no container.
 
@@ -3743,6 +3754,7 @@ def host_acp(
     harness: str = typer.Argument(..., help="Harness to run as an ACP agent: omp or claude"),
     stack: str = typer.Option(..., "--stack", "-s", help="Authored stack to run (must be built)"),
     no_strict_mcp_config: bool = _NO_STRICT_MCP_OPT,
+    register_help: bool = _REGISTER_OPT,
 ) -> None:
     """Run a stack HOST-NATIVELY as an ACP agent on stdio, for an editor (GH-571).
 
@@ -4481,6 +4493,7 @@ def container_run(
     aoe_group: Optional[str] = _AOE_GROUP_OPT,
     aoe_title: Optional[str] = _AOE_TITLE_OPT,
     aoe_managed_worktree: bool = _AOE_MANAGED_WORKTREE_OPT,
+    register_help: bool = _REGISTER_OPT,
 ) -> None:
     """Run a stack in an isolated container against a project directory (container backend).
 
@@ -6755,6 +6768,14 @@ def _vscode_wrapper_argv(argv: list[str]) -> list[str]:
     return argv
 
 
+def _add_register_help(verb: str) -> None:
+    """Name `--register-<name>-only` in `<verb> --help`. `main` splits the flag off before typer, so
+    typer cannot list it; the integration names are read only when help is asked for."""
+    del verb  # one option object serves all four verbs
+    names = ", ".join(paths.list_catalog("integrations")) or "none"
+    _REGISTER_OPT.help = _REGISTER_HELP.format(names=names)
+
+
 def main() -> None:
     # No bare-stack shortcut: the leading token is a subcommand, full stop. It used to be "a stack
     # name unless it matches a registered command", which meant every new @app.command had to be
@@ -6768,6 +6789,8 @@ def main() -> None:
     except integrations.IntegrationError as exc:
         _err.print(f"[bold red]error:[/bold red] {exc}", highlight=False)
         raise SystemExit(exc.code) from None
+    if head and head[0] in integrations.VERBS and "--help" in head:
+        _add_register_help(head[0])
     sys.argv = [sys.argv[0], *_extract_passthrough(head)]
     # The persist gate (persist.py) is default-deny BY DESIGN, so being refused is a normal outcome
     # of a first launch — and every one of its refusals already carries the remediation in the
