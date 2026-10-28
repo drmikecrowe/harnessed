@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.11.0](https://github.com/drmikecrowe/harnessed/compare/v0.10.1...v0.11.0) (2026-10-28)
+
+
+### Features
+
+* **integrations:** register a stack with --register-&lt;name&gt;-only (GH-569) ([#645](https://github.com/drmikecrowe/harnessed/issues/645)) ([5b8593b](https://github.com/drmikecrowe/harnessed/commit/5b8593b6147906c67fda6fb2937189d035020eb3))
+
+
+### Bug Fixes
+
+* **claudeauth:** refresh the host login when the refresher starts from an isolated tree (GH-637) ([#644](https://github.com/drmikecrowe/harnessed/issues/644)) ([e21408d](https://github.com/drmikecrowe/harnessed/commit/e21408d3733469a0bf2934b3cca73c1a133b0315))
+
 ## [0.10.1](https://github.com/drmikecrowe/harnessed/compare/v0.10.0...v0.10.1) (2026-10-26)
 
 
