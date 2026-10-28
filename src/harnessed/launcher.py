@@ -6780,7 +6780,8 @@ def _extract_acp_cli(argv: list[str]) -> list[str]:
 # global verbs, which run it in place of a launch (GH-569, `integrations`).
 _register: Optional[str] = None
 
-_WRAPPER_VERBS = ("host-run", "container-run")
+# host-run only: the VS Code integration is host-only (S4.7), and only host_run keeps stdout clean.
+_WRAPPER_VERBS = ("host-run",)
 
 # Set by main() when `_vscode_wrapper_argv` rewrote argv: stdout is then the extension's stream-json
 # channel, so `host_run` points it at stderr until the exec, as the ACP verbs do.

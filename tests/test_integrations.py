@@ -649,11 +649,17 @@ class TestVscodeWrapperArgv:
         argv = ["host-run", "claude", "--stack", "s", str(claude)]
         assert launcher._vscode_wrapper_argv(argv) == argv
 
-    def test_the_container_verb_and_flags_before_it_are_read(self, bundled):
-        argv = ["container-run", "claude", "-s", "s", "--rm", str(bundled), "-p", "--", "x"]
+    def test_flags_before_the_bundled_claude_are_read(self, bundled):
+        argv = ["host-run", "claude", "-s", "s", "--rm", str(bundled), "-p", "--", "x"]
         assert launcher._vscode_wrapper_argv(argv) == [
-            "container-run", "claude", "-s", "s", "--rm", "--", "-p", "--", "x",
+            "host-run", "claude", "-s", "s", "--rm", "--", "-p", "--", "x",
         ]
+
+    def test_a_container_launcher_is_not_a_wrapper(self, bundled):
+        """PR #645 review: VS Code is host-only (S4.7), and only host-run keeps stdout clean, so a
+        container launcher set as the wrapper is left for typer to refuse, not run half-working."""
+        argv = ["container-run", "claude", "-s", "s", str(bundled), "-p"]
+        assert launcher._vscode_wrapper_argv(argv) == argv
 
 
 # --- S1. aoe -------------------------------------------------------------------------------------
@@ -1176,3 +1182,14 @@ def test_on_macos_each_editor_file_is_where_that_editor_reads_it(monkeypatch, ho
     assert (home / relpath).is_file()
     for xdg in ("xdg-config", "xdg-data"):
         assert not [f for f in (home / xdg).rglob("*.json") if f.name in ("settings.json", "installed.json")]
+
+
+@pytest.mark.parametrize("key", ["harness", "backend", "verb"])
+def test_a_requires_list_with_no_values_is_a_usage_error(home, key):
+    """PR #645 review: an empty list would rule out every run with a garbled message."""
+    script = overlay("zellij", "#!/bin/sh\n")
+    (script.parent / "requires").write_text(f"{key}\n")
+    with pytest.raises(integrations.IntegrationError) as exc:
+        integrations.check(script, "claude", "host-run")
+    assert exc.value.code == 2
+    assert f"'{key}' needs at least one value" in str(exc.value)

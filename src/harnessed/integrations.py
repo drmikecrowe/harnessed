@@ -101,6 +101,8 @@ def check(script: Path, harness: str, verb: str) -> None:
         if not words:
             continue
         key, values = words[0], words[1:]
+        if key in ("harness", "backend", "verb") and not values:
+            raise IntegrationError(f"{spec}: '{key}' needs at least one value", 2)
         if key == "harness":
             if harness not in values:
                 raise IntegrationError(

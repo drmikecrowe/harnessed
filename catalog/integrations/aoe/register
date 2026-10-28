@@ -2,6 +2,7 @@
 # Register this stack as an Agent of Empires session: `--register-aoe-only` (GH-569).
 # harnessed runs this with the integration contract's HARNESSED_* variables set.
 # An aoe row replays a terminal launcher, so an ACP launcher is refused, naming the right one.
+# harnessed refuses it first, from `requires`, before any build; this guard covers a direct run.
 set -eu
 case "$HARNESSED_VERB" in
 *-acp)
