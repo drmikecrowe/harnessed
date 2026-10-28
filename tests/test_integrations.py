@@ -12,6 +12,7 @@ from __future__ import annotations
 import difflib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -976,7 +977,8 @@ def test_help_names_the_register_flag_and_every_integration(monkeypatch, home, c
     overlay("zellij", "#!/bin/sh\n")
     monkeypatch.setenv("COLUMNS", "400")
     assert run(monkeypatch, verb, "--help") == 0
-    out = " ".join(capsys.readouterr().out.split())
+    # CI renders typer's help with ANSI styling (GITHUB_ACTIONS forces it); match the text, not the paint.
+    out = " ".join(re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out).split())
     assert "--register-<name>-only" in out
     assert "aoe, atlas, vscode, zed, zellij" in out
 
