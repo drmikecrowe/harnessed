@@ -89,3 +89,8 @@
 - Other option: keep A17, where only aoe refuses it.
 - Why: PR #645 review: an editor entry pointing at that path would run a file harnessed did not write, the same hazard aoe refuses.
 - Command: build
+
+### A19. Each editor integration picks its macOS path by `uname -s`
+- Other option: an environment variable naming the settings file, set by the user.
+- Why: PR #645, mcrowe asked that the paths work on macOS; each app fixes its own location (Zed source, VS Code docs, Tauri's appDataDir), so detection needs nothing from the user.
+- Command: build

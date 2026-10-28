@@ -5,7 +5,12 @@
 # `host-run` reads as passthrough, so the session runs through the stack.
 # `requires` beside this file limits it to claude on the host backend, checked before any build.
 set -eu
-file="${XDG_CONFIG_HOME:-$HOME/.config}/Code/User/settings.json"
+# VS Code's user settings: XDG on Linux, ~/Library/Application Support on macOS.
+if [ "$(uname -s)" = Darwin ]; then
+    file="$HOME/Library/Application Support/Code/User/settings.json"
+else
+    file="${XDG_CONFIG_HOME:-$HOME/.config}/Code/User/settings.json"
+fi
 wrapper=$("$HARNESSED_PYTHON" -c 'import json, sys; print(json.dumps(sys.argv[1]))' "$HARNESSED_RUN_LAUNCHER")
 "$HARNESSED_PYTHON" -m harnessed.jsonc set "$file" claudeCode.claudeProcessWrapper "$wrapper"
 echo "Set claudeCode.claudeProcessWrapper to $HARNESSED_RUN_LAUNCHER in $file"

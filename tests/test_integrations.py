@@ -1143,3 +1143,36 @@ def test_a_requires_file_that_cannot_be_read_is_a_usage_error(home, content):
         integrations.check(script, "claude", "host-run")
     assert exc.value.code == 2
     assert str(spec) in str(exc.value)
+
+
+# --- macOS paths (PR #645): each editor's own location on Darwin -------------------------------
+
+
+@pytest.fixture
+def darwin(monkeypatch, tmp_path):
+    """A `uname` that answers Darwin, ahead of the real one on PATH."""
+    fake = tmp_path / "darwin-bin"
+    fake.mkdir()
+    (fake / "uname").write_text("#!/bin/sh\necho Darwin\n")
+    (fake / "uname").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fake}{os.pathsep}{os.environ['PATH']}")
+
+
+@pytest.mark.parametrize(
+    ("integration", "relpath"),
+    [
+        # Zed: `paths::config_dir()` is `~/.config/zed` on macOS and ignores XDG_CONFIG_HOME.
+        ("zed", ".config/zed/settings.json"),
+        # VS Code: the settings docs give `~/Library/Application Support/Code/User/settings.json`.
+        ("vscode", "Library/Application Support/Code/User/settings.json"),
+        # Atlas: Tauri's appDataDir on macOS is `~/Library/Application Support/<identifier>`.
+        ("atlas", "Library/Application Support/dev.atlas.ide/external-agents/installed.json"),
+    ],
+)
+def test_on_macos_each_editor_file_is_where_that_editor_reads_it(monkeypatch, home, project, current, darwin, integration, relpath):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home / "xdg-config"))  # set on purpose: macOS apps ignore it
+    monkeypatch.setenv("XDG_DATA_HOME", str(home / "xdg-data"))
+    assert run(monkeypatch, "host-run", "claude", "--stack", STACK, f"--register-{integration}-only") == 0
+    assert (home / relpath).is_file()
+    for xdg in ("xdg-config", "xdg-data"):
+        assert not [f for f in (home / xdg).rglob("*.json") if f.name in ("settings.json", "installed.json")]

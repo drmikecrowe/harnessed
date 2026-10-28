@@ -10,7 +10,12 @@ if [ "$HARNESSED_BACKEND" = container ]; then
 else
     key="harnessed $HARNESSED_HARNESS ($HARNESSED_STACK)"
 fi
-file="${XDG_CONFIG_HOME:-$HOME/.config}/zed/settings.json"
+# Zed's paths::config_dir(): XDG on Linux, ~/.config/zed on macOS whatever XDG_CONFIG_HOME says.
+if [ "$(uname -s)" = Darwin ]; then
+    file="$HOME/.config/zed/settings.json"
+else
+    file="${XDG_CONFIG_HOME:-$HOME/.config}/zed/settings.json"
+fi
 cmd_json=$("$HARNESSED_PYTHON" -c 'import json, sys; print(json.dumps(sys.argv[1]))' "$HARNESSED_ACP_LAUNCHER")
 jsonc() { "$HARNESSED_PYTHON" -m harnessed.jsonc "$@"; }
 jsonc setdefault "$file" agent_servers "$key" "{\"type\": \"custom\", \"command\": $cmd_json, \"args\": [], \"env\": {}}"

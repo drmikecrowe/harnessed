@@ -9,7 +9,12 @@ if [ "$HARNESSED_BACKEND" = container ]; then
 else
     key="harnessed $HARNESSED_HARNESS ($HARNESSED_STACK)"
 fi
-file="${XDG_DATA_HOME:-$HOME/.local/share}/dev.atlas.ide/external-agents/installed.json"
+# Atlas keeps it in Tauri's appDataDir: XDG on Linux, ~/Library/Application Support on macOS.
+if [ "$(uname -s)" = Darwin ]; then
+    file="$HOME/Library/Application Support/dev.atlas.ide/external-agents/installed.json"
+else
+    file="${XDG_DATA_HOME:-$HOME/.local/share}/dev.atlas.ide/external-agents/installed.json"
+fi
 cmd_json=$("$HARNESSED_PYTHON" -c 'import json, sys; print(json.dumps(sys.argv[1]))' "$HARNESSED_ACP_LAUNCHER")
 jsonc() { "$HARNESSED_PYTHON" -m harnessed.jsonc "$@"; }
 jsonc setdefault "$file" "$key" "{\"type\": \"custom\", \"command\": $cmd_json, \"args\": []}"
