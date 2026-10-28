@@ -3851,6 +3851,12 @@ def aoe_register() -> None:
             f"{exc.args[0]} is not set", soft_wrap=True,
         )
         raise typer.Exit(2) from exc
+    if verb not in ("host-run", "container-run"):
+        _err.print(
+            f"[bold red]error:[/bold red] aoe-register replays a terminal launcher; {verb} is not one",
+            soft_wrap=True,
+        )
+        raise typer.Exit(2)
     if aoe._bin() is None:
         _err.print(
             "[bold red]error:[/bold red] --register-aoe-only: Agent of Empires (`aoe`) is not "
@@ -3864,7 +3870,15 @@ def aoe_register() -> None:
     _own_launcher_or_exit(
         _write_global_launchers(stack, harness, verb, asked=True), verb, stack, harness
     )
-    launchscript.write(verb, stack, harness, project, group=group, title=title, no_strict_mcp=no_strict_mcp)
+    if launchscript.write(verb, stack, harness, project, group=group, title=title, no_strict_mcp=no_strict_mcp) is None:
+        # The row's command IS this file; a row that replays a foreign or missing file is dead.
+        _err.print(
+            f"[bold red]error:[/bold red] --register-aoe-only: the local launcher "
+            f"{escape(launchscript.script_name(verb, stack, harness))} could not be written in "
+            f"{escape(str(project))}, so no aoe row was registered",
+            soft_wrap=True, highlight=False,
+        )
+        raise typer.Exit(1)
     _aoe_register(
         verb, stack, harness, project, group=group, title=title, no_strict_mcp=no_strict_mcp,
         managed_worktree=env.get("HARNESSED_AOE_MANAGED_WORKTREE") == "1",

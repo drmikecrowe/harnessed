@@ -1073,3 +1073,49 @@ def test_the_requires_file(home, text, code, message):
         integrations.check(script, "claude", "host-run")
     assert exc.value.code == code
     assert message in str(exc.value)
+
+
+# --- PR #645 review, round 2 --------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "verb", "code", "message"),
+    [
+        ("acp yes\n", "host-run", 2, "'acp' takes no values"),
+        ("verb host-run container-run\n", "host-run", 0, ""),
+        ("verb host-run container-run\n", "host-acp", 1, "the zellij integration supports the host-run or container-run verbs only"),
+    ],
+)
+def test_the_requires_file_reads_acp_and_verb(home, text, verb, code, message):
+    script = overlay("zellij", "#!/bin/sh\n")
+    (script.parent / "requires").write_text(text)
+    if code == 0:
+        integrations.check(script, "claude", verb)
+        return
+    with pytest.raises(integrations.IntegrationError) as exc:
+        integrations.check(script, "claude", verb)
+    assert exc.value.code == code
+    assert message in str(exc.value)
+
+
+def test_aoe_on_an_acp_launcher_builds_nothing(monkeypatch, home, project, capfd):
+    calls = _no_build(monkeypatch)
+    monkeypatch.setattr(launcher, "set_acp_mode", lambda on: None)
+    assert run(monkeypatch, "host-acp", "claude", "--stack", STACK, "--register-aoe-only") == 1
+    assert "host-run or container-run verbs only" in " ".join(capfd.readouterr().err.split())
+    assert calls == []
+
+
+class TestAoeRegisterRefuses:
+    def test_a_local_launcher_that_cannot_be_written_registers_no_row(self, monkeypatch, home, project):
+        """A row whose command names a file harnessed could not write would replay whatever is there."""
+        monkeypatch.setattr(launcher.launchscript, "write", lambda *a, **k: None)
+        seen = TestAoeRegister().invoke(monkeypatch, home, project)
+        assert seen["code"] == 1
+        assert seen["calls"] == []
+        assert "local launcher" in seen["output"]
+
+    def test_an_acp_verb_is_a_usage_error_not_a_crash(self, monkeypatch, home, project):
+        seen = TestAoeRegister().invoke(monkeypatch, home, project, verb="host-acp")
+        assert seen["code"] == 2, seen["output"]
+        assert seen["calls"] == []

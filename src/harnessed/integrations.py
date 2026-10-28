@@ -82,8 +82,9 @@ def find(name: str) -> Path:
 def check(script: Path, harness: str, verb: str) -> None:
     """Refuse, before any build, a run the integration's optional `requires` file rules out.
 
-    One requirement per line, `#` starts a comment: `harness <name>...` and `backend host|container`
-    list what the integration supports, and `acp` needs a harness with an ACP mode. Raises
+    One requirement per line, `#` starts a comment: `harness <name>...`, `backend host|container`
+    and `verb <global verb>...` list what the integration supports, and `acp` needs a harness with
+    an ACP mode. Raises
     `IntegrationError`: exit 1 for a run ruled out, exit 2 for a line it cannot read.
     """
     spec = script.parent / "requires"
@@ -106,7 +107,14 @@ def check(script: Path, harness: str, verb: str) -> None:
                 raise IntegrationError(
                     f"the {name} integration supports the {' or '.join(values)} backend only", 1
                 )
-        elif key == "acp" and not values:
+        elif key == "verb":
+            if verb not in values:
+                raise IntegrationError(
+                    f"the {name} integration supports the {' or '.join(values)} verbs only", 1
+                )
+        elif key == "acp":
+            if values:
+                raise IntegrationError(f"{spec}: 'acp' takes no values", 2)
             if harness not in _ACP_HARNESSES:
                 raise IntegrationError(
                     f"{name.capitalize()} needs an ACP harness; {harness} has no ACP mode "
