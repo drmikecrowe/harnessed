@@ -84,3 +84,8 @@
 - Other option: the runner refuses every integration when its own global launcher was not written.
 - Why: aoe already refused it (S1.13); the editors name the launcher path, which the user may own on purpose.
 - Command: build
+
+### A18. Every integration refuses a foreign file at the global launcher's name (supersedes A17)
+- Other option: keep A17, where only aoe refuses it.
+- Why: PR #645 review: an editor entry pointing at that path would run a file harnessed did not write, the same hazard aoe refuses.
+- Command: build

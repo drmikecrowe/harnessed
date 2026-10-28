@@ -2832,7 +2832,14 @@ def _register_and_exit(
         raise typer.Exit(1)
     if integrations.needs_build(stack, harness):
         _build_stack(_runtime(), stack, harness)
-    _write_global_launchers(stack, harness, verb, asked=True)
+    if not _write_global_launchers(stack, harness, verb, asked=True):
+        # The entry would run a file harnessed did not write; aoe-register refuses it the same way.
+        _err.print(
+            f"[bold red]error:[/bold red] --register-{escape(name)}-only: "
+            f"{escape(launchscript.global_name(verb, stack, harness))} in ~/.local/bin is not a "
+            "harnessed launcher, so nothing was registered", soft_wrap=True, highlight=False,
+        )
+        raise typer.Exit(1)
     env = integrations.environ(
         name, verb, harness, stack, project, no_strict_mcp=no_strict_mcp,
         aoe_group=aoe_group, aoe_title=aoe_title, aoe_managed_worktree=aoe_managed_worktree,
@@ -4513,12 +4520,18 @@ def container_run(
         raise typer.Exit(2)
     if _register is not None:
         # Before the ACP proxy: a register run answers no client, it registers and exits.
-        reg_stack, _ = _resolve_stack(stack, recipe, extends, no_extends, service)
-        _register_and_exit(
-            _register, "container-acp" if acp_mode else "container-run", harness, reg_stack, path,
-            no_strict_mcp=no_strict_mcp_config, aoe_group=aoe_group, aoe_title=aoe_title,
-            aoe_managed_worktree=aoe_managed_worktree,
-        )
+        reg_stack, reg_minted = _resolve_stack(stack, recipe, extends, no_extends, service)
+        try:
+            _register_and_exit(
+                _register, "container-acp" if acp_mode else "container-run", harness, reg_stack,
+                path, no_strict_mcp=no_strict_mcp_config, aoe_group=aoe_group,
+                aoe_title=aoe_title, aoe_managed_worktree=aoe_managed_worktree,
+            )
+        except typer.Exit as exc:
+            # A failed register run owns the manifest it minted, as a failed launch does below.
+            if exc.exit_code != 0 and reg_minted is not None:
+                shutil.rmtree(reg_minted, ignore_errors=True)
+            raise
     if acp_mode and not os.environ.get(_ACP_DIRECT_ENV):
         # The proxy (#566) answers `initialize` before any of the work below, and runs it on the
         # first session request by relaunching this very command with the project in the env.

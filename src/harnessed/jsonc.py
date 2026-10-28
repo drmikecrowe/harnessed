@@ -163,10 +163,10 @@ def _starts_line(text: str, pos: int) -> bool:
     return text[_line_start(text, pos):pos].strip(" \t") == ""
 
 
-def _dump(value: Any, indent: str, unit: str, *, multiline: bool) -> str:
+def _dump(value: Any, indent: str, unit: str, *, multiline: bool, nl: str = "\n") -> str:
     if not multiline:
         return json.dumps(value, ensure_ascii=False)
-    return json.dumps(value, ensure_ascii=False, indent=unit).replace("\n", "\n" + indent)
+    return json.dumps(value, ensure_ascii=False, indent=unit).replace("\n", nl + indent)
 
 
 def _unit(text: str, root: _Node) -> str:
@@ -180,25 +180,27 @@ def _unit(text: str, root: _Node) -> str:
 
 
 def _insert(
-    text: str, obj: _Node, members: list[tuple[str, int, _Node]], key: str, value: Any, unit: str
+    text: str, obj: _Node, members: list[tuple[str, int, _Node]], key: str, value: Any, unit: str,
+    nl: str,
 ) -> str:
-    """`text` with `"key": value` as the first member of `obj`, whose members are `members`."""
+    """`text` with `"key": value` as the first member of `obj`, whose members are `members`. `nl` is
+    the file's own line end, so a CRLF file gets CRLF lines."""
     if members:
         first = members[0][1]
         if _starts_line(text, first):
             indent = _indent(text, first)
             at = _line_start(text, first)
-            member = f"{indent}{json.dumps(key, ensure_ascii=False)}: {_dump(value, indent, unit, multiline=True)},\n"
+            member = f"{indent}{json.dumps(key, ensure_ascii=False)}: {_dump(value, indent, unit, multiline=True, nl=nl)},{nl}"
         else:
             at = first
             member = f"{json.dumps(key, ensure_ascii=False)}: {_dump(value, '', unit, multiline=False)}, "
         return text[:at] + member + text[at:]
     outer = _indent(text, obj.start)
     indent = outer + unit
-    member = f"\n{indent}{json.dumps(key, ensure_ascii=False)}: {_dump(value, indent, unit, multiline=True)}"
+    member = f"{nl}{indent}{json.dumps(key, ensure_ascii=False)}: {_dump(value, indent, unit, multiline=True, nl=nl)}"
     inside = text[obj.start + 1 : obj.end - 1]
     if inside.strip(" \t\r\n") == "":
-        return text[: obj.start + 1] + member + "\n" + outer + text[obj.end - 1 :]
+        return text[: obj.start + 1] + member + nl + outer + text[obj.end - 1 :]
     return text[: obj.start + 1] + member + text[obj.start + 1 :]
 
 
@@ -216,6 +218,7 @@ def set_value(text: str, keys: list[str], value: Any, *, only_missing: bool = Fa
         return json.dumps(value, ensure_ascii=False, indent=2) + "\n"
     root = _Parser(text).document()
     unit = _unit(text, root)
+    nl = "\r\n" if "\r\n" in text else "\n"
     node = root
     for i, key in enumerate(keys):
         members = node.members
@@ -226,13 +229,13 @@ def set_value(text: str, keys: list[str], value: Any, *, only_missing: bool = Fa
         if not found:
             for rest in reversed(keys[i + 1 :]):
                 value = {rest: value}
-            return _insert(text, node, members, key, value, unit)
+            return _insert(text, node, members, key, value, unit, nl)
         _, key_at, child = found[-1]  # the last duplicate is the one a reader sees, as in `json`
         if i == len(keys) - 1:
             if only_missing:
                 return text
             multiline = _starts_line(text, key_at)
-            dumped = _dump(value, _indent(text, key_at), unit, multiline=multiline)
+            dumped = _dump(value, _indent(text, key_at), unit, multiline=multiline, nl=nl)
             return text[: child.start] + dumped + text[child.end :]
         node = child
     raise AssertionError("unreachable")  # pragma: no cover

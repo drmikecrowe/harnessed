@@ -474,3 +474,11 @@ def test_a_four_space_file_keeps_its_step():
     assert jsonc.set_value('{\n    "a": 1\n}', ["k"], {"b": 2}) == (
         '{\n    "k": {\n        "b": 2\n    },\n    "a": 1\n}'
     )
+
+
+def test_a_crlf_file_gets_crlf_inserted_lines():
+    old = '{\r\n  "a": 1\r\n}\r\n'
+    new = jsonc.set_value(old, ["k"], {"b": 2})
+    assert new == '{\r\n  "k": {\r\n    "b": 2\r\n  },\r\n  "a": 1\r\n}\r\n'
+    assert "\n" not in new.replace("\r\n", "")
+    assert jsonc.set_value('{\r\n  "o": {}\r\n}', ["o", "k"], 1) == '{\r\n  "o": {\r\n    "k": 1\r\n  }\r\n}'

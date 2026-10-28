@@ -936,3 +936,31 @@ def test_s4_6_the_wrapper_vscode_runs_starts_the_stacks_claude(monkeypatch, tmp_
     assert seen["cwd"] == str(project)
     assert seen["config"] == str(paths.host_home(ACP_STACK, "claude"))
     assert not (tmp_path / "bundled-ran").exists()
+
+
+def test_a_foreign_file_at_the_launcher_name_registers_nothing(monkeypatch, home, project, current, tmp_path, capfd):
+    """PR #645 review: every integration, not only aoe, refuses to register a launcher path that
+    holds a file harnessed did not write — the entry would run that file."""
+    marker = tmp_path / "ran"
+    overlay("zellij", f'#!/bin/sh\ntouch "{marker}"\n')
+    foreign = Path(launcher_path(home, "host-run"))
+    foreign.parent.mkdir(parents=True)
+    foreign.write_text("#!/bin/sh\necho mine\n")
+    assert run(monkeypatch, "host-run", "claude", "--stack", STACK, "--register-zellij-only") == 1
+    assert "not a harnessed launcher" in capfd.readouterr().err
+    assert not marker.exists()
+    assert foreign.read_text() == "#!/bin/sh\necho mine\n"
+
+
+def test_a_failed_container_register_removes_the_manifest_it_minted(monkeypatch, home, project, tmp_path):
+    """PR #645 review: `container-run --recipe … --register-x-only` that fails leaves no minted
+    stack behind, as a failed `host-run` register and a failed launch do not."""
+    monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path / "gen")
+
+    def fail(*_a, **_k):
+        raise typer.Exit(3)
+
+    monkeypatch.setattr(launcher, "_register_and_exit", fail)
+    code = run(monkeypatch, "container-run", "claude", "--recipe", "serena", "--register-zellij-only")
+    assert code == 3
+    assert not list((tmp_path / "gen" / "stacks").glob("*/stack.yaml"))
