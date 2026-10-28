@@ -6,12 +6,15 @@ what `sync`, the refresher pass and the refresher start do with real files under
 import fcntl
 import json
 import os
+import tempfile
 import threading
 import time
+from pathlib import Path
 
 import pytest
+from hypothesis import given, strategies as st
 
-from harnessed import claudeauth
+from harnessed import claudeauth, hosthome
 from harnessed.claudeauth import start_refresher as _real_start_refresher  # before conftest stubs it
 
 
@@ -364,6 +367,147 @@ class TestStartRefresher:
             monkeypatch.setattr(claudeauth.subprocess, "Popen", lambda argv, **kw: spawned.append(argv))
             _real_start_refresher()
         assert spawned == []
+
+
+
+@pytest.fixture
+def iso(monkeypatch, tmp_path):
+    """GH-637: the 2026-10-25 layout. A refresher started from an isolated data root, under the
+    CLAUDE_CONFIG_DIR of a real stack home that lives under ANOTHER data root."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "iso"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    home = tmp_path / "real" / "harnessed" / "home" / "s" / "claude"
+    home.mkdir(parents=True)
+    (home / ".harnessed-stack").write_text("fp")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(home))
+    store = tmp_path / "home" / ".claude" / ".credentials.json"
+    store.parent.mkdir(parents=True)
+    store.write_text(json.dumps(_login("host")))
+    return store, home
+
+
+class TestStackHomeMarkers:
+    def test_a_stamped_stack_home_outside_the_data_root_is_not_the_store(self, iso):  # S1.1
+        store, _ = iso
+        assert claudeauth.host_store() == store
+
+    def test_an_unstamped_home_with_its_sibling_lock_is_not_the_store(self, iso):  # S1.2
+        store, home = iso
+        (home / ".harnessed-stack").unlink()
+        (home.parent / "claude.lock").write_text("")
+        assert claudeauth.host_store() == store
+
+    def test_a_user_dir_with_no_marker_is_honored(self, iso, monkeypatch, tmp_path):  # S1.3
+        mine = tmp_path / "mine"
+        mine.mkdir()
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(mine))
+        assert claudeauth.host_store() == mine / ".credentials.json"
+
+    def test_a_missing_user_dir_is_honored(self, iso, monkeypatch, tmp_path):  # S1.4
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "absent"))
+        assert claudeauth.host_store() == tmp_path / "absent" / ".credentials.json"
+
+    def test_the_refresh_runs_against_the_host_store(self, iso, monkeypatch):  # S1.5
+        store, _ = iso
+        seen = {}
+        monkeypatch.setattr(claudeauth.shutil, "which", lambda name: "/bin/claude")
+
+        def fake_run(argv, **kw):
+            seen.update(env=kw["env"])
+            return claudeauth.subprocess.CompletedProcess(argv, 0)
+
+        monkeypatch.setattr(claudeauth.subprocess, "run", fake_run)
+        claudeauth.refresh_host(store)
+        assert "CLAUDE_CONFIG_DIR" not in seen["env"]
+
+
+class TestRefresherLockPerDataRoot:
+    def test_the_lock_and_log_live_under_the_data_root(self, monkeypatch, tmp_path):  # S2.1
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        assert claudeauth._lock_path() == tmp_path / "data" / "harnessed" / "claude-auth-refresher.lock"
+        assert claudeauth._log_path() == tmp_path / "data" / "harnessed" / "claude-auth-refresher.log"
+
+    def test_another_data_roots_refresher_does_not_block_this_one(self, iso, monkeypatch, tmp_path):  # S2.2
+        other = tmp_path / "real" / "harnessed" / "claude-auth-refresher.lock"
+        mine = tmp_path / "iso" / "harnessed" / "claude-auth-refresher.lock"
+        spawned = []
+
+        def fake_popen(argv, **kw):
+            spawned.append((os.fstat(int(argv[3])).st_ino, mine.stat().st_ino))
+
+        monkeypatch.setattr(claudeauth.subprocess, "Popen", fake_popen)
+        with other.open("w") as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+            _real_start_refresher()
+        assert len(spawned) == 1
+        fd_inode, lock_inode = spawned[0]
+        assert fd_inode == lock_inode
+
+    def test_another_data_roots_lock_is_left_free(self, iso, monkeypatch, tmp_path):  # S2.3
+        monkeypatch.setattr(claudeauth.subprocess, "Popen", lambda argv, **kw: None)
+        _real_start_refresher()
+        other = tmp_path / "real" / "harnessed" / "claude-auth-refresher.lock"
+        other.parent.mkdir(parents=True, exist_ok=True)
+        with other.open("w") as probe:
+            fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def test_one_refresher_per_data_root(self, iso, monkeypatch, tmp_path):  # S2.4
+        mine = tmp_path / "iso" / "harnessed" / "claude-auth-refresher.lock"
+        mine.parent.mkdir(parents=True)
+        spawned = []
+        monkeypatch.setattr(claudeauth.subprocess, "Popen", lambda argv, **kw: spawned.append(argv))
+        with mine.open("w") as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+            _real_start_refresher()
+        assert spawned == []
+
+    def test_a_stack_config_dir_never_stops_the_start(self, iso, monkeypatch):  # S2.5
+        spawned = []
+        monkeypatch.setattr(claudeauth.subprocess, "Popen", lambda argv, **kw: spawned.append(argv))
+        _real_start_refresher()
+        assert len(spawned) == 1
+
+
+class TestOnePassConvertsStackFiles:
+    def test_a_stack_file_becomes_a_view(self, env, monkeypatch):  # S3.1
+        store, stack, *_ = env
+        stack.unlink()
+        stack.write_text(json.dumps(_login("old", expires_in=3600)))
+        monkeypatch.setattr(claudeauth, "refresh_host", lambda s: pytest.fail("no refresh is due"))
+        claudeauth.tick()
+        host = _oauth(store)
+        assert _oauth(stack) == {k: v for k, v in host.items() if k not in ("refreshToken", "refreshTokenExpiresAt")}
+
+    def test_an_isolated_pass_keeps_the_refresh_token_in_the_host_store(self, iso, monkeypatch, tmp_path):  # S3.2
+        store, _ = iso
+        stack = tmp_path / "iso" / "harnessed" / "home" / "s" / "claude" / ".credentials.json"
+        stack.parent.mkdir(parents=True)
+        stack.write_text(json.dumps(_login("stack", expires_in=3600)))
+        monkeypatch.setattr(claudeauth, "refresh_host", lambda s: pytest.fail("no refresh is due"))
+        claudeauth.tick()
+        assert "refreshToken" in _oauth(store)
+        assert "refreshToken" not in _oauth(stack)
+
+
+# Module level, with monkeypatch as a context manager: see the docstring of test_userns_properties.
+@given(stamp=st.booleans(), lock=st.booleans(), inside=st.booleans(), exists=st.booleans())
+def test_owned_exactly_when_a_marker_or_containment_holds(stamp, lock, inside, exists):
+    """GH-637: a stack home is owned by its stamp, its sibling lock, or its place in the data root."""
+    with tempfile.TemporaryDirectory() as tmp, pytest.MonkeyPatch.context() as mp:
+        mp.setenv("XDG_DATA_HOME", str(Path(tmp) / "data"))
+        parent = Path(tmp) / ("data/harnessed/home/s" if inside else "elsewhere/s")
+        home = parent / "claude"
+        if exists or stamp:
+            home.mkdir(parents=True)
+        if stamp:
+            (home / ".harnessed-stack").write_text("fp")
+        if lock:
+            parent.mkdir(parents=True, exist_ok=True)
+            (parent / "claude.lock").write_text("")
+        assert hosthome._is_harnessed_owned(home) is (stamp or lock or inside)
 
 
 class TestContainerLaunchGate:

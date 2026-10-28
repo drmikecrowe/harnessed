@@ -256,12 +256,14 @@ def tick() -> None:
     sync()
 
 
+# Keyed to the data root the refresher syncs, not XDG_STATE_HOME: a refresher for an isolated data
+# root must not hold, or truncate, the real one's (GH-637).
 def _lock_path() -> Path:
-    return _state_root() / "claude-auth-refresher.lock"
+    return paths.host_homes_root().parent / "claude-auth-refresher.lock"
 
 
 def _log_path() -> Path:
-    return _state_root() / "claude-auth-refresher.log"
+    return paths.host_homes_root().parent / "claude-auth-refresher.log"
 
 
 def _warn_if_refresh_failing() -> None:
