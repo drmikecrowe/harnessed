@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import launchscript, paths, staleness
+from .attachcmd import _ACP_HARNESSES
 from .schema import SchemaError
 
 _FLAG = re.compile(r"--register-([a-z0-9][a-z0-9-]*)-only")
@@ -76,6 +77,43 @@ def find(name: str) -> Path:
     if not os.access(script, os.X_OK):
         raise IntegrationError(f"{script} is not executable (chmod +x it)", 2)
     return script
+
+
+def check(script: Path, harness: str, verb: str) -> None:
+    """Refuse, before any build, a run the integration's optional `requires` file rules out.
+
+    One requirement per line, `#` starts a comment: `harness <name>...` and `backend host|container`
+    list what the integration supports, and `acp` needs a harness with an ACP mode. Raises
+    `IntegrationError`: exit 1 for a run ruled out, exit 2 for a line it cannot read.
+    """
+    spec = script.parent / "requires"
+    if not spec.is_file():
+        return
+    name = script.parent.name
+    backend = "container" if verb.startswith("container-") else "host"
+    for line in spec.read_text(encoding="utf-8").splitlines():
+        words = line.split("#", 1)[0].split()
+        if not words:
+            continue
+        key, values = words[0], words[1:]
+        if key == "harness":
+            if harness not in values:
+                raise IntegrationError(
+                    f"the {name} integration supports {', '.join(values)} only (got {harness})", 1
+                )
+        elif key == "backend":
+            if backend not in values:
+                raise IntegrationError(
+                    f"the {name} integration supports the {' or '.join(values)} backend only", 1
+                )
+        elif key == "acp" and not values:
+            if harness not in _ACP_HARNESSES:
+                raise IntegrationError(
+                    f"{name.capitalize()} needs an ACP harness; {harness} has no ACP mode "
+                    f"(ACP harnesses: {', '.join(_ACP_HARNESSES)})", 1
+                )
+        else:
+            raise IntegrationError(f"{spec}: unknown requirement '{key}'", 2)
 
 
 def needs_build(stack: str, harness: str) -> bool:

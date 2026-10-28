@@ -3,12 +3,8 @@
 # harnessed runs this with the integration contract's HARNESSED_* variables set.
 # `harnessed.jsonc` keeps every other byte of settings.json, comments included, and leaves an
 # existing entry's other members (args, env, default_config_options) as the user wrote them.
+# `requires` beside this file limits it to an ACP harness, checked before any build.
 set -eu
-if [ -z "$HARNESSED_ACP_LAUNCHER" ]; then
-    acp=$("$HARNESSED_PYTHON" -c 'from harnessed.attachcmd import _ACP_HARNESSES; print(", ".join(_ACP_HARNESSES))')
-    echo "error: Zed needs an ACP harness; $HARNESSED_HARNESS has no ACP mode (ACP harnesses: $acp)" >&2
-    exit 1
-fi
 if [ "$HARNESSED_BACKEND" = container ]; then
     key="harnessed $HARNESSED_HARNESS ($HARNESSED_STACK, container)"
 else

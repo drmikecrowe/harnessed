@@ -2810,6 +2810,22 @@ def _aoe_register(
     raise typer.Exit(0)
 
 
+def _assemble_host(stack: str, harness: str) -> None:
+    """The in-process assembly `host-run` does, under the same profile claim (GH-631), so it never
+    resets a profile a running session reads. Exits 1 on a stack that does not assemble."""
+    claim = _claim_profile(stack, harness)
+    try:
+        if claim.build:
+            _err.print(f"[blue][INFO][/blue] Assembling '{stack}' ({harness}) host-native (no container) ...")
+            try:
+                assemble(None, stack, paths.profiles_root().parent, harness, strict=True, shared_identity=False)
+            except (SchemaError, CollisionError) as exc:
+                _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
+                raise typer.Exit(1) from exc
+    finally:
+        claim.release()
+
+
 def _register_and_exit(
     name: str, verb: str, harness: str, stack: str, path: Optional[str], *,
     no_strict_mcp: bool = False, aoe_group: Optional[str] = None, aoe_title: Optional[str] = None,
@@ -2823,6 +2839,7 @@ def _register_and_exit(
     """
     try:
         script = integrations.find(name)
+        integrations.check(script, harness, verb)
     except integrations.IntegrationError as exc:
         _err.print(f"[bold red]error:[/bold red] {escape(str(exc))}", soft_wrap=True, highlight=False)
         raise typer.Exit(exc.code) from exc
@@ -2831,7 +2848,11 @@ def _register_and_exit(
         _err.print(f"[bold red]error:[/bold red] project directory does not exist: {project}")
         raise typer.Exit(1)
     if integrations.needs_build(stack, harness):
-        _build_stack(_runtime(), stack, harness)
+        # A host verb needs only the profile, which host-run assembles in-process: no image, no podman.
+        if verb.startswith("host-"):
+            _assemble_host(stack, harness)
+        else:
+            _build_stack(_runtime(), stack, harness)
     if not _write_global_launchers(stack, harness, verb, asked=True):
         # The entry would run a file harnessed did not write; aoe-register refuses it the same way.
         _err.print(

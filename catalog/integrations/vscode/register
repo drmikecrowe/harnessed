@@ -3,15 +3,8 @@
 # `--register-vscode-only` (GH-569). harnessed runs this with the integration contract's
 # HARNESSED_* variables set. The extension then runs `<launcher> <its claude> <args>`, which
 # `host-run` reads as passthrough, so the session runs through the stack.
+# `requires` beside this file limits it to claude on the host backend, checked before any build.
 set -eu
-if [ "$HARNESSED_HARNESS" != claude ]; then
-    echo "error: the vscode integration supports claude only (got $HARNESSED_HARNESS)" >&2
-    exit 1
-fi
-if [ "$HARNESSED_BACKEND" != host ]; then
-    echo "error: the vscode integration supports the host backend only; run $(basename "$HARNESSED_LAUNCHER" | sed 's/-container$/-host/') --register-vscode-only" >&2
-    exit 1
-fi
 file="${XDG_CONFIG_HOME:-$HOME/.config}/Code/User/settings.json"
 wrapper=$("$HARNESSED_PYTHON" -c 'import json, sys; print(json.dumps(sys.argv[1]))' "$HARNESSED_RUN_LAUNCHER")
 "$HARNESSED_PYTHON" -m harnessed.jsonc set "$file" claudeCode.claudeProcessWrapper "$wrapper"

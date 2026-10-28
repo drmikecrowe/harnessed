@@ -68,3 +68,5 @@ S1.3, S1.4, S4.7, S5.8 and Known limits changed from the intent review; the thre
 The Orientation Decide line pointed the `--create-aoe-only` removal at S1.7; it is S1.8.
 ### Revision 3. Intent review round 2 folded in
 Accepted: the Summary says the no-src rule governs later integrations; S1.4 says rename-and-add is the AC-1 repair; S4.4 cites the extension source for the wrapper argv (fact 14). Declined: ask about Zed `args` and `env` — both are in every Zed entry on this machine (fact 13), and S2.4 keeps an existing entry's values.
+### Revision 4. Host verbs assemble in-process; `requires` is checked before any build
+Ruled by mcrowe on 2026-10-28, on PR #645: `harnessed-omp-se-ghissues-host --register-vscode-only` ran the full container image build, then refused, because S7.1 named `_build_stack` for every verb and the harness check lived in the `register` script. S7.1 now builds a host verb's profile with the in-process assembly `host-run` does, and the contract adds the `requires` file, so a run an integration rules out builds nothing. The vscode, zed and atlas checks moved from their scripts into `requires`.

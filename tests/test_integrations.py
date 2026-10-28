@@ -63,6 +63,7 @@ def current(monkeypatch) -> list:
     builds: list = []
     monkeypatch.setattr(launcher.integrations, "needs_build", lambda stack, harness: False)
     monkeypatch.setattr(launcher, "_build_stack", lambda *a, **k: builds.append(a))
+    monkeypatch.setattr(launcher, "_assemble_host", lambda *a, **k: builds.append(a))
     return builds
 
 
@@ -164,6 +165,7 @@ class TestRunner:
     def test_s5_3_no_build_runs_even_when_the_profile_is_missing(self, monkeypatch, home, project):
         builds: list = []
         monkeypatch.setattr(launcher, "_build_stack", lambda *a, **k: builds.append(a))
+        monkeypatch.setattr(launcher, "_assemble_host", lambda *a, **k: builds.append(a))
         assert run(monkeypatch, "host-run", "claude", "--stack", STACK, "--register-nosuch-only") == 2
         assert builds == []
 
@@ -326,12 +328,12 @@ class TestBuildFirst:
         overlay("zellij", f'#!/bin/sh\ntouch "{marker}"\n')
         order: list = []
         monkeypatch.setattr(launcher.integrations, "needs_build", lambda s, h: True)
-        monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+        # A host verb builds by assembling in-process (PR #645); the container verb is pinned below.
         monkeypatch.setattr(
-            launcher, "_build_stack", lambda rt, s, h: order.append((rt, s, h, marker.exists()))
+            launcher, "_assemble_host", lambda s, h: order.append((s, h, marker.exists()))
         )
         assert run(monkeypatch, "host-run", "claude", "--stack", STACK, "--register-zellij-only") == 0
-        assert order == [("podman", STACK, "claude", False)]
+        assert order == [(STACK, "claude", False)]
         assert marker.exists()
 
     def test_s7_4_a_failed_build_runs_no_integration(self, monkeypatch, home, project, tmp_path, capfd):
@@ -344,7 +346,7 @@ class TestBuildFirst:
             launcher._err.print("[bold red]error:[/bold red] assembling stack failed: boom")
             raise typer.Exit(1)
 
-        monkeypatch.setattr(launcher, "_build_stack", fail)
+        monkeypatch.setattr(launcher, "_assemble_host", fail)
         assert run(monkeypatch, "host-run", "claude", "--stack", STACK, "--register-zellij-only") == 1
         assert "boom" in capfd.readouterr().err
         assert not marker.exists()
@@ -854,7 +856,7 @@ def test_s7_5_after_a_build_and_zed_the_acp_launcher_answers_initialize(monkeypa
     """S7.5: S7.1 (no profile, so the register run builds) then S2.1 (the Zed entry), then an ACP
     `initialize` to the launcher the entry names gets a `result`.
 
-    The build is a real in-process assembly in place of `_build_stack`'s podman preflight. The
+    The build is the real in-process assembly a host verb runs, with no podman. The
     `initialize` goes through `host-acp` in a child process with test_host_acp's stub agent, which
     is what the launcher's exec line runs.
     """
@@ -869,8 +871,8 @@ def test_s7_5_after_a_build_and_zed_the_acp_launcher_answers_initialize(monkeypa
     monkeypatch.chdir(project)
     assert not paths.is_built(ACP_STACK, "claude")
     builds: list = []
-    monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
-    monkeypatch.setattr(launcher, "_build_stack", lambda rt, s, h: (builds.append((s, h)), host.build(h)))
+    real = launcher._assemble_host
+    monkeypatch.setattr(launcher, "_assemble_host", lambda s, h: (builds.append((s, h)), real(s, h)))
 
     assert run(monkeypatch, "host-run", "claude", "--stack", ACP_STACK, "--register-zed-only") == 0
     assert builds == [(ACP_STACK, "claude")]
@@ -904,8 +906,6 @@ def test_s4_6_the_wrapper_vscode_runs_starts_the_stacks_claude(monkeypatch, tmp_
     project = tmp_path / "proj"
     project.mkdir()
     monkeypatch.chdir(project)
-    monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
-    monkeypatch.setattr(launcher, "_build_stack", lambda rt, s, h: host.build(h))
     assert run(monkeypatch, "host-run", "claude", "--stack", ACP_STACK, "--register-vscode-only") == 0
     settings = Path(os.environ["XDG_CONFIG_HOME"]) / "Code" / "User" / "settings.json"
     wrapper = jsonc_value(settings)["claudeCode.claudeProcessWrapper"]
@@ -984,3 +984,87 @@ def test_help_on_another_verb_reads_no_integration(monkeypatch, home, capsys):
 
     monkeypatch.setattr(launcher.paths, "list_catalog", boom)
     assert run(monkeypatch, "build", "--help") == 0
+
+
+# --- Build-first by backend, and `requires` checked before any build (PR #645) -------------------
+
+
+def _no_build(monkeypatch) -> list:
+    """Record both build paths; fail the test if either runs."""
+    calls: list = []
+    monkeypatch.setattr(launcher.integrations, "needs_build", lambda s, h: True)
+    monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+    monkeypatch.setattr(launcher, "_build_stack", lambda *a, **k: calls.append(("image", a)))
+    monkeypatch.setattr(launcher, "_assemble_host", lambda *a, **k: calls.append(("host", a)))
+    return calls
+
+
+@pytest.mark.parametrize(
+    ("verb", "harness", "integration", "message"),
+    [
+        ("host-run", "omp", "vscode", "the vscode integration supports claude only (got omp)"),
+        ("container-run", "claude", "vscode", "the vscode integration supports the host backend only"),
+        ("container-run", "codex", "zed", "Zed needs an ACP harness; codex has no ACP mode"),
+        ("container-run", "codex", "atlas", "Atlas needs an ACP harness; codex has no ACP mode"),
+    ],
+)
+def test_a_run_the_integration_rules_out_builds_nothing(monkeypatch, home, project, capfd, verb, harness, integration, message):
+    calls = _no_build(monkeypatch)
+    monkeypatch.setattr(launcher.claude_imports, "ask", lambda *a: None)
+    assert run(monkeypatch, verb, harness, "--stack", STACK, f"--register-{integration}-only") == 1
+    assert message in " ".join(capfd.readouterr().err.split())
+    assert calls == [], "the integration's requirements are checked before any build"
+    assert not Path(launcher_path(home, verb, harness)).exists(), "nothing is written"
+
+
+def test_a_host_verb_assembles_in_process_and_builds_no_image(monkeypatch, home, project, tmp_path):
+    calls = _no_build(monkeypatch)
+    overlay("zellij", "#!/bin/sh\n")
+    assert run(monkeypatch, "host-run", "claude", "--stack", STACK, "--register-zellij-only") == 0
+    assert calls == [("host", (STACK, "claude"))]
+
+
+def test_a_container_verb_builds_the_image(monkeypatch, home, project):
+    calls = _no_build(monkeypatch)
+    overlay("zellij", "#!/bin/sh\n")
+    monkeypatch.setattr(launcher.claude_imports, "ask", lambda *a: None)
+    assert run(monkeypatch, "container-run", "claude", "--stack", STACK, "--register-zellij-only") == 0
+    assert calls == [("image", ("podman", STACK, "claude"))]
+
+
+def test_the_host_assembly_is_real_and_needs_no_runtime(monkeypatch, tmp_path):
+    """`_assemble_host` is the in-process assembly `host-run` does: no podman, a stamped profile."""
+    from test_host_acp import _STACK as ACP_STACK
+    from test_host_acp import _Host
+
+    _Host(tmp_path, monkeypatch)
+
+    def no_runtime():
+        raise AssertionError("a host register run needs no container runtime")
+
+    monkeypatch.setattr(launcher, "_runtime", no_runtime)
+    assert integrations.needs_build(ACP_STACK, "claude")
+    launcher._assemble_host(ACP_STACK, "claude")
+    assert not integrations.needs_build(ACP_STACK, "claude")
+
+
+@pytest.mark.parametrize(
+    ("text", "code", "message"),
+    [
+        ("# comment only\n\n", 0, ""),
+        ("harness claude omp  # trailing comment\n", 0, ""),
+        ("harness omp\n", 1, "supports omp only (got claude)"),
+        ("backend container\n", 1, "supports the container backend only"),
+        ("frobnicate yes\n", 2, "unknown requirement 'frobnicate'"),
+    ],
+)
+def test_the_requires_file(home, text, code, message):
+    script = overlay("zellij", "#!/bin/sh\n")
+    (script.parent / "requires").write_text(text)
+    if code == 0:
+        integrations.check(script, "claude", "host-run")
+        return
+    with pytest.raises(integrations.IntegrationError) as exc:
+        integrations.check(script, "claude", "host-run")
+    assert exc.value.code == code
+    assert message in str(exc.value)

@@ -45,6 +45,7 @@ Open decisions: none. Ruled by mcrowe on 2026-10-27: `main` rewrites the VS Code
   - `HARNESSED_PYTHON` — the interpreter that runs harnessed, so a script can call `"$HARNESSED_PYTHON" -m harnessed.jsonc` or `-m harnessed`
   - `HARNESSED_NO_STRICT_MCP`, `HARNESSED_AOE_GROUP`, `HARNESSED_AOE_TITLE`, `HARNESSED_AOE_MANAGED_WORKTREE` — set only when the launch was given `--no-strict-mcp-config`, `--aoe-group`, `--aoe-title` or `--aoe-managed-worktree`
 - harnessed passes the integration's stdout and stderr through and exits with its exit status.
+- An integration may hold a `requires` file beside `register`: one requirement per line, `harness <name>...`, `backend host|container` or `acp`, `#` starting a comment. harnessed checks it after the lookup and before any build; a run it rules out exits 1 with the reason and writes nothing, and a line it cannot read exits 2 (Revision 4).
 - An entry key for Zed and Atlas is `harnessed <harness> (<stack>)` for the host backend and `harnessed <harness> (<stack>, container)` for the container backend.
 
 ## Scenarios
@@ -103,7 +104,7 @@ Paths below use `$HOME` for the user's home, and `L` for `$HOME/.local/bin`. "St
 - S6.4 (boundary) Given a launch with no register flag, then the global launchers are written as today.
 
 ### S7. Build first (AC-7)
-- S7.1 Given no profile for stack S and harness H, when any `--register-<name>-only` runs on S's launcher for a known name, then `_build_stack(rt, S, H)` runs before the integration.
+- S7.1 Given no profile for stack S and harness H, when any `--register-<name>-only` runs on S's launcher for a known name, then the stack is built before the integration: `_build_stack(rt, S, H)` for a container verb, and for a host verb the in-process assembly `host-run` does, which needs no container runtime (Revision 4).
 - S7.2 (boundary) Given a profile whose `.build-stamp` does not match `staleness.compute_stamp` (the check `staleness.check_profile_fresh` makes), when S7.1's command runs, then the stack is built before the integration.
 - S7.3 (boundary) Given a current profile, when S7.1's command runs, then no build runs.
 - S7.4 (negative) Given a build that fails, when S7.1's command runs, then the integration does not run, nothing is written, stderr holds the build's error, and the exit status is 1.

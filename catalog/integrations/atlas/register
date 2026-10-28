@@ -2,12 +2,8 @@
 # Add this stack's ACP launcher to Atlas's external agents: `--register-atlas-only` (GH-569).
 # harnessed runs this with the integration contract's HARNESSED_* variables set.
 # `harnessed.jsonc` keeps every other entry's bytes, and creates the file when it is missing.
+# `requires` beside this file limits it to an ACP harness, checked before any build.
 set -eu
-if [ -z "$HARNESSED_ACP_LAUNCHER" ]; then
-    acp=$("$HARNESSED_PYTHON" -c 'from harnessed.attachcmd import _ACP_HARNESSES; print(", ".join(_ACP_HARNESSES))')
-    echo "error: Atlas needs an ACP harness; $HARNESSED_HARNESS has no ACP mode (ACP harnesses: $acp)" >&2
-    exit 1
-fi
 if [ "$HARNESSED_BACKEND" = container ]; then
     key="harnessed $HARNESSED_HARNESS ($HARNESSED_STACK, container)"
 else

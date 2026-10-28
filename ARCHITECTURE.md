@@ -133,7 +133,9 @@ Two consequences worth knowing:
   launcher is given `--register-<name>-only`: the launcher builds a missing or stale profile, writes
   the global launchers, runs `register` in the project with the `HARNESSED_*` contract
   (`src/harnessed/integrations.py`), and exits with its status. No agent starts, and a launch with no
-  register flag registers nothing. The JSON editors use `python -m harnessed.jsonc`, which keeps
+  register flag registers nothing. An optional `requires` file beside `register` limits it to
+  some harnesses, a backend, or ACP harnesses, and is checked before any build; a host verb's build is
+  the in-process assembly, with no image. The JSON editors use `python -m harnessed.jsonc`, which keeps
   every other byte of a settings file, comments included.
 
 ## How a build works (host-native)
