@@ -43,6 +43,7 @@ from . import emit
 from . import integrations
 from . import launchscript
 from . import paths
+from . import plugin
 from . import persist
 from . import staleness
 from . import capmatrix
@@ -3722,6 +3723,180 @@ def host_run(
         # manifest (minted_dir is None) is left alone; it may be a working stack that today's
         # recipe edit merely broke. Never reached on a real launch: `_launch_host` ends in execvp.
         if minted_dir is not None:
+            shutil.rmtree(minted_dir, ignore_errors=True)
+        raise
+
+
+_CLAUDE_PLUGIN_TIMEOUT = 120  # seconds; each `claude plugin` call edits one settings file
+
+
+def _claude_plugin(*args: str, cwd: Path) -> subprocess.CompletedProcess:
+    """Run `claude plugin <args>`; on failure print what it said and exit with its status."""
+    try:
+        proc = subprocess.run(
+            ["claude", "plugin", *args], cwd=cwd, capture_output=True, text=True,
+            timeout=_CLAUDE_PLUGIN_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired as exc:
+        _err.print(
+            f"error: claude plugin {' '.join(args)} did not finish in {_CLAUDE_PLUGIN_TIMEOUT}s",
+            soft_wrap=True, markup=False, highlight=False,
+        )
+        raise typer.Exit(1) from exc
+    if proc.returncode != 0:
+        # markup=False: the CLI's own text is printed as it came, never read as rich markup.
+        _err.print(
+            f"error: claude plugin {' '.join(args)} failed:\n{proc.stdout}\n{proc.stderr}",
+            soft_wrap=True, markup=False, highlight=False,
+        )
+        raise typer.Exit(_exit_status(proc.returncode) or 1)
+    return proc
+
+
+def _warn_plugin_duplicate_hooks(recipes, scope: str, project: Path) -> None:
+    """S2.4: warn on a user hook the plugin fires again, through the container path's own check.
+    The user file and the enabled scope's file both run beside the plugin (A15). Both sides are
+    compared after the config-dir rewrite and without the tool PATH prefix, so a hand-installed
+    copy of a recipe hook matches the plugin's."""
+    ours = plugin.plugin_hooks(recipes, [], context=False)
+    if not ours:
+        return
+    user: dict = {}
+    for settings in dict.fromkeys([plugin.user_settings_path(), plugin.scope_settings_path(scope, project)]):
+        for event, groups in (plugin.read_settings(settings).get("hooks") or {}).items():
+            for group in groups if isinstance(groups, list) else []:
+                for hook in group.get("hooks") or [] if isinstance(group, dict) else []:
+                    if isinstance(hook, dict) and isinstance(hook.get("command"), str):
+                        hook["command"] = plugin.rewrite_hook_command(hook["command"])
+            user.setdefault(event, []).extend(groups if isinstance(groups, list) else [])
+    merged = {event: [*(user.get(event) or []), *ours.get(event, [])] for event in {*user, *ours}}
+    emit.warn_duplicate_hooks({"hooks": merged}, "claude")
+
+
+@app.command("use")
+def use(
+    harness: str = typer.Argument(..., help="Harness to enable the stack for (claude)"),
+    path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
+    stack: Optional[str] = _STACK_OPT,
+    recipe: list[str] = _RECIPE_OPT,
+    extends: str = _EXTENDS_OPT,
+    no_extends: bool = _NO_EXTENDS_OPT,
+    global_: bool = typer.Option(
+        False, "--global", help="Enable at user scope (every project) instead of for this project.",
+    ),
+    off: bool = typer.Option(False, "--off", help="Disable every harnessed plugin at this scope."),
+) -> None:
+    """Enable a stack as a Claude Code plugin for a project or globally.
+
+    Builds the stack into harnessed's local marketplace ($XDG_DATA_HOME/harnessed/marketplace),
+    registers it with the `claude` CLI, enables `<stack>@harnessed`, then disables every other
+    harnessed plugin at the same scope. Plain `claude` then loads the stack against your real
+    ~/.claude. harnessed writes nothing there itself: every change goes through `claude plugin`.
+
+        harnessed use claude [path] --stack <name>      # this project (local scope)
+        harnessed use claude --global --stack <name>    # every project (user scope)
+        harnessed use claude [path] --off               # turn harnessed plugins off
+    """
+    if harness != "claude":
+        _err.print(f"[bold red]error:[/bold red] `use` supports only claude (got '{harness}')")
+        raise typer.Exit(1)
+    if shutil.which("claude") is None:
+        _err.print("[bold red]error:[/bold red] `use` needs the `claude` binary, and none is on PATH")
+        raise typer.Exit(1)
+    project = Path(path).resolve() if path else Path.cwd()
+    if not project.is_dir():
+        _err.print(f"[bold red]error:[/bold red] project directory does not exist: {project}")
+        raise typer.Exit(1)
+    scope = "user" if global_ else "local"
+    # Read both settings files now, so a malformed one stops `use` before anything is written.
+    for settings in {plugin.scope_settings_path(scope, project), plugin.user_settings_path()}:
+        try:
+            plugin.read_settings(settings)
+        except ValueError as exc:
+            _err.print(f"[bold red]error:[/bold red] cannot read {settings}: {exc}", soft_wrap=True)
+            raise typer.Exit(1) from exc
+    if off:
+        if stack or recipe or no_extends or extends != _EXTENDS_DEFAULT:
+            _err.print(
+                "[bold red]error:[/bold red] --off turns off every harnessed plugin at this scope; "
+                "it takes no --stack, --recipe, --extends or --no-extends"
+            )
+            raise typer.Exit(1)
+        for pid in plugin.enabled_harnessed(scope, project):
+            _claude_plugin("disable", pid, "--scope", scope, cwd=project)
+        return
+
+    stack_name, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, [])
+    try:
+        services = _service_refs(stack_name)
+        if services:
+            _err.print(
+                f"[bold red]error:[/bold red] stack '{stack_name}' needs services "
+                f"({', '.join(services)}); `use` does not support services. Use `host-run` or "
+                "`container-run` for this stack."
+            )
+            raise typer.Exit(1)
+        stk, recipes = load_stack_with_recipes(None, stack_name)
+        for key in dict.fromkeys((["permissions"] if stk.permissions else []) + list(stk.settings)):
+            _err.print(
+                f"[yellow]warn:[/yellow] stack '{stack_name}' sets '{key}', which is not delivered "
+                "by a plugin"
+            )
+        _assemble_host(stack_name, "claude")
+        # `tools:` first: the emitter resolves hook PATH and MCP commands to their bin dirs.
+        _host_install_tools(stack_name, recipes)
+        # Keep the previous plugin until the rebuild and its installs succeed: it may be enabled,
+        # and a half-built one has hooks pointing at files no install wrote.
+        out = plugin.marketplace_dir() / "plugins" / stack_name
+        prev = plugin.marketplace_dir() / ".prev" / stack_name
+        shutil.rmtree(prev, ignore_errors=True)
+        if out.exists():
+            prev.parent.mkdir(parents=True, exist_ok=True)
+            out.rename(prev)
+        try:
+            plugin.emit_plugin(stack_name)
+            _host_run_installs(stack_name, project, harness="claude", home=out)
+        except BaseException:
+            shutil.rmtree(out, ignore_errors=True)
+            if prev.exists():
+                prev.rename(out)
+            try:
+                plugin.write_marketplace()
+            except OSError as exc:
+                # Warn and re-raise the failure that started the rollback, not this one.
+                _err.print(f"[yellow]warn:[/yellow] could not rewrite marketplace.json: {exc}")
+            raise
+        finally:
+            shutil.rmtree(prev.parent, ignore_errors=True)
+        _warn_plugin_duplicate_hooks(recipes, scope, project)
+
+        mkt = plugin.marketplace_dir().resolve()
+        listed = _claude_plugin("marketplace", "list", "--json", cwd=project).stdout
+        try:
+            known = json.loads(listed or "[]")
+            registered = any(
+                m.get("name") == plugin.MARKETPLACE and Path(m.get("path") or "").resolve() == mkt
+                for m in known
+            )
+        except (ValueError, AttributeError, TypeError) as exc:
+            _err.print(
+                f"[bold red]error:[/bold red] cannot read `claude plugin marketplace list --json`: {exc}",
+                soft_wrap=True,
+            )
+            raise typer.Exit(1) from exc
+        if not registered:
+            _claude_plugin("marketplace", "add", str(mkt), cwd=project)
+        # Enable before disabling the rest: a failed enable leaves the previous stack on (A4).
+        target = plugin.plugin_id(stack_name)
+        _claude_plugin("enable", target, "--scope", scope, cwd=project)
+        for pid in plugin.enabled_harnessed(scope, project):
+            if pid != target:
+                _claude_plugin("disable", pid, "--scope", scope, cwd=project)
+    except BaseException as exc:
+        # Same ownership rule as `host_run`: a manifest THIS call minted goes when the call fails or
+        # is interrupted. On success it stays, as `host_run` keeps it: the enabled plugin is named
+        # after that stack, and `use --stack <that name>` resolves its manifest to rebuild it.
+        if minted_dir is not None and not (isinstance(exc, typer.Exit) and exc.exit_code == 0):
             shutil.rmtree(minted_dir, ignore_errors=True)
         raise
 
