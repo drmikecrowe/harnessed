@@ -27,6 +27,9 @@ with open(os.environ["FAKE_CLAUDE_LOG"], "a") as f:
     f.write(json.dumps({{"argv": args, "cwd": os.getcwd()}}) + "\\n")
 if args[:3] == ["plugin", "marketplace", "list"]:
     print(os.environ.get("FAKE_CLAUDE_MARKETPLACES", "[]"))
+elif args[:2] == ["plugin", "enable"] and os.environ.get("FAKE_CLAUDE_HANG"):
+    import time
+    time.sleep(30)
 elif args[:2] == ["plugin", "enable"] and os.environ.get("FAKE_CLAUDE_ENABLE_FAIL"):
     print("boom", file=sys.stderr)
     sys.exit(1)
@@ -200,6 +203,16 @@ class TestUse:
         result = use("claude", str(env.proj), "--stack", STACK)
         assert result.exit_code != 0
         assert "boom" in result.stderr
+        assert not any(a[1] == "disable" for a in argvs(env))
+
+    def test_s3_10_a_hung_claude_call_times_out_cleanly(self, env, monkeypatch):
+        """Every launcher subprocess is bounded (tests/test_subprocess_timeout_audit.py)."""
+        env.local({"B@harnessed": True})
+        monkeypatch.setenv("FAKE_CLAUDE_HANG", "1")
+        monkeypatch.setattr(launcher, "_CLAUDE_PLUGIN_TIMEOUT", 1)
+        result = use("claude", str(env.proj), "--stack", STACK)
+        assert result.exit_code == 1
+        assert "did not finish" in result.stderr
         assert not any(a[1] == "disable" for a in argvs(env))
 
     def test_s3_12_and_s3_13_installs_land_in_the_plugin_and_home_claude_is_untouched(self, env):

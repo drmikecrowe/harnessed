@@ -3727,9 +3727,22 @@ def host_run(
         raise
 
 
+_CLAUDE_PLUGIN_TIMEOUT = 120  # seconds; each `claude plugin` call edits one settings file
+
+
 def _claude_plugin(*args: str, cwd: Path) -> subprocess.CompletedProcess:
     """Run `claude plugin <args>`; on failure print what it said and exit with its status."""
-    proc = subprocess.run(["claude", "plugin", *args], cwd=cwd, capture_output=True, text=True)
+    try:
+        proc = subprocess.run(
+            ["claude", "plugin", *args], cwd=cwd, capture_output=True, text=True,
+            timeout=_CLAUDE_PLUGIN_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired as exc:
+        _err.print(
+            f"error: claude plugin {' '.join(args)} did not finish in {_CLAUDE_PLUGIN_TIMEOUT}s",
+            soft_wrap=True, markup=False, highlight=False,
+        )
+        raise typer.Exit(1) from exc
     if proc.returncode != 0:
         # markup=False: the CLI's own text is printed as it came, never read as rich markup.
         _err.print(
