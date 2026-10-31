@@ -62,9 +62,12 @@ def tree(root: Path) -> dict[str, bytes]:
 class TestEmitter:
     def test_s1_1_skills_commands_and_manifest_are_copied(self, env):
         profile = build()
+        # A recipe ships a command as a directory (decisions.md fact 13), so the SPEC's flat
+        # `.claude/commands/bar.md` is placed in the profile directly, beside the recipe's dir.
+        (profile / ".claude" / "commands" / "bar.md").write_text("---\ndescription: flat\n---\nflat bar\n")
         out = plugin.emit_plugin(STACK)
         assert out == plugin.marketplace_dir() / "plugins" / STACK
-        for rel in ("skills/foo/SKILL.md", "commands/bar/bar.md"):
+        for rel in ("skills/foo/SKILL.md", "commands/bar.md", "commands/bar/bar.md"):
             assert (out / rel).read_bytes() == (profile / ".claude" / rel).read_bytes()
         manifest = json.loads((out / ".claude-plugin" / "plugin.json").read_text())
         assert isinstance(manifest, dict) and manifest["name"] == STACK
