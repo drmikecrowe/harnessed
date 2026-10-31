@@ -60,3 +60,24 @@ Changes: S2 delivers rules and instructions through `context.md` and a SessionSt
 The engineer ruled all three Decide calls in the hotfix Decide round; SPEC.md Orientation records them.
 ### Revision 2. Gate 1a round 1 findings fixed
 Defined the brief and its six phases, and described the spike with no phase number (PR-REFERENT 1). Defined a stack tool bin dir, an install script and a scope in Terms (PR-REFERENT 2 and both gaps).
+
+## Spike (phase 1), run 2026-10-31 by the doer during build, Claude Code 2.1.314, temp `CLAUDE_CONFIG_DIR`
+- `claude plugin marketplace add <dir>` registers a local-path marketplace and records it in user `extraKnownMarketplaces`.
+- `claude plugin enable s1@harnessed --scope local` with cwd `<proj>` writes `<proj>/.claude/settings.local.json`; `--scope user` writes `$CLAUDE_CONFIG_DIR/settings.json`. Neither needs `claude plugin install`.
+- `claude plugin validate --strict` passes only with `version`, `description` and `author` in `plugin.json` and `metadata.description` in `marketplace.json`.
+- `claude plugin details s1@harnessed` lists the plugin's skills, commands and SessionStart hook.
+- `claude plugin list --json` returns `[]` for an enabled plugin that was never installed, so it cannot tell `use` what is enabled. `disable` on an already-disabled plugin exits 1.
+- `claude plugin marketplace list --json` reports each marketplace's directory as `path`, not `source`.
+
+### Decide 4. How does `use` learn which harnessed plugins are enabled at a scope?
+Spike: `plugin list --json` omits enabled plugins with no install record.
+
+- A. Read `enabledPlugins` from the scope's settings file (local `<proj>/.claude/settings.local.json`, user `$CLAUDE_CONFIG_DIR/settings.json`). Cost: harnessed depends on that layout for reads.
+- B. Disable every plugin in harnessed's `marketplace.json` except the target and ignore the "already disabled" exit. Cost: one call per stack, and an error string decides failure.
+
+Default: A.
+- Ruling: A, read `enabledPlugins` (mcrowe, 2026-10-31)
+Changes: S3 preamble, S3.2, S3.3, S3.5, S3.10.
+
+### Revision 3. Spike findings folded in after approval
+The spike ran after the approval commit and showed `plugin list --json` cannot report enablement. Decide 4 replaced it with a read of `enabledPlugins`. S3.2 names the `path` field the CLI really prints. No scenario was added or removed.
