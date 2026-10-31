@@ -274,6 +274,52 @@ class TestUse:
         assert not isinstance(result.exception, OSError), result.exception
         assert "disk gone" in result.stderr
 
+    def test_s3_5_off_refuses_a_stack_selection(self, env):
+        """PR #650 review: `--off` turns off every harnessed plugin, so naming a stack with it is
+        refused rather than silently ignored."""
+        for extra in (("--stack", STACK), ("--recipe", "plugin-recipe"), ("--extends", "x"), ("--no-extends",)):
+            result = use("claude", str(env.proj), "--off", *extra)
+            assert result.exit_code == 1, extra
+            assert "--off" in result.stderr
+        assert env.calls() == []
+
+    def test_s3_2_an_unreadable_marketplace_list_is_a_clean_error(self, env, monkeypatch):
+        """PR #650 review: non-JSON output from `marketplace list --json` stops `use` with a message."""
+        monkeypatch.setenv("FAKE_CLAUDE_MARKETPLACES", "Fetching...\nnot json")
+        result = use("claude", str(env.proj), "--stack", STACK)
+        assert result.exit_code == 1
+        assert "marketplace list" in result.stderr
+        assert not isinstance(result.exception, ValueError), result.exception
+        assert not any(a[1] == "enable" for a in argvs(env))
+
+    def test_s3_2_a_registered_marketplace_matches_through_a_symlink(self, env, monkeypatch):
+        """PR #650 review: the registration check compares resolved paths."""
+        real = env.tmp / "real-data"
+        real.mkdir()
+        (env.tmp / "link-data").symlink_to(real)
+        monkeypatch.setenv("XDG_DATA_HOME", str(env.tmp / "link-data"))
+        monkeypatch.setenv("FAKE_CLAUDE_MARKETPLACES", json.dumps(
+            [{"name": "harnessed", "source": "directory", "path": str(real / "harnessed" / "marketplace")}]))
+        result = use("claude", str(env.proj), "--stack", STACK)
+        assert result.exit_code == 0, result.output
+        assert not any(a[:3] == ["plugin", "marketplace", "add"] for a in argvs(env))
+
+    def test_s3_15_an_interrupt_removes_a_manifest_this_call_minted(self, env, monkeypatch):
+        """PR #650 review: Ctrl-C after the stack was minted removes the minted manifest, as a
+        failure does."""
+        minted = env.tmp / "minted"
+        minted.mkdir()
+        monkeypatch.setattr(launcher, "_resolve_stack", lambda *a: (STACK, minted))
+
+        def interrupt(*a, **k):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(launcher, "_assemble_host", interrupt)
+        with pytest.raises(KeyboardInterrupt):
+            launcher.use(harness="claude", path=str(env.proj), stack=None, recipe=["plugin-recipe"],
+                         extends="default", no_extends=False, global_=False, off=False)
+        assert not minted.exists()
+
     def test_s3_13_off_leaves_home_claude_untouched(self, env):
         before = _snapshot(env.home_claude)
         env.local({f"{STACK}@harnessed": True})
@@ -311,6 +357,17 @@ class TestDuplicateHooks:
         result = use("claude", str(env.proj), "--stack", STACK)
         assert result.exit_code == 0, result.output
         # warn_duplicate_hooks names the command by its repr.
+        assert "event='SessionStart'" in result.stderr and repr(PLUGIN_HOOK) in result.stderr
+
+    def test_s2_4_a_local_scope_hook_equal_to_a_plugin_hook_is_warned(self, env):
+        """PR #650 review: at local scope the project's settings.local.json runs beside the plugin,
+        so its hooks are compared too."""
+        env.local({})
+        data = json.loads((env.proj / ".claude" / "settings.local.json").read_text())
+        data["hooks"] = {"SessionStart": [{"hooks": [{"type": "command", "command": PLUGIN_HOOK}]}]}
+        (env.proj / ".claude" / "settings.local.json").write_text(json.dumps(data))
+        result = use("claude", str(env.proj), "--stack", STACK)
+        assert result.exit_code == 0, result.output
         assert "event='SessionStart'" in result.stderr and repr(PLUGIN_HOOK) in result.stderr
 
     def test_s2_4_no_overlap_prints_nothing(self, env):

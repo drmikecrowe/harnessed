@@ -3753,12 +3753,16 @@ def _claude_plugin(*args: str, cwd: Path) -> subprocess.CompletedProcess:
     return proc
 
 
-def _warn_plugin_duplicate_hooks(plugin_root: Path) -> None:
-    """S2.4: warn on a user hook the plugin fires again, through the container path's own check."""
+def _warn_plugin_duplicate_hooks(plugin_root: Path, scope: str, project: Path) -> None:
+    """S2.4: warn on a user hook the plugin fires again, through the container path's own check.
+    The user file and the enabled scope's file both run beside the plugin (A15)."""
     hooks_file = plugin_root / "hooks" / "hooks.json"
     if not hooks_file.is_file():
         return
-    user = plugin.read_settings(plugin.user_settings_path()).get("hooks") or {}
+    user: dict = {}
+    for settings in dict.fromkeys([plugin.user_settings_path(), plugin.scope_settings_path(scope, project)]):
+        for event, groups in (plugin.read_settings(settings).get("hooks") or {}).items():
+            user.setdefault(event, []).extend(groups)
     ours = json.loads(hooks_file.read_text())["hooks"]
     merged = {event: [*(user.get(event) or []), *ours.get(event, [])] for event in {*user, *ours}}
     emit.warn_duplicate_hooks({"hooks": merged}, "claude")
@@ -3807,6 +3811,12 @@ def use(
             _err.print(f"[bold red]error:[/bold red] cannot read {settings}: {exc}", soft_wrap=True)
             raise typer.Exit(1) from exc
     if off:
+        if stack or recipe or no_extends or extends != _EXTENDS_DEFAULT:
+            _err.print(
+                "[bold red]error:[/bold red] --off turns off every harnessed plugin at this scope; "
+                "it takes no --stack, --recipe, --extends or --no-extends"
+            )
+            raise typer.Exit(1)
         for pid in plugin.enabled_harnessed(scope, project):
             _claude_plugin("disable", pid, "--scope", scope, cwd=project)
         return
@@ -3853,11 +3863,23 @@ def use(
             raise
         finally:
             shutil.rmtree(prev.parent, ignore_errors=True)
-        _warn_plugin_duplicate_hooks(out)
+        _warn_plugin_duplicate_hooks(out, scope, project)
 
-        mkt = plugin.marketplace_dir()
-        known = json.loads(_claude_plugin("marketplace", "list", "--json", cwd=project).stdout or "[]")
-        if not any(m.get("name") == plugin.MARKETPLACE and m.get("path") == str(mkt) for m in known):
+        mkt = plugin.marketplace_dir().resolve()
+        listed = _claude_plugin("marketplace", "list", "--json", cwd=project).stdout
+        try:
+            known = json.loads(listed or "[]")
+            registered = any(
+                m.get("name") == plugin.MARKETPLACE and Path(m.get("path") or "").resolve() == mkt
+                for m in known
+            )
+        except (ValueError, AttributeError, TypeError) as exc:
+            _err.print(
+                f"[bold red]error:[/bold red] cannot read `claude plugin marketplace list --json`: {exc}",
+                soft_wrap=True,
+            )
+            raise typer.Exit(1) from exc
+        if not registered:
             _claude_plugin("marketplace", "add", str(mkt), cwd=project)
         # Enable before disabling the rest: a failed enable leaves the previous stack on (A4).
         target = plugin.plugin_id(stack_name)
@@ -3865,8 +3887,9 @@ def use(
         for pid in plugin.enabled_harnessed(scope, project):
             if pid != target:
                 _claude_plugin("disable", pid, "--scope", scope, cwd=project)
-    except Exception as exc:
-        # Same ownership rule as `host_run`: a manifest THIS call minted goes when the call fails.
+    except BaseException as exc:
+        # Same ownership rule as `host_run`: a manifest THIS call minted goes when the call fails or
+        # is interrupted.
         if minted_dir is not None and not (isinstance(exc, typer.Exit) and exc.exit_code == 0):
             shutil.rmtree(minted_dir, ignore_errors=True)
         raise

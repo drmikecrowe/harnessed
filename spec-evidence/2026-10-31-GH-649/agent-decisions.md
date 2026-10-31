@@ -69,3 +69,8 @@
 - Other option: mark the call `# unbounded:` with a reason, as the subprocess audit allows.
 - Why: each call only edits a settings file, so a call that runs for two minutes is hung, and `use` must not wait forever.
 - Command: build
+
+### A15. S2.4 also compares the enabled scope's settings file, superseding A8
+- Other option: keep A8, the user settings file only.
+- Why: PR #650 review showed that at local scope, the default, the project's `settings.local.json` hooks run in the same session as the plugin's, so A8 missed the most common duplicate.
+- Command: build
