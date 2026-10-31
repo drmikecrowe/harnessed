@@ -1,0 +1,5 @@
+# GH-649 fixture stack: a skill, a command, a hook, an MCP server, rules, instructions and an install script.
+name: plugin-stack
+harnesses: [claude]
+instructions: I
+recipes: [plugin-recipe]

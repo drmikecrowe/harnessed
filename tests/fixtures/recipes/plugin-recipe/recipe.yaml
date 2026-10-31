@@ -1,0 +1,25 @@
+# GH-649 fixture recipe for tests/test_plugin.py and tests/test_use.py: one of each thing a plugin carries.
+name: plugin-recipe
+description: GH-649 fixture — a skill, a command, two rules, a hook, a stdio MCP server and an install script.
+
+skills:
+  - path: skills/foo
+commands:
+  - path: commands/bar
+rules:
+  - path: rules/a
+  - path: rules/b.md
+
+hooks:
+  SessionStart:
+    - command: sh -c 'exec node "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/x/hooks/a.js"'
+
+mcp:
+  servers:
+    - name: srv
+      command: srv
+      args: ["--flag"]
+      transport: stdio
+
+install:
+  script: install.sh
