@@ -3753,17 +3753,22 @@ def _claude_plugin(*args: str, cwd: Path) -> subprocess.CompletedProcess:
     return proc
 
 
-def _warn_plugin_duplicate_hooks(plugin_root: Path, scope: str, project: Path) -> None:
+def _warn_plugin_duplicate_hooks(recipes, scope: str, project: Path) -> None:
     """S2.4: warn on a user hook the plugin fires again, through the container path's own check.
-    The user file and the enabled scope's file both run beside the plugin (A15)."""
-    hooks_file = plugin_root / "hooks" / "hooks.json"
-    if not hooks_file.is_file():
+    The user file and the enabled scope's file both run beside the plugin (A15). Both sides are
+    compared after the config-dir rewrite and without the tool PATH prefix, so a hand-installed
+    copy of a recipe hook matches the plugin's."""
+    ours = plugin.plugin_hooks(recipes, [], context=False)
+    if not ours:
         return
     user: dict = {}
     for settings in dict.fromkeys([plugin.user_settings_path(), plugin.scope_settings_path(scope, project)]):
         for event, groups in (plugin.read_settings(settings).get("hooks") or {}).items():
-            user.setdefault(event, []).extend(groups)
-    ours = json.loads(hooks_file.read_text())["hooks"]
+            for group in groups if isinstance(groups, list) else []:
+                for hook in group.get("hooks") or [] if isinstance(group, dict) else []:
+                    if isinstance(hook, dict) and isinstance(hook.get("command"), str):
+                        hook["command"] = plugin.rewrite_hook_command(hook["command"])
+            user.setdefault(event, []).extend(groups if isinstance(groups, list) else [])
     merged = {event: [*(user.get(event) or []), *ours.get(event, [])] for event in {*user, *ours}}
     emit.warn_duplicate_hooks({"hooks": merged}, "claude")
 
@@ -3832,7 +3837,7 @@ def use(
             )
             raise typer.Exit(1)
         stk, recipes = load_stack_with_recipes(None, stack_name)
-        for key in (["permissions"] if stk.permissions else []) + list(stk.settings):
+        for key in dict.fromkeys((["permissions"] if stk.permissions else []) + list(stk.settings)):
             _err.print(
                 f"[yellow]warn:[/yellow] stack '{stack_name}' sets '{key}', which is not delivered "
                 "by a plugin"
@@ -3863,7 +3868,7 @@ def use(
             raise
         finally:
             shutil.rmtree(prev.parent, ignore_errors=True)
-        _warn_plugin_duplicate_hooks(out, scope, project)
+        _warn_plugin_duplicate_hooks(recipes, scope, project)
 
         mkt = plugin.marketplace_dir().resolve()
         listed = _claude_plugin("marketplace", "list", "--json", cwd=project).stdout
@@ -3889,7 +3894,8 @@ def use(
                 _claude_plugin("disable", pid, "--scope", scope, cwd=project)
     except BaseException as exc:
         # Same ownership rule as `host_run`: a manifest THIS call minted goes when the call fails or
-        # is interrupted.
+        # is interrupted. On success it stays, as `host_run` keeps it: the enabled plugin is named
+        # after that stack, and `use --stack <that name>` resolves its manifest to rebuild it.
         if minted_dir is not None and not (isinstance(exc, typer.Exit) and exc.exit_code == 0):
             shutil.rmtree(minted_dir, ignore_errors=True)
         raise

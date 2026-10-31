@@ -370,6 +370,18 @@ class TestDuplicateHooks:
         assert result.exit_code == 0, result.output
         assert "event='SessionStart'" in result.stderr and repr(PLUGIN_HOOK) in result.stderr
 
+    def test_s2_4_the_recipe_hook_in_its_config_dir_form_is_warned(self, env, monkeypatch):
+        """PR #650 review: a user who installed the same recipe hook by hand holds it in its
+        `${CLAUDE_CONFIG_DIR:-...}` form, and stack tools add a PATH prefix to the plugin's copy.
+        Both sides are compared after the rewrite, without the prefix."""
+        monkeypatch.setattr(plugin.hostrun, "_host_tool_bin_dirs", lambda stack: [env.tmp / "D1"])
+        raw = """sh -c 'exec node "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/x/hooks/a.js"'"""
+        (env.home_claude / "settings.json").write_text(json.dumps({"hooks": {"SessionStart": [
+            {"hooks": [{"type": "command", "command": raw}]}]}}))
+        result = use("claude", str(env.proj), "--stack", STACK)
+        assert result.exit_code == 0, result.output
+        assert "event='SessionStart'" in result.stderr and repr(PLUGIN_HOOK) in result.stderr
+
     def test_s2_4_no_overlap_prints_nothing(self, env):
         result = use("claude", str(env.proj), "--stack", STACK)
         assert result.exit_code == 0, result.output
