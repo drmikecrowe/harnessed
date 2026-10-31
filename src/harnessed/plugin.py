@@ -11,6 +11,7 @@ plugin component, so they are joined into `context.md` and printed by a SessionS
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 from pathlib import Path
@@ -34,6 +35,28 @@ def marketplace_dir() -> Path:
 
 def plugin_id(stack: str) -> str:
     return f"{stack}@{MARKETPLACE}"
+
+
+def user_settings_path() -> Path:
+    """The user's Claude settings file: `$CLAUDE_CONFIG_DIR/settings.json`, else `~/.claude`'s."""
+    config = os.environ.get("CLAUDE_CONFIG_DIR")
+    return (Path(config) if config else Path.home() / ".claude") / "settings.json"
+
+
+def scope_settings_path(scope: str, project: Path) -> Path:
+    """The settings file `claude plugin enable --scope <scope>` writes: local is the project's."""
+    return project / ".claude" / "settings.local.json" if scope == "local" else user_settings_path()
+
+
+def read_settings(path: Path) -> dict:
+    return json.loads(path.read_text()) if path.is_file() else {}
+
+
+def enabled_harnessed(scope: str, project: Path) -> list[str]:
+    """Harnessed plugin ids enabled at `scope`. Read from the settings file, because
+    `claude plugin list --json` omits a plugin that was enabled with no install (Decide 4)."""
+    enabled = read_settings(scope_settings_path(scope, project)).get("enabledPlugins") or {}
+    return sorted(i for i, on in enabled.items() if on is True and i.endswith(f"@{MARKETPLACE}"))
 
 
 def rewrite_hook_command(command: str) -> str:
