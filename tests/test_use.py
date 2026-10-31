@@ -27,6 +27,9 @@ with open(os.environ["FAKE_CLAUDE_LOG"], "a") as f:
     f.write(json.dumps({{"argv": args, "cwd": os.getcwd()}}) + "\\n")
 if args[:3] == ["plugin", "marketplace", "list"]:
     print(os.environ.get("FAKE_CLAUDE_MARKETPLACES", "[]"))
+elif args[:2] == ["plugin", "enable"] and os.environ.get("FAKE_CLAUDE_SIGTERM"):
+    import signal
+    os.kill(os.getpid(), signal.SIGTERM)
 elif args[:2] == ["plugin", "enable"] and os.environ.get("FAKE_CLAUDE_HANG"):
     import time
     time.sleep(30)
@@ -244,6 +247,32 @@ class TestUse:
         assert "settings.local.json" in result.stderr
         assert env.calls() == []
         assert not plugin.marketplace_dir().exists()
+
+    def test_s3_10_a_signal_death_exits_as_a_shell_reports_it(self, env, monkeypatch):
+        """PR #650 review: a claude killed by SIGTERM makes `use` exit 143, not -15."""
+        monkeypatch.setenv("FAKE_CLAUDE_SIGTERM", "1")
+        result = use("claude", str(env.proj), "--stack", STACK)
+        assert result.exit_code == 143
+
+    def test_s3_12_a_failed_rollback_does_not_mask_the_install_failure(self, env, monkeypatch):
+        """PR #650 review: an error while rewriting marketplace.json in the rollback must not
+        replace the failure that caused the rollback."""
+        assert use("claude", str(env.proj), "--stack", STACK).exit_code == 0
+        real = plugin.write_marketplace
+        calls = []
+
+        def flaky():
+            calls.append(1)
+            if len(calls) > 1:
+                raise OSError("disk gone")
+            return real()
+
+        monkeypatch.setattr(plugin, "write_marketplace", flaky)
+        monkeypatch.setenv("GH649_FAIL_INSTALL", "1")
+        result = use("claude", str(env.proj), "--stack", STACK)
+        assert result.exit_code == 1
+        assert not isinstance(result.exception, OSError), result.exception
+        assert "disk gone" in result.stderr
 
     def test_s3_13_off_leaves_home_claude_untouched(self, env):
         before = _snapshot(env.home_claude)

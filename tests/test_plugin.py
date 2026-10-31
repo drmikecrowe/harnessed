@@ -190,6 +190,11 @@ class TestEmitter:
 class TestMutationGaps:
     """Each test here kills mutmut survivors of plugin.py that the scenario tests above let live."""
 
+    def test_s3_14_no_git_binary_falls_back_to_the_path(self, tmp_path, monkeypatch):
+        """PR #650 review: with no `git` on PATH, local scope reads the path itself."""
+        monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+        assert plugin.scope_settings_path("local", tmp_path) == tmp_path / ".claude" / "settings.local.json"
+
     def test_marketplace_is_under_xdg_data_home(self, env):
         assert plugin.marketplace_dir() == env.tmp / "data" / "harnessed" / "marketplace"
 

@@ -49,9 +49,12 @@ def scope_settings_path(scope: str, project: Path) -> Path:
     root when `project` is inside a repo, else at `project` (claude 2.1.314, measured)."""
     if scope != "local":
         return user_settings_path()
-    git = subprocess.run(["git", "-C", str(project), "rev-parse", "--show-toplevel"],
-                         capture_output=True, text=True)
-    root = Path(git.stdout.strip()) if git.returncode == 0 else project
+    try:
+        git = subprocess.run(["git", "-C", str(project), "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True)
+        root = Path(git.stdout.strip()) if git.returncode == 0 else project
+    except OSError:  # no git binary: not a repo as far as we can tell
+        root = project
     return root / ".claude" / "settings.local.json"
 
 

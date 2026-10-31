@@ -3749,7 +3749,7 @@ def _claude_plugin(*args: str, cwd: Path) -> subprocess.CompletedProcess:
             f"error: claude plugin {' '.join(args)} failed:\n{proc.stdout}\n{proc.stderr}",
             soft_wrap=True, markup=False, highlight=False,
         )
-        raise typer.Exit(proc.returncode or 1)
+        raise typer.Exit(_exit_status(proc.returncode) or 1)
     return proc
 
 
@@ -3845,7 +3845,11 @@ def use(
             shutil.rmtree(out, ignore_errors=True)
             if prev.exists():
                 prev.rename(out)
-            plugin.write_marketplace()
+            try:
+                plugin.write_marketplace()
+            except OSError as exc:
+                # Warn and re-raise the failure that started the rollback, not this one.
+                _err.print(f"[yellow]warn:[/yellow] could not rewrite marketplace.json: {exc}")
             raise
         finally:
             shutil.rmtree(prev.parent, ignore_errors=True)
