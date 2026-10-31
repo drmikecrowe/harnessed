@@ -14,6 +14,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 from pathlib import Path
 
 from . import hostrun, paths
@@ -44,8 +45,14 @@ def user_settings_path() -> Path:
 
 
 def scope_settings_path(scope: str, project: Path) -> Path:
-    """The settings file `claude plugin enable --scope <scope>` writes: local is the project's."""
-    return project / ".claude" / "settings.local.json" if scope == "local" else user_settings_path()
+    """The settings file `claude plugin enable --scope <scope>` writes. Local scope lands at the git
+    root when `project` is inside a repo, else at `project` (claude 2.1.314, measured)."""
+    if scope != "local":
+        return user_settings_path()
+    git = subprocess.run(["git", "-C", str(project), "rev-parse", "--show-toplevel"],
+                         capture_output=True, text=True)
+    root = Path(git.stdout.strip()) if git.returncode == 0 else project
+    return root / ".claude" / "settings.local.json"
 
 
 def read_settings(path: Path) -> dict:

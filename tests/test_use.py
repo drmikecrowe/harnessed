@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -116,6 +117,17 @@ class TestUse:
             ["plugin", "enable", f"{STACK}@harnessed", "--scope", "local"],
             ["plugin", "disable", "B@harnessed", "--scope", "local"],
         ]
+
+    def test_s3_3_from_a_subdirectory_reads_the_git_root_enablement(self, env):
+        """Adversary round 2, confirmed against claude 2.1.314: `--scope local` run in a git
+        subdirectory writes `<git root>/.claude/settings.local.json`."""
+        subprocess.run(["git", "init", "-q", str(env.proj)], check=True)
+        sub = env.proj / "sub"
+        sub.mkdir()
+        env.local({"B@harnessed": True})
+        result = use("claude", str(sub), "--stack", STACK)
+        assert result.exit_code == 0, result.output
+        assert ["plugin", "disable", "B@harnessed", "--scope", "local"] in argvs(env)
 
     def test_s3_4_global_acts_at_user_scope_only(self, env):
         (env.home_claude / "settings.json").write_text(json.dumps({"enabledPlugins": {"B@harnessed": True}}))
