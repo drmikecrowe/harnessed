@@ -3786,6 +3786,13 @@ def use(
         _err.print(f"[bold red]error:[/bold red] project directory does not exist: {project}")
         raise typer.Exit(1)
     scope = "user" if global_ else "local"
+    # Read both settings files now, so a malformed one stops `use` before anything is written.
+    for settings in {plugin.scope_settings_path(scope, project), plugin.user_settings_path()}:
+        try:
+            plugin.read_settings(settings)
+        except ValueError as exc:
+            _err.print(f"[bold red]error:[/bold red] cannot read {settings}: {exc}", soft_wrap=True)
+            raise typer.Exit(1) from exc
     if off:
         for pid in plugin.enabled_harnessed(scope, project):
             _claude_plugin("disable", pid, "--scope", scope, cwd=project)
@@ -3810,8 +3817,25 @@ def use(
         _assemble_host(stack_name, "claude")
         # `tools:` first: the emitter resolves hook PATH and MCP commands to their bin dirs.
         _host_install_tools(stack_name, recipes)
-        out = plugin.emit_plugin(stack_name)
-        _host_run_installs(stack_name, project, harness="claude", home=out)
+        # Keep the previous plugin until the rebuild and its installs succeed: it may be enabled,
+        # and a half-built one has hooks pointing at files no install wrote.
+        out = plugin.marketplace_dir() / "plugins" / stack_name
+        prev = plugin.marketplace_dir() / ".prev" / stack_name
+        shutil.rmtree(prev, ignore_errors=True)
+        if out.exists():
+            prev.parent.mkdir(parents=True, exist_ok=True)
+            out.rename(prev)
+        try:
+            plugin.emit_plugin(stack_name)
+            _host_run_installs(stack_name, project, harness="claude", home=out)
+        except BaseException:
+            shutil.rmtree(out, ignore_errors=True)
+            if prev.exists():
+                prev.rename(out)
+            plugin.write_marketplace()
+            raise
+        finally:
+            shutil.rmtree(prev.parent, ignore_errors=True)
         _warn_plugin_duplicate_hooks(out)
 
         mkt = plugin.marketplace_dir()

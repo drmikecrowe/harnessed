@@ -188,6 +188,29 @@ class TestUse:
         assert (plugin.marketplace_dir() / "plugins" / STACK / "x" / "marker").is_file()
         assert _snapshot(env.home_claude) == before
 
+    def test_s3_12_a_failed_reinstall_keeps_the_previous_plugin(self, env, monkeypatch):
+        """Adversary round 1: a rebuild whose install fails must not leave the enabled plugin
+        without the files its hooks point at."""
+        assert use("claude", str(env.proj), "--stack", STACK).exit_code == 0
+        out = plugin.marketplace_dir() / "plugins" / STACK
+        before = {str(p.relative_to(out)): p.read_bytes() for p in out.rglob("*") if p.is_file()}
+        monkeypatch.setenv("GH649_FAIL_INSTALL", "1")
+        result = use("claude", str(env.proj), "--stack", STACK)
+        assert result.exit_code != 0
+        assert {str(p.relative_to(out)): p.read_bytes() for p in out.rglob("*") if p.is_file()} == before
+        assert not (plugin.marketplace_dir() / ".prev").exists()
+
+    def test_s3_13_a_malformed_settings_file_stops_before_any_write(self, env):
+        """Adversary round 1: unreadable settings stop `use` with a message, before the plugin is
+        written or the CLI is called."""
+        (env.proj / ".claude").mkdir()
+        (env.proj / ".claude" / "settings.local.json").write_text("{not json")
+        result = use("claude", str(env.proj), "--stack", STACK)
+        assert result.exit_code == 1
+        assert "settings.local.json" in result.stderr
+        assert env.calls() == []
+        assert not plugin.marketplace_dir().exists()
+
     def test_s3_13_off_leaves_home_claude_untouched(self, env):
         before = _snapshot(env.home_claude)
         env.local({f"{STACK}@harnessed": True})
