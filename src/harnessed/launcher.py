@@ -3746,7 +3746,7 @@ def _claude_plugin(*args: str, cwd: Path) -> subprocess.CompletedProcess:
     if proc.returncode != 0:
         # markup=False: the CLI's own text is printed as it came, never read as rich markup.
         _err.print(
-            f"error: claude plugin {' '.join(args)} failed:\n{proc.stdout}{proc.stderr}",
+            f"error: claude plugin {' '.join(args)} failed:\n{proc.stdout}\n{proc.stderr}",
             soft_wrap=True, markup=False, highlight=False,
         )
         raise typer.Exit(proc.returncode or 1)
