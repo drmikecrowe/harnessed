@@ -88,14 +88,14 @@ Not proven: the adversary review read commit 396901b, not the final one. Round 2
 </details>
 
 ### Review risks
-- The adversary layer is bound to 396901b. Round 2 raised a hunch about local scope from a subdirectory. I confirmed it against claude 2.1.314 and fixed it in 0391d48. The loop says a confirmed problem in round 2 means the change is too entangled for this method. I fixed the problem instead of abandoning the change, and the engineer judges that call. Commits 0391d48, 4ae2ac3, b1b67e1 and 20715f4 had no adversary read.
+- The adversary layer is bound to 396901b. Round 2 raised a hunch about local scope from a subdirectory. I confirmed it against claude 2.1.314 and fixed it in 0391d48. The loop says a confirmed problem in round 2 means the change is too entangled for this method. I fixed the problem instead of abandoning the change, and the engineer judges that call. Commits 0391d48, 4ae2ac3, b1b67e1, 20715f4 and 1eef1d0 had no adversary read.
 - The SPEC changed after approval (decisions.md Revision 3, Decide 4). The spike showed that `claude plugin list --json` omits plugins enabled without an install, so S3 reads `enabledPlugins` from the settings file. The approval commit cd1aa69 holds the text from before the spike.
 - The `gh-issue-tracker` SessionStart hook finds its script through `$HARNESSED_CONFIG_DIR`, which no plugin sets. Under `use`, that hook does nothing and stays silent (decisions.md fact 16). The approved property test forbids rewriting that variable.
 - The `PATH` prefix applies only to the first command of a compound hook such as `a && b` (adversary round 2 hunch). S1.6 specifies this prefix.
 - The registration check compares the marketplace `path` as a string, with no `resolve()`. A symlinked `XDG_DATA_HOME` could make `use` run `marketplace add` again (adversary round 2 hunch, not confirmed).
 - The settings preflight reads the project's `settings.local.json` even under `--global`, so a malformed project file blocks a global `use` (adversary round 2 hunch).
 - `hostrun._host_native_mcp` warns "needs 'srv' on PATH" before `plugin.py` resolves the command to the stack's tool binary, so `use` can print a false warning (adversary round 1 hunch).
-- S1.1's command path is `commands/bar/bar.md`, not the SPEC's `commands/bar.md`, because a recipe command is a directory (decisions.md fact 13).
+- A recipe ships a command as a directory (decisions.md fact 13), so no recipe can produce the SPEC's flat `.claude/commands/bar.md`. The S1.1 test writes that file into the assembled profile directly and checks both it and the recipe's `commands/bar/bar.md`.
 - `plugin.scope_settings_path` runs `git rev-parse` with no timeout. The subprocess audit does not cover `plugin.py`.
 - The baseline stamp records exit codes, not test counts. The baseline count of 4818 passed is derived: the run at b1b67e1 had 4861 passed and 1 failed, minus 44 new tests.
 
@@ -113,7 +113,7 @@ Not proven: the adversary review read commit 396901b, not the final one. Round 2
 - Spec: spec-evidence/2026-10-31-GH-649/SPEC.md (committed)
 - Spec approval: obtained from mcrowe (commit cd1aa69); Revision 3 and Decide 4 ruled by mcrowe after it (commit 1e0405f)
 - Intent review: not run, engineering lane
-- Source state: commit 20715f4b984268cae3b63dff5bcac032d4e0825f — the commit the final run read; the adversary read 396901b
+- Source state: commit 1eef1d0dca4b0eaf845b53511095b6bd20a705f0 — the commit the final run read; the adversary read 396901b
 - Baseline: baseline-stamp.json at commit cd1aa6911a08778fe0cfad43abc65faf441e08c6, green
 
 <details>
@@ -125,7 +125,7 @@ Not proven: the adversary review read commit 396901b, not the final one. Round 2
   "mode": "full",
   "expected_layers": ["tests", "coverage", "types", "lint", "shellcheck", "secrets"],
   "completed_layers": ["tests", "coverage", "types", "lint", "shellcheck", "secrets"],
-  "layer_seconds": {"tests": 330.431, "coverage": 470.011, "types": 17.417, "lint": 0.125, "shellcheck": 1.903, "secrets": 2.892},
+  "layer_seconds": {"tests": 399.105, "coverage": 423.007, "types": 14.836, "lint": 0.13, "shellcheck": 1.524, "secrets": 2.598},
   "layers": {
     "tests": {"baseline": "reused", "selection": "off"},
     "coverage": {"baseline": "reused", "selection": "off"},
@@ -136,9 +136,9 @@ Not proven: the adversary review read commit 396901b, not the final one. Round 2
   },
   "failed": null,
   "exit_code": 0,
-  "commit": "20715f4b984268cae3b63dff5bcac032d4e0825f",
+  "commit": "1eef1d0dca4b0eaf845b53511095b6bd20a705f0",
   "dirty": false,
-  "written": "2026-10-31T15:23:12.071Z"
+  "written": "2026-10-31T15:41:31.625Z"
 }
 ```
 
@@ -213,13 +213,13 @@ Every gauntlet-manifest row is `PASSED`. The SPEC rows outside the manifest are 
 
 Layers outside the manifest:
 - Property: PASSED. These are the two hypothesis tests in tests/test_plugin.py, and they ran inside the tests layer.
-- Mutation: PASSED. `HARNESSED_DIR=$PWD mutmut run "harnessed.plugin.x_*"`, with `tests_dir` narrowed for the run to tests/test_plugin.py and tests/test_use.py as pyproject.toml advises, ran at b1b67e1. It killed 310 and 8 survived, and all 8 are named as equivalent under Defect classes closed. `plugin.py` has not changed since b1b67e1.
+- Mutation: PASSED. `HARNESSED_DIR=$PWD mutmut run "harnessed.plugin.x_*"`, with `tests_dir` narrowed for the run to tests/test_plugin.py and tests/test_use.py as pyproject.toml advises, ran at b1b67e1. It killed 310 and 8 survived, and all 8 are named as equivalent under Defect classes closed. `plugin.py` has not changed since b1b67e1, and a break check covers the S1.1 test added after it (Process notes).
 
 ### Layers not run as specified
 - N-A: none
 - UNAVAILABLE: live CI (`live`, `live-docker`) runs on the PR, which `/spec-evidence:pr` opens.
 - UNAVAILABLE: the manual `/plugin` and `/context` check in a real session. No test drives the interactive UI, so the engineer confirms it by hand.
-- SUBSTITUTED: the adversary review. Two rounds read up to 396901b, and nothing read the final commit 20715f4. A review of an earlier commit cannot detect a defect added by 0391d48, 4ae2ac3, b1b67e1 or 20715f4.
+- SUBSTITUTED: the adversary review. Two rounds read up to 396901b, and nothing read the final commit 1eef1d0. A review of an earlier commit cannot detect a defect added by 0391d48, 4ae2ac3, b1b67e1, 20715f4 or 1eef1d0.
 - SUBSTITUTED: mutation testing of `launcher.use`. mutmut gives a typer-decorated command zero mutants. Behavior tests drive `use` instead, and those tests cannot detect a mutant that no assertion observes.
 
 ### Defect classes closed
@@ -244,4 +244,5 @@ Layers outside the manifest:
 - mutmut first failed at stats collection because the tests unset `HARNESSED_DIR`, so the mutants tree could not find the catalog. I removed that line (88de87e). It failed again on a hypothesis `differing_executors` health check, so the property tests became module-level functions (4ae2ac3). Neither change touched an assertion.
 - The first final gauntlet at b1b67e1 was red. `tests/test_subprocess_timeout_audit.py` failed on the unbounded `claude plugin` call, which 20715f4 fixed. The run above is the one after that fix.
 - The S2.4 test first asserted the raw command text. `warn_duplicate_hooks` prints the command by its `repr`, so the test now looks for `repr(command)` (decisions.md fact 15).
+- Gate 2a pass 1 (0c5cac2) was not-ready on S1.1, because the test read only `commands/bar/bar.md`. 1eef1d0 added the SPEC's flat `commands/bar.md`. The added assertion passed at once, so I broke the emitter by removing `commands` from the copy: S1.1 failed, then passed after the restore. The gauntlet above ran after that commit.
 - The fixture stack first used `harness:`, which the schema does not have. It now uses `harnesses:` (decisions.md fact 14).
