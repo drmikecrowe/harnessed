@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.0](https://github.com/drmikecrowe/harnessed/compare/v0.11.0...v0.12.0) (2026-10-31)
+
+
+### Features
+
+* **catalog:** upgrade pins 2026-10-31 ([#648](https://github.com/drmikecrowe/harnessed/issues/648)) ([0c68c78](https://github.com/drmikecrowe/harnessed/commit/0c68c78e406701b465ef476d01d1c309d1efdc9f))
+* **use:** deliver a stack as a Claude Code plugin (GH-649) ([#650](https://github.com/drmikecrowe/harnessed/issues/650)) ([c965b1e](https://github.com/drmikecrowe/harnessed/commit/c965b1e37a4c871be914419555f7ff910728c534))
+
 ## [0.11.0](https://github.com/drmikecrowe/harnessed/compare/v0.10.1...v0.11.0) (2026-10-28)
 
 
