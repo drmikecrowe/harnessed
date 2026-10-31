@@ -139,6 +139,16 @@ class TestUse:
             ["plugin", "disable", "B@harnessed", "--scope", "user"],
         ]
 
+    def test_s3_4_user_scope_reads_claude_config_dir_first(self, env, monkeypatch):
+        """Mutation gap: user scope reads `$CLAUDE_CONFIG_DIR/settings.json` when it is set."""
+        cfg = env.tmp / "claude-cfg"
+        cfg.mkdir()
+        (cfg / "settings.json").write_text(json.dumps({"enabledPlugins": {"B@harnessed": True}}))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+        result = use("claude", "--global", "--stack", STACK)
+        assert result.exit_code == 0, result.output
+        assert ["plugin", "disable", "B@harnessed", "--scope", "user"] in argvs(env)
+
     def test_s3_5_off_disables_every_harnessed_plugin_and_nothing_else(self, env):
         mkt = plugin.marketplace_dir()
         mkt.mkdir(parents=True)

@@ -184,6 +184,61 @@ class TestEmitter:
                 assert p.read_bytes() not in secrets, p
 
 
+class TestMutationGaps:
+    """Each test here kills mutmut survivors of plugin.py that the scenario tests above let live."""
+
+    def test_marketplace_is_under_xdg_data_home(self, env):
+        assert plugin.marketplace_dir() == env.tmp / "data" / "harnessed" / "marketplace"
+
+    def test_bare_config_dir_becomes_the_plugin_root(self):
+        assert plugin.rewrite_hook_command('cat "$CLAUDE_CONFIG_DIR/x"') == 'cat "$CLAUDE_PLUGIN_ROOT/x"'
+
+    def test_s1_7_marketplace_json_is_exact(self, env):
+        build()
+        plugin.emit_plugin(STACK)
+        mkt = json.loads((plugin.marketplace_dir() / ".claude-plugin" / "marketplace.json").read_text())
+        assert mkt == {
+            "name": "harnessed",
+            "owner": {"name": "harnessed"},
+            "metadata": {"description": "Stacks built by harnessed"},
+            "plugins": [{"name": STACK, "source": f"./plugins/{STACK}"}],
+        }
+
+    def test_s1_5_tool_lookup_spans_every_bin_dir(self, env, monkeypatch):
+        d1, d2 = env.tmp / "D1", env.tmp / "D2"
+        d1.mkdir()
+        d2.mkdir()
+        (d2 / "srv").write_text("#!/bin/sh\n")
+        (d2 / "srv").chmod(0o755)
+        monkeypatch.setattr(hostrun, "_host_tool_bin_dirs", lambda stack: [d1, d2])
+        build()
+        servers = json.loads((plugin.emit_plugin(STACK) / ".mcp.json").read_text())["mcpServers"]
+        assert servers["srv"]["command"] == str(d2 / "srv")
+
+    def test_s1_10_a_symlink_in_the_profile_arrives_as_bytes(self, env, tmp_path):
+        profile = build()
+        target = tmp_path / "outside.md"
+        target.write_text("linked\n")
+        (profile / ".claude" / "skills" / "foo" / "link.md").symlink_to(target)
+        out = plugin.emit_plugin(STACK)
+        copied = out / "skills" / "foo" / "link.md"
+        assert not copied.is_symlink() and copied.read_text() == "linked\n"
+
+    def test_s2_1_rules_sort_by_relative_path_text_and_keep_trailing_spaces(self, env):
+        author(env.catalog, "rules-stack", "rulesonly",
+               "description: d\nrules:\n  - path: rules/a\n  - path: rules/a-b.md\n")
+        rules = env.catalog / "recipes" / "rulesonly" / "rules"
+        (rules / "a").mkdir(parents=True)
+        (rules / "a" / "RULE.md").write_text("AX\n")
+        (rules / "a-b.md").write_text("AB \n")
+        build("rules-stack")
+        out = plugin.emit_plugin("rules-stack")
+        # "a-b.md" sorts before "a/RULE.md" as text, since "-" < "/".
+        assert (out / "context.md").read_text() == "AB \n\nAX\n"
+        hooks = json.loads((out / "hooks" / "hooks.json").read_text())["hooks"]
+        assert hooks == {"SessionStart": [{"hooks": [{"type": "command", "command": CONTEXT_HOOK}]}]}
+
+
 class TestContextHook:
     def test_s2_1_instructions_then_sorted_rules_with_a_last_sessionstart_hook(self, env):
         build()

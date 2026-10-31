@@ -73,7 +73,7 @@ def rewrite_hook_command(command: str) -> str:
     )
 
 
-def plugin_hooks(stack: str, recipes, bin_dirs: list[Path], *, context: bool) -> dict:
+def plugin_hooks(recipes, bin_dirs: list[Path], *, context: bool) -> dict:
     """The plugin's `hooks` block: the recipes' hooks for claude, rewritten, then the context hook.
 
     Built from the recipes, never from the profile's settings.json, which a host launch merges the
@@ -141,7 +141,7 @@ def emit_plugin(stack: str) -> Path:
     context = _context(claude_dir)
     if context:
         (out / "context.md").write_text(context)
-    hooks = plugin_hooks(stack, recipes, bin_dirs, context=bool(context))
+    hooks = plugin_hooks(recipes, bin_dirs, context=bool(context))
     if hooks:
         _write_json(out / "hooks" / "hooks.json", {"hooks": hooks})
     servers = _mcp_servers(stack, bin_dirs)
