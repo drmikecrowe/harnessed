@@ -209,15 +209,15 @@ class TestContextHook:
         assert proc.stdout == (out / "context.md").read_bytes()
 
 
-class TestRewriteProperty:
-    @given(st.text())
-    def test_a_command_without_the_config_dir_is_unchanged(self, cmd):
-        if "CLAUDE_CONFIG_DIR" not in cmd:
-            assert plugin.rewrite_hook_command(cmd) == cmd
+# Module-level, not methods: hypothesis fails a method run from more than one executor (mutmut).
+@given(st.text())
+def test_a_command_without_the_config_dir_is_unchanged(cmd):
+    if "CLAUDE_CONFIG_DIR" not in cmd:
+        assert plugin.rewrite_hook_command(cmd) == cmd
 
-    @given(st.lists(st.sampled_from([
-        "CLAUDE_CONFIG_DIR", "${CLAUDE_CONFIG_DIR:-$HOME/.claude}", "${CLAUDE_CONFIG_DIR}", "$CLAUDE_CONFIG_DIR",
-        "${CLAUDE_CONFIG_DIR:-", "}", "/x", " ", "CLAUDE_", "CONFIG_DIR", "$", "{", "-",
-    ])).map("".join) | st.text())
-    def test_no_rewritten_command_contains_the_config_dir(self, cmd):
-        assert "CLAUDE_CONFIG_DIR" not in plugin.rewrite_hook_command(cmd)
+@given(st.lists(st.sampled_from([
+    "CLAUDE_CONFIG_DIR", "${CLAUDE_CONFIG_DIR:-$HOME/.claude}", "${CLAUDE_CONFIG_DIR}", "$CLAUDE_CONFIG_DIR",
+    "${CLAUDE_CONFIG_DIR:-", "}", "/x", " ", "CLAUDE_", "CONFIG_DIR", "$", "{", "-",
+])).map("".join) | st.text())
+def test_no_rewritten_command_contains_the_config_dir(cmd):
+    assert "CLAUDE_CONFIG_DIR" not in plugin.rewrite_hook_command(cmd)
