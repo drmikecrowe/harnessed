@@ -81,3 +81,9 @@ Changes: S3 preamble, S3.2, S3.3, S3.5, S3.10.
 
 ### Revision 3. Spike findings folded in after approval
 The spike ran after the approval commit and showed `plugin list --json` cannot report enablement. Decide 4 replaced it with a read of `enabledPlugins`. S3.2 names the `path` field the CLI really prints. No scenario was added or removed.
+
+## Facts found during build
+13. A recipe command is a directory, never a file (`synclinks.py:53` registers commands with no `allow_file`), so the fixture's command is `commands/bar/bar.md` and S1.1 reads that path. Rules may be files (`synclinks.py:56`).
+14. The stack schema has `harnesses:`, not `harness:` (`schema.py` `_validate_stack_fields`).
+15. `emit.warn_duplicate_hooks` prints the command by its `repr`, so S2.4's test reads `repr(command)`.
+16. `gh-issue-tracker`'s SessionStart hook reaches its script through `$HARNESSED_CONFIG_DIR`, which no plugin sets. Its `test -x` guard makes the hook a silent no-op under `use`. The approved property test forbids a rewrite of any command without `CLAUDE_CONFIG_DIR`, so the rewrite leaves it alone.

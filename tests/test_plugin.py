@@ -30,7 +30,6 @@ def env(tmp_path, monkeypatch):
         (tmp_path / sub).mkdir()
         monkeypatch.setenv(var, str(tmp_path / sub))
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
-    monkeypatch.delenv("HARNESSED_DIR", raising=False)
     catalog = tmp_path / "config" / "harnessed" / "catalog"
     shutil.copytree(FIX / "stacks" / STACK, catalog / "stacks" / STACK)
     shutil.copytree(FIX / "recipes" / "plugin-recipe", catalog / "recipes" / "plugin-recipe")

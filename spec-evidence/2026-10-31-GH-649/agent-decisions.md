@@ -29,3 +29,28 @@
 - Other option: add it to `paths.py` beside `profile_dir`.
 - Why: `plugin.py` is its only user, and the path is still anchored on the XDG data dir, never the cwd.
 - Command: hotfix
+
+### A7. S3.8 warns on the stack's `permissions:` field and on every key of its `settings:`
+- Other option: warn only when `settings:` holds one of `permissions`, `env`, `defaultMode` or `statusLine`.
+- Why: the stack schema refuses `settings.permissions` (`schema.py:2178`), so permissions can only come from the `permissions:` field, and a plugin carries no stack `settings:` key at all.
+- Command: build
+
+### A8. S2.4 compares the plugin's hooks with the user settings file only
+- Other option: also read the project's `.claude/settings.json` and `.claude/settings.local.json`.
+- Why: S2.4 names the user's `~/.claude/settings.json`, and a project hook file belongs to the project, not to the user.
+- Command: build
+
+### A9. A stdio MCP command not found in a stack tool bin dir is left as the recipe declares it
+- Other option: refuse to emit the plugin.
+- Why: `host-run` warns and continues for the same case (`hostrun._host_native_mcp`), so the two paths agree.
+- Command: build
+
+### A10. The marketplace counts as registered only when its name is `harnessed` and its `path` is `<mkt>`
+- Other option: match on the name alone.
+- Why: a `harnessed` marketplace registered at another path would point Claude at the wrong plugins.
+- Command: build
+
+### A11. The fixture recipe lives at `tests/fixtures/recipes/plugin-recipe/`
+- Other option: write the recipe inline in each test, as `tests/test_host_acp.py` does.
+- Why: skills, commands and rules resolve against the recipe root, so they need files on disk, and both test files share them.
+- Command: build
