@@ -53,7 +53,7 @@ Terms used below:
 - A new dependency.
 
 ## Touches
-- `src/harnessed/launcher.py`: in `use`, snapshot the user's values, apply the stack tool prefix and the stack mise variables before `_host_install_tools`, and restore the user's values in a `finally` that runs after `_host_run_installs` and after the rollback (Terms).
+- `src/harnessed/launcher.py`: in `use`, snapshot the user's values, apply the stack mise variables before `_host_install_tools` (the tool prefix comes from `_host_install_tools` and `_host_run_installs`, decisions.md Revision 2), and restore the user's values in a `finally` that runs after `_host_run_installs` and after the rollback (Terms).
 - `tests/test_use.py`: S1 and S2, with an inline recipe whose install script writes its environment, and an extension of the fake `claude` that records its environment.
 
 ## Documentation

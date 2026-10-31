@@ -22,3 +22,5 @@ none
 ## Revisions
 ### Revision 1. Gate 1a round 1 finding fixed
 Defined the rollback in Terms, and placed the restore after it, in a `finally` that encloses the tool install, the emit, the installs and the rollback (PR-REFERENT 1). Said that harnessed makes no `claude plugin` call inside the `finally` (gap 2).
+### Revision 2. The tool prefix is not applied a second time
+During build, a throwaway mutant that dropped the `_apply_host_tool_path` call left every test green. `_host_install_tools` already applies the prefix when the stack has `tools:` (`hostrun.py`, its last step), and `_host_run_installs` puts the stack bin dir first on each script's `PATH`. Touches now says so. S1.2 is unchanged and still holds.
