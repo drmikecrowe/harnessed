@@ -32,6 +32,7 @@ Terms used below:
 - The stack mise variables are the keys and values of `hostrun._host_mise_env(<stack>)`, and the mise session variables are `hostrun._MISE_SESSION_VARS` (`MISE_DATA_DIR`, `MISE_CONFIG_DIR`, `MISE_TRUSTED_CONFIG_PATHS`, `MISE_STATE_DIR`).
 - The stack tool prefix is `hostrun._stack_tool_path_prefix(<stack>)`, the entries `hostrun._apply_host_tool_path` puts at the front of `PATH`.
 - The user's values are the mise session variables and `PATH` as they were when `use` started, with unset kept as unset.
+- The rollback is the `except BaseException` block in `use` that wraps `plugin.emit_plugin` and `_host_run_installs`. When either raises, it removes the half-built plugin, moves the previous plugin back from `<mkt>/.prev/<stack>`, and rewrites `marketplace.json` (GH-649 agent decision A12). The restore of the user's values runs after the rollback, in a `finally` that encloses `_host_install_tools`, the emit, the installs and the rollback. harnessed makes no `claude plugin` call inside the `finally`; every one comes after it.
 
 ## Scenarios
 ### S1. Install scripts see the stack mise environment
@@ -52,7 +53,7 @@ Terms used below:
 - A new dependency.
 
 ## Touches
-- `src/harnessed/launcher.py`: in `use`, snapshot the user's values, apply the stack tool prefix and the stack mise variables before `_host_install_tools`, and restore the user's values in a `finally` after `_host_run_installs` and the rollback.
+- `src/harnessed/launcher.py`: in `use`, snapshot the user's values, apply the stack tool prefix and the stack mise variables before `_host_install_tools`, and restore the user's values in a `finally` that runs after `_host_run_installs` and after the rollback (Terms).
 - `tests/test_use.py`: S1 and S2, with an inline recipe whose install script writes its environment, and an extension of the fake `claude` that records its environment.
 
 ## Documentation

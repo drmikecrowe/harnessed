@@ -20,4 +20,5 @@
 none
 
 ## Revisions
-none
+### Revision 1. Gate 1a round 1 finding fixed
+Defined the rollback in Terms, and placed the restore after it, in a `finally` that encloses the tool install, the emit, the installs and the rollback (PR-REFERENT 1). Said that harnessed makes no `claude plugin` call inside the `finally` (gap 2).
