@@ -58,3 +58,5 @@ Changes: S2 delivers rules and instructions through `context.md` and a SessionSt
 ## Revisions
 ### Revision 1. Decide 1-3 ruled A
 The engineer ruled all three Decide calls in the hotfix Decide round; SPEC.md Orientation records them.
+### Revision 2. Gate 1a round 1 findings fixed
+Defined the brief and its six phases, and described the spike with no phase number (PR-REFERENT 1). Defined a stack tool bin dir, an install script and a scope in Terms (PR-REFERENT 2 and both gaps).

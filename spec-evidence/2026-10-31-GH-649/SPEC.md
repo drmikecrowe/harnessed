@@ -30,13 +30,18 @@ Open decisions: none. Ruled by mcrowe on 2026-10-31: the `claude` CLI writes pro
 - Issue: GH-649
 - Isolation: worktree — `worktrees/plugin-mode`, branch `plugin-mode`, per AGENTS.md §Git workflow.
 
-Precondition for `/spec-evidence:build`: phase 1 of the brief, the manual spike, has passed. It shows that a local-path marketplace added with `claude plugin marketplace add` lets `claude plugin enable <stack>@harnessed --scope local|user` succeed with no `claude plugin install`, and that `claude plugin validate --strict` accepts the layout in S1. If the spike fails, the SPEC is revised before RED.
+The brief is GH-649's issue body, a six-phase plan: 1 a manual spike, 2 the emitter, 3 the `use` verb, 4 the rules hook, 5 session mode for `host-run`, 6 the README rewrite. This SPEC covers phases 2-4.
+
+Precondition for `/spec-evidence:build`: the manual spike has passed. The engineer converts one built profile into a plugin directory by hand, with no harnessed code, adds the marketplace, enables the plugin and starts plain `claude`. The spike shows that a local-path marketplace added with `claude plugin marketplace add` lets `claude plugin enable <stack>@harnessed --scope local|user` succeed with no `claude plugin install`, and that `claude plugin validate --strict` accepts the layout in S1. If the spike fails, the SPEC is revised before RED.
 
 Terms used below:
 - `<mkt>` is `$XDG_DATA_HOME/harnessed/marketplace` (default `~/.local/share/harnessed/marketplace`).
 - `<plugin>` is `<mkt>/plugins/<stack>`.
 - The profile is `paths.profile_dir(<stack>, "claude")`, as `assemble()` writes it.
 - A harnessed plugin is a plugin whose id ends in `@harnessed`.
+- A stack tool bin dir is one of the directories `hostrun._host_tool_bin_dirs(<stack>)` returns, after `hostrun._host_install_tools` has installed the stack's `tools:` entries. S1.5 and S1.6 use these.
+- An install script is a recipe's `install.script`. A recipe's `setup:` and `init:` scripts are not install scripts.
+- A scope is local (the default, the project at `path`) or user (`--global`). Switching and `--off` act only at the one scope the command names, and never touch a harnessed plugin enabled at the other scope.
 
 ## Failure model (Tier 3)
 - Writes into `~/.claude` outside the `claude` CLI: caught by S3.12, S3.13 and the Must NOT test that snapshots temp `HOME/.claude`.
@@ -104,7 +109,7 @@ Each S3 scenario runs with a temp `HOME`, a temp `XDG_DATA_HOME`, and a fake `cl
 - `tests/fixtures/stacks/plugin-stack/` (new): a stack with a skill, a command, a hook, an MCP server, a rule, instructions and an install script.
 
 ## Documentation
-None in repo Markdown, because phase 6 of the brief rewrites the README promise as a follow-up issue. The verb's `--help` line is its documentation for this change.
+None in repo Markdown, because the README rewrite (the brief's phase 6) is a follow-up issue. The verb's `--help` line is its documentation for this change.
 
 ## Known limits
 - Agents: the profile holds no agents today (`synclinks.LinkSyncer.fan` fans out only skills, commands and rules), so the plugin ships none.
