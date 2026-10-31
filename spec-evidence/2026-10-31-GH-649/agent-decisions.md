@@ -54,3 +54,18 @@
 - Other option: write the recipe inline in each test, as `tests/test_host_acp.py` does.
 - Why: skills, commands and rules resolve against the recipe root, so they need files on disk, and both test files share them.
 - Command: build
+
+### A12. A rebuild moves the previous plugin to `<mkt>/.prev/<stack>` and restores it when the emit or an install fails
+- Other option: rebuild in place, and on failure remove the plugin and drop it from `marketplace.json`.
+- Why: the plugin may be enabled, and the previous working plugin is better than a missing one or one whose hooks name files no install wrote.
+- Command: build
+
+### A13. Local-scope enablement is read at `git rev-parse --show-toplevel` of the path, else at the path
+- Other option: read the settings file at the path and at every parent directory.
+- Why: claude 2.1.314 wrote `<git root>/.claude/settings.local.json` when run from a subdirectory (measured), and the git root is the one place it writes.
+- Command: build
+
+### A14. Each `claude plugin` call has a 120-second timeout and fails `use` with a message when it expires
+- Other option: mark the call `# unbounded:` with a reason, as the subprocess audit allows.
+- Why: each call only edits a settings file, so a call that runs for two minutes is hung, and `use` must not wait forever.
+- Command: build
