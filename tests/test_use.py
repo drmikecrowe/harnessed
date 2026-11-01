@@ -13,7 +13,7 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from harnessed import hosthome, launcher, plugin
+from harnessed import hosthome, hostrun, launcher, plugin
 
 FIX = Path(__file__).parent / "fixtures"
 STACK = "plugin-stack"
@@ -24,7 +24,9 @@ _FAKE = f"""#!{sys.executable}
 import json, os, sys
 args = sys.argv[1:]
 with open(os.environ["FAKE_CLAUDE_LOG"], "a") as f:
-    f.write(json.dumps({{"argv": args, "cwd": os.getcwd()}}) + "\\n")
+    f.write(json.dumps({{"argv": args, "cwd": os.getcwd(), "env": {{
+        k: os.environ.get(k) for k in ("PATH", "MISE_DATA_DIR", "MISE_CONFIG_DIR",
+                                        "MISE_TRUSTED_CONFIG_PATHS", "MISE_STATE_DIR")}}}}) + "\\n")
 if args[:3] == ["plugin", "marketplace", "list"]:
     print(os.environ.get("FAKE_CLAUDE_MARKETPLACES", "[]"))
 elif args[:2] == ["plugin", "enable"] and os.environ.get("FAKE_CLAUDE_SIGTERM"):
@@ -348,6 +350,90 @@ class TestUse:
     def test_s3_15_help_line(self):
         result = runner.invoke(launcher.app, ["use", "--help"])
         assert "Enable a stack as a Claude Code plugin for a project or globally." in result.output
+
+
+_MISE_VARS = ("MISE_DATA_DIR", "MISE_CONFIG_DIR", "MISE_TRUSTED_CONFIG_PATHS", "MISE_STATE_DIR")
+
+
+@pytest.fixture
+def envstack(env, monkeypatch):
+    """GH-653: a stack whose install script writes its environment into the project, and a user
+    environment with its own mise variables."""
+    recipe = env.catalog / "recipes" / "envdump"
+    recipe.mkdir(parents=True)
+    (recipe / "recipe.yaml").write_text("name: envdump\ndescription: d\ninstall:\n  script: install.sh\n")
+    (recipe / "install.sh").write_text(
+        '#!/usr/bin/env bash\nenv > install-env.txt\n[ -z "${GH653_FAIL:-}" ] || exit 1\n')
+    (env.catalog / "stacks" / "envstack").mkdir()
+    (env.catalog / "stacks" / "envstack" / "stack.yaml").write_text("name: envstack\nrecipes: [envdump]\n")
+    for key in _MISE_VARS:
+        monkeypatch.delenv(key, raising=False)
+    # monkeypatch owns every mise key, so a leak from `use` cannot outlive the test.
+    monkeypatch.setenv("MISE_DATA_DIR", "/user/mise-data")
+    monkeypatch.setenv("MISE_STATE_DIR", "/user/mise-state")
+    for key in ("MISE_CONFIG_DIR", "MISE_TRUSTED_CONFIG_PATHS"):
+        monkeypatch.setenv(key, "x")
+        monkeypatch.delenv(key)
+    return env
+
+
+def _recorded_env(env) -> dict[str, str]:
+    lines = (env.proj / "install-env.txt").read_text().splitlines()
+    return dict(line.split("=", 1) for line in lines if "=" in line)
+
+
+def _user_values() -> dict:
+    return {key: os.environ.get(key) for key in (*_MISE_VARS, "PATH")}
+
+
+class TestStackMiseEnv:
+    def test_s1_1_install_scripts_see_the_stack_mise_variables(self, envstack):
+        expected = hostrun._host_mise_env("envstack")
+        result = use("claude", str(envstack.proj), "--stack", "envstack")
+        assert result.exit_code == 0, result.output
+        recorded = _recorded_env(envstack)
+        for key, value in expected.items():
+            assert recorded.get(key) == value, key
+        assert recorded.get("MISE_DATA_DIR") != "/user/mise-data"
+
+    def test_s1_2_install_path_begins_with_the_stack_tool_prefix(self, envstack):
+        prefix = hostrun._stack_tool_path_prefix("envstack")
+        result = use("claude", str(envstack.proj), "--stack", "envstack")
+        assert result.exit_code == 0, result.output
+        entries = list(dict.fromkeys(_recorded_env(envstack)["PATH"].split(":")))
+        assert entries[:len(prefix)] == prefix
+
+    def test_s1_3_no_user_mise_variables_still_gives_the_stack_ones(self, envstack, monkeypatch):
+        for key in _MISE_VARS:
+            monkeypatch.delenv(key, raising=False)
+        expected = hostrun._host_mise_env("envstack")
+        result = use("claude", str(envstack.proj), "--stack", "envstack")
+        assert result.exit_code == 0, result.output
+        recorded = _recorded_env(envstack)
+        for key, value in expected.items():
+            assert recorded.get(key) == value, key
+
+    def test_s2_1_the_user_values_come_back(self, envstack):
+        before = _user_values()
+        result = use("claude", str(envstack.proj), "--stack", "envstack")
+        assert result.exit_code == 0, result.output
+        assert _user_values() == before
+
+    def test_s2_2_every_claude_plugin_call_sees_the_user_values(self, envstack):
+        before = _user_values()
+        result = use("claude", str(envstack.proj), "--stack", "envstack")
+        assert result.exit_code == 0, result.output
+        calls = envstack.calls()
+        assert calls
+        for call in calls:
+            assert call["env"] == before, call["argv"]
+
+    def test_s2_3_a_failed_install_still_restores_the_user_values(self, envstack, monkeypatch):
+        monkeypatch.setenv("GH653_FAIL", "1")
+        before = _user_values()
+        result = use("claude", str(envstack.proj), "--stack", "envstack")
+        assert result.exit_code != 0
+        assert _user_values() == before
 
 
 class TestDuplicateHooks:

@@ -3843,31 +3843,44 @@ def use(
                 "by a plugin"
             )
         _assemble_host(stack_name, "claude")
-        # `tools:` first: the emitter resolves hook PATH and MCP commands to their bin dirs.
-        _host_install_tools(stack_name, recipes)
-        # Keep the previous plugin until the rebuild and its installs succeed: it may be enabled,
-        # and a half-built one has hooks pointing at files no install wrote.
+        # Provision under the stack's mise tree, as `_launch_host` does (GH-653): an install script
+        # that asks mise about a stack tool sees the user's mise otherwise. The user's values come
+        # back before any `claude plugin` call, PATH included (#449: a redirected shim breaks).
         out = plugin.marketplace_dir() / "plugins" / stack_name
-        prev = plugin.marketplace_dir() / ".prev" / stack_name
-        shutil.rmtree(prev, ignore_errors=True)
-        if out.exists():
-            prev.parent.mkdir(parents=True, exist_ok=True)
-            out.rename(prev)
+        user_path = os.environ.get("PATH")
+        user_mise_env = _snapshot_user_mise_env(os.environ)
+        _apply_host_mise_env(os.environ, stack_name)
         try:
-            plugin.emit_plugin(stack_name)
-            _host_run_installs(stack_name, project, harness="claude", home=out)
-        except BaseException:
-            shutil.rmtree(out, ignore_errors=True)
-            if prev.exists():
-                prev.rename(out)
+            # `tools:` first: the emitter resolves hook PATH and MCP commands to their bin dirs.
+            _host_install_tools(stack_name, recipes)
+            # Keep the previous plugin until the rebuild and its installs succeed: it may be
+            # enabled, and a half-built one has hooks pointing at files no install wrote.
+            prev = plugin.marketplace_dir() / ".prev" / stack_name
+            shutil.rmtree(prev, ignore_errors=True)
+            if out.exists():
+                prev.parent.mkdir(parents=True, exist_ok=True)
+                out.rename(prev)
             try:
-                plugin.write_marketplace()
-            except OSError as exc:
-                # Warn and re-raise the failure that started the rollback, not this one.
-                _err.print(f"[yellow]warn:[/yellow] could not rewrite marketplace.json: {exc}")
-            raise
+                plugin.emit_plugin(stack_name)
+                _host_run_installs(stack_name, project, harness="claude", home=out)
+            except BaseException:
+                shutil.rmtree(out, ignore_errors=True)
+                if prev.exists():
+                    prev.rename(out)
+                try:
+                    plugin.write_marketplace()
+                except OSError as exc:
+                    # Warn and re-raise the failure that started the rollback, not this one.
+                    _err.print(f"[yellow]warn:[/yellow] could not rewrite marketplace.json: {exc}")
+                raise
+            finally:
+                shutil.rmtree(prev.parent, ignore_errors=True)
         finally:
-            shutil.rmtree(prev.parent, ignore_errors=True)
+            _restore_user_mise_env(os.environ, user_mise_env)
+            if user_path is None:
+                os.environ.pop("PATH", None)
+            else:
+                os.environ["PATH"] = user_path
         _warn_plugin_duplicate_hooks(recipes, scope, project)
 
         mkt = plugin.marketplace_dir().resolve()
