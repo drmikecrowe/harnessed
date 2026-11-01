@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/drmikecrowe/harnessed/compare/v0.12.0...v0.12.1) (2026-11-01)
+
+
+### Bug Fixes
+
+* **use:** run install scripts in the stack mise environment (GH-653) ([#654](https://github.com/drmikecrowe/harnessed/issues/654)) ([53ab3c8](https://github.com/drmikecrowe/harnessed/commit/53ab3c8a4eae528659443e4dbaffdfee59003528))
+
 ## [0.12.0](https://github.com/drmikecrowe/harnessed/compare/v0.11.0...v0.12.0) (2026-10-31)
 
 
