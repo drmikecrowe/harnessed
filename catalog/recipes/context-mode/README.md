@@ -16,17 +16,13 @@ The session store (`~/.context-mode`) is declared as workspace-scoped `persist:`
 ## Skills
 
 A marketplace install of context-mode also ships a skill suite. `install.sh` delivers it, in both
-modes and on every harness, by copying it out of the package `tools:` already pinned:
+modes and on every harness, by copying it out of the package `tools:` already pinned. Since 2.x the
+package ships only these two (plus `ctx-upgrade`, which is excluded):
 
 | Skill | What it does |
 | --- | --- |
-| `context-mode` | routing: when to reach for a `ctx_*` tool instead of raw Bash/Read, plus language pattern references |
-| `ctx-search` | query the FTS5 knowledge base |
-| `ctx-index` | index a path into that knowledge base |
 | `ctx-stats` | context savings for the session |
 | `ctx-doctor` | diagnostics |
-| `ctx-purge` | wipe the knowledge base (destructive) |
-| `ctx-insight` | open the hosted Insight dashboard |
 
 **Installed, not vendored.** The skills come out of the pinned package rather than a copy in
 `catalog/`, so the skills and the binary cannot drift apart and `harnessed update` keeps one place
