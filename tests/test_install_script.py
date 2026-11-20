@@ -1485,8 +1485,7 @@ class TestContextModeFindsItsSkillsInPnpmsContentAddressedLayout:
     """
 
     SKILLS: ClassVar[tuple[str, ...]] = (
-        "context-mode", "ctx-doctor", "ctx-index", "ctx-insight",
-        "ctx-purge", "ctx-search", "ctx-stats",
+        "ctx-doctor", "ctx-stats",
     )
 
     def _package_on_disk(self, tmp_path: Path) -> Path:
@@ -1537,7 +1536,7 @@ class TestContextModeFindsItsSkillsInPnpmsContentAddressedLayout:
         `mcp__context-mode__ctx_x` points the agent at a slash command and a tool that do not
         exist in a stack. Asserted here because this is the only test that runs the real copy."""
         self._run(tmp_path, CATALOG.parent)
-        body = (tmp_path / "config" / "skills" / "ctx-search" / "SKILL.md").read_text()
+        body = (tmp_path / "config" / "skills" / "ctx-stats" / "SKILL.md").read_text()
         assert "/ctx-x" in body and "/context-mode:ctx-" not in body
         assert "ctx_x" in body and "mcp__context-mode__ctx_" not in body
 

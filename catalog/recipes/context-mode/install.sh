@@ -95,7 +95,7 @@ mkdir -p "${HARNESSED_CONFIG_DIR}/skills"
 # macOS — requires an argument to `-i`, so `sed -i 's#…#…#'` takes the script as the backup suffix
 # and then fails on the filename. GNU's `-i` and BSD's `-i ''` cannot both be written as one
 # portable invocation, so neither is used.
-for skill in context-mode ctx-doctor ctx-index ctx-insight ctx-purge ctx-search ctx-stats; do
+for skill in ctx-doctor ctx-stats; do  # 2.x ships only these plus ctx-upgrade (excluded above)
     dest="${HARNESSED_CONFIG_DIR}/skills/${skill}"
     rm -rf "${dest}"
     cp -r "${SKILLS_SRC}/${skill}" "${dest}"
