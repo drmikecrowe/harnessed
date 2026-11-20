@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.2](https://github.com/drmikecrowe/harnessed/compare/v0.12.1...v0.12.2) (2026-11-20)
+
+
+### Bug Fixes
+
+* **rules:** stop re-asking for actions the user already ordered ([#665](https://github.com/drmikecrowe/harnessed/issues/665)) ([8dc0efb](https://github.com/drmikecrowe/harnessed/commit/8dc0efb453871d09301a9b934845e499a8d71b1c))
+
 ## [0.12.1](https://github.com/drmikecrowe/harnessed/compare/v0.12.0...v0.12.1) (2026-11-01)
 
 
