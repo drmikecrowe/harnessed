@@ -307,7 +307,7 @@ def assemble(
 
     servers = _resolve_service_servers(_merge_servers(recipes), root)
 
-    profile_dir = build_dir / "profiles" / stack.name / harness
+    profile_dir = build_dir / "profiles" / paths.storage_name(stack.name) / harness
 
     _validate_hub_transport(stack, harness)
     _validate_direct_servers(servers, harness)

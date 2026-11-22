@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -412,25 +413,58 @@ def local_links_dir(checkout: Path) -> Path:
     return checkout / "catalog-local"
 
 
-def catalog_roots() -> list[Path]:
-    """Catalog search roots in PRECEDENCE order (first wins on name clash).
+# The source kinds a catalog root can be (HF-20261122-private-catalogs-add-two). The first three are
+# new: a `--catalog` folder, a trusted project `.harnessed/catalog`, and a registered git clone.
+_NEW_SOURCE_KINDS = frozenset({"flag", "project", "git"})
 
-    User catalog overlays the repo catalog: ~/.config/harnessed/catalog overrides the shipped
-    catalog/ for any same-named agent/recipe/service/stack, and adds names the repo doesn't have.
+
+def catalog_sources() -> list[tuple[str, Path]]:
+    """(kind, root) for every catalog root, in PRECEDENCE order (first wins on a name clash).
+
+    The order: each `--catalog` folder in command-line order, the trusted project catalog, the user
+    overlay, each git catalog in registration order, the shipped catalog, the generated root. See
+    `catalogsources` for how each new kind is found.
+
+    The user overlay (~/.config/harnessed/catalog) overrides the shipped catalog/ for any same-named
+    agent/recipe/service/stack, and adds names the repo doesn't have.
 
     The generated-stack root (`generated_catalog_root`) is LAST: a machine-minted stack must never
     shadow one you authored under the same name. It is included only when it exists, so a user who
     has never run `harnessed run` gets exactly the previous two roots.
+
+    A new-kind root that resolves to a directory already listed counts once, at the earlier place.
+    The three old kinds are never dropped against each other, so with no new source this is exactly
+    the list harnessed always returned.
     """
-    roots: list[Path] = []
+    from harnessed import catalogsources
+
+    candidates: list[tuple[str, Path]] = [("flag", p) for p in catalogsources.flag_sources()]
+    proj = catalogsources.project_source()
+    if proj is not None:
+        candidates.append(("project", proj))
     uc = user_catalog()
     if uc.is_dir():
-        roots.append(uc)
-    roots.append(harnessed_home() / "catalog")
+        candidates.append(("overlay", uc))
+    candidates += [("git", d) for _, d in catalogsources.git_sources() if d.is_dir()]
+    candidates.append(("shipped", harnessed_home() / "catalog"))
     gen = generated_catalog_root()
     if gen.is_dir():
-        roots.append(gen)
-    return roots
+        candidates.append(("generated", gen))
+
+    out: list[tuple[str, Path]] = []
+    seen: dict[Path, str] = {}
+    for kind, root in candidates:
+        key = root.resolve()
+        if key in seen and (kind in _NEW_SOURCE_KINDS or seen[key] in _NEW_SOURCE_KINDS):
+            continue
+        seen.setdefault(key, kind)
+        out.append((kind, key if kind in _NEW_SOURCE_KINDS else root))
+    return out
+
+
+def catalog_roots() -> list[Path]:
+    """Catalog search roots in PRECEDENCE order (first wins on name clash). See `catalog_sources`."""
+    return [root for _, root in catalog_sources()]
 
 
 def catalog_relpath(name: str) -> Path:
@@ -463,14 +497,53 @@ def find_in_catalog(kind: str, name: str) -> Path:
     through to a real copy in a lower root, not shadow it. Returns the resolved directory even
     if absent (so the loader raises a clear not-found pointing at the highest-precedence root).
     """
+    found = _find_with_kind(kind, name)
+    if found is not None:
+        return found[1]
+    return catalog_roots()[0] / kind / catalog_relpath(name)
+
+
+def _find_with_kind(kind: str, name: str) -> tuple[str, Path] | None:
+    """(source kind, entry dir) of the first real `<kind>/<name>` in source order, or None.
+
+    When the winner is in a new source and a lower root holds the same entry, warn once (AC-10).
+    """
     rel = catalog_relpath(name)
     marker = _KIND_MARKER[kind]
-    roots = catalog_roots()
-    for r in roots:
-        cand = r / kind / rel
-        if (cand / marker).is_file():
-            return cand
-    return roots[0] / kind / rel
+    # Iterate `catalog_roots()`, the seam tests replace; read each root's kind beside it. A root
+    # `catalog_sources` does not list has no kind, and so is never the overlay.
+    kinds = {root: src for src, root in catalog_sources()}
+    hits = [
+        (kinds.get(root, ""), root / kind / rel)
+        for root in catalog_roots()
+        if (root / kind / rel / marker).is_file()
+    ]
+    if not hits:
+        return None
+    if hits[0][0] in _NEW_SOURCE_KINDS and len(hits) > 1:
+        _warn_new_source_shadow(kind, name, hits[0][1], [p for _, p in hits[1:]])
+    return hits[0]
+
+
+def catalog_source_kind(kind: str, name: str) -> str | None:
+    """The source kind (`flag`, `project`, `overlay`, `git`, `shipped`, `generated`) `name` resolves
+    from, or None when no root holds it. The private-key gate reads this, never a resolved path: a
+    `--catalog` symlink into the overlay is still a `--catalog` folder."""
+    found = _find_with_kind(kind, name)
+    return found[0] if found is not None else None
+
+
+_new_source_shadow_warned: set[tuple[str, str]] = set()
+
+
+def _warn_new_source_shadow(kind: str, name: str, using: Path, shadowed: list[Path]) -> None:
+    if (kind, name) in _new_source_shadow_warned:
+        return
+    _new_source_shadow_warned.add((kind, name))
+    lines = [f"warning: {kind.removesuffix('s')} '{name}' comes from a private catalog and hides another copy.",
+             f"  using:    {using}"]
+    lines += [f"  shadowed: {p}" for p in shadowed]
+    sys.stderr.write("\n".join(lines) + "\n")
 
 
 def overlay_shadowed_repo_path(kind: str, name: str) -> Path | None:
@@ -562,6 +635,20 @@ def generated_catalog_root() -> Path:
     return xdg_data_home() / "harnessed" / "generated"
 
 
+def storage_name(stack: str) -> str:
+    """The name a stack's stored state is keyed on: the profile, the host home, the image, the
+    instance, the tool tree, the volumes, the plugin dir and the Claude imports files.
+
+    It is `stack` itself unless something the stack loads comes from a `--catalog` folder or a
+    project catalog. Then it carries a suffix naming those folders, so two projects that each
+    define `default` never share one profile (HF-20261122-private-catalogs-add-two, AC-9). Catalog
+    lookup, `harnessed list` and launcher names keep the plain name.
+    """
+    from harnessed import catalogsources
+
+    return catalogsources.storage_name(stack)
+
+
 def profiles_root() -> Path:
     """Root directory for all emitted stack profiles (XDG DATA)."""
     return xdg_data_home() / "harnessed" / "profiles"
@@ -569,7 +656,7 @@ def profiles_root() -> Path:
 
 def profile_dir(stack: str, harness: str) -> Path:
     """Absolute host path to the assembled profile for `stack` + `harness`."""
-    return profiles_root() / stack / harness
+    return profiles_root() / storage_name(stack) / harness
 
 
 def is_built(stack: str, harness: str) -> bool:
@@ -598,7 +685,7 @@ def host_home(stack: str, harness: str) -> Path:
     the per-project duplication of identical stack content, the orphan sprawl, and re-running every
     install script on every launch of every project.
     """
-    return host_homes_root() / stack / harness
+    return host_homes_root() / storage_name(stack) / harness
 
 
 def host_home_shim(home: Path) -> Path:
@@ -634,7 +721,7 @@ def project_hash(project_path: str | Path) -> str:
 
 def instance_name(stack: str, harness: str, project_path: str | Path) -> str:
     """Stable instance name: harnessed-<harness>-<stack>-<project_hash>."""
-    return f"harnessed-{harness}-{stack}-{project_hash(project_path)}"
+    return f"harnessed-{harness}-{storage_name(stack)}-{project_hash(project_path)}"
 
 
 # Linux caps a hostname at HOST_NAME_MAX, which is 64 on every platform harnessed targets.
@@ -682,13 +769,13 @@ def claude_imports_answer_file(stack: str) -> Path:
 
     XDG STATE, per stack, beside `setup_dismissed_flag`: a remembered choice, not content.
     """
-    return xdg_state_home() / "harnessed" / "claude-imports" / stack
+    return xdg_state_home() / "harnessed" / "claude-imports" / storage_name(stack)
 
 
 def claude_imports_dir(stack: str) -> Path:
     """The stack's copies of its imported files (GH-600) — the one source the host sync and the
     container's ro mount both read. Harnessed owns every file in it."""
-    return xdg_data_home() / "harnessed" / "claude-imports" / stack
+    return xdg_data_home() / "harnessed" / "claude-imports" / storage_name(stack)
 
 
 def svc_ports_file() -> Path:

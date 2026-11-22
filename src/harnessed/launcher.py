@@ -26,7 +26,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from itertools import cycle
 from pathlib import Path
-from typing import Callable, Optional, TypeVar
+from typing import Callable, NoReturn, Optional, TypeVar
 
 import typer
 from rich.markup import escape
@@ -35,6 +35,7 @@ from . import acpproxy
 from . import acprelay
 from . import aoe
 from . import broker
+from . import catalogsources
 from . import claude_imports
 from . import claudeauth
 from . import context as stack_context
@@ -3222,6 +3223,9 @@ def _launch_host(
     if not project_path.is_dir():
         _err.print(f"[bold red]error:[/bold red] project directory does not exist: {project_path}")
         raise typer.Exit(1)
+    # host_run already set this before resolving the stack. Set again for any other caller, so the
+    # host path reads the same project catalog the container path does.
+    _set_catalog_project(path)
 
     stack_dir = paths.find_in_catalog("stacks", stack)
     if not (stack_dir / "stack.yaml").is_file():
@@ -3565,6 +3569,11 @@ def _resolve_stack(
 
 
 # Shared by both run verbs so the two grammars cannot drift apart.
+_CATALOG_PROJECT_OPT = typer.Option(
+    None, "--project",
+    help="Project directory to search for a trusted .harnessed/catalog (default: cwd)",
+)
+
 _STACK_OPT = typer.Option(
     None, "--stack", "-s",
     help="Authored stack to run (stacks/<name>/stack.yaml). Mutually exclusive with --recipe.",
@@ -3685,6 +3694,7 @@ def host_run(
     if _wrapped:
         # Before anything can print: the VS Code extension parses this stdout (GH-569, PR #645).
         set_acp_mode(True)
+    _set_catalog_project(path)
     _require_supported_harness(harness)
     stack_name, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
     # Not under `host-exec`: nobody is at it, and `_launch_host` only declares exec mode later. Not
@@ -3797,6 +3807,7 @@ def use(
         harnessed use claude --global --stack <name>    # every project (user scope)
         harnessed use claude [path] --off               # turn harnessed plugins off
     """
+    _set_catalog_project(path)
     if harness != "claude":
         _err.print(f"[bold red]error:[/bold red] `use` supports only claude (got '{harness}')")
         raise typer.Exit(1)
@@ -4738,6 +4749,7 @@ def container_run(
     `_can_prompt`. And as `container-acp` (#529): an `-exec` launch whose stdout is an ACP client's
     JSON-RPC channel. See `set_acp_mode`.
     """
+    _set_catalog_project(path)
     acp_mode = ctx.info_name == "container-acp"
     if acp_mode and _acp_cli is not None:
         _acp_terminal_login("container-acp", harness, stack, _acp_cli)
@@ -4897,7 +4909,9 @@ def container_run(
         _err.print(f"[bold red]error:[/bold red] {exc}")
         raise typer.Exit(1) from exc
 
-    stack_from_overlay = stack_dir.resolve().is_relative_to(paths.user_catalog().resolve())
+    # The SOURCE the stack came from, never its resolved path (HF-20261122-private-catalogs-add-two
+    # S8.3): a `--catalog` folder symlinked into the overlay is still a `--catalog` folder.
+    stack_from_overlay = paths.catalog_source_kind("stacks", stack) == "overlay"
 
     # Prefer the derived per-stack image (recipe Dockerfile layers); fall back to the plain agent.
     derived = _derived_image(stack, harness)
@@ -5437,6 +5451,7 @@ def build(
         help="Harness to build for; omit to build every harness in the stack's `harnesses:` list",
     ),
     root: Optional[str] = typer.Option(None, "--root", help="Alternate stacks/recipes root"),
+    project: Optional[str] = _CATALOG_PROJECT_OPT,
     no_scans: bool = typer.Option(False, "--no-security-scans", help="Skip credentialed scans"),
     no_strict: bool = typer.Option(
         False, "--no-strict",
@@ -5503,6 +5518,7 @@ def build(
     """
     from .paths import corp_proxy_ca_path
 
+    _set_catalog_project(project)
     if corp_proxy_ca_crt is not None:
         dest = corp_proxy_ca_path()
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -5629,8 +5645,9 @@ def context(
 
 
 @app.command("list")
-def list_stacks() -> None:
+def list_stacks(project: Optional[str] = _CATALOG_PROJECT_OPT) -> None:
     """List authored stacks and harnessed instances (running and stopped)."""
+    _set_catalog_project(project)
     rt = _runtime()
     _out.print("[bold]Authored stacks:[/bold]")
     for name in paths.list_catalog_stacks():
@@ -5663,6 +5680,113 @@ def list_stacks() -> None:
     exists = (lambda pod: _pod_exists(rt, pod)) if _rt_uses_pods(rt) else (
         lambda pod: _container_exists(rt, pod))
     _broker_report(exists)
+
+
+catalog_app = typer.Typer(
+    name="catalog",
+    help="Manage private catalog sources: git catalogs and trusted project catalogs.",
+    no_args_is_help=True,
+)
+app.add_typer(catalog_app)
+
+
+def _catalog_fail(exc: catalogsources.CatalogError) -> NoReturn:
+    _err.print(f"[bold red]error:[/bold red] {exc}", highlight=False, soft_wrap=True)
+    raise typer.Exit(1)
+
+
+@catalog_app.command("add")
+def catalog_add(
+    url: str = typer.Argument(..., help="Repository URL or path; git uses your own credentials"),
+    ref: Optional[str] = typer.Option(None, "--ref", help="Branch, tag or commit (default: the remote's default branch)"),
+    name: Optional[str] = typer.Option(None, "--name", help="Catalog name (default: the URL's last segment, less .git)"),
+) -> None:
+    """Clone a git catalog and lock the commit `--ref` names. Builds read the clone and never fetch."""
+    try:
+        item = catalogsources.add(url, ref, name)
+    except catalogsources.CatalogError as exc:
+        _catalog_fail(exc)
+    _out.print(f"added {item['name']}  {item['ref']}  {item['sha']}", highlight=False, soft_wrap=True)
+
+
+@catalog_app.command("update")
+def catalog_update(
+    name: Optional[str] = typer.Argument(None, help="Catalog to update (default: every registered catalog)"),
+) -> None:
+    """Fetch a git catalog and move its lock to the current commit of its ref. Clones a missing one."""
+    names = [name] if name is not None else [i["name"] for i in catalogsources.load_registry()]
+    failed = False
+    for n in names:
+        try:
+            old, new = catalogsources.update(n)
+        except catalogsources.CatalogError as exc:
+            _err.print(f"[bold red]error:[/bold red] {n}: {exc}", highlight=False, soft_wrap=True)
+            failed = True
+            continue
+        msg = f"{n}: did not change ({new})" if old == new else f"{n}: {old} -> {new}"
+        _out.print(msg, highlight=False, soft_wrap=True)
+    if failed:
+        raise typer.Exit(1)
+
+
+@catalog_app.command("list")
+def catalog_list(project: Optional[str] = _CATALOG_PROJECT_OPT) -> None:
+    """Print every catalog source in precedence order. Reads only; runs no git."""
+    _set_catalog_project(project)
+    by_root = {str(d.resolve()): (n, d) for n, d in catalogsources.git_sources()}
+    registry = {i["name"]: i for i in catalogsources.load_registry()}
+    sources = paths.catalog_sources()
+    rows: list[str] = []
+    for kind, root in sources:
+        if kind == "project":
+            rows.append(f"project    {root}  trusted")
+        elif kind == "git":
+            n, _ = by_root[str(root.resolve())]
+            rows.append(f"git        {root}  {n}  {registry[n]['ref']}  {registry[n]['sha']}")
+        else:
+            rows.append(f"{kind:<10} {root}")
+    found = catalogsources.project_catalog()
+    if found is not None and str(found) not in catalogsources.trusted_paths():
+        # The project's place in the order is right after the `--catalog` folders.
+        rows.insert(sum(1 for k, _ in sources if k == "flag"), f"project    {found}  untrusted")
+    for name in catalogsources.missing_clones():
+        rows.append(f"git        {catalogsources.clone_dir(name)}  {name}  missing")
+    for row in rows:
+        _out.print(row, highlight=False, soft_wrap=True)
+
+
+@catalog_app.command("remove")
+def catalog_remove(name: str = typer.Argument(..., help="Registered catalog to remove")) -> None:
+    """Remove a git catalog: its registry entry and its clone."""
+    try:
+        catalogsources.remove(name)
+    except catalogsources.CatalogError as exc:
+        _catalog_fail(exc)
+    _out.print(f"removed {name}", highlight=False)
+
+
+@catalog_app.command("trust")
+def catalog_trust(
+    path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
+) -> None:
+    """Trust the .harnessed/catalog found from a project directory, so launches there read it."""
+    try:
+        cat = catalogsources.trust(Path(path) if path else None)
+    except catalogsources.CatalogError as exc:
+        _catalog_fail(exc)
+    _out.print(f"trusted {cat}", highlight=False, soft_wrap=True)
+
+
+@catalog_app.command("untrust")
+def catalog_untrust(
+    path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
+) -> None:
+    """Withdraw trust from the .harnessed/catalog found from a project directory."""
+    try:
+        cat = catalogsources.untrust(Path(path) if path else None)
+    except catalogsources.CatalogError as exc:
+        _catalog_fail(exc)
+    _out.print(f"untrusted {cat}", highlight=False, soft_wrap=True)
 
 
 @app.command("stop")
@@ -6008,6 +6132,7 @@ def test_stack(
     as_json: bool = typer.Option(False, "--json", help="Emit JSON result"),
 ) -> None:
     """Capability test: launch --fresh headless + assert declared capabilities."""
+    _set_catalog_project(project)
     if harness not in HARNESS_CONFIG_DIR:
         _err.print(
             f"[bold red]error:[/bold red] unsupported harness '{harness}' "
@@ -7008,6 +7133,54 @@ def _add_register_help(verb: str) -> None:
     _REGISTER_OPT.help = _REGISTER_HELP.format(names=names)
 
 
+def _extract_catalog_flags(argv: list[str]) -> tuple[list[str], list[Path]]:
+    """Take every `--catalog <dir>` and `--catalog=<dir>` out of `argv`, before or after the verb.
+
+    Before any `--` only: after it, the token belongs to the harness. A global launcher appends the
+    user's arguments after the verb, so a flag accepted only before it could never reach a launch
+    (HF-20261122-private-catalogs-add-two, A4). Each folder must exist.
+    """
+    end = argv.index("--") if "--" in argv else len(argv)
+    out: list[str] = []
+    dirs: list[Path] = []
+    i = 0
+    while i < end:
+        tok = argv[i]
+        if tok == "--catalog":
+            if i + 1 >= end:
+                raise catalogsources.CatalogError("--catalog needs a directory")
+            value, i = argv[i + 1], i + 2
+        elif tok.startswith("--catalog="):
+            value, i = tok.split("=", 1)[1], i + 1
+        else:
+            out.append(tok)
+            i += 1
+            continue
+        d = Path(value).expanduser()
+        if not d.is_dir():
+            raise catalogsources.CatalogError(f"--catalog: no such directory: {d}")
+        dirs.append(d.resolve())
+    return [*out, *argv[end:]], dirs
+
+
+def _check_git_clones(argv: list[str]) -> None:
+    """Refuse to start when a registered git catalog has no clone (S5.3). Builds never fetch, so the
+    only repair is `harnessed catalog update`. The `catalog` verbs and help are exempt."""
+    if not argv or argv[0] == "catalog" or argv[0].startswith("-") or "--help" in argv:
+        return
+    missing = catalogsources.missing_clones()
+    if missing:
+        raise catalogsources.CatalogError(
+            f"the clone of git catalog {', '.join(repr(m) for m in missing)} is missing. "
+            "Run `harnessed catalog update` to clone it again."
+        )
+
+
+def _set_catalog_project(path: Optional[str]) -> None:
+    """Set where project-catalog discovery starts: `path`, or the current directory without one."""
+    catalogsources.set_project_dir(Path(path).expanduser().resolve() if path else Path.cwd())
+
+
 def main() -> None:
     # No bare-stack shortcut: the leading token is a subcommand, full stop. It used to be "a stack
     # name unless it matches a registered command", which meant every new @app.command had to be
@@ -7016,8 +7189,16 @@ def main() -> None:
     # which reads like a usage error rather than a missing registration. With the stack named by
     # `--stack`, a bare leading token is a harness and there is nothing left to disambiguate.
     global _register, _wrapped
-    argv = _vscode_wrapper_argv(sys.argv[1:])
-    _wrapped = argv != sys.argv[1:]
+    try:
+        rest, flag_dirs = _extract_catalog_flags(sys.argv[1:])
+        if flag_dirs:
+            catalogsources.set_flag_sources(flag_dirs)
+        _check_git_clones(rest)
+    except catalogsources.CatalogError as exc:
+        _err.print(f"[bold red]error:[/bold red] {exc}", highlight=False, soft_wrap=True)
+        raise SystemExit(2) from None
+    argv = _vscode_wrapper_argv(rest)
+    _wrapped = argv != rest
     try:
         head, _register = integrations.extract(_extract_acp_cli(argv))
     except integrations.IntegrationError as exc:

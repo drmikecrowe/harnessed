@@ -120,7 +120,9 @@ baseline carries it; a `--stack` launch or `--no-extends` that omits the recipe 
   violation. See ARCHITECTURE.md §Constraints.
 - **MCP transports: `stdio` and Streamable-HTTP only** (SSE rejected at validation).
 - Author under **`catalog/`** (repo) or **`~/.config/harnessed/catalog`** (user overlay, wins on
-  clash). Profiles generate to `$XDG_DATA_HOME/harnessed/profiles/` — never the repo.
+  clash). Private content can also live in a `--catalog <dir>` folder, a trusted project
+  `.harnessed/catalog`, or a git catalog from `harnessed catalog add`; ARCHITECTURE.md §catalog has
+  the order. Profiles generate to `$XDG_DATA_HOME/harnessed/profiles/` — never the repo.
 - **`catalog/` ships inside the wheel** (`src/harnessed/catalog` symlink + package-data), so — see
   ARCHITECTURE.md §harnessed home:
   1. **Nothing host-local in `catalog/`** — setuptools follows symlinks. Overlay links live in

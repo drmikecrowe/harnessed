@@ -35,7 +35,7 @@ def marketplace_dir() -> Path:
 
 
 def plugin_id(stack: str) -> str:
-    return f"{stack}@{MARKETPLACE}"
+    return f"{paths.storage_name(stack)}@{MARKETPLACE}"
 
 
 def user_settings_path() -> Path:
@@ -134,7 +134,8 @@ def emit_plugin(stack: str) -> Path:
     _, recipes = load_stack_with_recipes(None, stack)
     claude_dir = paths.profile_dir(stack, "claude") / ".claude"
     bin_dirs = hostrun._host_tool_bin_dirs(stack)
-    out = marketplace_dir() / "plugins" / stack
+    name = paths.storage_name(stack)
+    out = marketplace_dir() / "plugins" / name
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
@@ -151,7 +152,7 @@ def emit_plugin(stack: str) -> Path:
     if servers:
         _write_json(out / ".mcp.json", {"mcpServers": servers})
     _write_json(out / ".claude-plugin" / "plugin.json",
-                {"name": stack, "description": f"harnessed stack {stack}", **_MANIFEST})
+                {"name": name, "description": f"harnessed stack {stack}", **_MANIFEST})
     write_marketplace()
     return out
 

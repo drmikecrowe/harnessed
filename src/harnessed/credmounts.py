@@ -268,12 +268,15 @@ def _trusted_ssh_keys(stk_ssh_keys: list[str], from_overlay: bool, stack: str) -
 def _stack_from_overlay(stack: str) -> bool:
     """True when this stack resolves to the user's own overlay catalog — the gate _trusted_ssh_keys
     applies before mounting any private key. False if the stack can't be resolved at all (fail
-    closed: an unresolvable stack is not "yours")."""
+    closed: an unresolvable stack is not "yours").
+
+    Reads the SOURCE the stack came from, never its resolved path: a `--catalog` folder that
+    symlinks into the overlay is still a `--catalog` folder (HF-20261122-private-catalogs-add-two,
+    S8.3)."""
     try:
-        stack_dir = paths.find_in_catalog("stacks", stack)
+        return paths.catalog_source_kind("stacks", stack) == "overlay"
     except Exception:  # noqa: BLE001
         return False
-    return stack_dir.resolve().is_relative_to(paths.user_catalog().resolve())
 
 
 def _gh_hosts_missing_plaintext_token(gh_hosts: Path) -> bool:

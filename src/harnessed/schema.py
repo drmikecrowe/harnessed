@@ -2032,6 +2032,14 @@ def _resolve_parent_stack_dir(
         raise SchemaError(
             f"{manifest}: extends: '{parent}' — no such stack under catalog root {root}"
         )
+    # A `--catalog` folder or a trusted project catalog outranks the overlay, as it does in
+    # find_in_catalog. After them the order below is unchanged (HF-20261122-private-catalogs-add-two).
+    for kind, croot in paths.catalog_sources():
+        if kind not in ("flag", "project"):
+            continue
+        folder = croot / "stacks" / paths.catalog_relpath(parent)
+        if (folder / "stack.yaml").is_file():
+            return folder
     overlay = paths.user_catalog() / "stacks" / paths.catalog_relpath(parent)
     if (overlay / "stack.yaml").is_file():
         return overlay

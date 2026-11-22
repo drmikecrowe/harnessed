@@ -49,6 +49,14 @@ Rules that follow from that split, and they are hard:
 - `harnessed new <name> --recipes a,b` scaffolds into the **repo** catalog, not the overlay. For an
   overlay stack, create the directory and write `stack.yaml` by hand.
 
+Private content can also live in three more places, each a catalog root with the same
+`recipes/`, `stacks/`, `services/`, `agents/` layout. In precedence order, they are: a
+`--catalog <dir>` folder; a project's `.harnessed/catalog`, read only after
+`harnessed catalog trust`; and, after the overlay, a git repository registered with
+`harnessed catalog add <url> [--ref <ref>]` and moved with `harnessed catalog update`. Run
+`harnessed catalog list` to see the order in use. `ssh_keys` from any of the three are dropped:
+declare private keys only in the overlay.
+
 Every manifest starts with the schema header so the editor validates as you type:
 
 ```yaml
