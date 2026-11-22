@@ -89,6 +89,8 @@ def set_project_dir(path: Path | None) -> None:
     global _project_dir
     _project_dir = Path(path).resolve() if path is not None else None
     _storage.clear()
+    # A new project is a new source set: a hidden entry there deserves its own warning (PR #669).
+    paths._new_source_shadow_warned.clear()
 
 
 def project_dir() -> Path | None:

@@ -5802,12 +5802,19 @@ def stop(stack: str = typer.Argument(..., help="Stack name")) -> None:
     )
     # Match harnessed-<harness>-<stack>-<hash> — filter for this stack across all harnesses.
     all_names = [n.strip() for n in _listing(result, "instances").splitlines() if n.strip()]
-    names = [n for n in all_names if re.search(rf"-{re.escape(stack)}-[0-9a-f]{{8}}$", n)]
+    names = [n for n in all_names if _is_stack_instance(stack, n)]
     for name in names:
         _out.print(f"[blue][INFO][/blue] Stopping {name}")
         _bounded([rt, "stop", name], timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True)
     if not names:
         _out.print(f"No running instances for stack '{stack}'")
+
+
+def _is_stack_instance(stack: str, name: str) -> bool:
+    """`name` is an instance of `stack`: `-<stack>-<project hash>`, or `-<stack>-<scope>-<project hash>`
+    for a stack scoped by a private catalog (`paths.storage_name`, PR #669). Every scope matches, so
+    `stop <stack>` reaches the stack's instances in every project."""
+    return re.search(rf"-{re.escape(stack)}(?:-[0-9a-f]{{8}})?-[0-9a-f]{{8}}$", name) is not None
 
 
 @app.command("rm")
@@ -5821,7 +5828,7 @@ def remove(stack: str = typer.Argument(..., help="Stack name")) -> None:
     )
     # Match harnessed-<harness>-<stack>-<hash> — filter for this stack across all harnesses.
     all_names = [n.strip() for n in _listing(result, "instances").splitlines() if n.strip()]
-    names = [n for n in all_names if re.search(rf"-{re.escape(stack)}-[0-9a-f]{{8}}$", n)]
+    names = [n for n in all_names if _is_stack_instance(stack, n)]
     for name in names:
         _out.print(f"[blue][INFO][/blue] Removing {name}")
         _bounded([rt, "rm", "-f", name], timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True)
@@ -7158,9 +7165,10 @@ def _extract_catalog_flags(argv: list[str]) -> tuple[list[str], list[Path]]:
             out.append(tok)
             i += 1
             continue
+        # An empty value is `Path(".")`, which would quietly add the current directory (PR #669).
         d = Path(value).expanduser()
-        if not d.is_dir():
-            raise catalogsources.CatalogError(f"--catalog: no such directory: {d}")
+        if not value.strip() or not d.is_dir():
+            raise catalogsources.CatalogError(f"--catalog: no such directory: {value!r}")
         dirs.append(d.resolve())
     return [*out, *argv[end:]], dirs
 

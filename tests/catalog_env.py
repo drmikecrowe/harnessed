@@ -7,6 +7,8 @@ shipped catalog (`HARNESSED_DIR`). Nothing reads the developer's real catalog.
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -74,10 +76,13 @@ def project(tmp_path: Path, rel: str = "proj", *, git: bool = True) -> Path:
 
 
 def git(*args: str, cwd: Path | None = None) -> str:
+    # HOME is fixed, never the repo dir, so git cannot write a config into a work tree that
+    # `commit` then stages. PATH keeps git's own dir, wherever it is installed (PR #669 review).
+    git_dir = os.path.dirname(shutil.which("git") or "/usr/bin/git")
     out = subprocess.run(
         ["git", *args], cwd=cwd, check=True, capture_output=True, text=True,
-        env={"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1", "HOME": str(cwd or "/"),
-             "PATH": "/usr/bin:/bin", "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+        env={"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1", "HOME": "/",
+             "PATH": f"{git_dir}:/usr/bin:/bin", "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
              "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"},
     )
     return out.stdout.strip()

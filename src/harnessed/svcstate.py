@@ -14,6 +14,7 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import re
 import secrets
 import socket
 
@@ -419,6 +420,7 @@ def _svc_stacks_from_instances(rt: str, project_path: Path) -> list[str]:
         return []
     hashes = _repo_project_hashes(project_path)
     harnesses = paths.list_catalog("agents")
+    known = set(paths.list_catalog_stacks())
     running: set[str] = set()
     stopped: set[str] = set()
     for line in result.stdout.splitlines():
@@ -426,6 +428,10 @@ def _svc_stacks_from_instances(rt: str, project_path: Path) -> list[str]:
         stack = _stack_from_instance_name(name.strip(), harnesses, hashes)
         if stack is None:
             continue
+        # A stack scoped by a private catalog carries `-<8 hex>` after its name (PR #669).
+        scoped = re.fullmatch(r"(.+)-[0-9a-f]{8}", stack)
+        if stack not in known and scoped and scoped.group(1) in known:
+            stack = scoped.group(1)
         (running if state.strip() == "running" else stopped).add(stack)
     return sorted(running) if running else sorted(stopped)
 
