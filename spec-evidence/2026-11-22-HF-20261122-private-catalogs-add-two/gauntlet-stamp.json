@@ -1,0 +1,27 @@
+{
+  "result": "red",
+  "mode": "full",
+  "expected_layers": [
+    "tests",
+    "coverage",
+    "types",
+    "lint",
+    "shellcheck",
+    "secrets"
+  ],
+  "completed_layers": [],
+  "layer_seconds": {
+    "tests": 491.525
+  },
+  "layers": {
+    "tests": {
+      "baseline": "none",
+      "selection": "off"
+    }
+  },
+  "failed": "tests",
+  "exit_code": 1,
+  "commit": "56edb1ad6d7c9f4875e351b03ba9d12287fc5d90",
+  "dirty": false,
+  "written": "2026-11-22T18:23:59.933Z"
+}
