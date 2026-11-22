@@ -3,12 +3,12 @@
 verdict: ready
 story: HF-20261122-private-catalogs-add-two
 process: spec-evidence 1.7.2-local-2026-11-19
-model: claude-opus-5-5
+model: claude-sonnet-5-5
 tokens: 118901/5186
 rubric: rubric.md 4c2886dd973af290e392b5da5cdeb6f654611d2e87b0d02ee37757bab0a040af
 record: spec-evidence/2026-11-22-HF-20261122-private-catalogs-add-two/work/story-record.json
 warning: 13 criteria; a story with 10 or more criteria is hard to build and review
-graded: 2026-11-22T16:44:13.182Z
+graded: 2026-11-22T16:44:31.720Z
 
 ## Reasons
 
