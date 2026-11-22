@@ -185,3 +185,50 @@ class TestStorageName:
     def test_an_unknown_stack_keeps_its_name(self, env, tmp_path):
         catalogsources.set_project_dir(self._scoped_default(tmp_path))
         assert paths.storage_name("nope") == "nope"
+
+
+class TestScopedInstancesByName:
+    """PR #669 review, high: `stop` and `rm` must find a scoped stack's instance by the plain name."""
+
+    NAMES = "\n".join([
+        "harnessed-claude-foo-1234abcd",            # plain foo
+        "harnessed-claude-foo-ab12cd34-1234abcd",   # foo scoped by a folder source
+        "harnessed-claude-foobar-1234abcd",         # another stack
+        "harnessed-claude-xfoo-ab12cd34-1234abcd",  # another stack, scoped
+    ])
+
+    @pytest.fixture
+    def podman(self, monkeypatch):
+        import subprocess
+
+        calls = []
+
+        def fake(cmd, **_k):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout=self.NAMES if "ps" in cmd else "", stderr="")
+
+        monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+        monkeypatch.setattr(launcher, "_bounded", fake)
+        monkeypatch.setattr(launcher.aoe, "forget_stack", lambda *a: None)
+        return calls
+
+    @pytest.mark.parametrize(("verb", "action"), [("stop", "stop"), ("rm", "rm")])
+    def test_stop_and_rm_match_plain_and_scoped_instances(self, env, podman, verb, action):
+        from typer.testing import CliRunner
+
+        result = CliRunner().invoke(launcher.app, [verb, "foo"])
+        assert result.exit_code == 0, result.output
+        acted = sorted(c[-1] for c in podman if c[1] == action)
+        assert acted == ["harnessed-claude-foo-1234abcd", "harnessed-claude-foo-ab12cd34-1234abcd"]
+
+    def test_sidecar_recreate_reads_a_scoped_instance_as_its_stack(self, env, monkeypatch, tmp_path):
+        import subprocess
+
+        from harnessed import svcstate
+
+        entry(env.shipped, "stacks", "foo")
+        out = "harnessed-claude-foo-ab12cd34-1234abcd\trunning\n"
+        monkeypatch.setattr(svcstate, "_bounded", lambda cmd, **k: subprocess.CompletedProcess(cmd, 0, out, ""))
+        monkeypatch.setattr(svcstate, "_repo_project_hashes", lambda p: {"1234abcd"})
+        entry(env.shipped, "agents", "claude", "name: claude\nimage: x\n")
+        assert svcstate._svc_stacks_from_instances("podman", tmp_path) == ["foo"]

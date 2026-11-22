@@ -87,6 +87,28 @@ class TestFlagSource:
         catalogsources.reset()
         assert catalogsources.flag_sources() == [one.resolve(), two.resolve()]
 
+    @pytest.mark.parametrize("argv", [["--catalog=", "list"], ["--catalog", "", "list"], ["list", "--catalog=  "]])
+    def test_an_empty_catalog_value_is_refused(self, env, tmp_path, monkeypatch, argv):
+        """PR #669 review, medium: `--catalog=` must not add the current directory."""
+        monkeypatch.chdir(tmp_path)
+        with pytest.raises(catalogsources.CatalogError):
+            launcher._extract_catalog_flags(argv)
+
+    def test_a_new_project_dir_can_warn_again(self, env, tmp_path, capsys):
+        """PR #669 review, low: a project switch clears the once-per-process shadow warnings."""
+        a, b = project(tmp_path, "a"), project(tmp_path, "b")
+        for p in (a, b):
+            entry(p / ".harnessed" / "catalog", "recipes", "time")
+            catalogsources.trust(p)
+        entry(env.shipped, "recipes", "time")
+        catalogsources.set_project_dir(a)
+        paths.find_in_catalog("recipes", "time")
+        catalogsources.set_project_dir(b)
+        paths.find_in_catalog("recipes", "time")
+        err = capsys.readouterr().err
+        assert err.count("recipe 'time'") == 2
+        assert str((b / ".harnessed" / "catalog").resolve()) in err
+
     def test_flag_after_cli_belongs_to_the_harness(self, env, tmp_path):
         """Adversary round 1: `--cli` hands the rest of argv to the harness, as `--` does."""
         cat = tmp_path / "cat"
