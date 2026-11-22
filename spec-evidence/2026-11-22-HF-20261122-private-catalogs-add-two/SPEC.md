@@ -52,7 +52,7 @@ Open decisions: none.
 - **User overlay**: `~/.config/harnessed/catalog`. **Shipped catalog**: `harnessed_home()/catalog`. **Generated root**: `$XDG_DATA_HOME/harnessed/generated`, where harnessed writes the stacks it mints for `--recipe`. All three exist today.
 - **Source order**: flag sources in command-line order, the trusted project source, the user overlay, git sources in registry order, the shipped catalog, the generated root. `paths.catalog_roots()` returns this order. Two entries that resolve to the same directory count once, at the earlier place.
 - **Folder source**: a flag source or a project source.
-- **Closure of a stack**: the stack's own directory, each `extends:` parent directory, and the directory of each recipe, service, and agent the stack loads.
+- **Closure of a stack**: the stack's own directory, each `extends:` parent directory, and the directory of each recipe and service the stack loads.
 - **Scoped stack**: a stack whose closure holds one or more directories inside a folder source. A folder source that is active and adds nothing to the closure does not scope the stack (ruled, mcrowe, 2026-11-22).
 - **Scope suffix**: `-` and the first 8 hex characters of the SHA-256 of the resolved absolute paths of the active folder sources, joined by a newline, in source order.
 - **Storage name**: the name harnessed uses for stored state. For a scoped stack it is the stack name plus the scope suffix. For any other stack it is the stack name, as today. Stored state is the profile directory and its build stamp, the derived image, the instance and pod name, the host home, the tool tree, the config and tools volumes, the plugin marketplace directory, and the Claude imports files. Catalog lookup, `harnessed list`, and global launcher names keep the plain stack name.
@@ -169,7 +169,9 @@ Open decisions: none.
 - `src/harnessed/launcher.py`: `main()` takes `--catalog` out of the arguments at any position and validates each directory; the `catalog` command group with its six subcommands; `--project` on `build`, `list`, and `test`; the missing-clone check of S5.3; the storage name where `container_run`, `_launch_host`, `use`, and `_build_stack` compute stored-state paths; `stack_from_overlay` reads the source kind.
 - `src/harnessed/credmounts.py`: `_stack_from_overlay` reads the source kind, not the resolved path.
 - `src/harnessed/schema.py`: `_resolve_parent_stack_dir` checks folder sources first; `_resolve_dir` prints the AC-10 warning, once per kind and name in a process.
-- `src/harnessed/update.py`, `src/harnessed/catalogseed.py`: the loops over `catalog_roots()` skip git sources.
+- `src/harnessed/catalogseed.py`: the two loops that list recipe and agent dirs for `harnessed update` pin rewrites skip git sources. `update.affected_stacks` only reads, so it is unchanged.
+- `src/harnessed/layout.py`, `src/harnessed/setupenv.py`, `src/harnessed/volumes.py`, `src/harnessed/plugin.py`, `src/harnessed/assemble.py`: the image name, the tool tree, the two volume names, the plugin dir and its name, and the assembled profile dir take the storage name.
+- `tests/catalog_env.py` (new): the shared fixture tree and the local bare-repository helpers.
 - `tests/test_catalog_sources.py` (new): AC-1, AC-2, AC-7, AC-10.
 - `tests/test_catalog_trust.py` (new): AC-3, AC-13.
 - `tests/test_catalog_git.py` (new): AC-4, AC-5, AC-6, AC-11, AC-12.
@@ -178,7 +180,7 @@ Open decisions: none.
 ## Documentation
 - `ARCHITECTURE.md`: the **catalog** entry lists the six source kinds in source order, and the trust rule.
 - `AGENTS.md`: the constraint line "Author under `catalog/` or `~/.config/harnessed/catalog`" names the three new sources.
-- `.agents/skills/harnessed-catalog/SKILL.md`: one paragraph on where a private catalog can live.
+- `catalog/recipes/default/skills/harnessed-catalog/SKILL.md`, which `.agents/skills/harnessed-catalog` links to: one paragraph on where a private catalog can live.
 - The wiki guide for private catalogs is a separate delivery, outside this PR, under the AGENTS.md wiki exemption.
 
 ## Known limits
@@ -189,6 +191,10 @@ Open decisions: none.
 - A user overlay named again with `--catalog` counts as a flag source, so its `ssh_keys` are dropped.
 - Stored state of a scoped stack is not removed when its project is deleted. The existing `host-gc` and `volume-gc` commands are not changed here.
 - The two `extends:` security rules of issue 316 stay unimplemented.
+- `scan`, `rescan`, `stop`, `rm`, `context`, `install`, `host-gc`, and `volume-gc` set no project directory, so they do not see a project catalog. For a stack scoped by a project catalog they read the plain stack name. A `--catalog` folder reaches them, but `stop` and `rm` match instances on the plain stack name and so miss a scoped instance, and `aoe.forget_stack` receives the plain name.
+- `catalog remove` drops the registry entry before it deletes the clone, and ignores a delete failure. A clone that cannot be deleted then blocks `catalog add` of the same name until it is removed by hand.
+- A service that a recipe declares, rather than the stack, is not in the closure. Two projects whose private recipes pull different same-named services share one stored state.
+- An agent from a folder source does not scope a stack. The agent image is keyed on the harness alone, so two projects that each override `agents/claude` share one agent image.
 
 ## Verification contract
 | Layer | What it gates | Threshold |

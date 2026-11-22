@@ -1,84 +1,68 @@
 {
   "clean_claims": [
-    "src/harnessed/credmounts.py _stack_from_overlay region: reads the source kind, not the resolved path; I found no defect in it",
-    "src/harnessed/catalogsources.py discover_project_catalog and git_top_level: the parents-slice arithmetic is correct for start == top and start below top",
-    "src/harnessed/paths.py catalog_sources dedupe: with no new source it returns the old three roots unchanged"
+    "src/harnessed/catalogsources.py: read whole. The project discovery slice, the URL and ref option guard, the atomic writes and the clone-into-temp-sibling flow hold up. Only the findings and hunches below apply.",
+    "Merge-gate match: lint.yml runs `ruff check src tests tools` and `pyright --pythonpath <uv python>`, test.yml runs `uv run --extra dev pytest`. All three equal the gauntlet-layers.json argument lists. The layer set is not narrower than the gate.",
+    "src/harnessed/assemble.py, volumes.py, setupenv.py, plugin.py, layout.py, schema.py (_resolve_parent_stack_dir hunk), credmounts.py and catalogseed.py (_writable_roots): changed lines read, no defect found.",
+    "tests/catalog_env.py: hermetic. Every root is under tmp_path and the git helper sets its own env."
   ],
   "finding": [
     {
       "file": "src/harnessed/launcher.py",
-      "line": 4004,
-      "severity": "blocking",
-      "rule": "none",
-      "defect": "host_run, use, container_run, build, list and test call _set_catalog_project, but host_acp calls paths.is_built(stack, harness) at line 4004 with no project directory set. project_dir() is still None there, so no project source is seen and storage_name is unscoped. The set at _launch_host:3228 comes after the check.",
-      "trigger": "Build a stack whose closure comes from a trusted project .harnessed/catalog (so its profile is stored under stack-<hash>), then run `harnessed host-acp claude --stack <that stack>` from the project.",
-      "consequence": "is_built looks for the unscoped profile and exits with 'has no assembled profile (run: harnessed build ...)' even though the build succeeded. The stack may also fail to resolve, because the project catalog is invisible when the project dir is unset. A flag-scoped stack is unaffected because it reads HARNESSED_CATALOG from the env."
-    },
-    {
-      "file": "src/harnessed/launcher.py",
-      "line": 6456,
+      "line": 5805,
       "severity": "advisory",
       "rule": "none",
-      "defect": "scan, rescan, stop, rm, context and project-setup never call _set_catalog_project. They use find_in_catalog and _derived_image, which now use storage_name.",
-      "trigger": "Run `harnessed scan <project-scoped stack> claude` after building it from a trusted project catalog.",
-      "consequence": "The project catalog is not seen. scan reports 'no such stack', or looks up the image under the unscoped name, and the scan targets the wrong image or none. The user must know to cd and pass a flag that these commands lack."
+      "defect": "`stop` and `rm` match instances with `-<stack>-<8hex>$` on the plain stack name, but instance_name now embeds storage_name(stack), which appends `-<8hex>` for a scoped stack. The aoe.forget_stack call at line 5833 also receives the plain name.",
+      "trigger": "`harnessed --catalog ./dir container-run claude --stack foo` where foo loads something from ./dir. The container is named harnessed-claude-foo-ab12cd34-<hash>. Then run `harnessed stop foo` or `harnessed rm foo`.",
+      "consequence": "The regex does not match, so the output is 'No running instances' and the scoped container is neither stopped nor removed. SPEC line 194 says a `--catalog` folder still reaches these verbs, but neither verb calls storage_name, so the claim does not hold for them. The stale aoe rows are not forgotten either."
     },
     {
-      "file": "src/harnessed/catalogsources.py",
-      "line": 774,
+      "file": "tests/test_catalog_sources.py",
+      "line": 80,
       "severity": "advisory",
       "rule": "none",
-      "defect": "trusted_paths does an unguarded json.loads(...).get(...). load_registry has the same fault: it indexes the four keys directly and uses ruamel's parser with no handling.",
-      "trigger": "Write truncated JSON, or a list instead of an object, to trusted-catalogs.json. Or write a catalogs.yaml entry that lacks `sha`.",
-      "consequence": "JSONDecodeError, AttributeError or KeyError propagates as a raw traceback. Because _check_git_clones calls load_registry for every verb except `catalog`, a bad catalogs.yaml breaks every harnessed command, and the repair verb `catalog remove` also reads the registry. A bad trust file breaks every launch from any project that has a .harnessed/catalog."
+      "defect": "No test drives `_check_git_clones` (S5.3: a missing clone refuses to start, and `catalog` and help are exempt) or the output rows of `catalog list`. A grep of tests/test_catalog_*.py for both names found nothing.",
+      "trigger": "A change that drops the exemption for `catalog`, or makes `_check_git_clones` hit `--help`, or reorders the rows in `catalog_list`.",
+      "consequence": "A user with a missing clone could be unable to run `harnessed catalog update`, and the suite stays green."
     }
   ],
   "hunch": [
     {
       "file": "src/harnessed/catalogsources.py",
-      "line": 953,
+      "line": 391,
       "rule": "none",
-      "defect": "`git clone --quiet --no-checkout url tmp` has no `--` before url, and `git rev-parse` in _resolve_ref has none before the ref. A url or ref that starts with '-' is read as a git option, and `ext::` URLs are accepted.",
-      "consequence": "`harnessed catalog add -- --upload-pack=<cmd>` runs a command. This needs the user to type it, so it is low severity, but a script that forwards a url from a manifest would be exposed."
+      "defect": "`remove` writes the registry first, then runs rmtree with ignore_errors=True.",
+      "consequence": "If the clone cannot be deleted, the failure is invisible. The registry no longer lists it, `remove` says 'not registered', and `add` refuses with 'already exists and is not registered; remove it first'. The CLI offers no way out of that loop."
     },
     {
       "file": "src/harnessed/catalogsources.py",
-      "line": 1040,
+      "line": 412,
       "rule": "none",
-      "defect": "_closure collects only the stack's own services and recipes, plus extends parents. A service named by a recipe, or an agent, from a flag or project catalog does not mark the stack scoped.",
-      "consequence": "Two projects whose recipes pull different same-named services from their private catalogs share one profile, image and volume. This is the AC-9 collision the scoping exists to prevent."
-    },
-    {
-      "file": "src/harnessed/catalogsources.py",
-      "line": 836,
-      "rule": "none",
-      "defect": "Trust is recorded by path only. It is not tied to content, a commit, or the repository identity.",
-      "consequence": "After `catalog trust`, a later `git pull`, or a different repository cloned to the same path, runs new catalog code on the host with no prompt."
+      "defect": "`_inside` resolves each closure directory, so a recipe or service entry that is a symlink out of the folder source counts as outside the folder. The stack is then left unscoped.",
+      "consequence": "Two projects whose `--catalog` folders symlink same-named recipes to different targets would share one profile, image and volume. This is the cross-project mixing AC-9 exists to prevent."
     },
     {
       "file": "src/harnessed/launcher.py",
-      "line": 7156,
+      "line": 1413,
       "rule": "none",
-      "defect": "_extract_catalog_flags strips `--catalog` from any argv segment before `--`, including values meant for a harness CLI after `--cli`, for example `--cli auth login`.",
-      "consequence": "A harness argument literally named --catalog is swallowed, and the launch fails with 'no such directory'."
+      "defect": "`_check_git_clones` exempts only the `catalog` verb. Every other verb is blocked when any registered clone is missing, including verbs that never read the catalog, such as `harnessed update`/`upgrade` and `volume-gc`.",
+      "consequence": "A missing clone blocks unrelated maintenance commands until the user runs `harnessed catalog update`."
     }
   ],
   "coverage": {
-    "calls_used": "8/66",
+    "calls_used": "14/66",
     "hunts_not_reached": [
-      "1 (merge-gate argument comparison; I did not open the workflow files or tools/gauntlet-layers.json)",
-      "8",
-      "10",
-      "12 (the tests were not read, only the src diff)"
+      "9 (flags and config keys the diff names; not checked against the pinned versions)",
+      "10 (Documentation section; the AGENTS.md, ARCHITECTURE.md and SKILL.md hunks were not read)",
+      "8 (no EVIDENCE report in the diff)"
     ],
     "sites_not_opened": [
-      "tests/catalog_env.py:1",
-      "tests/test_catalog_git.py:1",
-      "tests/test_catalog_scope.py:1",
-      "tests/test_catalog_sources.py:1",
-      "tests/test_catalog_trust.py:1",
-      "src/harnessed/launcher.py:5611 (context command)",
-      "src/harnessed/launcher.py:5792 (stop command)"
+      "tests/test_catalog_trust.py (diff lines 2796 onward)",
+      "tests/test_catalog_git.py",
+      "tests/test_catalog_scope.py (only test names grepped, bodies not read)",
+      "src/harnessed/launcher.py:3228 (the `path` type passed to `_launch_host`)",
+      "src/harnessed/aoe.py forget_stack",
+      "the hostname length cap against the suffixed instance_name",
+      "the .github/workflows/live.yml trigger table against the changed paths.py and launcher.py"
     ],
     "files_reviewed": [
       "src/harnessed/assemble.py",
@@ -91,7 +75,9 @@
       "src/harnessed/plugin.py",
       "src/harnessed/schema.py",
       "src/harnessed/setupenv.py",
-      "src/harnessed/volumes.py"
+      "src/harnessed/volumes.py",
+      "tests/catalog_env.py",
+      "tests/test_catalog_sources.py"
     ],
     "files_not_reviewed": [
       "AGENTS.md",
@@ -106,10 +92,8 @@
       "spec-evidence/2026-11-22-HF-20261122-private-catalogs-add-two/spec-gate.md",
       "spec-evidence/2026-11-22-HF-20261122-private-catalogs-add-two/spec-intent.md",
       "spec-evidence/2026-11-22-HF-20261122-private-catalogs-add-two/story-gate.md",
-      "tests/catalog_env.py",
       "tests/test_catalog_git.py",
       "tests/test_catalog_scope.py",
-      "tests/test_catalog_sources.py",
       "tests/test_catalog_trust.py"
     ]
   }
