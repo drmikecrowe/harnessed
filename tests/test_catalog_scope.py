@@ -186,6 +186,14 @@ class TestStorageName:
         catalogsources.set_project_dir(self._scoped_default(tmp_path))
         assert paths.storage_name("nope") == "nope"
 
+    def test_a_stack_that_fails_to_load_is_scoped(self, env, tmp_path):
+        """PR #669 review round 2, low: a closure that cannot be read fails closed, into a scope."""
+        proj = project(tmp_path)
+        catalogsources.trust(proj)
+        entry(env.shipped, "stacks", "broken", "name: broken\nrecipes: [missing-recipe]\nnot_a_field: 1\n")
+        catalogsources.set_project_dir(proj)
+        assert paths.storage_name("broken") == f"broken{catalogsources.scope_suffix()}"
+
 
 class TestScopedInstancesByName:
     """PR #669 review, high: `stop` and `rm` must find a scoped stack's instance by the plain name."""
@@ -211,6 +219,17 @@ class TestScopedInstancesByName:
         monkeypatch.setattr(launcher, "_bounded", fake)
         monkeypatch.setattr(launcher.aoe, "forget_stack", lambda *a: None)
         return calls
+
+    @pytest.mark.parametrize(("verb", "action"), [("stop", "stop"), ("rm", "rm")])
+    def test_a_stack_named_with_a_hex_suffix_is_not_a_scope(self, env, podman, verb, action):
+        """PR #669 review round 2, medium: `foo-ab12cd34` is a real stack, so `stop foo` skips it."""
+        from typer.testing import CliRunner
+
+        entry(env.shipped, "stacks", "foo-ab12cd34")
+        result = CliRunner().invoke(launcher.app, [verb, "foo"])
+        assert result.exit_code == 0, result.output
+        acted = sorted(c[-1] for c in podman if c[1] == action)
+        assert acted == ["harnessed-claude-foo-1234abcd"]
 
     @pytest.mark.parametrize(("verb", "action"), [("stop", "stop"), ("rm", "rm")])
     def test_stop_and_rm_match_plain_and_scoped_instances(self, env, podman, verb, action):

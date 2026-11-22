@@ -163,6 +163,30 @@ class TestBuildReadsTheLock:
         launcher.main()
         assert called == [1]
 
+    @pytest.mark.parametrize("verb", ["stop", "rm", "list", "prune"])
+    def test_lifecycle_verbs_warn_and_go_on(self, env, tmp_path, monkeypatch, capsys, verb):
+        """PR #669 review round 2, high: a lost clone must not block verbs that never build or launch."""
+        bare, _ = remote(tmp_path)
+        catalogsources.add(str(bare), "main")
+        shutil.rmtree(env.clones / "harnessed-catalog")
+        called = []
+        monkeypatch.setattr(launcher, "app", lambda: called.append(1))
+        monkeypatch.setattr(sys, "argv", ["harnessed", verb, "x"])
+        launcher.main()
+        assert called == [1]
+        err = capsys.readouterr().err
+        assert "harnessed-catalog" in err and "harnessed catalog remove" in err
+
+    def test_the_missing_clone_error_names_remove_too(self, env, tmp_path, monkeypatch, capsys):
+        bare, _ = remote(tmp_path)
+        catalogsources.add(str(bare), "main")
+        shutil.rmtree(env.clones / "harnessed-catalog")
+        monkeypatch.setattr(launcher, "app", lambda: None)
+        monkeypatch.setattr(sys, "argv", ["harnessed", "container-run", "claude"])
+        with pytest.raises(SystemExit):
+            launcher.main()
+        assert "harnessed catalog remove harnessed-catalog" in capsys.readouterr().err
+
 
 class TestUpdate:
     def test_s6_1_moves_the_lock(self, env, tmp_path):
