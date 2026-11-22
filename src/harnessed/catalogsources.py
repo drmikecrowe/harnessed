@@ -416,18 +416,18 @@ def _inside(path: Path, roots: list[Path]) -> bool:
     return any(r == root or r.is_relative_to(root) for root in roots)
 
 
-def _closure(stack: str) -> list[Path]:
+def _closure(stack: str) -> tuple[list[Path], bool]:
     """The directories `stack` loads: its own, each `extends:` parent, each recipe and service.
 
-    A stack that cannot be loaded yields only the directories found before the failure. Agents are
-    left out: the agent image is keyed on the harness alone, so scoping a stack for one would not
-    separate anything.
+    Returns (dirs, complete). `complete` is False when the stack or a part of it failed to load, and
+    `dirs` then holds only what was found before the failure. Agents are left out: the agent image
+    is keyed on the harness alone, so scoping a stack for one would not separate anything.
     """
     from harnessed import schema
 
     stack_dir = paths.find_in_catalog("stacks", stack)
     if not (stack_dir / "stack.yaml").is_file():
-        return []
+        return [], True
     dirs = [stack_dir]
     try:
         cur, seen = stack_dir, {stack_dir.resolve()}
@@ -445,8 +445,8 @@ def _closure(stack: str) -> list[Path]:
         dirs += [paths.find_in_catalog("recipes", r) for r in stk.recipes]
         dirs += [paths.find_in_catalog("services", s) for s in _service_names(stk)]
     except (schema.SchemaError, OSError, ValueError):
-        pass
-    return dirs
+        return dirs, False
+    return dirs, True
 
 
 def _service_names(stk) -> list[str]:
@@ -459,14 +459,18 @@ def _service_names(stk) -> list[str]:
 def storage_name(stack: str) -> str:
     """The name stored state is keyed on: `stack`, plus the scope suffix for a scoped stack.
 
-    A stack is scoped when anything it loads comes from a folder source. With no folder source this
-    returns `stack` without reading anything, so no existing profile, image or volume is renamed.
+    A stack is scoped when anything it loads comes from a folder source, or when its closure cannot
+    be read while a folder source is active: an unreadable closure fails closed, into a scope of its
+    own, rather than sharing state with every other project (PR #669 review round 2). With no
+    folder source this returns `stack` without reading anything, so no existing profile, image or
+    volume is renamed.
     """
     folders = folder_sources()
     if not folders:
         return stack
     key = (stack, tuple(str(p) for p in folders))
     if key not in _storage:
-        scoped = any(_inside(d, folders) for d in _closure(stack))
+        dirs, complete = _closure(stack)
+        scoped = not complete or any(_inside(d, folders) for d in dirs)
         _storage[key] = f"{stack}{scope_suffix()}" if scoped else stack
     return _storage[key]

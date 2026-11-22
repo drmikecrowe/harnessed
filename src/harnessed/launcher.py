@@ -5814,7 +5814,11 @@ def _is_stack_instance(stack: str, name: str) -> bool:
     """`name` is an instance of `stack`: `-<stack>-<project hash>`, or `-<stack>-<scope>-<project hash>`
     for a stack scoped by a private catalog (`paths.storage_name`, PR #669). Every scope matches, so
     `stop <stack>` reaches the stack's instances in every project."""
-    return re.search(rf"-{re.escape(stack)}(?:-[0-9a-f]{{8}})?-[0-9a-f]{{8}}$", name) is not None
+    m = re.search(rf"-{re.escape(stack)}(-[0-9a-f]{{8}})?-[0-9a-f]{{8}}$", name)
+    if m is None:
+        return False
+    # `foo-ab12cd34` can be a real stack, not a scope of `foo` (PR #669 review round 2).
+    return m.group(1) is None or f"{stack}{m.group(1)}" not in paths.list_catalog_stacks()
 
 
 @app.command("rm")
@@ -7173,17 +7177,31 @@ def _extract_catalog_flags(argv: list[str]) -> tuple[list[str], list[Path]]:
     return [*out, *argv[end:]], dirs
 
 
+# The verbs that build or launch from the catalog. A missing git clone stops these (S5.3); every
+# other verb warns and goes on, so `stop`, `rm` and `list` still work offline (PR #669 review).
+_VERBS_NEEDING_CLONES = frozenset({
+    "build", "test", "use", "install", "project-setup",
+    "host-run", "host-exec", "host-acp", "container-run", "container-exec", "container-acp",
+})
+
+
 def _check_git_clones(argv: list[str]) -> None:
-    """Refuse to start when a registered git catalog has no clone (S5.3). Builds never fetch, so the
-    only repair is `harnessed catalog update`. The `catalog` verbs and help are exempt."""
+    """Refuse a build or launch when a registered git catalog has no clone (S5.3). Builds never
+    fetch, so the repairs are `harnessed catalog update` and `harnessed catalog remove`. Other verbs
+    warn and go on. The `catalog` verbs and help are exempt."""
     if not argv or argv[0] == "catalog" or argv[0].startswith("-") or "--help" in argv:
         return
     missing = catalogsources.missing_clones()
-    if missing:
-        raise catalogsources.CatalogError(
-            f"the clone of git catalog {', '.join(repr(m) for m in missing)} is missing. "
-            "Run `harnessed catalog update` to clone it again."
-        )
+    if not missing:
+        return
+    names = ", ".join(repr(m) for m in missing)
+    msg = (
+        f"the clone of git catalog {names} is missing. Run `harnessed catalog update` to clone it "
+        f"again, or `harnessed catalog remove {missing[0]}` to drop it."
+    )
+    if argv[0] in _VERBS_NEEDING_CLONES:
+        raise catalogsources.CatalogError(msg)
+    _err.print(f"[bold yellow]warning:[/bold yellow] {msg}", highlight=False, soft_wrap=True)
 
 
 def _set_catalog_project(path: Optional[str]) -> None:
