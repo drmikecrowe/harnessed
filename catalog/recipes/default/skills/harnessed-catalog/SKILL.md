@@ -50,10 +50,10 @@ Rules that follow from that split, and they are hard:
   overlay stack, create the directory and write `stack.yaml` by hand.
 
 Private content can also live in three more places, each a catalog root with the same
-`recipes/`, `stacks/`, `services/`, `agents/` layout. In precedence order, they are: a
-`--catalog <dir>` folder; a project's `.harnessed/catalog`, read only after
-`harnessed catalog trust`; and, after the overlay, a git repository registered with
-`harnessed catalog add <url> [--ref <ref>]` and moved with `harnessed catalog update`. Run
+`recipes/`, `stacks/`, `services/`, `agents/` layout. A `--catalog <dir>` folder comes first.
+A project's `.harnessed/catalog` comes next, and is read only after `harnessed catalog trust`.
+After the overlay comes a git repository registered with `harnessed catalog add <url>`, which
+`harnessed catalog update` moves to a new commit. Run
 `harnessed catalog list` to see the order in use. `ssh_keys` from any of the three are dropped:
 declare private keys only in the overlay.
 
