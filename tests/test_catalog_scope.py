@@ -174,6 +174,14 @@ class TestStorageName:
         joined = "\n".join([str(cat.resolve()), str((proj / ".harnessed" / "catalog").resolve())])
         assert catalogsources.scope_suffix() == "-" + hashlib.sha256(joined.encode()).hexdigest()[:8]
 
+    def test_two_stacks_in_one_process_keep_their_own_names(self, env, tmp_path):
+        """mutmut survivor `x_storage_name__mutmut_3`: the cache key holds the stack name."""
+        proj = self._scoped_default(tmp_path)
+        entry(env.shipped, "stacks", "other")
+        catalogsources.set_project_dir(proj)
+        assert paths.storage_name("default") == f"default{catalogsources.scope_suffix()}"
+        assert paths.storage_name("other") == "other"
+
     def test_an_unknown_stack_keeps_its_name(self, env, tmp_path):
         catalogsources.set_project_dir(self._scoped_default(tmp_path))
         assert paths.storage_name("nope") == "nope"

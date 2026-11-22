@@ -80,6 +80,13 @@ class TestFlagSource:
         argv, dirs = launcher._extract_catalog_flags(["host-run", "claude", "--", "--catalog", "x"])
         assert dirs == [] and argv == ["host-run", "claude", "--", "--catalog", "x"]
 
+    def test_two_exported_folders_both_reach_a_child(self, env, tmp_path):
+        """mutmut survivor `x_flag_sources__mutmut_10`: the variable splits on os.pathsep."""
+        one, two = tmp_path / "one", tmp_path / "two"
+        catalogsources.set_flag_sources([one, two])
+        catalogsources.reset()
+        assert catalogsources.flag_sources() == [one.resolve(), two.resolve()]
+
     def test_flag_after_cli_belongs_to_the_harness(self, env, tmp_path):
         """Adversary round 1: `--cli` hands the rest of argv to the harness, as `--` does."""
         cat = tmp_path / "cat"

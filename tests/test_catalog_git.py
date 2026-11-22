@@ -212,6 +212,27 @@ class TestUpdate:
         assert _head(env.clones / "harnessed-catalog") == c3
         assert catalogsources.load_registry()[0]["sha"] == c3
 
+    def test_s6_3_a_pinned_catalog_updates_offline(self, env, tmp_path):
+        """mutmut survivor `x_update__mutmut_30`: a full-SHA ref present in the clone needs no fetch."""
+        bare, work = remote(tmp_path)
+        c1 = _head(work)
+        catalogsources.add(str(bare), c1)
+        shutil.rmtree(bare)
+        result = runner.invoke(launcher.app, ["catalog", "update"])
+        assert result.exit_code == 0, result.output
+        assert "did not change" in result.output
+
+    def test_s6_4_a_reclone_keeps_the_recorded_ref(self, env, tmp_path):
+        """mutmut survivor `x_update__mutmut_21`: the clone again follows the ref, not the default branch."""
+        bare, work = remote(tmp_path)
+        git("checkout", "-q", "-b", "side", cwd=work)
+        side = commit(work, "side")
+        push(work, "side")
+        catalogsources.add(str(bare), "side")
+        shutil.rmtree(env.clones / "harnessed-catalog")
+        assert runner.invoke(launcher.app, ["catalog", "update"]).exit_code == 0
+        assert _head(env.clones / "harnessed-catalog") == side
+
     def test_s6_5_a_failed_fetch_changes_nothing(self, env, tmp_path):
         bare, work = remote(tmp_path)
         c1 = _head(work)
