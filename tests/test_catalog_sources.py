@@ -80,6 +80,53 @@ class TestFlagSource:
         argv, dirs = launcher._extract_catalog_flags(["host-run", "claude", "--", "--catalog", "x"])
         assert dirs == [] and argv == ["host-run", "claude", "--", "--catalog", "x"]
 
+    def test_flag_after_cli_belongs_to_the_harness(self, env, tmp_path):
+        """Adversary round 1: `--cli` hands the rest of argv to the harness, as `--` does."""
+        cat = tmp_path / "cat"
+        cat.mkdir()
+        argv = ["--catalog", str(cat), "host-acp", "claude", "--stack", "s", "--cli", "--catalog", "y"]
+        rest, dirs = launcher._extract_catalog_flags(argv)
+        assert dirs == [cat.resolve()]
+        assert rest == ["host-acp", "claude", "--stack", "s", "--cli", "--catalog", "y"]
+
+    def test_host_acp_sets_the_project_before_it_checks_the_build(self, env, monkeypatch):
+        """Adversary round 1, blocking: host-acp read `is_built` with no project directory set."""
+        order = []
+        monkeypatch.setattr(launcher, "_set_catalog_project", lambda p: order.append(("project", p)))
+
+        def built(*a):
+            order.append(("is_built", a))
+            raise SystemExit(0)
+
+        monkeypatch.setattr(launcher.paths, "is_built", built)
+        monkeypatch.setattr(launcher, "set_acp_mode", lambda *_: None)
+        runner.invoke(launcher.app, ["host-acp", "claude", "--stack", "s"])
+        assert order[0] == ("project", None) and order[1][0] == "is_built"
+
+    def test_a_corrupt_trust_record_is_an_error_not_a_traceback(self, env, tmp_path, monkeypatch, capsys):
+        """Adversary round 1: an unreadable trust record or registry must name the file."""
+        catalogsources.trust_file().parent.mkdir(parents=True)
+        catalogsources.trust_file().write_text("{not json")
+        project(tmp_path)
+        monkeypatch.chdir(tmp_path / "proj")
+
+        def boom():
+            catalogsources.set_project_dir(tmp_path / "proj")
+            paths.catalog_roots()
+
+        monkeypatch.setattr(launcher, "app", boom)
+        code = _run_main(monkeypatch, ["list"])
+        assert code not in (0, None)
+        assert str(catalogsources.trust_file()) in capsys.readouterr().err
+
+    @pytest.mark.parametrize("body", ["catalogs: [{name: x}]\n", "catalogs: 3\n", "[: bad\n"])
+    def test_a_corrupt_registry_is_an_error_not_a_traceback(self, env, body, monkeypatch, capsys):
+        catalogsources.registry_file().parent.mkdir(parents=True)
+        catalogsources.registry_file().write_text(body)
+        code = _run_main(monkeypatch, ["list"])
+        assert code not in (0, None)
+        assert str(catalogsources.registry_file()) in capsys.readouterr().err
+
 
 class TestProjectDiscovery:
     def test_s2_1_found_from_a_subfolder(self, env, tmp_path, monkeypatch, capsys):

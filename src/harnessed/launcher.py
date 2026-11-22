@@ -3989,6 +3989,8 @@ def host_acp(
         harnessed host-acp <harness> --stack <name>
         harnessed host-acp claude --stack <name> --cli auth login   # an ACP terminal login
     """
+    # The folder this starts in is the project the build check reads (adversary round 1).
+    _set_catalog_project(None)
     if _acp_cli is not None:
         _acp_terminal_login("host-acp", harness, stack, _acp_cli)
     if harness not in _ACP_HARNESSES:
@@ -7136,11 +7138,11 @@ def _add_register_help(verb: str) -> None:
 def _extract_catalog_flags(argv: list[str]) -> tuple[list[str], list[Path]]:
     """Take every `--catalog <dir>` and `--catalog=<dir>` out of `argv`, before or after the verb.
 
-    Before any `--` only: after it, the token belongs to the harness. A global launcher appends the
+    Before any `--` or `--cli` only: after either, the token belongs to the harness. A global launcher appends the
     user's arguments after the verb, so a flag accepted only before it could never reach a launch
     (HF-20261122-private-catalogs-add-two, A4). Each folder must exist.
     """
-    end = argv.index("--") if "--" in argv else len(argv)
+    end = min((argv.index(t) for t in ("--", "--cli") if t in argv), default=len(argv))
     out: list[str] = []
     dirs: list[Path] = []
     i = 0
@@ -7213,15 +7215,18 @@ def main() -> None:
     # excepthook buries that message under a Rich traceback, which reads as a harnessed crash
     # rather than the gate doing its job. Caught here rather than at a call site because the gate
     # runs from every verb that composes mounts (container run, host-native run); narrow on purpose
-    # — only these three types, so nothing else loses its traceback.
+    # — only these three types, so nothing else loses its traceback. `CatalogError` joins them for
+    # the same reason: an unreadable trust record or registry names its file and its repair, and
+    # every verb reads both (HF-20261122-private-catalogs-add-two, adversary round 1).
     try:
         app()
     except (
         persist.PersistDeniedError,
         persist.PersistNotAllowlistedError,
         persist.PersistOwnershipError,
+        catalogsources.CatalogError,
     ) as exc:
-        _err.print(f"[bold red]error:[/bold red] {exc}", highlight=False)
+        _err.print(f"[bold red]error:[/bold red] {exc}", highlight=False, soft_wrap=True)
         raise SystemExit(1) from None
     finally:
         # One parse, one command. A caller that drives `app` directly afterwards (a test's

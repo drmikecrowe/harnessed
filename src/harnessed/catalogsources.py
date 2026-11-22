@@ -28,6 +28,7 @@ from io import StringIO
 from pathlib import Path
 
 from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
 
 from harnessed import paths
 
@@ -125,8 +126,14 @@ def trusted_paths() -> list[str]:
     f = trust_file()
     if not f.is_file():
         return []
-    data = json.loads(f.read_text(encoding="utf-8"))
-    return [str(p) for p in data.get("trusted", [])]
+    try:
+        data = json.loads(f.read_text(encoding="utf-8"))
+        items = data["trusted"]
+        if not isinstance(items, list):
+            raise TypeError("'trusted' is not a list")
+    except (ValueError, KeyError, TypeError) as exc:
+        raise CatalogError(f"cannot read the trust record {f}: {exc}. Fix or delete it.") from None
+    return [str(p) for p in items]
 
 
 def _write_atomic(path: Path, text: str) -> None:
@@ -226,11 +233,14 @@ def load_registry() -> list[dict]:
     f = registry_file()
     if not f.is_file():
         return []
-    data = _yaml().load(f.read_text(encoding="utf-8")) or {}
-    return [
-        {k: str(item[k]) for k in ("name", "url", "ref", "sha")}
-        for item in data.get("catalogs", []) or []
-    ]
+    try:
+        data = _yaml().load(f.read_text(encoding="utf-8")) or {}
+        items = data.get("catalogs", []) or []
+        if not isinstance(items, list):
+            raise TypeError("'catalogs' is not a list")
+        return [{k: str(item[k]) for k in ("name", "url", "ref", "sha")} for item in items]
+    except (YAMLError, AttributeError, KeyError, TypeError) as exc:
+        raise CatalogError(f"cannot read the catalog registry {f}: {exc}. Fix or delete it.") from None
 
 
 def _write_registry(items: list[dict]) -> None:
@@ -260,6 +270,18 @@ def _check_name(name: str) -> None:
             f"invalid catalog name {name!r}: use letters, digits, '.', '_' and '-', "
             "with no leading '.' and no '..'"
         )
+
+
+def _check_url_ref(url: str, ref: str | None) -> None:
+    """Refuse a URL or ref git would read as an option, and git's command-running transports.
+
+    `--upload-pack=<cmd>` as a URL, or `ext::<cmd>`, runs a command on this host. A user can type
+    one, but a script that forwards a URL from a manifest should not be able to.
+    """
+    if url.startswith("-") or re.match(r"^(ext|fd)::", url):
+        raise CatalogError(f"refusing catalog URL {url!r}: it reads as a git option or command transport")
+    if ref is not None and (ref.startswith("-") or not ref.strip()):
+        raise CatalogError(f"refusing ref {ref!r}: it reads as a git option")
 
 
 def _git(args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -301,10 +323,11 @@ def _clone_at(url: str, ref: str | None, dest: Path) -> tuple[str, str]:
 
     Clones into a temporary sibling first, so a failure leaves no directory at `dest`.
     """
+    _check_url_ref(url, ref)
     clones_root().mkdir(parents=True, exist_ok=True)
     tmp = Path(tempfile.mkdtemp(dir=clones_root(), prefix=f".{dest.name}."))
     try:
-        _git_ok(["clone", "--quiet", "--no-checkout", url, str(tmp)])
+        _git_ok(["clone", "--quiet", "--no-checkout", "--", url, str(tmp)])
         if ref is None:
             ref = _default_branch(tmp)
         sha = _resolve_ref(tmp, ref)

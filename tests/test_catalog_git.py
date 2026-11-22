@@ -99,6 +99,18 @@ class TestAdd:
         assert _reg_bytes() is None
         assert not env.clones.exists() or list(env.clones.iterdir()) == []
 
+    @pytest.mark.parametrize(
+        ("url", "ref"),
+        [("--upload-pack=touch /tmp/pwned", None), ("{bare}", "--output=/tmp/x"), ("ext::sh -c id", None)],
+    )
+    def test_an_option_shaped_url_or_ref_is_refused(self, env, tmp_path, monkeypatch, url, ref):
+        """Adversary round 1: a url or ref that git reads as an option, or an ext:: url, never runs."""
+        bare, _ = remote(tmp_path)
+        _no_git(monkeypatch)
+        with pytest.raises(catalogsources.CatalogError):
+            catalogsources.add(url.format(bare=bare), ref, "x")
+        assert _reg_bytes() is None
+
     @pytest.mark.parametrize("bad", ["a/b", "..", "x..y/", "sp ace", "semi;colon", ".hidden", ""])
     def test_s4_5_bad_names_are_refused(self, env, tmp_path, bad):
         bare, _ = remote(tmp_path)
