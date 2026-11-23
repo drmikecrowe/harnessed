@@ -46,4 +46,4 @@ def _catalog_base(rt_path: str) -> Path:
 
 
 def _derived_image(stack: str, harness: str) -> str:
-    return f"harnessed-{harness}-{stack}:latest"
+    return f"harnessed-{harness}-{paths.storage_name(stack)}:latest"

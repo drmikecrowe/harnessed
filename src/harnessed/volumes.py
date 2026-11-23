@@ -41,7 +41,7 @@ def _stack_config_volume(stack: str, harness: str) -> str:
     picks the content, and the harness picks which profile tree is fanned into it. Two stacks
     sharing a volume would compose each other's skills.
     """
-    return f"harnessed-cfg-{harness}-{stack}"
+    return f"harnessed-cfg-{harness}-{paths.storage_name(stack)}"
 
 
 def _merged_settings_text(
@@ -282,7 +282,7 @@ def _stack_tools_volume(stack: str, harness: str) -> str:
     `~/.local/bin`. One volume at the common parent covers all three, and podman's copy-up carries
     the base image's own mise/snyk/socket IN rather than hiding them.
     """
-    return f"harnessed-tools-{harness}-{stack}"
+    return f"harnessed-tools-{harness}-{paths.storage_name(stack)}"
 
 
 def _container_stack_fingerprint(rt: str, stack: str, recipes: list, image: str) -> str:

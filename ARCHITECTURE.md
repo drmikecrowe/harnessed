@@ -121,12 +121,27 @@ Two consequences worth knowing:
   allowed. Cycles are an error. Unknown stack fields are **rejected** — a stack manifest has no
   forward-field case. Silently-ignored keys are how an `extends:` written before the feature existed
   went unnoticed while inheriting nothing.
-- **catalog** — the collection of agents/recipes/services/stacks. Three roots, searched in order:
-  the user overlay **`~/.config/harnessed/catalog`** (wins on a name clash), the repo `catalog/`,
-  and last the **generated** root `$XDG_DATA_HOME/harnessed/generated/` holding machine-minted stacks
-  (`--recipe`). Generated is last so it can never shadow a stack you authored, and it is kept
-  out of the overlay so `harnessed list` can tell authored from generated and a regenerated
-  manifest can never clobber a hand edit. It is included only when it exists.
+- **catalog** — the collection of agents/recipes/services/stacks. Up to six source kinds, searched
+  in this order, the first winning on a name clash (`paths.catalog_sources`):
+  1. each **`--catalog <dir>`** folder, in command-line order (accepted before or after the verb,
+     and passed to harnessed child processes in `HARNESSED_CATALOG`);
+  2. the **project catalog**: the nearest `.harnessed/catalog` from the project directory up to its
+     git top level. It is read only after `harnessed catalog trust` records its path, because a
+     cloned repository must not run its catalog's code on this host by being launched in;
+  3. the user overlay **`~/.config/harnessed/catalog`**;
+  4. each **git catalog** registered with `harnessed catalog add <url>`, in registration order. It is
+     cloned under `$XDG_DATA_HOME/harnessed/catalogs/<name>` at the commit locked in
+     `~/.config/harnessed/catalogs.yaml`. Only `harnessed catalog add` and `update` run git;
+  5. the repo `catalog/`;
+  6. last, the **generated** root `$XDG_DATA_HOME/harnessed/generated/` holding machine-minted
+     stacks (`--recipe`). Generated is last so it can never shadow a stack you authored, and it is
+     kept out of the overlay so `harnessed list` can tell authored from generated and a
+     regenerated manifest can never clobber a hand edit. It is included only when it exists.
+
+  A stack that loads anything from a `--catalog` folder or a project catalog stores its profile,
+  image, host home and volumes under `<stack>-<8 hex>` (`paths.storage_name`), so two projects
+  that each define `default` never share one. Private `ssh_keys` mount only for a stack from the
+  user overlay, whatever the other sources hold. `harnessed catalog list` prints the order in use.
 - **integration** — a way to register a stack with an external tool (aoe, Zed, Atlas, VS Code). It is
   one executable file, `catalog/integrations/<name>/register`, found across the catalog roots with the
   overlay first, so a user adds or overrides one without touching `src/`. It runs only when a global

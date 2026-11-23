@@ -267,6 +267,17 @@ def _ensure_extra_tools() -> None:
         user_file.write_text(seed.read_text())
 
 
+def _writable_roots() -> list[Path]:
+    """The catalog roots `update` may rewrite pins in: every root but a git catalog's clone.
+
+    A clone is checked out at its locked commit and `harnessed catalog update` resets it, so a pin
+    written there would be lost and would never reach the repository
+    (HF-20261122-private-catalogs-add-two).
+    """
+    clones = {root for kind, root in paths.catalog_sources() if kind == "git"}
+    return [root for root in paths.catalog_roots() if root not in clones]
+
+
 def _update_recipe_dirs() -> list[Path]:
     """Every recipe dir across the active catalog roots (user overlay + repo), deduped by ref.
 
@@ -275,7 +286,7 @@ def _update_recipe_dirs() -> list[Path]:
     """
     seen: set[str] = set()
     dirs: list[Path] = []
-    for root in paths.catalog_roots():
+    for root in _writable_roots():
         recipes = root / "recipes"
         if not recipes.is_dir():
             continue
@@ -295,7 +306,7 @@ def _update_agent_dirs() -> list[Path]:
     """
     seen: set[str] = set()
     dirs: list[Path] = []
-    for root in paths.catalog_roots():
+    for root in _writable_roots():
         agents = root / "agents"
         if not agents.is_dir():
             continue

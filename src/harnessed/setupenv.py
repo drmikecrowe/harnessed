@@ -245,7 +245,7 @@ def _stack_tools_dirs(stack: str) -> tuple[Path, Path, Path]:
     other. Shared by `provision:` (_host_provision) and `setup.script` (_script_env) so both land
     executables in ONE dir that _launch_host puts on PATH exactly once.
     """
-    tools_root = paths.xdg_data_home() / "harnessed" / "tools" / stack
+    tools_root = paths.xdg_data_home() / "harnessed" / "tools" / paths.storage_name(stack)
     return tools_root, tools_root / "bin", tools_root / "uv-tools"
 
 
