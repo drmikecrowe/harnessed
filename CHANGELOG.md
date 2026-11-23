@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.0](https://github.com/drmikecrowe/harnessed/compare/v0.12.2...v0.13.0) (2026-11-23)
+
+
+### Features
+
+* **catalog:** private catalogs from folders, projects and git ([#669](https://github.com/drmikecrowe/harnessed/issues/669)) ([82401ee](https://github.com/drmikecrowe/harnessed/commit/82401eeb3a6958ffdf4b28b30f5737dbb6744a2e))
+* **catalog:** upgrade pins 2026-11-21 ([#668](https://github.com/drmikecrowe/harnessed/issues/668)) ([ce8f5fd](https://github.com/drmikecrowe/harnessed/commit/ce8f5fd1f0d4d9fee913547af84055ee2476730c))
+
 ## [0.12.2](https://github.com/drmikecrowe/harnessed/compare/v0.12.1...v0.12.2) (2026-11-20)
 
 
