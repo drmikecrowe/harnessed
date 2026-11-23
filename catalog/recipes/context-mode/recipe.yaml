@@ -32,7 +32,7 @@ description: >
 # `mise current npm:context-mode` for the version rather than restating it, so there is nothing here
 # to keep in lockstep and nothing that can drift.
 tools:
-  - npm:context-mode@2.1.10
+  - npm:context-mode@2.2.0
 
 # --- MCP layer ---
 # stdio (the schema default): hatago spawns `context-mode` as a child and wraps stdio→HTTP. Bare
