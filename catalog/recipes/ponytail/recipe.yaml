@@ -24,7 +24,7 @@ install:
   refs:
     ponytail:
       repo: DietrichGebert/ponytail
-      ref: v5.3.2
+      ref: v5.3.3
 
 # install.sh copies skills, so the assembler cannot see them. All six are stable upstream names.
 expect:
